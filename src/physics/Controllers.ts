@@ -157,6 +157,7 @@ export class LocomotionController {
   private jumpConsumed = false;
   private flipped = false;
   private flipAngle = 0;
+  private flipScored = false;
   private flightStarted: number | null = null;
   private lastGrounded = false;
   constructor(private readonly goat: GoatRagdoll) {}
@@ -190,6 +191,7 @@ export class LocomotionController {
       this.jumpConsumed = false;
       this.flipped = false;
       this.flipAngle = 0;
+      this.flipScored = false;
     }
     const movement = add(mul(forward(this.input.cameraYaw),this.input.z),
       mul(right(this.input.cameraYaw),this.input.x));
@@ -239,6 +241,7 @@ export class LocomotionController {
       this.lastGroundAt = -Infinity;
       this.grounded = false;
       this.jumpConsumed = true;
+      this.lastGrounded = false;
       this.flightStarted = this.clock;
       g.events.emit({type:'airtimeStart',goatId:g.id,time:g.world.time,height:torso.translation().y});
     }
@@ -277,7 +280,8 @@ export class LocomotionController {
   afterStep(dt: number): void {
     if (!this.flipped || this.grounded) return;
     this.flipAngle += Math.abs(this.goat.torso.angvel().x)*dt;
-    if (this.flipAngle >= Math.PI*2 && this.flipAngle < Math.PI*2 + 50*dt) {
+    if (this.flipAngle >= Math.PI*2 && !this.flipScored) {
+      this.flipScored = true;
       this.goat.events.emit({type:'flipped',goatId:this.goat.id,
         time:this.goat.world.time,rotations:1});
     }
