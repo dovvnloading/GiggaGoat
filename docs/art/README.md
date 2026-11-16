@@ -31,5 +31,7 @@ level of detail as closely as real-time three.js allows. Read [ART_PLAN.md](ART_
 | `hifi/14_poi_the_dam.png` | Dam wall with spillways, top walkway, control house, reservoir dock, river below. |
 | `hifi/15_poi_lighthouse.png` | Lighthouse islet at sunset: keeper's cottage, shipwreck, sea cave with a Goat Relic. |
 | `hifi/16_mode_rising_tide.png` | Rising-tide party mode: flooded island, last dry terraces, floating debris. |
+| `hifi/21_goat_model_sheet.png` | The hero goat: turnaround, size tiers KID/BILLY/BIG/GIGGA, action poses. |
+| `hifi/22_hud_mockup.png` | In-game HUD: GIGGA size meter, combo + score, stamina ring, Hay-Build hotbar, minimap, current gig. |
 
 Only the hi-fi images above are reference art. Characters, props and UI get their own hi-fi references when those phases start (see ART_PLAN.md).
