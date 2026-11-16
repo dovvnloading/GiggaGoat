@@ -3,7 +3,7 @@ import { PartyMatch } from './match';
 import type {
   Difficulty, GoatObservation, MatchEvent, ModeArena, ModeInputIntent, Point, Position,
 } from './types';
-import { direction, distanceSquared, TICKS_PER_SECOND } from './internal';
+import { direction, distanceSquared, TICKS_PER_SECOND, compareIds } from './internal';
 
 /** Deliberately small non-Rapier island for deterministic bot tests and the
  * standalone developer console. Not used by production integration. */
@@ -90,7 +90,7 @@ export class MockIslandRunner {
       if (!intents[goat.id]?.chargeHeadbutt) continue;
       const victim = this.goats.filter(g => g.id !== goat.id &&
         distanceSquared({ x: goat.x, z: goat.z }, { x: g.x, z: g.z }) < 3.4 ** 2)
-        .sort((a, b) => a.id.localeCompare(b.id))[0];
+        .sort((a, b) => compareIds(a.id, b.id))[0];
       if (!victim) continue;
       contacts.push({ attackerId: goat.id, victimId: victim.id });
       if (this.match.mode === 'rising-tide') {
