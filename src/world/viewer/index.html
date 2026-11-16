@@ -32,9 +32,20 @@
     .checkboxes label { display: flex; align-items: center; gap: 6px; font-weight: 500; }
     #stats { border-top: 1px solid #ffffff2a; margin-top: 13px; padding-top: 10px;
       font-size: 12px; line-height: 1.7; color: #b8e0e2; }
+
+    #reference { position: fixed; right: 16px; top: 16px; width: min(34vw, 480px);
+      color: #f1f9ff; padding: 9px; background: #14273edb; border: 1px solid #e4f7fa77;
+      border-radius: 13px; backdrop-filter: blur(8px); box-shadow: 0 12px 35px #0008; }
+    #reference[hidden] { display: none; }
+    #reference img { display: block; width: 100%; max-height: 49vh; object-fit: contain;
+      border-radius: 6px; background: #172b39; }
+    #reference figcaption { margin-top: 7px; font-size: 11px; color: #dfebf0; }
+    #perf { padding: 8px 10px; margin-top: 10px; font: 12px/1.5 ui-monospace, monospace;
+      border-radius: 7px; color: #8df3c3; background: #162b36; }
     #hint { position: fixed; right: 16px; bottom: 16px; padding: 8px 13px; border-radius: 8px;
       background: #10263dbb; color: #e0f4fc; font-size: 12px; }
-    @media (max-width: 650px) { #panel { top: 8px; left: 8px; padding: 12px; }
+    @media (max-width: 650px) { #panel { top: 8px; left: 8px; padding: 12px; max-height: 68vh; overflow:auto; }
+      #reference { right: 8px; top: auto; bottom: 42px; width: min(48vw, 280px); }
       h1 { font-size: 18px; } #hint { font-size: 10px; } }
   </style>
 </head>
@@ -43,7 +54,7 @@
   <div id="labels"></div>
   <section id="panel" aria-label="World lab controls">
     <h1>🐐 Billy Isle — World Lab</h1>
-    <p>Deterministic blockout · eight districts · mountain-to-sea traversal</p>
+    <p>Art-directed Billy Isle · eight playable districts · visual comparison</p>
     <form id="seed-form">
       <label for="seed">World seed</label>
       <div class="inline">
@@ -54,6 +65,17 @@
     <label for="camera">Camera mode</label>
     <div class="inline"><select id="camera"><option value="orbit">Orbit and inspect</option>
       <option value="fly">Fly with WASD</option></select></div>
+    <label for="bookmark">Concept-art camera</label>
+    <div class="inline"><select id="bookmark" aria-label="Art reference camera"></select></div>
+    <div class="checkboxes">
+      <label><input id="compare" type="checkbox" checked /> Side-by-side painting</label>
+    </div>
+    <label for="preset">Lighting preset</label>
+    <div class="inline"><select id="preset">
+      <option value="day">Bright day</option>
+      <option value="golden-hour">Golden hour</option>
+      <option value="night">Night</option>
+    </select></div>
     <label for="tide">Rising tide <output id="tide-label">0 m</output></label>
     <input id="tide" type="range" min="0" max="110" step="0.5" value="0" />
     <label for="day">Day / night <output id="day-label">Midday</output></label>
@@ -63,7 +85,12 @@
       <label><input id="show-colliders" type="checkbox" /> Colliders</label>
     </div>
     <div id="stats" role="status"></div>
+    <div id="perf" role="status">FPS — · Draw calls — · Triangles —</div>
   </section>
+  <figure id="reference" hidden>
+    <img id="reference-image" alt="Original Billy Isle concept illustration" />
+    <figcaption id="reference-caption">Concept art · compared with live Three.js scene</figcaption>
+  </figure>
   <aside id="hint">Orbit: left-drag / wheel · Fly: WASD, R/F up/down, drag to look</aside>
   <script type="module" src="./viewer.ts"></script>
 </body>
