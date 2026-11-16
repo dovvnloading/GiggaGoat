@@ -16,6 +16,7 @@ export class GameInput {
   private buildPlaceQueued = false;
   private selected: PieceType | undefined;
   private padToggleWasDown = false;
+  private padInteractWasDown = false;
   private padPlaceWasDown = false;
   private padJumpWasDown = false;
   private padFlingWasDown = false;
@@ -23,10 +24,14 @@ export class GameInput {
   private pendingBleat = false;
   private pendingFlop = false;
   private pendingFling = false;
+  private pendingGraze = false;
+  private pendingInteract = false;
   private readonly unsubscribers: Array<() => void> = [];
   yaw: number;
   pitch = .3;
   debugVisible = false;
+  sensitivity = 1;
+  invertY = false;
 
   constructor(private readonly canvas: HTMLCanvasElement, initialYaw: number) {
     this.yaw = initialYaw;
@@ -45,7 +50,8 @@ export class GameInput {
       if (code === 'KeyB') this.buildToggleQueued = true;
       if (code === 'F3') this.debugVisible = !this.debugVisible;
       if (code === 'Space') this.pendingJump = true;
-      if (code === 'KeyE') this.pendingBleat = true;
+      if (code === 'KeyE') { this.pendingBleat = true; this.pendingInteract = true; }
+      if (code === 'KeyG') this.pendingGraze = true;
       if (code === 'KeyQ') this.pendingFlop = true;
       if (code === 'KeyF') this.pendingFling = true;
       const index = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(code);
@@ -71,8 +77,9 @@ export class GameInput {
     listen(canvas, 'contextmenu', event => { event.preventDefault(); });
     listen(document, 'mousemove', event => {
       if (document.pointerLockElement !== canvas) return;
-      this.yaw -= event.movementX * .0026;
-      this.pitch = Math.max(-.22, Math.min(1.15, this.pitch - event.movementY * .0021));
+      this.yaw -= event.movementX * .0026 * this.sensitivity;
+      this.pitch = Math.max(-.22, Math.min(1.15,
+        this.pitch + event.movementY * .0021 * this.sensitivity * (this.invertY ? 1 : -1)));
     });
   }
 
@@ -93,6 +100,8 @@ export class GameInput {
     let placeBuild = this.buildPlaceQueued;
     let buildPiece = this.selected;
     let reelTongue = pressed('KeyR');
+    let graze = this.pendingGraze;
+    let interact = this.pendingInteract;
 
     const pad = navigator.getGamepads?.().find(p => p?.connected) ?? null;
     if (pad) {
@@ -100,9 +109,9 @@ export class GameInput {
       if (Math.hypot(px, pz) > Math.hypot(moveX, moveZ) * .7) {
         moveX = px; moveZ = pz;
       }
-      this.yaw -= axis(pad.axes[2] ?? 0) * dt * 2.8;
+      this.yaw -= axis(pad.axes[2] ?? 0) * dt * 2.8 * this.sensitivity;
       this.pitch = Math.max(-.22, Math.min(1.15,
-        this.pitch - axis(pad.axes[3] ?? 0) * dt * 1.9));
+        this.pitch + axis(pad.axes[3] ?? 0) * dt * 1.9 * (this.invertY ? 1 : -1)));
       sprint ||= down(pad, 5);
       const padJump = down(pad, 0);
       jump ||= padJump;
@@ -111,6 +120,10 @@ export class GameInput {
       tongue ||= down(pad, 4) || trigger(pad, 6);
       chargeHeadbutt ||= trigger(pad, 7);
       bleat ||= down(pad, 2);
+      // X is a context action near boards or grazing patches.
+      interact ||= down(pad, 2) && !this.padInteractWasDown;
+      graze ||= down(pad, 2) && !this.padInteractWasDown;
+      this.padInteractWasDown = down(pad, 2);
       flop ||= down(pad, 1);
       const padFling = down(pad, 10);
       flingTongue ||= padFling && !this.padFlingWasDown;
@@ -128,6 +141,7 @@ export class GameInput {
       this.padJumpWasDown = false;
       this.padPlaceWasDown = false;
       this.padFlingWasDown = false;
+      this.padInteractWasDown = false;
     }
 
     const magnitude = Math.hypot(moveX, moveZ);
@@ -139,19 +153,22 @@ export class GameInput {
     this.pendingBleat = false;
     this.pendingFlop = false;
     this.pendingFling = false;
+    this.pendingGraze = false;
+    this.pendingInteract = false;
     return {
       moveX, moveZ, cameraYaw: this.yaw, sprint, jump, glide: pressed('Space'),
       chargeHeadbutt: !buildMode && chargeHeadbutt, tongue,
       reelTongue, flingTongue, bleat, flop,
-      toggleBuild, placeBuild: buildMode && placeBuild, buildPiece,
+      toggleBuild, placeBuild: buildMode && placeBuild, buildPiece, graze, interact,
     };
   }
 
-  private reset(): void {
+  reset(): void {
     this.keys.clear();
     this.mousePrimary = false;
     this.mouseSecondary = false;
     this.pendingJump = this.pendingBleat = this.pendingFlop = this.pendingFling = false;
+    this.pendingGraze = this.pendingInteract = false;
     this.buildPlaceQueued = false;
   }
 
