@@ -3,7 +3,7 @@ import { BotBrain } from './bots';
 import { PartyMatch } from './match';
 import { makeMockIsland, MockIslandRunner } from './mock-island';
 import { arenaFromBillyIsle } from './world-adapter';
-import { generateIsland, landAreaAtTideLevel } from '../world/island';
+import { generateIsland, heightAt, landAreaAtTideLevel } from '../world/island';
 import { goat } from './test-utils';
 import type { Difficulty, MatchEvent, ModeId } from './types';
 
@@ -117,7 +117,7 @@ describe('Seeded bot goats + headless mock matches', () => {
   it('uses the world lane tide calculation without altering the generated island', () => {
     const world = generateIsland({ seed: 'modes-contract', resolution: 65 });
     const levels = [...world.tideLevels];
-    const arena = arenaFromBillyIsle(world);
+    const arena = arenaFromBillyIsle(world, { heightAt, landAreaAtTideLevel });
     expect(arena.tideLevels).toEqual(levels);
     expect(arena.summit).toEqual(world.pois.find(p => p.id === 'mt-gigga')!.center);
     expect(arena.dryAreaAtTideLevel(levels[5]!)).toBe(
