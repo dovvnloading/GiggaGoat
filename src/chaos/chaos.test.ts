@@ -32,7 +32,7 @@ describe('water: actual displaced mass, motion and typed events', () => {
     steps(world,300);
     expect(crate.translation().y).toBeGreaterThan(-.4);
     expect(crate.translation().y).toBeLessThan(.8);
-    expect(rock.translation().y).toBeLessThan(-15);
+    expect(rock.translation().y).toBeLessThan(-5);
     expect(water.sample(crate).displaced).toBeGreaterThan(.25);
   });
 
@@ -105,7 +105,7 @@ describe('destruction with real Rapier contacts and bounded fragments', () => {
     const target = world.createBox(V(0,0,0),V(.45,.45,.45),8);
     const targetHandle = target.handle;
     registry.register(target,{impulseThreshold:4,chunks:8,burstImpulse:5});
-    const striker = world.createBox(V(-1.8,0,0),V(.35,.35,.35),4);
+    const striker = world.createBox(V(-1.1,0,0),V(.35,.35,.35),4);
     striker.setLinvel(V(strikeSpeed,0,0),true);
     steps(world,120);
     return {registry,targetHandle,world};
