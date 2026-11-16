@@ -297,7 +297,7 @@ function oneTick(): void {
   if (!match || match.phase === 'results') return;
   runner.tick(match.players.some(p => p.id === 'you') ? { you: humanIntent() } : {});
   headbuttPressed = false;
-  if (match.phase === 'results') { paused = true; setText('pause', 'Resume'); }
+  if (match.toJSON().phase === 'results') { paused = true; setText('pause', 'Resume'); }
 }
 function animate(timestamp: number): void {
   if (!lastTime) lastTime = timestamp;
