@@ -110,6 +110,8 @@ export interface SummitConfig {
 export interface SplashConfig {
   kind: 'splash-dive';
   jumpPoint: Point;
+  /** Open-water landing beyond the edge of the world collider, not the deck below it. */
+  landing: Point;
   waterY: number;
   minDrop: number;
   /** A dam-diving contract needs a physical flop before the big splash. */
