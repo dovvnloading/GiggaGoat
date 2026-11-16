@@ -88,7 +88,7 @@ export class BalanceController {
     torso.applyTorqueImpulse(angularImpulse,true);
 
     const hit = g.locomotion.groundHit;
-    if (!hit || g.locomotion.isClinging) return;
+    if (!hit || g.locomotion.isClinging || torso.linvel().y > 1.1) return;
     const height = torso.translation().y - hit.point.y;
     if (height > this.tuning.rideHeight*g.size + .65*g.size) return;
     const yError = this.tuning.rideHeight*g.size - height;
