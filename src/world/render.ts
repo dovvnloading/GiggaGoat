@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import type { Biome, IslandData } from './types';
 import { BIOMES } from './types';
 import { clamp, smoothstep } from './random';
-import { gridCoordinate, gridIndex, segmentProjection } from './terrain';
+import { gridCoordinate, gridIndex } from './terrain';
+import { makeLocalStreets } from './roads';
 import { buildPropVisuals, TOON_RAMP } from './visual-props';
 import { buildGroundDetails } from './visual-ground';
 import { buildWaterVisuals } from './visual-water';
@@ -239,7 +240,7 @@ function buildRoads(island: IslandData): THREE.Group {
   const direction = new THREE.Vector3(), midpoint = new THREE.Vector3();
   const rotation = new THREE.Quaternion(), matrix = new THREE.Matrix4();
   for (const type of ['road', 'trail'] as const) {
-    const segments = island.roads.filter(r => r.type === type)
+    const segments = [...island.roads, ...makeLocalStreets(island)].filter(r => r.type === type)
       .flatMap(r => r.points.slice(1).map((b, i) =>
         ({ a: r.points[i]!, b, width: r.width })));
     const material = new THREE.MeshToonMaterial({
