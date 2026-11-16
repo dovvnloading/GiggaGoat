@@ -8,6 +8,7 @@ import {
 } from './terrain';
 import { makeRoads, makeBridgeDecks } from './roads';
 import { populateProps } from './layouts';
+import { dressIsland } from './dressing';
 import { makeRelics, makeSpawns } from './collectibles';
 import { makeColliderDescriptors } from './colliders';
 
@@ -89,7 +90,7 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
     poi.center.y = gridSample(island, x, z);
   }
   island.roads = makeRoads(island, rng);
-  island.props = [...populateProps(island, rng), ...makeBridgeDecks(island)];
+  island.props = [...populateProps(island, rng), ...dressIsland(island, rng), ...makeBridgeDecks(island)];
   assignBiomes(island);
   island.spawns = makeSpawns(island);
   island.relics = makeRelics(island, rng);
