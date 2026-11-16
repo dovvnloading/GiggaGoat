@@ -74,6 +74,31 @@ describe('Billy Isle deterministic world generation', () => {
       }
     }
     expect(island.props.some(p => p.kind === 'bridge')).toBe(true);
+    // Validate the actual COLLIDABLE heightfield, not just graded road metadata.
+    const deviations: number[] = [];
+    const terrainGrades: number[] = [];
+    for (const road of island.roads) {
+      for (let i = 0; i < road.points.length; i++) {
+        const p = road.points[i]!;
+        if (p.bridge) continue;
+        const h = heightAt(island, p.x, p.z);
+        deviations.push(Math.abs(h - p.y));
+        if (i > 0 && !road.points[i - 1]!.bridge) {
+          const prev = road.points[i - 1]!;
+          const distance = Math.hypot(p.x - prev.x, p.z - prev.z);
+          if (distance > 0.01) {
+            terrainGrades.push(Math.abs(h - heightAt(island, prev.x, prev.z)) / distance);
+          }
+        }
+      }
+    }
+    const p95 = (values: number[]): number => {
+      const sorted = [...values].sort((a, b) => a - b);
+      return sorted[Math.floor((sorted.length - 1) * 0.95)]!;
+    };
+    console.info('physical road profile', { p95Deviation: p95(deviations), p95Grade: p95(terrainGrades) });
+    expect(p95(deviations)).toBeLessThan(4);
+    expect(p95(terrainGrades)).toBeLessThan(0.55);
   });
 
   it('keeps graded building pads flat and preserves solid, walkable roof geometry', () => {
