@@ -187,7 +187,7 @@ export function assignBiomes(island: IslandData): void {
     else if (h < 4) biome = 'beach';
     else if (h > 76) biome = 'cliff';
     else if (h > 30) biome = 'highlands';
-    else if (Math.hypot(x + 94, z + 150) < 93) biome = 'pine-forest';
+    else if (Math.hypot(x + 147 * island.size / 600, z + 143 * island.size / 600) < 93 * island.size / 600) biome = 'pine-forest';
     else biome = 'meadow';
     let zone = 0;
     let nearest = Infinity;
