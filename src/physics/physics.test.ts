@@ -1,0 +1,161 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import RAPIER from '@dimforge/rapier3d-compat';
+import { CollisionLayer, collisionGroups } from './CollisionGroups';
+import { GoatRagdoll, type GoatSize } from './GoatRagdoll';
+import { PhysicsWorld } from './PhysicsWorld';
+import { dot, rotate, V } from './math';
+
+const worlds: PhysicsWorld[] = [];
+const goats: GoatRagdoll[] = [];
+async function scene(): Promise<PhysicsWorld> {
+  const world = await PhysicsWorld.create();
+  world.createGround();
+  worlds.push(world);
+  return world;
+}
+function goat(world: PhysicsWorld, size: GoatSize = 1): GoatRagdoll {
+  const g = new GoatRagdoll(world,{size,position:V(0,0,0)});
+  goats.push(g);
+  return g;
+}
+function simulate(world: PhysicsWorld, seconds: number): void {
+  for (let i = 0; i < Math.round(seconds*60); i++) world.step(1/60);
+}
+afterEach(() => {
+  for (const g of goats.splice(0)) g.dispose();
+  for (const world of worlds.splice(0)) world.dispose();
+});
+
+describe('real Rapier physics simulation', () => {
+  it('stands unaided for ten seconds with a motor-driven torso and four legs', async () => {
+    const w = await scene(), g = goat(w);
+    expect(g.bodies).toHaveLength(7);
+    expect(g.joints).toHaveLength(6);
+    simulate(w,10);
+    const torso = g.torso.translation();
+    const upright = dot(rotate(g.torso.rotation(),V(0,1,0)),V(0,1,0));
+    expect(torso.y).toBeGreaterThan(.52);
+    expect(torso.y).toBeLessThan(1.7);
+    expect(upright).toBeGreaterThan(.8);
+    expect(g.isRagdoll).toBe(false);
+    expect(g.balanceValue).toBeGreaterThan(.7);
+  });
+
+  it('walks forward several metres without kinematic teleportation', async () => {
+    const w = await scene(), g = goat(w);
+    simulate(w,.6);
+    const before = g.torso.translation().z;
+    g.locomotion.setInput({z:1,cameraYaw:0});
+    simulate(w,3);
+    expect(g.torso.translation().z).toBeLessThan(before-3);
+    expect(g.torso.isDynamic()).toBe(true);
+  });
+
+  it('turns its motors off on flop, and autonomously gets upright again', async () => {
+    const w = await scene(), g = goat(w);
+    simulate(w,.6);
+    const events: string[] = [];
+    g.events.on(e=>events.push(e.type));
+    g.flop();
+    expect(g.isRagdoll).toBe(true);
+    simulate(w,4);
+    expect(g.isRagdoll).toBe(false);
+    expect(g.balanceValue).toBeGreaterThan(.6);
+    expect(events).toContain('ragdollStart');
+    expect(events).toContain('ragdollEnd');
+    expect(rotate(g.torso.rotation(),V(0,1,0)).y).toBeGreaterThan(.55);
+  });
+
+  it('clings and climbs measurable height on a steep vertical wall', async () => {
+    const w = await scene(), g = goat(w);
+    const wall = w.raw.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0,2,-1.35));
+    w.raw.createCollider(RAPIER.ColliderDesc.cuboid(2.2,3,.28)
+      .setCollisionGroups(collisionGroups('terrain')),wall);
+    w.registerBody(wall,{kind:'terrain'});
+    let wallClingCount = 0;
+    g.events.on(e=> {if(e.type==='wallClingStart') wallClingCount++;});
+    g.locomotion.setInput({z:1});
+    let maxHeight = g.torso.translation().y;
+    for (let i=0;i<240;i++) {
+      w.step(1/60);
+      maxHeight = Math.max(maxHeight,g.torso.translation().y);
+    }
+    expect(wallClingCount).toBeGreaterThan(0);
+    expect(maxHeight).toBeGreaterThan(2);
+  });
+
+  it('scales jump height and mass sensibly across size tiers', async () => {
+    const measure = async (size: GoatSize): Promise<{height:number;mass:number}> => {
+      const w = await scene(), g = goat(w,size);
+      simulate(w,1);
+      const from = g.torso.translation().y;
+      g.locomotion.requestJump();
+      let top = from;
+      for(let i=0;i<210;i++) {
+        w.step(1/60);
+        top = Math.max(top,g.torso.translation().y);
+      }
+      return {height:top-from,mass:g.mass};
+    };
+    const kid = await measure(.6), big = await measure(1.6);
+    expect(kid.height).toBeGreaterThan(.35);
+    expect(big.height).toBeGreaterThan(kid.height*1.35);
+    expect(big.mass/kid.mass).toBeCloseTo((1.6/.6)**3,5);
+  });
+
+  it('uses a physical Rapier rope joint to drag a crate with the tongue', async () => {
+    const w = await scene(), g = goat(w);
+    const crate = w.createBox(V(0,.42,-2.5),V(.4,.4,.4),8);
+    simulate(w,.6);
+    expect(g.interactions.attachTongue(V(0,-.75,-2.4))).toBe(true);
+    expect(g.interactions.tongueJoint).not.toBeNull();
+    const before = crate.translation().z;
+    g.locomotion.setInput({z:-1});
+    simulate(w,2.5);
+    expect(crate.translation().z).toBeGreaterThan(before+.35);
+  });
+
+  it('moves the same crate further with a charged headbutt than a tap', async () => {
+    const trial = async (charge:number):Promise<number> => {
+      const w = await scene(), g = goat(w);
+      const crate = w.createBox(V(0,.42,-1.8),V(.43,.4,.43),9);
+      simulate(w,.25);
+      const before = crate.translation().z;
+      const hit = g.interactions.headbutt(charge);
+      expect(hit?.handle).toBe(crate.handle);
+      simulate(w,1);
+      return before-crate.translation().z;
+    };
+    const tap = await trial(0), charged = await trial(1);
+    expect(tap).toBeGreaterThan(.1);
+    expect(charged).toBeGreaterThan(tap+.5);
+  });
+
+  it('has deterministic 60Hz steps independent of render frame partitioning', async () => {
+    const a = await scene(), b = await scene();
+    const ga = goat(a), gb = goat(b);
+    ga.locomotion.setInput({z:1,x:.4,sprint:true,cameraYaw:.4});
+    gb.locomotion.setInput({z:1,x:.4,sprint:true,cameraYaw:.4});
+    for(let i=0;i<120;i++) a.step(1/60);
+    for(let i=0;i<60;i++) b.step(1/30);
+    const pa=ga.torso.translation(), pb=gb.torso.translation();
+    expect(a.stepCount).toBe(120);
+    expect(b.stepCount).toBe(120);
+    expect(Math.hypot(pa.x-pb.x,pa.y-pb.y,pa.z-pb.z)).toBeLessThan(1e-5);
+    expect(a.alpha).toBeCloseTo(0,8);
+  });
+
+  it('clamps runaway frame times, interpolates, and records real impact impulses', async () => {
+    const w = await scene();
+    const crate = w.createBox(V(0,4,0),V(.4,.4,.4),12);
+    const many = w.step(4);
+    expect(many.steps).toBe(w.maxSubsteps);
+    expect(many.droppedSeconds).toBeGreaterThan(3.8);
+    simulate(w,2);
+    const impacts = w.drainContacts().filter(e=>e.type==='impact');
+    expect(impacts.some(e=>e.impulse>0 && (e.bodyA===crate.handle || e.bodyB===crate.handle))).toBe(true);
+    const pose = w.getInterpolatedTransform(crate,.5);
+    expect(Number.isFinite(pose.translation.y)).toBe(true);
+    expect((collisionGroups('goat','prop') >>> 16) & CollisionLayer.goat).toBeTruthy();
+  });
+});
