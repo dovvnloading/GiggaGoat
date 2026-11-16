@@ -338,7 +338,7 @@ function simulateTick(): void {
 const view = { cx: 0, cz: 0, pixelsPerMetre: 4, width: 0, height: 0 };
 function layoutView(): void {
   if (!setup) return;
-  const points: Point[] = [setup.start, ...setup.markers.map(m => m.position),
+  const points: Point[] = [setup.start, goat, ...setup.markers.map(m => m.position),
     ...[...props.values()].map(p => p.position)];
   const xs = points.map(p => p.x), zs = points.map(p => p.z);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
