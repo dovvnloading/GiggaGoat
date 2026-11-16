@@ -237,6 +237,22 @@ export class PartyMatch {
   step(frame: ModeFrame = { goats: [] }): MatchEvent[] {
     this.stepEvents = [];
     if (this.phase === 'lobby' || this.phase === 'results') return [];
+    // Validate BEFORE advancing any clock: a bad adapter observation must not
+    // corrupt replay determinism or silently use one extra game tick.
+    const observations = new Map<string, GoatObservation>();
+    if (this.phase !== 'countdown') {
+      for (const goat of frame.goats) {
+        if (observations.has(goat.id) || !this.data.players.some(p => p.id === goat.id)) {
+          throw new Error('unknown or repeated observation');
+        }
+        for (const n of [goat.position.x, goat.position.y, goat.position.z,
+          goat.headY, goat.facing.x, goat.facing.z]) finite(n, 'goat observation');
+        observations.set(goat.id, goat);
+      }
+      for (const player of this.data.players) {
+        if (!observations.has(player.id)) throw new Error(`missing observation for ${player.id}`);
+      }
+    }
     this.data.tick++;
     this.data.phaseTicks++;
     if (this.phase === 'countdown') {
@@ -246,18 +262,6 @@ export class PartyMatch {
           seconds: Math.ceil((this.config.countdownTicks - this.data.phaseTicks) / TICKS_PER_SECOND) });
       }
       return clone(this.stepEvents);
-    }
-    const observations = new Map<string, GoatObservation>();
-    for (const goat of frame.goats) {
-      if (observations.has(goat.id) || !this.data.players.some(p => p.id === goat.id)) {
-        throw new Error('unknown or repeated observation');
-      }
-      for (const n of [goat.position.x, goat.position.y, goat.position.z,
-        goat.headY, goat.facing.x, goat.facing.z]) finite(n, 'goat observation');
-      observations.set(goat.id, goat);
-    }
-    for (const player of this.data.players) {
-      if (!observations.has(player.id)) throw new Error(`missing observation for ${player.id}`);
     }
     this.data.playTicks++;
     let outcome: RuleOutcome;
