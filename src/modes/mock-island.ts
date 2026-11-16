@@ -72,8 +72,8 @@ export class MockIslandRunner {
     for (const [id, brain] of this.bots) intents[id] = brain.decide(this.match.view(), before);
     for (const goat of this.goats) {
       const intent = intents[goat.id] ?? {};
-      const multiplier = this.match.getEffects(goat.id).speedMultiplier;
-      const speed = (intent.sprint ? 9 : 5.8) * multiplier / TICKS_PER_SECOND;
+      const effect = this.match.getEffects(goat.id);
+      const speed = (intent.sprint && effect.canSprint ? 9 : 5.8) * effect.speedMultiplier / TICKS_PER_SECOND;
       const vector = { x: intent.moveX ?? 0, z: intent.moveZ ?? 0 };
       const magnitude = Math.hypot(vector.x, vector.z);
       const vx = magnitude > 1 ? vector.x / magnitude : vector.x;
