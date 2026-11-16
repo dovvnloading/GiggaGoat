@@ -96,7 +96,7 @@ their elimination placement, including an everyone-splashes joint first.
 At the last level, or the time limit if reached first, **overtime** starts and
 the final perch is contested for at most 25 seconds. One surviving goat wins
 immediately. At the overtime cap, the highest surviving head wins; equal heights
-(within 1 cm) share first. Placement prizes are 100/65/45/30/20/12/8/5; tied
+when rounded to the nearest centimetre share first. Placement prizes are 100/65/45/30/20/12/8/5; tied
 ranks split the rewards of their occupied slots equally. Rank jumps over ties.
 
 ### KING OF THE PEAK
@@ -118,7 +118,8 @@ the cap, the tie is retained and equally rewarded.
 Two to four teams have separate barns (11 m capture circles on Billy Isle, or
 supplied circles on a custom arena). Each barn starts with three bales. Hold
 tongue near any free bale to pick it up; releasing, pressing `dropHay`,
-running out of stamina or an enemy headbutt drops it. Headbutts also punt
+running out of stamina or an enemy headbutt drops it. Shoved carriers have
+half a second of pickup lockout so the defender gets a real steal window. Headbutts also punt
 nearby loose bales in the observed direction. A bale only scores at an
 **opposing** barn when last touched by that barn's team; friendly bales taken
 home are returned, not scored. Bales respawn at their source after scoring.
