@@ -66,6 +66,16 @@ describe('water: actual displaced mass, motion and typed events', () => {
     expect(water.removeVolume('river')).toBe(true);
   });
 
+  it('keeps a local river current when the global sea has the same surface height', async () => {
+    const world=await scene(V()), water=manage(new WaterSystem(world,{seaLevel:0}));
+    water.addVolume({center:V(0,-2,0),halfExtents:V(5,2,5),flow:V(3,0,0)});
+    const body=world.createBox(V(0,0,0),V(.4,.4,.4),500);
+    water.track(body);
+    steps(world,45);
+    expect(body.linvel().x).toBeGreaterThan(1);
+    expect(water.events.drain().some(e=>e.type==='enter' && e.volumeId==='water-0')).toBe(true);
+  });
+
   it('enter/splash carry real downward impact speed, mass and displaced volume', async () => {
     const world = await scene(V()), water = manage(new WaterSystem(world,{seaLevel:0,splashSpeed:3}));
     const body = world.createBox(V(0,2,0),V(.5,.5,.5),24);
@@ -152,6 +162,21 @@ describe('destruction with real Rapier contacts and bounded fragments', () => {
     expect(first!.isValid()).toBe(false);
     steps(world,40);
     expect(registry.debrisCount).toBe(0);
+  });
+
+  it('does not count stationary floor support forces as repeated damaging hits or soda shaking', async () => {
+    const world=await scene(), registry=manage(new BreakableRegistry(world));
+    const chain=manage(new ChainReactions(world));
+    world.createGround(V(10,.5,10),V(0,-.5,0));
+    const crate=world.createBox(V(-2,.5,0),V(.5,.5,.5),8);
+    const soda=world.createBox(V(2,.5,0),V(.5,.5,.5),8);
+    registry.register(crate,{impulseThreshold:100,damageThreshold:5});
+    chain.registerSoda(soda,{impactThreshold:5,radius:4,shoveImpulse:20});
+    steps(world,360);
+    expect(crate.isValid()).toBe(true);
+    expect(soda.isValid()).toBe(true);
+    expect(registry.events.drain()).toHaveLength(0);
+    expect(chain.events.drain().filter(e=>e.type==='sodaPop')).toHaveLength(0);
   });
 
   it('conserves source velocity/mass approximately across unburst fragments', async () => {
@@ -250,6 +275,23 @@ describe('surfaces and budget', () => {
     expect(events.some(e=>e.type==='bounce' && e.bodyHandle===jumper.handle)).toBe(true);
     expect(events.some(e=>e.type==='conveyorEnter' && e.bodyHandle===passenger.handle)).toBe(true);
     expect(passenger.translation().z).toBeGreaterThan(.1);
+  });
+
+  it('deduplicates conveyor sensor hits from a body with two colliders', async () => {
+    const world=await scene(V()), surfaces=manage(new SurfaceSystem(world));
+    surfaces.createConveyor({position:V(),halfExtents:V(2,.1,2),
+      direction:V(1,0,0),speed:3,acceleration:10});
+    const body=world.raw.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
+      .setTranslation(0,.48,0));
+    world.raw.createCollider(RAPIER.ColliderDesc.cuboid(.2,.2,.2)
+      .setTranslation(-.16,0,0).setMass(2),body);
+    world.raw.createCollider(RAPIER.ColliderDesc.cuboid(.2,.2,.2)
+      .setTranslation(.16,0,0).setMass(2),body);
+    world.registerBody(body,{kind:'prop'});
+    steps(world,1);
+    expect(surfaces.events.drain().filter(e=>e.type==='conveyorEnter')).toHaveLength(1);
+    expect(body.linvel().x).toBeGreaterThan(.1);
+    expect(body.linvel().x).toBeLessThan(.25);
   });
 
   it('ice has measurably less friction than grass in the actual solver', async () => {
