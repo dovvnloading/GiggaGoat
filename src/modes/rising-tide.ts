@@ -13,7 +13,7 @@ export function updateRisingTide(
   // Order-independent collision arbitration: for same-tick touches, the last
   // lexicographic attacker wins rather than depending on Rapier callback order.
   for (const contact of [...contacts].sort((a, b) =>
-    a.victimId.localeCompare(b.victimId) || a.attackerId.localeCompare(b.attackerId))) {
+    compareIds(a.victimId, b.victimId) || compareIds(a.attackerId, b.attackerId))) {
     if (contact.attackerId === contact.victimId) continue;
     const a = state.players.find(p => p.id === contact.attackerId);
     const v = state.players.find(p => p.id === contact.victimId);
