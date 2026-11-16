@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gigga-Goat / Chaos Physics Lab</title>
+  <style>
+    :root { font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; color:#eafaf6; background:#0b1924; }
+    * { box-sizing:border-box; }
+    html, body { margin:0; width:100%; height:100%; overflow:hidden; }
+    canvas { display:block; width:100%; height:100%; }
+    .panel { position:fixed; z-index:10; top:18px; left:18px; width:min(330px,calc(100vw - 36px));
+      padding:20px 22px; border:1px solid #ffffff30; border-radius:20px;
+      background:linear-gradient(160deg,#112d3eec,#0b1d2eec); box-shadow:0 15px 50px #0008; }
+    .eyebrow { font-weight:800; text-transform:uppercase; letter-spacing:.2em; color:#76e8b6; font-size:10px; }
+    h1 { margin:5px 0 0; font-size:28px; line-height:1.1; letter-spacing:-.05em; }
+    .subtitle { color:#add2db; font-size:13px; margin:8px 0 17px; }
+    .section { margin-top:14px; border-top:1px solid #ffffff20; padding-top:12px; }
+    .input-row { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+    label { font-weight:700; }
+    output { font-size:17px; font-weight:800; color:#76e8b6; font-variant-numeric:tabular-nums; }
+    input[type=range] { width:100%; accent-color:#8eefc1; cursor:pointer; margin:14px 0 4px; }
+    .details { color:#a2c6ca; font-size:12px; }
+    #events { min-height:110px; white-space:pre-wrap; color:#d4efed; line-height:1.7;
+      font:12px/1.6 ui-monospace, monospace; }
+    #stats { color:#89e2c0; font:12px/1.7 ui-monospace,monospace; }
+    button { cursor:pointer; width:100%; background:#95f4c4; color:#082134; border:0;
+      border-radius:10px; padding:10px; font-weight:800; margin-top:10px; }
+    .hint { position:fixed; bottom:18px; right:18px; max-width:300px; background:#122c3cdd;
+      color:#e7ffff; padding:12px 16px; border-radius:14px; font-size:12px; pointer-events:none; }
+    @media (max-width:550px) { .panel { transform:scale(.83); transform-origin:top left; }
+      .hint { left:18px; right:18px; bottom:10px; } }
+  </style>
+</head>
+<body>
+  <aside class="panel">
+    <div class="eyebrow">Billy Isle / dev tool</div>
+    <h1>CHAOS LAB <span aria-hidden="true">🐐</span></h1>
+    <p class="subtitle">A tiny wreckable playground running the same Rapier simulation as the game.</p>
+    <div class="section">
+      <div class="input-row"><label for="sea">Rising tide / sea level</label><output id="sea-value">−1.0 m</output></div>
+      <input id="sea" type="range" min="-2.4" max="3" step=".1" value="-1" />
+      <div class="details">Lift the tide to flood the ramps and float the pool toys.</div>
+    </div>
+    <div class="section">
+      <div class="input-row"><label for="power">Mouse shove</label><output id="power-value">25</output></div>
+      <input id="power" type="range" min="3" max="80" step="1" value="25" />
+      <div class="details">Left-click objects to throw them. Drag to orbit, scroll to zoom.</div>
+    </div>
+    <div class="section"><div id="stats"></div></div>
+    <div class="section"><div class="eyebrow">Live physics events</div><pre id="events">Shove a domino or smash a stack!</pre></div>
+    <button id="reset" type="button">Reset lab</button>
+  </aside>
+  <div class="hint">Blue = water · Yellow = breakables · Pink = dominos · Green = trampoline · Orange = launch pad · Purple = conveyor</div>
+  <script type="module" src="./lab.ts"></script>
+</body>
+</html>
