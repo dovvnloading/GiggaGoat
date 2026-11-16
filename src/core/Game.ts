@@ -416,11 +416,45 @@ export class Game {
     }
     if (commands.headbutt) {
       this.lastActionTime = this.physics.time;
-      const hit = g.interactions.headbutt(Math.min(1, commands.headbutt.charge / TUNING.headbutt.maxCharge));
-      if (hit) {
-        const pieceId = [...this.buildBodies].find(([, body]) => body.handle === hit.handle)?.[0];
+      const charge = Math.min(1, commands.headbutt.charge / TUNING.headbutt.maxCharge);
+      // The physics lane's downward grazing ray can choose the terrain before a
+      // nearby crate. Retain its torso lunge, then resolve an explicitly dynamic
+      // forward target in core when that ray did not find one.
+      const facing = forward(g.locomotion.heading);
+      const origin = add(g.head.translation(), V(0, .04 * g.size, 0));
+      const range = g.interactions.tuning.headbuttRange * g.size;
+      const preferred = this.physics.shapeCast(origin, g.head.rotation(), facing,
+        new RAPIER.Ball(.22 * g.size), range, {
+          predicate: collider => !g.ownsBody(collider.parent()) &&
+            (collider.parent()?.isDynamic() === true || [...this.buildBodies.values()]
+              .some(body => body.handle === collider.parent()?.handle)),
+        });
+      const hit = g.interactions.headbutt(charge);
+      let struck = hit;
+      if (!struck && preferred?.body?.isDynamic()) {
+        const target = preferred.body;
+        // Do not reach through solid walls just because a movable target
+        // happens to be visible to the dynamic-only shape query.
+        const wall = this.physics.raycast(origin, facing, preferred.distance, {
+          predicate: collider => !g.ownsBody(collider.parent()) && !collider.parent()?.isDynamic(),
+        });
+        if (!wall || wall.distance >= preferred.distance - .15 * g.size) {
+          const impulse = g.mass * (1.1 + 1.9 * charge);
+          target.applyImpulseAtPoint(V(facing.x * impulse, impulse * .18,
+            facing.z * impulse), preferred.point, true);
+          g.events.emit({ type: 'knockedBody', goatId: g.id, time: this.physics.time,
+            bodyHandle: target.handle, mass: target.mass(), speed: Math.hypot(
+              target.linvel().x, target.linvel().y, target.linvel().z),
+            impulse });
+          struck = target;
+        }
+      }
+      if (struck) this.breakables.hit(struck, commands.headbutt.impulse * .75);
+      // Fixed Hay-Build pieces cannot be returned from GoatInteractions.headbutt,
+      // so use the same forward query to route impact to logical HP.
+      if (preferred?.body && !preferred.body.isDynamic()) {
+        const pieceId = [...this.buildBodies].find(([, body]) => body.handle === preferred.body?.handle)?.[0];
         if (pieceId !== undefined) this.rules.build.damage(pieceId, commands.headbutt.impulse * 3);
-        else this.breakables.hit(hit, commands.headbutt.impulse * .75);
       }
     }
     if (commands.tongue) {
