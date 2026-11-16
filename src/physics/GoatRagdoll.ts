@@ -1,7 +1,7 @@
-import RAPIER, { type ImpulseJoint, type RevoluteImpulseJoint, type RigidBody } from '@dimforge/rapier3d-compat';
+import RAPIER, { type ImpulseJoint, type RevoluteImpulseJoint, type RigidBody, type ColliderDesc } from '@dimforge/rapier3d-compat';
 import { collisionGroups } from './CollisionGroups';
 import { PhysicsEventBus, type PhysicsContact } from './events';
-import { add, clamp, mul, Q, V, yawQuaternion, type Vec3 } from './math';
+import { add, clamp, mul, rotate, V, yawQuaternion, type Vec3 } from './math';
 import type { PhysicsWorld } from './PhysicsWorld';
 import { BalanceController, LocomotionController } from './Controllers';
 import { GoatInteractions } from './Interactions';
@@ -58,6 +58,7 @@ export class GoatRagdoll {
     this.createBodies(options.position ?? V(), options.yaw ?? 0);
     this.balance = new BalanceController(this);
     this.locomotion = new LocomotionController(this);
+    this.locomotion.heading = options.yaw ?? 0;
     this.interactions = new GoatInteractions(this);
     this.detachBefore = this.world.onBeforeStep(dt => {
       this.locomotion.update(dt);
@@ -93,8 +94,8 @@ export class GoatRagdoll {
   private createBodies(origin: Vec3, yaw: number): void {
     const s = this.size;
     const orientation = yawQuaternion(yaw);
-    const addBody = (name: GoatPart, offset: Vec3, shape: RAPIER.ColliderDesc, mass: number): RigidBody => {
-      const at = add(origin, mul(offset, s));
+    const addBody = (name: GoatPart, offset: Vec3, shape: ColliderDesc, mass: number): RigidBody => {
+      const at = add(origin, rotate(orientation,mul(offset, s)));
       const body = this.world.raw.createRigidBody(
         RAPIER.RigidBodyDesc.dynamic().setTranslation(at.x, at.y, at.z)
           .setRotation(orientation).setLinearDamping(0.45).setAngularDamping(0.75)
