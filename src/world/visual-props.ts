@@ -15,7 +15,8 @@ export interface PropVisuals {
 
 /** Shared four-step hand-painted lighting ramp. */
 export const TOON_RAMP = new THREE.DataTexture(
-  new Uint8Array([104, 153, 209, 255]), 4, 1, THREE.RedFormat,
+  new Uint8Array([104,104,104,255, 153,153,153,255, 209,209,209,255, 255,255,255,255]),
+  4, 1, THREE.RGBAFormat,
 );
 TOON_RAMP.magFilter = THREE.NearestFilter;
 TOON_RAMP.minFilter = THREE.NearestFilter;
