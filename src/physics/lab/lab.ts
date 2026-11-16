@@ -165,7 +165,7 @@ function frame(now:number):void {
     displayTime=0;
     stats.textContent =
       'Scale '+goat.size+'×  |  Balance '+goat.balanceValue.toFixed(2)+'\n'+
-      'Pose '+goat.pose+'  |  '+(goat.grounded?'':'')+
+      'Pose '+goat.pose+'  |  '+
       (goat.locomotion.grounded?'Grounded':goat.locomotion.isClinging?'Wall cling':'Airborne')+
       '  |  '+(goat.isRagdoll?'RAGDOLL':'Active')+'\n'+
       'Tongue '+(goat.interactions.tongueLength?.toFixed(2)??'off')+
