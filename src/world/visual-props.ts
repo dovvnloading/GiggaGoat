@@ -91,7 +91,19 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
   if (['barn', 'house', 'shop', 'booth', 'cottage', 'control-house'].includes(kind)) {
     box(0, -0.13, 0, 0.9, 0.74, 0.88);
     box(0, 0.27, 0, 1.05, 0.08, 1.04, kind === 'barn' ? 0x815b55 : 0xb16c61);
-    cone(0, 0.46, 0, 1.4, 0.40, 1.34, kind === 'barn' ? 0x864750 : 0xc67c68, 4);
+    if (kind === 'shop') {
+      // Flat, climbable shop roofs align with the rooftop parkour colliders.
+      box(0, 0.39, 0, 1.01, 0.13, 1.0, 0xa77773);
+      for (const x of [-0.47, 0.47]) {
+        box(x, 0.47, 0, 0.06, 0.15, 1.0, 0xb58a81);
+      }
+      for (const z of [-0.46, 0.46]) {
+        box(0, 0.47, z, 1.0, 0.15, 0.06, 0xb58a81);
+      }
+    } else {
+      cone(0, 0.46, 0, 1.4, 0.40, 1.34,
+        kind === 'barn' ? 0x864750 : 0xc67c68, 4);
+    }
     box(0, -0.31, 0.457, 0.23, 0.33, 0.04, 0x795847);
     for (const x of [-0.30, 0.30]) {
       box(x, 0, 0.46, 0.18, 0.22, 0.034, 0x83c4d5);
@@ -250,10 +262,20 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
     box(0, -0.10, 0, 0.94, 0.12, 0.75, 0xa97d59);
     box(0, 0.12, -0.32, 0.94, 0.42, 0.12, 0xb0895d);
     for (const x of [-0.34, 0.34]) box(x, -0.37, 0, 0.12, 0.25, 0.13, 0x6e6b69);
-  } else if (kind === 'fence' || kind === 'rope-rail') {
-    for (const x of [-0.46, 0.46]) box(x, 0, 0, 0.09, 1, 0.14, 0x98704e);
-    box(0, 0.23, 0, 1, 0.11, 0.12, 0xf2ddb2);
-    box(0, -0.15, 0, 1, 0.10, 0.12, 0xf0d3a6);
+  } else if (kind === 'fence') {
+    // A single low-cost compound silhouette per picket-fence segment.
+    // Individual posts remain visible at 30 m without separate draw calls.
+    for (let i = 0; i < 8; i++) {
+      const x = -0.46 + i * (0.92 / 7);
+      box(x, 0, 0, 0.084, 0.82, 0.13, 0xf6e9d2);
+      cone(x, 0.44, 0, 0.105, 0.16, 0.15, 0xf6e9d2, 4);
+    }
+    box(0, 0.15, -0.07, 1, 0.07, 0.07, 0xd4ae83);
+    box(0, -0.26, -0.07, 1, 0.07, 0.07, 0xd4ae83);
+  } else if (kind === 'rope-rail') {
+    for (const x of [-0.46, 0.46]) box(x, 0, 0, 0.10, 1, 0.13, 0x98704e);
+    box(0, 0.23, 0, 0.96, 0.045, 0.08, 0xe5d0a0);
+    box(0, -0.15, 0, 0.96, 0.045, 0.08, 0xe5d0a0);
   } else if (kind === 'mailbox') {
     cyl(0, -0.17, 0, 0.12, 0.65, 0.12, 0x7b7359);
     box(0, 0.28, 0, 0.68, 0.36, 0.54, 0xcf5448);
@@ -335,9 +357,6 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
   merged.computeBoundingBox();
   merged.computeBoundingSphere();
   return merged;
-}
-function isSmall(kind: PropKind): boolean {
-  return ['grass-tuft', 'flower', 'gnome', 'mailbox', 'cone', 'bunting'].includes(kind);
 }
 const SHADOW_KINDS = new Set<PropKind>([
   'barn', 'house', 'shop', 'cottage', 'windmill', 'lighthouse',
