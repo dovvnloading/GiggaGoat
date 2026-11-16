@@ -130,7 +130,7 @@ export class PartySession {
     });
     this.contacts.length = 0;
     this.game.water.setSeaLevel(match.tideLevel);
-    if (match.phase === 'results') this.finished = true;
+    if (match.toJSON().phase === 'results') this.finished = true;
   }
 
   private onContact(event: PhysicsContact): void {
