@@ -100,7 +100,7 @@ describe('PartyMatch lifecycle, serialisation and event delivery', () => {
     restored.step(frame(goat('a', 0, 0), goat('b', 50, 0)));
     expect(restored.phase).toBe('results');
     const before = restored.toJSON();
-    expect(restored.step(frame(goat('a'), goat('b'))).toEqual([]);
+    expect(restored.step(frame(goat('a'), goat('b')))).toEqual([]);
     expect(restored.toJSON()).toEqual(before);
     expect(restored.placements.map(p => p.rank)).toEqual([1, 1]);
   });
