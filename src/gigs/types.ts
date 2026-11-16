@@ -5,10 +5,11 @@ export interface Point { x: number; y: number; z: number }
 export type GigId =
   | 'hay-haul' | 'rooftop-express' | 'demolition-contract'
   | 'mow-down' | 'escort-the-gnome' | 'stack-up'
-  | 'summit-sprint' | 'splash-dive';
+  | 'summit-sprint' | 'splash-dive' | 'dam-bomb' | 'beacon-bleat';
 export const GIG_IDS: readonly GigId[] = [
   'hay-haul', 'rooftop-express', 'demolition-contract', 'mow-down',
   'escort-the-gnome', 'stack-up', 'summit-sprint', 'splash-dive',
+  'dam-bomb', 'beacon-bleat',
 ];
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export const DIFFICULTIES: readonly Difficulty[] = ['easy', 'medium', 'hard'];
@@ -103,12 +104,16 @@ export interface SummitConfig {
   kind: 'summit-sprint';
   checkpoints: Point[];
   minimumClimb: number;
+  /** A lighthouse contract only finishes after a real bleat at the beacon. */
+  requiresBleat?: boolean;
 }
 export interface SplashConfig {
   kind: 'splash-dive';
   jumpPoint: Point;
   waterY: number;
   minDrop: number;
+  /** A dam-diving contract needs a physical flop before the big splash. */
+  requiresFlop?: boolean;
 }
 export type GigConfig = HayConfig | RooftopConfig | DemolitionConfig | MowConfig
   | EscortConfig | StackConfig | SummitConfig | SplashConfig;
