@@ -8,9 +8,9 @@ const LINKS: Link[] = [
   { from: 'hoofington', to: 'baa-ardwalk', type: 'road',
     via: [{ x: -110, z: 185 }, { x: -35, z: 222 }, { x: 20, z: 226 }] },
   { from: 'baa-ardwalk', to: 'downtown-bleatsville', type: 'road',
-    via: [{ x: 108, z: 205 }, { x: 165, z: 170 }] },
+    via: [{ x: 108, z: 205 }, { x: 145, z: 170 }] },
   { from: 'downtown-bleatsville', to: 'crane-yard', type: 'road',
-    via: [{ x: 200, z: 60 }, { x: 212, z: 8 }] },
+    via: [{ x: 145, z: 70 }, { x: 200, z: 60 }, { x: 212, z: 8 }] },
   { from: 'crane-yard', to: 'the-dam', type: 'road',
     via: [{ x: 171, z: -112 }, { x: 107, z: -175 }, { x: 38, z: -213 }] },
   { from: 'the-dam', to: 'whispering-pines', type: 'road',
@@ -23,7 +23,7 @@ const LINKS: Link[] = [
   { from: 'mt-gigga', to: 'the-dam', type: 'trail',
     via: [{ x: 73, z: -92 }, { x: 58, z: -161 }] },
   { from: 'downtown-bleatsville', to: 'mt-gigga', type: 'trail',
-    via: [{ x: 88, z: 91 }, { x: 62, z: 54 }] },
+    via: [{ x: 145, z: 66 }, { x: 88, z: 70 }, { x: 62, z: 54 }] },
 ];
 
 function catmullRom(controls: Vec2[], step: number): Vec2[] {
