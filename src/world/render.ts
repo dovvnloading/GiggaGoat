@@ -4,6 +4,7 @@ import { BIOMES } from './types';
 import { clamp, smoothstep } from './random';
 import { gridCoordinate, gridIndex, segmentProjection } from './terrain';
 import { buildPropVisuals, TOON_RAMP } from './visual-props';
+import { buildGroundDetails } from './visual-ground';
 import { buildWaterVisuals } from './visual-water';
 import { buildSkyVisuals, type LightingPreset } from './visual-sky';
 
@@ -289,6 +290,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const chunks = buildTerrain(island, segments);
   for (const chunk of chunks) group.add(chunk.mesh);
   group.add(buildRoads(island));
+  group.add(buildGroundDetails(island));
   const props = buildPropVisuals(island.props, options.propChunkSize ?? 96);
   group.add(props.group);
   const waterVisuals = buildWaterVisuals(island);
@@ -298,7 +300,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const sun = new THREE.DirectionalLight(0xffe9c5, 1.65);
   sun.name = 'warm-soft-key';
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  // Shared shadow pass now includes landmarks rather than every fence/flower/cliff.
+  sun.shadow.mapSize.set(1536, 1536);
   sun.shadow.camera.left = -310;
   sun.shadow.camera.right = 310;
   sun.shadow.camera.top = 310;
