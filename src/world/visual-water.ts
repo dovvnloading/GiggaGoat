@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { IslandData, RiverPoint } from './types';
+import { gridSample } from './terrain';
 
 interface AnimatedUniforms {
   uTime: { value: number };
@@ -203,6 +204,25 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
       'mountain-waterfall-' + i);
   }
   const scale = island.size / 600;
+  // Visible terrace cascades on the southeast face. The northern stream's
+  // waterfalls are on the opposite side of Mt. Gigga from bookmark 12.
+  // Anchor each curtain to the sampled terraced slope, rather than projecting
+  // giant floating waterfall billboards from an arbitrary height.
+  for (const [i, angle] of [0.54, 0.89].entries()) {
+    const upperRadius = (i === 0 ? 38 : 74) * scale;
+    const lowerRadius = (i === 0 ? 46 : 83) * scale;
+    const x0 = Math.cos(angle) * upperRadius, z0 = Math.sin(angle) * upperRadius;
+    const x1 = Math.cos(angle) * lowerRadius, z1 = Math.sin(angle) * lowerRadius;
+    const upper = gridSample(island, x0, z0);
+    const lower = gridSample(island, x1, z1);
+    if (upper - lower > 3 * scale) {
+      makeFalls(inland, stream.material,
+        new THREE.Vector3(x0, upper + 0.26 * scale, z0),
+        new THREE.Vector3(x1, lower + 0.18 * scale, z1),
+        (i === 0 ? 5.1 : 4.2) * scale,
+        'front-terrace-waterfall-' + (i + 1));
+    }
+  }
   for (let i = -1; i <= 1; i++) {
     // Three separate spillway curtains across the downhill face of the wall.
     const x = lake.center.x - (16 + i * 8) * scale;
