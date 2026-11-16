@@ -268,7 +268,8 @@ async function captureAllBookmarks(): Promise<void> {
     link.download = 'billy-isle-' + seedInput.value.replace(/[^a-z0-9_-]/gi, '_') +
       '-bookmark-comparison.png';
     link.click();
-    URL.revokeObjectURL(url);
+    // Browsers must have time to consume the object URL after the click.
+    window.setTimeout(() => URL.revokeObjectURL(url), 3000);
   } catch (error) {
     console.error('Bookmark comparison capture failed:', error);
     captureButton.textContent = 'Capture failed (see console)';
