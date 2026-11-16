@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gigga-Goat · Physics Laboratory</title>
+  <style>
+    :root { font: 14px/1.5 system-ui, sans-serif; color-scheme: dark; }
+    body { margin: 0; background: #101922; color: #f3fafb; overflow: hidden; }
+    canvas { display: block; }
+    aside { position: fixed; top: 18px; left: 18px; width: min(320px, calc(100vw - 36px)); max-height: calc(100vh - 36px); overflow: auto; background: #111b25eb; border: 1px solid #536978; border-radius: 16px; padding: 18px; box-sizing: border-box; backdrop-filter: blur(10px); }
+    h1 { margin: 0 0 4px; font-size: 18px; letter-spacing: .02em; }
+    p { margin: 4px 0 12px; color: #bfd1d7; }
+    kbd { border: 1px solid #637b8a; border-bottom-width: 2px; border-radius: 4px; padding: 1px 4px; font: inherit; color: white; }
+    label { display: grid; grid-template-columns: 1fr auto; gap: 4px; padding: 5px 0; }
+    label output { color: #a6e6ba; font-variant-numeric: tabular-nums; }
+    label input { grid-column: 1 / -1; width: 100%; accent-color: #85e3b4; }
+    #stats { white-space: pre-line; color: #a6e6ba; margin: 8px 0; font-variant-numeric: tabular-nums; }
+    #events { font: 12px/1.6 monospace; white-space: pre-line; color: #f7ca8e; }
+    .hint { font-size: 12px; }
+    #toggle { display: none; }
+    @media(max-width:600px) { aside { top: 8px; left: 8px; padding: 12px; width: 245px; } }
+  </style>
+</head>
+<body>
+  <aside>
+    <h1>🐐 Gigga-Goat Physics Lab</h1>
+    <p class="hint">Click the scene for mouse look. <kbd>WASD</kbd> move, <kbd>Shift</kbd> sprint,
+      <kbd>Space</kbd> jump / aerial flip, <kbd>Q</kbd> flop, <kbd>E</kbd> bleat,
+      <kbd>LMB</kbd> charge headbutt, <kbd>RMB</kbd> tongue, <kbd>R</kbd>/<kbd>F</kbd> reel,
+      <kbd>1–4</kbd> change size. <kbd>Esc</kbd> unlock cursor.</p>
+    <div id="stats" aria-live="off">Booting Rapier…</div>
+    <div id="sliders"></div>
+    <h2 style="font-size:14px">Physics events</h2>
+    <div id="events"></div>
+  </aside>
+  <script type="module" src="./lab.ts"></script>
+</body>
+</html>
