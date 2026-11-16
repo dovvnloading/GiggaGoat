@@ -68,6 +68,20 @@ export const GIG_INFO: Readonly<Record<GigId, GigInfo>> = {
     verbs: ['flop', 'climb', 'bleat'], baseCoins: 63,
     cosmetic: { id: 'bubble-trail', name: 'Bubble Trouble', slot: 'trail', color: '#21A8C6' },
   },
+  'dam-bomb': {
+    id: 'dam-bomb', title: 'DAM BOMB', poiId: 'the-dam',
+    pitch: 'The water inspector recommends a full-body impact.',
+    instruction: 'Flop off the dam high walk into the reservoir. Make a huge splash.',
+    verbs: ['flop', 'climb'], baseCoins: 75,
+    cosmetic: { id: 'dam-flippers', name: 'Dam Good Flippers', slot: 'trail', color: '#21A8C6' },
+  },
+  'beacon-bleat': {
+    id: 'beacon-bleat', title: 'BEACON BLEAT', poiId: 'old-lighthouse',
+    pitch: 'The lighthouse foghorn has been replaced by one loud goat.',
+    instruction: 'Climb the lighthouse rooftops, then BLEAT at the top.',
+    verbs: ['climb', 'tongue', 'bleat'], baseCoins: 79,
+    cosmetic: { id: 'beacon-horns', name: 'Fog-horn Horns', slot: 'horns', color: '#FFD833' },
+  },
 };
 const ROSTER: Readonly<Record<PoiId, readonly GigId[]>> = {
   hoofington: ['hay-haul', 'mow-down'],
@@ -76,7 +90,7 @@ const ROSTER: Readonly<Record<PoiId, readonly GigId[]>> = {
   'downtown-bleatsville': ['rooftop-express'],
   'mt-gigga': ['summit-sprint'],
   'whispering-pines': ['escort-the-gnome'],
-  'the-dam': [], 'old-lighthouse': [],
+  'the-dam': ['dam-bomb'], 'old-lighthouse': ['beacon-bleat'],
 };
 const LIMIT_SECONDS: Readonly<Record<GigId, readonly [number, number, number]>> = {
   'hay-haul': [110, 95, 84],
@@ -87,6 +101,8 @@ const LIMIT_SECONDS: Readonly<Record<GigId, readonly [number, number, number]>> 
   'stack-up': [110, 100, 90],
   'summit-sprint': [110, 96, 82],
   'splash-dive': [75, 65, 55],
+  'dam-bomb': [80, 68, 57],
+  'beacon-bleat': [105, 88, 75],
 };
 const copy = (p: Point): Point => ({ x: p.x, y: p.y, z: p.z });
 const plus = (p: Point, x: number, y: number, z: number): Point =>
@@ -131,9 +147,11 @@ export class GigCatalog {
   private readonly pois: Map<PoiId, PoiDescriptor>;
   private readonly props: PropDescriptor[];
   private readonly seaLevel: number;
-  constructor(island: Pick<IslandData, 'seed' | 'pois' | 'props' | 'seaLevel'>, seed: number | string = 1) {
+  private readonly reservoirLevel: number;
+  constructor(island: Pick<IslandData, 'seed' | 'pois' | 'props' | 'seaLevel' | 'reservoir'>, seed: number | string = 1) {
     this.seed = hash(String(island.seed) + ':' + String(seed));
     this.seaLevel = island.seaLevel;
+    this.reservoirLevel = island.reservoir.level;
     this.pois = new Map(island.pois.map(p => [p.id, {
       ...p, center: copy(p.center),
     }]));
@@ -225,7 +243,8 @@ export class GigCatalog {
       }
       case 'demolition-contract': {
         const tower = requireKind(this.props, 'crane-yard', 'tower')[0]!;
-        const anchor = plus(tower.transform.position, tower.size.x / 2 + 7, -tower.size.y / 2, 0);
+        const anchor = plus(tower.transform.position, tower.size.x / 2 + 7 + rng.int(3) - 1,
+          -tower.size.y / 2, rng.int(5) - 2);
         const pieces: { id: string; start: Point; mass: number }[] = [];
         const rows = 3 + tier;
         for (let y = 0; y < rows; y++) for (let x = 0; x < 2; x++) {
@@ -248,7 +267,7 @@ export class GigCatalog {
         for (let z = 0; z < rows; z++) for (let x = 0; x < cols; x++) {
           patches.push(plus(center, (x - (cols - 1) / 2) * 2.1, 0, (z - (rows - 1) / 2) * 2.1));
         }
-        config = { kind: 'mow-down', patches, biteRadius: 1.8 };
+        config = { kind: 'mow-down', patches, biteRadius: 2.4 };
         start = copy(patches[0]!);
         markers = patches.map((p, i) => marker('grass-' + i, 'Munch ' + (i + 1), p, 1, 'patch'));
         break;
@@ -257,7 +276,8 @@ export class GigCatalog {
         const sign = requireKind(this.props, 'whispering-pines', 'sign')[0]!;
         const gnomeId = 'gig-gnome-' + s;
         const route: Point[] = [];
-        const initial = plus(sign.transform.position, 3, -sign.size.y / 2 + 0.8, 1);
+        const initial = plus(sign.transform.position, 3 + rng.int(3),
+          -sign.size.y / 2 + 0.8, 1 + rng.int(3));
         for (let i = 0; i < 4 + tier; i++) {
           route.push(plus(initial, i * 5.5, 0, Math.sin(i * 1.3) * 3 + i * 2));
         }
@@ -287,13 +307,15 @@ export class GigCatalog {
         break;
       }
       case 'summit-sprint': {
-        const ledges = rng.shuffle(requireKind(this.props, 'mt-gigga', 'ledge')
-          .filter(p => p.transform.position.y < poi.center.y - 3))
+        const ledges = requireKind(this.props, 'mt-gigga', 'ledge')
+          .filter(p => p.transform.position.y < poi.center.y - 3)
           .sort((a, b) => a.transform.position.y - b.transform.position.y);
         const steps = 2 + tier;
         const checkpoints: Point[] = [];
         for (let i = 0; i < steps; i++) {
-          const p = ledges[Math.floor((i + 1) * ledges.length / (steps + 1))]!;
+          const index = Math.max(0, Math.min(ledges.length - 1,
+            Math.floor((i + 1) * ledges.length / (steps + 1)) + rng.int(3) - 1));
+          const p = ledges[index]!;
           checkpoints.push(plus(p.transform.position, 0, p.size.y / 2 + 0.6, 0));
         }
         checkpoints.push(plus(poi.center, 0, 1, 0));
@@ -302,9 +324,38 @@ export class GigCatalog {
         markers = checkpoints.map((p, i) => marker('summit-' + i, 'Cliff ' + (i + 1), p, 6, 'checkpoint'));
         break;
       }
+      case 'dam-bomb': {
+        const walkway = requireKind(this.props, 'the-dam', 'platform')[0]!;
+        const jumpPoint = plus(walkway.transform.position, rng.int(5) - 2,
+          walkway.size.y / 2 + 0.6, rng.int(3) - 1);
+        config = { kind: 'splash-dive', jumpPoint, waterY: this.reservoirLevel,
+          minDrop: [3.5, 5.5, 7.5][tier]!, requiresFlop: true };
+        start = copy(jumpPoint);
+        markers = [marker('dam-board', 'Flop from here', jumpPoint, 3.5, 'start'),
+          marker('dam-splash', 'Reservoir landing',
+            plus(jumpPoint, 0, this.reservoirLevel - jumpPoint.y, 0), 7, 'destination')];
+        break;
+      }
+      case 'beacon-bleat': {
+        const tower = requireKind(this.props, 'old-lighthouse', 'lighthouse')[0]!;
+        const house = requireKind(this.props, 'old-lighthouse', 'house')[0]!;
+        const platform = requireKind(this.props, 'old-lighthouse', 'platform')[0]!;
+        const roof = (prop: PropDescriptor): Point =>
+          plus(prop.transform.position, 0, prop.size.y / 2 + 0.65, 0);
+        const checkpoints = tier === 0 ?
+          [roof(platform), roof(tower)] : [roof(platform), roof(house), roof(tower)];
+        config = { kind: 'summit-sprint', checkpoints,
+          minimumClimb: [5, 8, 12][tier]!, requiresBleat: true };
+        start = plus(checkpoints[0]!, rng.int(3), 0, 2);
+        markers = checkpoints.map((p, i) => marker('beacon-' + i,
+          i === checkpoints.length - 1 ? 'BLEAT HERE' : 'Roof ' + (i + 1),
+          p, 5.5, 'checkpoint'));
+        break;
+      }
       case 'splash-dive': {
         const platform = requireKind(this.props, 'baa-ardwalk', 'platform')[0]!;
-        const jumpPoint = plus(platform.transform.position, 0, platform.size.y / 2 + 0.7, 0);
+        const jumpPoint = plus(platform.transform.position, rng.int(5) - 2,
+          platform.size.y / 2 + 0.7, rng.int(3) - 1);
         config = { kind: 'splash-dive', jumpPoint, waterY: this.seaLevel,
           minDrop: [3, 5, 7][tier]! };
         start = copy(jumpPoint);
