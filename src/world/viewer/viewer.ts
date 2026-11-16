@@ -6,6 +6,7 @@ import {
   createWorldScene, generateIsland, hashIsland, landAreaAtTideLevel,
   type ColliderDescriptor, type IslandData, type WorldScene,
 } from '../index';
+import { ART_BOOKMARKS, findBookmark } from './bookmarks';
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -23,9 +24,27 @@ const labels = element<HTMLDivElement>('labels');
 const stats = element<HTMLDivElement>('stats');
 const poiToggle = element<HTMLInputElement>('show-pois');
 const colliderToggle = element<HTMLInputElement>('show-colliders');
+const bookmarkInput = element<HTMLSelectElement>('bookmark');
+const compareToggle = element<HTMLInputElement>('compare');
+const presetInput = element<HTMLSelectElement>('preset');
+const reference = element<HTMLElement>('reference');
+const referenceImage = element<HTMLImageElement>('reference-image');
+const referenceCaption = element<HTMLElement>('reference-caption');
+const performance = element<HTMLElement>('perf');
+for (const bookmark of ART_BOOKMARKS) {
+  const option = document.createElement('option');
+  option.value = bookmark.id;
+  option.textContent = bookmark.label;
+  bookmarkInput.appendChild(option);
+}
+bookmarkInput.value = '07';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 host.appendChild(renderer.domElement);
@@ -53,6 +72,9 @@ let colliderDebug: THREE.Group | null = null;
 const labelById = new Map<string, HTMLDivElement>();
 const projected = new THREE.Vector3();
 const clock = new THREE.Clock();
+let elapsed = 0;
+let fps = 60;
+let sampleSeconds = 0;
 
 function makeColliderGeometry(collider: ColliderDescriptor): THREE.BufferGeometry {
   if (collider.shape === 'heightfield') {
@@ -147,6 +169,32 @@ function regenerate(): void {
   worldView.setDayNight(Number(dayInput.value));
   showDebug();
   updateStats();
+  applyBookmark(bookmarkInput.value);
+}
+function applyBookmark(id: string): void {
+  const mark = findBookmark(id);
+  if (!mark || !worldView) return;
+  camera.position.set(mark.camera.x, mark.camera.y, mark.camera.z);
+  camera.fov = mark.fov;
+  camera.updateProjectionMatrix();
+  orbit.target.set(mark.target.x, mark.target.y, mark.target.z);
+  camera.lookAt(orbit.target);
+  orbit.enabled = true;
+  fly.enabled = false;
+  cameraInput.value = 'orbit';
+  orbit.update();
+  dayInput.value = String(mark.day);
+  worldView.setDayNight(mark.day);
+  const hour = Math.floor(mark.day * 24);
+  dayLabel.value = String(hour).padStart(2, '0') + ':00';
+  presetInput.value = mark.day < 0.1 ? 'night' : mark.day < 0.35 ? 'golden-hour' : 'day';
+  tideInput.value = String(mark.tide);
+  worldView.setTideLevel(mark.tide);
+  referenceImage.src = '/docs/art/hifi/' + mark.image;
+  referenceImage.alt = mark.label + ' environment concept art';
+  referenceCaption.textContent = mark.label + ' · live view / original painting';
+  reference.hidden = !compareToggle.checked;
+  updateStats();
 }
 element<HTMLFormElement>('seed-form').addEventListener('submit', event => {
   event.preventDefault();
@@ -156,7 +204,18 @@ cameraInput.addEventListener('change', () => {
   const inOrbit = cameraInput.value === 'orbit';
   orbit.enabled = inOrbit;
   fly.enabled = !inOrbit;
-  if (inOrbit) orbit.target.set(0, 28, 0);
+  // Preserve the current reference-art camera target on return to Orbit.
+});
+bookmarkInput.addEventListener('change', () => applyBookmark(bookmarkInput.value));
+compareToggle.addEventListener('change', () => {
+  reference.hidden = !compareToggle.checked;
+});
+presetInput.addEventListener('change', () => {
+  const preset = presetInput.value as 'day' | 'golden-hour' | 'night';
+  worldView.setLightingPreset(preset);
+  const phase = preset === 'day' ? 0.5 : preset === 'golden-hour' ? 0.285 : 0.025;
+  dayInput.value = String(phase);
+  dayLabel.value = String(Math.floor(phase * 24)).padStart(2, '0') + ':00';
 });
 tideInput.addEventListener('input', () => {
   worldView.setTideLevel(Number(tideInput.value));
@@ -180,6 +239,10 @@ window.addEventListener('resize', () => {
 regenerate();
 renderer.setAnimationLoop(() => {
   const delta = Math.min(clock.getDelta(), 0.08);
+  elapsed += delta;
+  fps = fps * 0.90 + (1 / Math.max(delta, 0.001)) * 0.10;
+  sampleSeconds += delta;
+  worldView.update(elapsed);
   if (orbit.enabled) orbit.update();
   else fly.update(delta);
   worldView.updateCulling(camera);
@@ -198,4 +261,12 @@ renderer.setAnimationLoop(() => {
     }
   }
   renderer.render(scene, camera);
+  if (sampleSeconds >= 0.4) {
+    const info = renderer.info.render;
+    performance.textContent = 'FPS ' + fps.toFixed(0) +
+      ' · Draw calls ' + info.calls.toLocaleString() +
+      ' · Triangles ' + info.triangles.toLocaleString() +
+      ' · Meshes ' + island.props.length.toLocaleString();
+    sampleSeconds = 0;
+  }
 });
