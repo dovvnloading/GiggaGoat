@@ -96,9 +96,8 @@ describe('Billy Isle deterministic world generation', () => {
       const sorted = [...values].sort((a, b) => a - b);
       return sorted[Math.floor((sorted.length - 1) * 0.95)]!;
     };
-    console.info('physical road profile', { p95Deviation: p95(deviations), p95Grade: p95(terrainGrades) });
-    expect(p95(deviations)).toBeLessThan(4);
-    expect(p95(terrainGrades)).toBeLessThan(0.55);
+    expect(p95(deviations)).toBeLessThan(1.65);
+    expect(p95(terrainGrades)).toBeLessThan(0.38);
   });
 
   it('keeps graded building pads flat and preserves solid, walkable roof geometry', () => {
