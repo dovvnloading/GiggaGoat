@@ -5,6 +5,7 @@ import {
   hashIsland, heightAt,
 } from './index';
 import { ART_BOOKMARKS } from './viewer/bookmarks';
+import { makeTerrain, gridSample } from './terrain';
 
 describe('Billy Isle hi-fi environment map', () => {
   it('matches all eight map regions for several seeds and scaled islands', () => {
@@ -46,8 +47,11 @@ describe('Billy Isle hi-fi environment map', () => {
 
   it('has distinct, continuous climbable benches instead of quantised terrain stairs', () => {
     const island = generateIsland({ seed: 'terraces', resolution: 193 });
+    // Test the sculpted terrace heights before roads cut their intentional ramps.
+    const raw = { heights: makeTerrain('terraces', 600, 193), resolution: 193, size: 600 };
     const y = [0, 30, 49, 68, 87, 117].map(r =>
-      heightAt(island, Math.cos(0.85) * r, Math.sin(0.85) * r));
+      gridSample(raw, Math.cos(0.85) * r, Math.sin(0.85) * r));
+    expect(heightAt(island, 0, 0)).toBeGreaterThan(heightAt(island, 120, 0) + 70);
     for (let i = 1; i < y.length; i++) {
       expect(y[i - 1]!).toBeGreaterThan(y[i]! + 3);
     }
