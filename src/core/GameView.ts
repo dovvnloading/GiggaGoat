@@ -21,7 +21,7 @@ const vec = (p: Vec3): THREE.Vector3 => new THREE.Vector3(p.x, p.y, p.z);
 /** All graphics, time sampling, DOM and input live outside the headless Game. */
 export class GameView {
   readonly renderer: THREE.WebGLRenderer;
-  readonly camera = new THREE.PerspectiveCamera(67, 1, .07, 1100);
+  readonly camera = new THREE.PerspectiveCamera(67, 1, .07, 2200);
   readonly scene = new THREE.Scene();
   readonly world: WorldScene;
   readonly input: GameInput;
@@ -53,6 +53,7 @@ export class GameView {
     this.renderer.domElement.style.cssText = 'display:block;width:100%;height:100%;outline:none;touch-action:none';
     host.appendChild(this.renderer.domElement);
     this.camera.position.set(0, 5, 8);
+    this.scene.background = new THREE.Color(0x87c5f0);
     this.scene.fog = new THREE.FogExp2(0xb8deef, .0016);
     this.world = createWorldScene(game.island, { chunkSegments: 24, cullingDistance: 530 });
     this.scene.add(this.world.group);
@@ -396,9 +397,9 @@ export class GameView {
     this.updateProps(result.alpha);
     this.updateBuildings();
     this.updateDebris(result.alpha);
+    this.world.setDayNight(.5 + Math.sin(this.game.physics.time / 150) * .035);
     this.updateCamera(result.alpha, dt);
     this.world.updateCulling(this.camera);
-    this.world.setDayNight(.5 + Math.sin(this.game.physics.time / 150) * .035);
     this.hud.update(this.game, this.fps, this.simMs, this.input.debugVisible,
       document.pointerLockElement === this.renderer.domElement);
     this.renderer.render(this.scene, this.camera);
