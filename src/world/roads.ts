@@ -149,6 +149,27 @@ export function makeRoads(island: IslandData, rng: SeededRandom): RoadDescriptor
       type: link.type, width, points,
     });
   }
+  // Street-level reference cameras need actual, graded through-streets, not
+  // merely POI endpoints on the distant coastal ring road. These are also
+  // used to orient every facade/door toward the nearest street.
+  for (const id of ['hoofington', 'downtown-bleatsville'] as const) {
+    const centre = byId.get(id)!.center;
+    const halfLength = id === 'hoofington' ? 42 : 43;
+    const width = (id === 'hoofington' ? 8.6 : 10.0) * scale;
+    const points: RoadPoint[] = [];
+    for (let j = 0; j <= 22; j++) {
+      const z = centre.z + (-halfLength + j * 2 * halfLength / 22) * scale;
+      points.push({ x: centre.x, z, y: gridSample(island, centre.x, z), bridge: false });
+    }
+    gradeRoad(points, 0.11);
+    for (let j = 0; j < points.length - 1; j++) {
+      stampRoad(island, points[j]!, points[j + 1]!, width, island.river);
+    }
+    roads.push({
+      id: id + '-main-street', from: id, to: id,
+      type: 'road', width, points,
+    });
+  }
   return roads;
 }
 
