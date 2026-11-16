@@ -1,4 +1,4 @@
-import RAPIER, { type ImpulseJoint, type RigidBody } from '@dimforge/rapier3d-compat';
+import RAPIER, { type ImpulseJoint, type RigidBody, type Collider } from '@dimforge/rapier3d-compat';
 import type { GoatRagdoll } from './GoatRagdoll';
 import type { PhysicsWorld } from './PhysicsWorld';
 import { add, clamp, distance, dot, forward, length, localPoint, mul, normalize,
@@ -89,7 +89,7 @@ export class GoatInteractions {
     const lunge = mul(add(facing,V(0,.12,0)),g.mass*(.35+c*1.55));
     g.torso.applyImpulse(lunge,true);
     const origin = worldPoint(g.head.translation(),g.head.rotation(),V(0,0,-.06*s));
-    const ignoreOwn = (collider: RAPIER.Collider): boolean => !g.ownsBody(collider.parent());
+    const ignoreOwn = (collider: Collider): boolean => !g.ownsBody(collider.parent());
     const straight = g.world.shapeCast(origin, g.head.rotation(), facing,
       new RAPIER.Ball(.24*s), this.tuning.headbuttRange*s, {predicate:ignoreOwn});
     // Head height exceeds a floor crate's height: allow a downward grazing hit.
