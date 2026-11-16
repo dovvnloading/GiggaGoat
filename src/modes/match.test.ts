@@ -43,8 +43,10 @@ describe('PartyMatch lifecycle, serialisation and event delivery', () => {
     } }, arena)).toThrow();
     expect(() => new PartyMatch({ mode: 'king-of-the-peak', config: { durationTicks: 0 } }, arena)).toThrow();
     const match = readyMatch({ mode: 'king-of-the-peak' });
+    const before = match.toJSON();
     expect(() => match.step(frame(goat('a')))).toThrow('missing observation');
     expect(() => match.step(frame(goat('a'), { ...goat('b'), headY: NaN }))).toThrow();
+    expect(match.toJSON()).toEqual(before);
   });
 
   it('replays event sequences and score from a JSON round trip', () => {
