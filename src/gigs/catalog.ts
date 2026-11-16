@@ -366,8 +366,11 @@ export class GigCatalog {
         const platform = requireKind(this.props, 'old-lighthouse', 'platform')[0]!;
         const roof = (prop: PropDescriptor): Point =>
           plus(prop.transform.position, 0, prop.size.y / 2 + 0.65, 0);
+        const fromPlatform = rng.int(2) === 0;
         const checkpoints = tier === 0 ?
-          [roof(platform), roof(tower)] : [roof(platform), roof(house), roof(tower)];
+          [roof(fromPlatform ? platform : house), roof(tower)] :
+          fromPlatform ? [roof(platform), roof(house), roof(tower)] :
+            [roof(house), roof(platform), roof(tower)];
         config = { kind: 'summit-sprint', checkpoints,
           minimumClimb: [5, 8, 12][tier]!, requiresBleat: true };
         start = plus(checkpoints[0]!, rng.int(3), 0, 2);
