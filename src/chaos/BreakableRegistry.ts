@@ -125,7 +125,7 @@ export class BreakableRegistry {
     const friction = collider.friction(), restitution = collider.restitution();
     // Remove source before adding children to avoid interpenetrating its old collider.
     this.physics.removeBody(body);
-    const n = Math.min(options.chunks,this.maxDebris);
+    const n = Math.min(options.chunks,this.maxDebris,this.bodyBudget?.available ?? Infinity);
     const nx = Math.ceil(Math.cbrt(n || 1)), ny = Math.ceil(Math.sqrt((n || 1) / nx));
     const nz = Math.ceil((n || 1) / (nx * ny));
     const piece = V(bounds.x / nx, bounds.y / ny, bounds.z / nz);
@@ -142,7 +142,7 @@ export class BreakableRegistry {
       chunk.setRotation(rotation,true);
       this.physics.raw.createCollider(RAPIER.ColliderDesc.cuboid(
         Math.max(.012,piece.x*.94),Math.max(.012,piece.y*.94),Math.max(.012,piece.z*.94))
-        .setMass(Math.max(.001,mass/options.chunks)).setFriction(friction).setRestitution(restitution),chunk);
+        .setMass(Math.max(.001,mass/Math.max(1,n))).setFriction(friction).setRestitution(restitution),chunk);
       const tangential = V(angular.y*rotated.z-angular.z*rotated.y,
         angular.z*rotated.x-angular.x*rotated.z,angular.x*rotated.y-angular.y*rotated.x);
       chunk.setLinvel(add(linear,tangential),true);
