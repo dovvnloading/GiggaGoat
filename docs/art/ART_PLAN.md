@@ -5,27 +5,24 @@ so each brief can point agents at finished reference art for the work they are d
 
 ## Pipeline
 
-1. **Blockout** (coordinator, Blender, headless): composition, layout, scale and palette. Files: `docs/art/NN_*.jpg`.
-2. **Hi-fi pass** (ChatGPT image generation): each blockout is uploaded as the layout reference and repainted
-   in the locked style below. Files: `docs/art/hifi/NN_*.png`.
-3. **Hand-off**: the next code brief for that area cites the exact hi-fi files to match.
+1. **Hi-fi reference** (ChatGPT image generation, done by an agent thread): images in the locked style below,
+   saved to `docs/art/hifi/`.
+2. **Hand-off**: the next code brief for that area cites the exact hi-fi files to match.
 
 ## Locked style (applies to every hi-fi image)
 
 Bright, saturated but tasteful colours. Soft stylised 3D with chunky, readable shapes and slightly rounded bevels.
 Gentle toon shading with subtle dark outlines. Soft GI and warm sun. Hand-painted textures. Lots of small,
-explorable detail. Never photoreal, never cheesy, no weapons. Palette: `20_palette.jpg`.
+explorable detail. Never photoreal, never cheesy, no weapons. Palette: hex values in README.md.
 
 ## Phases
 
 | Phase | Scope | Images | Feeds which code work | Status |
 |---|---|---|---|---|
 | **A. Environment** | Key art, island map, the 8 locations, rising-tide arena | 07, 08–15, 16, 18 | World visuals pass (terrain materials, water, sky, POI dressing) and the first playable integration | in progress |
-| B. Characters | Goat model sheet, size tiers, move set, cosmetics | 01–04 | Goat mesh + animation on the ragdoll; cosmetics system | after A, when goat visuals are scheduled |
-| C. Props & building | Prop kit, Hay-Build pieces, breakables/debris | 05, 06 | Prop meshes, breakables, Hay-Build in world | after B |
-| D. UI | HUD, menus, emotes, map screen | 17, 19 | HUD and menu lane | after C |
-
-Blockouts for B to D already exist and stay in `docs/art/` as layout reference. They are not repainted until their phase starts.
+| B. Characters | Goat model sheet, size tiers, move set, cosmetics | produced when this phase starts | Goat mesh + animation on the ragdoll; cosmetics system | after A |
+| C. Props & building | Prop kit, Hay-Build pieces, breakables/debris | produced when this phase starts | Prop meshes, breakables, Hay-Build in world | after B |
+| D. UI | HUD, menus, emotes, map screen | produced when this phase starts | HUD and menu lane | after C |
 
 ## Phase A queue (two image threads in parallel, one image per message, same chat per thread for style consistency)
 

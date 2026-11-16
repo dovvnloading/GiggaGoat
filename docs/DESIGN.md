@@ -120,10 +120,14 @@ Day/night cycle. Everything breakable or pushable should be a separate prop.
 
 | Lane | Directory | Responsibility |
 |---|---|---|
-| Physics | `src/physics/` | Rapier world wrapper, stepping, collision groups, goat active ragdoll + locomotion controller, tongue tether, impulses |
-| World | `src/world/` | Deterministic island generation (terrain, water, POIs, roads, props as data), Three.js blockout meshes, collider descriptors |
-| Gameplay | `src/gameplay/` | Engine-agnostic rules: abilities/stamina/balance state, style/combo/GIGGA, Hay-Build grid + structural rules, inventory |
-| Core | `src/core/`, `src/main.ts` | Boot and integration. Only touched by explicit integration tasks |
+| Physics | `src/physics/` | Rapier world wrapper, fixed stepping, collision groups, goat active ragdoll + locomotion, tongue tether, headbutt, impulses |
+| World | `src/world/` | Deterministic Billy Isle: terrain, water, POIs, roads, dressing props as data, stylised renderer, colliders, viewer |
+| Gameplay | `src/gameplay/` | Engine-agnostic rules: abilities/stamina/balance, style/combo/GIGGA, Hay-Build, Cud Coins, unlocks, challenges |
+| Chaos | `src/chaos/` | Water and buoyancy, breakables and debris, chain reactions, surfaces, trampolines, launch pads |
+| Modes | `src/modes/` | Party-mode rules engine (Rising Tide, King of the Peak, Hay Heist) and bot goats |
+| Gigs | `src/gigs/` | Goat Gigs free-roam job framework and contracts |
+| Audio | `src/audio/` | Procedural Web Audio SFX, adaptive music, ambience (in progress) |
+| Core | `src/core/`, `src/main.ts` | The playable game: wiring of all lanes, camera, input, HUD, menus. Only touched by explicit integration tasks |
 
 Rules for lanes: no lane imports another lane until an integration task says so; shared types that
 two lanes need are duplicated minimally or introduced by an integration task.
