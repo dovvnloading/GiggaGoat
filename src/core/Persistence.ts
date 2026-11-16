@@ -1,5 +1,5 @@
 import { GameSimulation, type GameSnapshot } from '../gameplay';
-import { GigDirector, GigCatalog, type GigSnapshot } from '../gigs';
+import type { GigSnapshot } from '../gigs';
 import type { GigBodySave } from './GigSession';
 import type { Game } from './Game';
 
