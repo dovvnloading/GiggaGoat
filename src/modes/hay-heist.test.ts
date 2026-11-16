@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PartyMatch } from './match';
 import { makeMockIsland } from './mock-island';
-import { frame, goat } from './match.test';
+import { frame, goat } from './test-utils';
 import type { GoatObservation, ModeArena } from './types';
 
 function arena(): ModeArena {
