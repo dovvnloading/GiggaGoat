@@ -7,6 +7,8 @@ export type Emit = (event: EventPayload) => void;
 export type RuleOutcome = 'continue' | 'finish' | 'overtime';
 
 export const TICKS_PER_SECOND = 60;
+/** Unicode codepoint ordering, independent of host locale/ICU settings. */
+export function compareIds(a: string, b: string): number { return a < b ? -1 : a > b ? 1 : 0; }
 export function finite(value: number, name: string): number {
   if (!Number.isFinite(value)) throw new RangeError(`${name} must be finite`);
   return value;
