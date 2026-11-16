@@ -115,7 +115,7 @@ function terrainGeometry(
     const normal = new THREE.Vector3(-dx, 1, -dz).normalize();
     normals.push(normal.x, normal.y, normal.z);
     positions.push(x - cx, h, z - cz);
-    const biome: Biome = BIOMES[island.biomeMap[gridIndex(n, ix, iz)]!] ?? 2] ?? 'meadow';
+    const biome: Biome = BIOMES[island.biomeMap[gridIndex(n, ix, iz)] ?? 2] ?? 'meadow';
     const base = biome === 'pine-forest' ? COLORS.pine
       : biome === 'farmland' ? COLORS.farmland
       : biome === 'town' ? COLORS.town
