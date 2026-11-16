@@ -37,7 +37,8 @@ export function colliderHalfExtents(c: Collider): Vec3 {
   const shape = c.shapeType();
   if (shape === RAPIER.ShapeType.Cuboid) {
     const h = c.halfExtents();
-    return V(h.x, h.y, h.z);
+    if (h) return V(h.x, h.y, h.z);
+    // A malformed or removed collider can return null even for a cuboid.
   }
   if (shape === RAPIER.ShapeType.Ball) {
     const r = c.radius(); return V(r, r, r);
