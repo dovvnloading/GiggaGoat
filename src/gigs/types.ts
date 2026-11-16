@@ -233,6 +233,8 @@ export interface GigAward {
   multiplier: number;
   firstGoldBonus: number;
   cosmeticId?: string;
+  /** Verified metres for challenge settlement even after a later gig starts. */
+  challengeMetres?: number;
 }
 export type GigEvent =
   | { type: 'board.rotated'; tick: number; seq: number; poiId: PoiId; cycle: number }
