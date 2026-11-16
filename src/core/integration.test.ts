@@ -57,6 +57,9 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
       body.setTranslation(V(head.x + dir.x * .9, head.y - .06, head.z + dir.z * .9), true);
       body.setLinvel(V(), true);
       body.setAngvel(V(), true);
+      // A manually teleported Rapier body enters the query acceleration
+      // structure on the next physics step. Keep charging for that tick.
+      game.step({ chargeHeadbutt: true });
       const before = { ...body.translation() };
       game.step({ chargeHeadbutt: false });
       const immediateVelocity = body.linvel();
