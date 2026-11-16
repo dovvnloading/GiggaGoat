@@ -63,6 +63,21 @@ function mountainSwitchbacks(island: IslandData, destination: PoiId): Vec2[] {
     });
   }
   const outer = points[points.length - 1]!;
+  if (destination === 'downtown-bleatsville') {
+    // The original spiral's final straight diagonal crossed the west side
+    // of Downtown, making several main-street shops face AWAY from their
+    // nearest road. Approach the district from the south and join the
+    // centreline before reaching the storefront rows.
+    const scale = island.size / 600;
+    const approach = { x: farm.x, z: farm.z - 66 * scale };
+    return points.concat(catmullRom([
+      outer,
+      { x: lerp(outer.x, approach.x, 0.55),
+        z: lerp(outer.z, approach.z, 0.55) - 9 * scale },
+      approach,
+      { x: farm.x, z: farm.z },
+    ], 4 * scale).slice(1));
+  }
   return points.concat(catmullRom([outer,
     { x: lerp(outer.x, farm.x, 0.58), z: lerp(outer.z, farm.z, 0.58) },
     { x: farm.x, z: farm.z }], 4).slice(1));
