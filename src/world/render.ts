@@ -93,78 +93,102 @@ function terrainGeometry(
   const n = island.resolution, metres = island.size / (n - 1);
   const cx = gridCoordinate(island.size, n, startX + countX / 2);
   const cz = gridCoordinate(island.size, n, startZ + countZ / 2);
-  const xs: number[] = [], zs: number[] = [];
-  for (let i = 0; i < countX; i += lodStep) xs.push(startX + i);
-  xs.push(startX + countX);
-  for (let i = 0; i < countZ; i += lodStep) zs.push(startZ + i);
-  zs.push(startZ + countZ);
   const positions: number[] = [], normals: number[] = [], colors: number[] = [];
   const indices: number[] = [];
   const color = new THREE.Color();
   const sample = (x: number, z: number): number =>
     island.heights[gridIndex(n, Math.max(0, Math.min(n - 1, x)),
       Math.max(0, Math.min(n - 1, z)))]!;
-  for (const iz of zs) for (const ix of xs) {
-    const h = sample(ix, iz);
-    const x = gridCoordinate(island.size, n, ix), z = gridCoordinate(island.size, n, iz);
-    const dx = (sample(ix + 1, iz) - sample(ix - 1, iz)) /
-      ((ix > 0 && ix < n - 1) ? 2 * metres : metres);
-    const dz = (sample(ix, iz + 1) - sample(ix, iz - 1)) /
-      ((iz > 0 && iz < n - 1) ? 2 * metres : metres);
+  const rockBands: readonly (readonly [number, number])[] = [
+    [19, 26], [38, 45], [56, 63], [74, 81], [91, 104],
+  ];
+  // Keep every vertex on the seam at native resolution in BOTH LODs. The old
+  // four overlapping, double-sided chunk skirts were visible as dark straight
+  // lines and produced shadow-map streaks across the landscape.
+  for (let iz = 0; iz <= countZ; iz++) for (let ix = 0; ix <= countX; ix++) {
+    const gx = startX + ix, gz = startZ + iz;
+    const h = sample(gx, gz);
+    const x = gridCoordinate(island.size, n, gx);
+    const z = gridCoordinate(island.size, n, gz);
+    const dx = (sample(gx + 1, gz) - sample(gx - 1, gz)) /
+      ((gx > 0 && gx < n - 1) ? 2 * metres : metres);
+    const dz = (sample(gx, gz + 1) - sample(gx, gz - 1)) /
+      ((gz > 0 && gz < n - 1) ? 2 * metres : metres);
     const slope = Math.hypot(dx, dz);
     const normal = new THREE.Vector3(-dx, 1, -dz).normalize();
     normals.push(normal.x, normal.y, normal.z);
     positions.push(x - cx, h, z - cz);
-    const biome: Biome = BIOMES[island.biomeMap[gridIndex(n, ix, iz)] ?? 2] ?? 'meadow';
+    const biome: Biome = BIOMES[island.biomeMap[gridIndex(n, gx, gz)] ?? 2] ?? 'meadow';
     const base = biome === 'pine-forest' ? COLORS.pine
       : biome === 'farmland' ? COLORS.farmland
       : biome === 'town' ? COLORS.town
       : biome === 'industrial' ? COLORS.industrial : COLORS.grass;
     color.copy(base);
-    const sand = 1 - smoothstep(1.8, 7.3, h);
-    color.lerp(COLORS.sand, sand);
+    color.lerp(COLORS.sand, 1 - smoothstep(1.8, 7.3, h));
     const cliff = Math.max(smoothstep(0.56, 1.35, slope),
       smoothstep(82, 112, h) * 0.25);
     color.lerp(COLORS.rock, cliff);
     if (biome === 'freshwater') color.lerp(COLORS.freshwater, 0.7);
     if (h < -0.4) color.lerp(COLORS.submerged, 0.8);
-    color.lerp(COLORS.dirt, roadMix(roads, x, z, 22) * (1 - cliff) * 0.93);
-    // Baked curvature/contact occlusion, plus a very fine hand-painted variance.
-    const depression = Math.max(0,
-      (sample(ix + 1, iz) + sample(ix - 1, iz) +
-       sample(ix, iz + 1) + sample(ix, iz - 1)) * 0.25 - h);
-    const ambient = 1 - clamp(depression * 0.10, 0, 0.23);
-    const variation = 0.972 + Math.sin(x * 0.19 + z * 0.11) *
-      Math.cos(z * 0.13 - x * 0.07) * 0.022;
+
+    // Explicit mountain palette, tied to the *sculpted* terrace radii rather
+    // than discontinuous slope/biome classifications after trail stamp cuts.
+    // This preserves broad grey climbing faces and green, usable benches.
+    const radius = Math.hypot(x, z) / (island.size / 600);
+    const mountain = 1 - smoothstep(99, 113, radius);
+    if (mountain > 0) {
+      let rockFace = 0;
+      for (const [inner, outer] of rockBands) {
+        const band = smoothstep(inner - 1.9, inner + 1.6, radius) *
+          (1 - smoothstep(outer - 1.4, outer + 2.1, radius));
+        rockFace = Math.max(rockFace, band);
+      }
+      rockFace = Math.max(rockFace, smoothstep(1.05, 2.5, slope) * 0.76);
+      const grassy = COLORS.grass.clone().lerp(COLORS.pine, 0.12);
+      const stone = COLORS.rock.clone().multiplyScalar(0.96 +
+        0.025 * Math.sin(radius * 0.33));
+      color.copy(grassy).lerp(stone, rockFace);
+      color.lerp(base, 1 - mountain);
+    }
+    const trail = roadMix(roads, x, z, 22);
+    color.lerp(COLORS.dirt, trail * (1 - cliff) * (1 - mountain * 0.42) * 0.86);
+    // Gentle contact darkening, never noisy high-frequency mountain dithering.
+    const depression = Math.max(0, (
+      sample(gx + 1, gz) + sample(gx - 1, gz) +
+      sample(gx, gz + 1) + sample(gx, gz - 1)) * 0.25 - h);
+    const ambient = 1 - clamp(depression * 0.07, 0, 0.16);
+    const variation = 0.987 + Math.sin(x * 0.06 + z * 0.08) *
+      Math.cos(z * 0.09 - x * 0.04) * 0.012;
     color.multiplyScalar(ambient * variation);
     colors.push(color.r, color.g, color.b);
   }
-  const stride = xs.length;
-  for (let z = 0; z < zs.length - 1; z++) for (let x = 0; x < xs.length - 1; x++) {
-    const a = z * stride + x, b = a + 1, c = a + stride, d = c + 1;
-    indices.push(a, c, b, b, c, d);
-  }
-  // LOD skirts hide tiny cracks wherever near and far chunk resolutions meet.
-  const edges: number[][] = [
-    xs.map((_, i) => i),
-    xs.map((_, i) => (zs.length - 1) * stride + i),
-    zs.map((_, i) => i * stride),
-    zs.map((_, i) => i * stride + stride - 1),
-  ];
-  for (const edge of edges) {
-    const bottom: number[] = [];
-    for (const top of edge) {
-      const idx = positions.length / 3;
-      positions.push(positions[top * 3]!, positions[top * 3 + 1]! - 3.5,
-        positions[top * 3 + 2]!);
-      normals.push(normals[top * 3]!, normals[top * 3 + 1]!, normals[top * 3 + 2]!);
-      colors.push(colors[top * 3]! * 0.79, colors[top * 3 + 1]! * 0.79,
-        colors[top * 3 + 2]! * 0.79);
-      bottom.push(idx);
+
+  const stride = countX + 1;
+  const vertex = (x: number, z: number): number => z * stride + x;
+  for (let z = 0; z < countZ; z += lodStep) for (let x = 0; x < countX; x += lodStep) {
+    const x1 = Math.min(countX, x + lodStep);
+    const z1 = Math.min(countZ, z + lodStep);
+    const a = vertex(x, z), b = vertex(x1, z);
+    const c = vertex(x, z1), d = vertex(x1, z1);
+    const touchesSeam = x === 0 || z === 0 || x1 === countX || z1 === countZ;
+    if (lodStep === 1 || !touchesSeam || x1 - x < 2 || z1 - z < 2) {
+      indices.push(a, c, b, b, c, d);
+      continue;
     }
-    for (let i = 1; i < edge.length; i++) {
-      const a = edge[i - 1]!, b = edge[i]!, c = bottom[i - 1]!, d = bottom[i]!;
-      indices.push(a, b, c, b, d, c, c, b, a, c, d, b);
+    // Stitch coarse interiors to high-resolution seam edge vertices by
+    // triangle fans. Adjacent high-LOD chunks share EXACT same edge triangles.
+    const perimeter: number[] = [a];
+    if (x === 0) for (let k = z + 1; k < z1; k++) perimeter.push(vertex(x, k));
+    perimeter.push(c);
+    if (z1 === countZ) for (let k = x + 1; k < x1; k++) perimeter.push(vertex(k, z1));
+    perimeter.push(d);
+    if (x1 === countX) for (let k = z1 - 1; k > z; k--) perimeter.push(vertex(x1, k));
+    perimeter.push(b);
+    if (z === 0) for (let k = x1 - 1; k > x; k--) perimeter.push(vertex(k, z));
+    const centre = vertex(x + Math.floor((x1 - x) / 2),
+      z + Math.floor((z1 - z) / 2));
+    for (let i = 0; i < perimeter.length; i++) {
+      indices.push(centre, perimeter[i]!, perimeter[(i + 1) % perimeter.length]!);
     }
   }
   const geometry = new THREE.BufferGeometry();
@@ -193,7 +217,9 @@ function buildTerrain(island: IslandData, segments: number): Chunk[] {
       const mesh = new THREE.Mesh(high, material);
       mesh.position.set(cx, 0, cz);
       mesh.receiveShadow = true;
-      mesh.castShadow = true;
+      // Terrain only receives shadows; its duplicated cliff/skirt casting created
+      // kilometer-long shadow acne at grazing angles.
+      mesh.castShadow = false;
       mesh.frustumCulled = false;
       mesh.name = 'terrain-chunk-' + startX + '-' + startZ;
       mesh.userData['terrainChunk'] = true;
