@@ -55,29 +55,51 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   const rand = (lo: number, hi: number): number => rng.range(lo, hi);
   const turn = (): number => rand(0, Math.PI * 2);
 
-  // Hoofington: clustered farm buildings, garden gnomes and touchable village clutter.
+  // Hoofington: two sided village street, with front gardens and mailboxes.
   const farm: PoiId = 'hoofington';
-  at(farm, 'silo', -31, -20, 7.5, 21, 7.5, { shape: 'cylinder', color: 0xe5d7ac });
-  at(farm, 'house', 5, 27, 10, 8, 10, { color: 0xf8e3c5 });
-  at(farm, 'cottage', 28, -2, 9, 8, 8, { color: 0xc0d8ef });
-  at(farm, 'trampoline', 12, 4, 8, 1.1, 7, { color: 0x7960d9 });
-  for (let i = 0; i < 9; i++) {
-    const edge = i % 2 ? 20 : -8;
-    at(farm, 'mailbox', edge + i * 1.2, 26 - (i % 3) * 3, 1.3, 2.2, 1,
-      { yaw: -0.35, color: i % 2 ? 0xd84f3d : 0x79add7 });
+  at(farm, 'silo', -32, -20, 7.5, 21, 7.5,
+    { shape: 'cylinder', color: 0xe5d7ac });
+  at(farm, 'house', 22, 29, 10, 8, 10,
+    { yaw: -Math.PI / 2, color: 0xf8e3c5 });
+  at(farm, 'cottage', 29, -2, 9, 8, 8,
+    { yaw: -Math.PI / 2, color: 0xc0d8ef });
+  at(farm, 'trampoline', 36, 34, 8, 1.1, 7, { color: 0x7960d9 });
+  for (let i = 0; i < 8; i++) {
+    const side = i % 2 === 0 ? -1 : 1;
+    const z = -26 + Math.floor(i / 2) * 17.5;
+    at(farm, 'mailbox', side * 8.1, z, 1.3, 2.2, 1,
+      { yaw: -side * Math.PI / 2, color: i % 3 ? 0xd84f3d : 0x79add7 });
   }
-  for (let i = 0; i < 11; i++) {
-    at(farm, 'gnome', rand(-28, 30), rand(-26, 29), 0.85, 1.6, 0.85,
-      { yaw: turn(), color: i % 2 ? 0xff891e : 0x7a4cff });
+  for (let i = 0; i < 13; i++) {
+    const side = i % 2 === 0 ? -1 : 1;
+    at(farm, 'gnome', side * rand(16, 34), rand(-31, 34),
+      0.85, 1.6, 0.85, { yaw: turn(), color: i % 2 ? 0xff891e : 0x7a4cff });
   }
-  for (let i = 0; i < 15; i++) {
-    at(farm, 'fence', -34 + (i % 5) * 8, -37 + Math.floor(i / 5) * 37,
-      7, 2.1, 0.3, { yaw: (i % 3 === 0 ? Math.PI / 2 : 0), color: 0xeac995 });
+  for (const side of [-1, 1]) for (let i = 0; i < 8; i++) {
+    at(farm, 'fence', side * 34.5, -36 + i * 10,
+      9, 1.85, 0.34, { yaw: Math.PI / 2, color: 0xeac995 });
   }
   for (let i = 0; i < 16; i++) {
-    at(farm, 'hay-bale', rand(-37, -6), rand(12, 36), 2.1, 1.5, 2.1,
+    at(farm, 'hay-bale', rand(-45, -33), rand(4, 36), 2.1, 1.5, 2.1,
       { shape: 'cylinder', mass: 8, yaw: turn() });
   }
+  // Dense planted borders occupy the lawn strips, not the paved roadway.
+  for (const side of [-1, 1]) for (let i = 0; i < 13; i++) {
+    const z = -34 + i * 5.5;
+    at(farm, 'flower', side * 14.5 + rand(-0.6, 0.6), z,
+      0.9, 1.0 + rand(0, 0.45), 0.9,
+      { yaw: turn(), color: i % 2 ? 0xffd833 : 0xf2777f });
+    if (i % 2 === 0) {
+      at(farm, 'bush', side * 17, z + 2,
+        1.7, 1.4, 1.8, { color: 0x79b958 });
+    }
+  }
+  for (const side of [-1, 1]) for (const z of [-25, 9, 30]) {
+    at(farm, 'planter', side * 12.7, z, 1.8, 1.4, 1.8,
+      { shape: 'cylinder' });
+  }
+  at(farm, 'bench', -14, 34, 3.6, 1.55, 1.3,
+    { yaw: Math.PI / 2, color: 0x9d6f57 });
 
   // Baa-ardwalk: colourful shops, fluttering pennants, pier furniture and sea buoys.
   const beach: PoiId = 'baa-ardwalk';
@@ -126,7 +148,9 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       { color: 0xc7a367 });
   }
 
-  // Downtown: every facade has an awning, sign and parkour-worthy roof equipment.
+  // Downtown: storefront trim and signs follow each building's facade normal
+  // (local +Z), not a fixed world +Z direction. The +/- X-facing rows now
+  // display their shop fronts to pedestrians in the central street.
   const city: PoiId = 'downtown-bleatsville';
   const buildings = island.props.filter(p => p.poiId === city &&
     (p.kind === 'house' || p.kind === 'shop'));
@@ -134,27 +158,51 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     const building = buildings[i]!;
     const x = building.transform.position.x;
     const z = building.transform.position.z;
+    const yaw = building.transform.rotationY;
+    const frontX = Math.sin(yaw), frontZ = Math.cos(yaw);
     const top = building.transform.position.y + building.size.y / 2;
-    place('awning', x, z + 7.2 * scale, 10, 0.9, 2.7, city,
-      { y: top - 3.1 * scale, color: [0xf2777f, 0xffd866, 0x69c6d8][i % 3] });
-    place('signboard', x, z + 6.5 * scale, 7, 2.5, 0.45, city,
-      { y: top - 1.65 * scale, color: 0xffe6a2 });
-    place('ac-unit', x - 2 * scale, z - 2.2 * scale, 3.3, 2.1, 3.1, city,
-      { y: top + 1.05 * scale, color: 0xc0cbd0 });
+    const facade = building.size.z / 2;
+    place('awning', x + frontX * (facade + 1.0 * scale),
+      z + frontZ * (facade + 1.0 * scale),
+      10, 0.9, 2.6, city, {
+        yaw, y: top - 3.0 * scale,
+        color: [0xf2777f, 0xffd866, 0x69c6d8][i % 3],
+      });
+    place('signboard', x + frontX * (facade + 0.35 * scale),
+      z + frontZ * (facade + 0.35 * scale),
+      7, 2.5, 0.45, city, {
+        yaw, y: top - 1.6 * scale, color: 0xffe6a2,
+      });
+    place('ac-unit', x - frontX * 1.8 * scale,
+      z - frontZ * 1.8 * scale, 3.3, 2.1, 3.1, city,
+      { yaw, y: top + 1.05 * scale, color: 0xc0cbd0 });
     if (i % 4 === 0) {
-      place('water-tower', x + 2.5 * scale, z + 1 * scale,
-        4.5, 7.6, 4.5, city, { y: top + 3.8 * scale, shape: 'cylinder' });
+      place('water-tower', x - frontX * 1.7 * scale,
+        z - frontZ * 1.7 * scale, 4.5, 7.6, 4.5, city,
+        { y: top + 3.8 * scale, shape: 'cylinder' });
     }
   }
-  at(city, 'fountain', -1, -3, 10, 2.3, 10, { shape: 'cylinder', color: 0x8bc5d4 });
-  for (let i = 0; i < 22; i++) {
-    const edge = (i % 2 ? 1 : -1) * 43;
-    at(city, 'planter', edge, -38 + Math.floor(i / 2) * 7.4,
-      2.8, 2.4, 2.8, { shape: 'cylinder', color: 0xc3916d });
+  // Fountain square is a side plaza, not an obstacle in the street.
+  at(city, 'fountain', -40, -35, 10, 2.3, 10,
+    { shape: 'cylinder', color: 0x8bc5d4 });
+  for (let i = 0; i < 20; i++) {
+    const side = i % 2 ? 1 : -1;
+    const z = -36 + Math.floor(i / 2) * 8;
+    at(city, 'planter', side * 12.1, z, 2.6, 2.2, 2.6,
+      { shape: 'cylinder', color: 0xc3916d });
+    if (i % 2 === 0) {
+      at(city, 'flower', side * 13.1, z + 3, 0.8, 1.1, 0.8,
+        { color: 0xf2777f });
+    }
   }
   for (let i = 0; i < 8; i++) {
-    at(city, 'bench', (i % 2 ? -1 : 1) * 34, -27 + i * 7.8,
+    const side = i % 2 ? -1 : 1;
+    at(city, 'bench', side * 12.7, -27 + i * 7.8,
       4.3, 1.55, 1.3, { yaw: Math.PI / 2, color: 0x9d6f57 });
+  }
+  for (const dz of [-12, 8]) for (const dx of [-46, -32]) {
+    at(city, 'planter', dx, dz, 3.2, 2.8, 3.2,
+      { shape: 'cylinder', color: 0xc3916d });
   }
 
   // Whispering Pines: logs and stones straddle the river; fungi guide the lookout.

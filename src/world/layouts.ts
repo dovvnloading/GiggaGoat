@@ -53,29 +53,35 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
       { x: sx * scale, y: sy * scale, z: sz * scale }, options);
   }
 
-  // HOOFINGTON: a clear village square surrounded by a usable barn, homes and paddocks.
+  // HOOFINGTON: a true north/south village street with homes facing inward.
+  // The road remains clear for third-person traversal, with garden strips
+  // between the house fronts and the carriageway.
   const farm: PoiId = 'hoofington';
-  site(farm, 'barn', -18, -13, 15, 12, 17, { color: 0xd9534f });
-  site(farm, 'house', 15, -15, 10, 9, 10, { color: 0xf7db77 });
-  site(farm, 'house', -20, 14, 9, 8, 9, { color: 0x84c6e8 });
-  site(farm, 'windmill', 25, 17, 5, 23, 5, { shape: 'cylinder' });
-  site(farm, 'platform', 9, -26, 15, 1, 12, { lift: 0.5 });
-  for (let i = 0; i < 12; i++) {
-    const a = i * Math.PI / 6;
-    const dx = Math.cos(a) * 32, dz = Math.sin(a) * 30;
-    site(farm, 'fence', dx, dz, 6, 2.2, 0.35, { yaw: -a + Math.PI / 2, breakable: true });
+  site(farm, 'barn', -28, -34, 15, 12, 17, { yaw: Math.PI / 2, color: 0xd9534f });
+  site(farm, 'house', 21, -19, 10, 9, 10,
+    { yaw: -Math.PI / 2, color: 0xf7db77 });
+  site(farm, 'house', -20, 11, 9, 8, 9,
+    { yaw: Math.PI / 2, color: 0x84c6e8 });
+  site(farm, 'house', -20, -9, 10, 9, 10,
+    { yaw: Math.PI / 2, color: 0xf3cfad });
+  site(farm, 'house', 22, 12, 10, 8, 9,
+    { yaw: -Math.PI / 2, color: 0xc4dbea });
+  site(farm, 'windmill', 30, -38, 5, 23, 5, { shape: 'cylinder' });
+  site(farm, 'platform', 35, 26, 15, 1, 12, { lift: 0.5 });
+  for (const side of [-1, 1]) for (let i = 0; i < 7; i++) {
+    site(farm, 'fence', side * 11.6, -33 + i * 11,
+      9.2, 1.85, 0.35, { yaw: Math.PI / 2, breakable: true });
   }
   for (let i = 0; i < 19; i++) {
-    const x = rng.range(-28, -7), z = rng.range(7, 28);
-    site(farm, 'hay-bale', x, z, 2.2, 1.5, 2.2,
+    site(farm, 'hay-bale', rng.range(-42, -31), rng.range(-26, 27), 2.2, 1.5, 2.2,
       { dynamicMass: 12, yaw: rng.range(0, 6.28), shape: 'cylinder', climbable: false });
   }
   for (let i = 0; i < 7; i++) {
-    site(farm, 'crate', rng.range(4, 27), rng.range(-27, -8), 1.8, 1.8, 1.8,
+    site(farm, 'crate', rng.range(30, 40), rng.range(-27, 15), 1.8, 1.8, 1.8,
       { dynamicMass: 14, yaw: rng.range(0, 6.28) });
   }
-  site(farm, 'ramp', -5, -18, 6, 2, 11, { yaw: 0.35 });
-  site(farm, 'sign', 0, 11, 5, 3, 0.5, { breakable: true });
+  site(farm, 'ramp', -35, 6, 6, 2, 11, { yaw: 0.35 });
+  site(farm, 'sign', 7.5, 39, 5, 3, 0.5, { breakable: true });
 
   // BAA-ARDWALK: a real walkable pier beyond the coastline and an open-frame wheel.
   const beach: PoiId = 'baa-ardwalk';
@@ -133,30 +139,43 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   site(yard, 'ramp', -4, -16, 7, 3, 15, { yaw: 0.9 });
   site(yard, 'ramp', 25, -10, 7, 4, 17, { yaw: -0.3 });
 
-  // DOWNTOWN: narrow alleys and staggered, fully collidable roof heights.
+  // DOWNTOWN: five storefronts per side look into the paved main street.
+  // Three four-roof cross-street rows remain intact for Rooftop Express gigs
+  // (the mission selects y-rotated roofs at z = -19, 0 and +19).
   const city: PoiId = 'downtown-bleatsville';
-  for (let row = 0; row < 3; row++) {
-    for (let col = 0; col < 4; col++) {
-      const x = (col - 1.5) * 15, z = (row - 1) * 19;
-      const height = 8 + ((row * 4 + col) % 4) * 2.5;
-      site(city, (row + col) % 3 === 0 ? 'house' : 'shop', x, z,
-        10.8, height, 12.4, {
-          color: [0x91c9ed, 0xffa27e, 0xf2d47e, 0xb39adf][(row * 3 + col) % 4],
-        });
-      if ((row + col) % 2 === 0) {
-        site(city, 'ramp', x + 7, z + 3, 4.5, 3, 9, { yaw: Math.PI / 2 });
-      }
+  for (let row = 0; row < 5; row++) for (const side of [-1, 1]) {
+    const x = side * 20, z = (row - 2) * 19;
+    const height = 9 + ((row * 2 + (side + 1) / 2) % 4) * 2.3;
+    site(city, 'shop', x, z, 11.0, height, 11.4, {
+      yaw: -side * Math.PI / 2,
+      color: [0x91c9ed, 0xffa27e, 0xf2d47e, 0xb39adf][(row * 2 + (side + 1) / 2) % 4],
+    });
+    if (row === 0 || row === 4) {
+      site(city, 'ramp', x + side * 9.6, z + 3, 4.5, 3, 9,
+        { yaw: side * Math.PI / 2 });
     }
   }
-  site(city, 'tower', -33, 0, 8, 27, 8, { color: 0x95b4d8 });
-  for (let i = 0; i < 12; i++) {
-    const x = (i % 2 === 0 ? -1 : 1) * 35;
-    site(city, 'lamp', x, -30 + Math.floor(i / 2) * 12, 0.6, 9, 0.6,
+  // Rooftop rows need four physical roofs each: one taller rear
+  // townhouse behind each near-side shop in rows -19, 0 and +19.
+  // Rear houses enrich the skyline without obstructing main-street sightlines.
+  for (const z of [-19, 0, 19]) for (const side of [-1, 1]) {
+    site(city, 'house', side * 36, z, 10, 15 + (z === 0 ? 3 : 0), 11.5, {
+      yaw: -side * Math.PI / 2,
+      color: z === 0 ? 0xe4b5a1 : 0xc3d0ed,
+    });
+  }
+  site(city, 'tower', 39, -38, 8, 27, 8, { color: 0x95b4d8 });
+  for (let row = 0; row < 6; row++) for (const side of [-1, 1]) {
+    site(city, 'lamp', side * 10.8, -37 + row * 15, 0.6, 8, 0.6,
       { shape: 'cylinder', breakable: true });
   }
   for (let i = 0; i < 14; i++) {
-    site(city, i % 2 === 0 ? 'crate' : 'barrel', rng.range(-39, 40), rng.range(-35, 37),
-      1.5, 1.8, 1.5, { dynamicMass: 9, shape: i % 2 ? 'cylinder' : 'cuboid' });
+    const side = i % 2 === 0 ? -1 : 1;
+    site(city, i % 2 === 0 ? 'crate' : 'barrel',
+      side * rng.range(31, 42), rng.range(-39, 39),
+      1.5, 1.8, 1.5, {
+        dynamicMass: 9, shape: i % 2 ? 'cylinder' : 'cuboid',
+      });
   }
 
   // MT. GIGGA: giant cliffs remain terrain, with intermittent stone shelf landings.
@@ -167,12 +186,14 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   site(peak, 'flag', -7, 4, 0.7, 9, 0.7);
   for (let i = 0; i < 21; i++) {
     const angle = i * 2.39996;
-    const radius = (29 + (i % 4) * 12) * scale;
+    // Position shelves on the FLAT, grassy tier bands, never midway down a
+    // steep cliff where a rectangular prop protrudes as a floating dark cube.
+    const radius = [29, 49, 68, 85][i % 4]! * scale;
     const x = summit.x + Math.cos(angle) * radius;
     const z = summit.z + Math.sin(angle) * radius;
     add(peak, 'ledge', x, z,
       { x: (5 + i % 3) * scale, y: 1.2 * scale, z: 4.2 * scale },
-      { yaw: angle, lift: 0.9 * scale, color: 0xc0b8a9 });
+      { yaw: angle, lift: 0.15 * scale, color: 0xffffff });
     if (i % 3 === 0) add(peak, 'rock', x + 4 * scale, z + 2 * scale,
       { x: 4 * scale, y: 3 * scale, z: 3.5 * scale }, { shape: 'convex' });
   }

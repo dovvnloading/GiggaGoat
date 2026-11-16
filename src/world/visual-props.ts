@@ -91,7 +91,19 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
   if (['barn', 'house', 'shop', 'booth', 'cottage', 'control-house'].includes(kind)) {
     box(0, -0.13, 0, 0.9, 0.74, 0.88);
     box(0, 0.27, 0, 1.05, 0.08, 1.04, kind === 'barn' ? 0x815b55 : 0xb16c61);
-    cone(0, 0.46, 0, 1.4, 0.40, 1.34, kind === 'barn' ? 0x864750 : 0xc67c68, 4);
+    if (kind === 'shop') {
+      // Flat, climbable shop roofs align with the rooftop parkour colliders.
+      box(0, 0.39, 0, 1.01, 0.13, 1.0, 0xa77773);
+      for (const x of [-0.47, 0.47]) {
+        box(x, 0.47, 0, 0.06, 0.15, 1.0, 0xb58a81);
+      }
+      for (const z of [-0.46, 0.46]) {
+        box(0, 0.47, z, 1.0, 0.15, 0.06, 0xb58a81);
+      }
+    } else {
+      cone(0, 0.46, 0, 1.4, 0.40, 1.34,
+        kind === 'barn' ? 0x864750 : 0xc67c68, 4);
+    }
     box(0, -0.31, 0.457, 0.23, 0.33, 0.04, 0x795847);
     for (const x of [-0.30, 0.30]) {
       box(x, 0, 0.46, 0.18, 0.22, 0.034, 0x83c4d5);
@@ -240,14 +252,30 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
     for (let i = 0; i < 4; i++) {
       rock(-0.35 + i * 0.23, 0.44, 0.1, 0.35, 0.24, 0.36, 0x9a9aa0);
     }
+  } else if (kind === 'ledge') {
+    // Rock shelf below a shallow grassy landing: not the dark floating cube
+    // produced by a plain box and an oversized inverted-hull outline.
+    box(0, -0.09, 0, 0.98, 0.76, 0.98, 0x8c919e);
+    box(0, 0.36, 0, 1, 0.12, 1, 0x78b95a);
+    rock(-0.30, -0.29, 0.27, 0.32, 0.29, 0.34, 0xa1a4ad);
   } else if (kind === 'bench') {
     box(0, -0.10, 0, 0.94, 0.12, 0.75, 0xa97d59);
     box(0, 0.12, -0.32, 0.94, 0.42, 0.12, 0xb0895d);
     for (const x of [-0.34, 0.34]) box(x, -0.37, 0, 0.12, 0.25, 0.13, 0x6e6b69);
-  } else if (kind === 'fence' || kind === 'rope-rail') {
-    for (const x of [-0.46, 0.46]) box(x, 0, 0, 0.09, 1, 0.14, 0x98704e);
-    box(0, 0.23, 0, 1, 0.11, 0.12, 0xf2ddb2);
-    box(0, -0.15, 0, 1, 0.10, 0.12, 0xf0d3a6);
+  } else if (kind === 'fence') {
+    // A single low-cost compound silhouette per picket-fence segment.
+    // Individual posts remain visible at 30 m without separate draw calls.
+    for (let i = 0; i < 8; i++) {
+      const x = -0.46 + i * (0.92 / 7);
+      box(x, 0, 0, 0.084, 0.82, 0.13, 0xf6e9d2);
+      cone(x, 0.44, 0, 0.105, 0.16, 0.15, 0xf6e9d2, 4);
+    }
+    box(0, 0.15, -0.07, 1, 0.07, 0.07, 0xd4ae83);
+    box(0, -0.26, -0.07, 1, 0.07, 0.07, 0xd4ae83);
+  } else if (kind === 'rope-rail') {
+    for (const x of [-0.46, 0.46]) box(x, 0, 0, 0.10, 1, 0.13, 0x98704e);
+    box(0, 0.23, 0, 0.96, 0.045, 0.08, 0xe5d0a0);
+    box(0, -0.15, 0, 0.96, 0.045, 0.08, 0xe5d0a0);
   } else if (kind === 'mailbox') {
     cyl(0, -0.17, 0, 0.12, 0.65, 0.12, 0x7b7359);
     box(0, 0.28, 0, 0.68, 0.36, 0.54, 0xcf5448);
@@ -314,12 +342,31 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
   const merged = mergeGeometries(parts, false);
   parts.forEach(g => g.dispose());
   if (!merged) throw new Error('Could not merge prop geometry ' + kind);
+  // Every kind is authored in its unit descriptor envelope. Without this,
+  // tall roof trim and sign geometry extends beyond collider/instance bounds.
+  merged.computeBoundingBox();
+  const bounds = merged.boundingBox!;
+  const centre = bounds.getCenter(new THREE.Vector3());
+  const span = bounds.getSize(new THREE.Vector3());
+  merged.translate(-centre.x, -centre.y, -centre.z);
+  merged.scale(
+    Math.min(1, 0.98 / Math.max(span.x, 0.001)),
+    Math.min(1, 0.98 / Math.max(span.y, 0.001)),
+    Math.min(1, 0.98 / Math.max(span.z, 0.001)),
+  );
+  merged.computeBoundingBox();
   merged.computeBoundingSphere();
   return merged;
 }
-function isSmall(kind: PropKind): boolean {
-  return ['grass-tuft', 'flower', 'gnome', 'mailbox', 'cone', 'bunting'].includes(kind);
-}
+const SHADOW_KINDS = new Set<PropKind>([
+  'barn', 'house', 'shop', 'cottage', 'windmill', 'lighthouse',
+  'tower', 'crane', 'tree-pine', 'tree-oak', 'silo', 'water-tower',
+  'satellite-dish', 'ferris-wheel',
+]);
+const OUTLINE_KINDS = new Set<PropKind>([
+  'barn', 'house', 'shop', 'windmill', 'lighthouse',
+  'ferris-wheel', 'crane', 'satellite-dish',
+]);
 function sways(kind: PropKind): boolean {
   return ['tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'bunting', 'flag'].includes(kind);
 }
@@ -329,21 +376,22 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
   const group = new THREE.Group();
   group.name = 'handcrafted-props';
   const batches: PropBatch[] = [];
-  const buckets = new Map<string, { kind: PropKind; entries: PropDescriptor[] }>();
+  // One instanced draw per kind rather than one draw per kind *per spatial cell*.
+  // Chunk-level visibility is still handled by the terrain and ground detail.
+  // A few hundred extra low-poly instances are cheaper than hundreds of draw calls.
+  void chunkSize;
+  const buckets = new Map<PropKind, PropDescriptor[]>();
   for (const prop of props) {
-    const p = prop.transform.position;
-    const key = prop.kind + ':' + Math.floor(p.x / chunkSize) + ':' + Math.floor(p.z / chunkSize);
-    const bucket = buckets.get(key) ?? { kind: prop.kind, entries: [] };
-    bucket.entries.push(prop);
-    buckets.set(key, bucket);
+    const entries = buckets.get(prop.kind) ?? [];
+    entries.push(prop);
+    buckets.set(prop.kind, entries);
   }
   const geometries = new Map<PropKind, THREE.BufferGeometry>();
   const materials = new Map<PropKind, THREE.MeshToonMaterial>();
   const outlineMat = new THREE.MeshBasicMaterial({ color: 0x34424b, side: THREE.BackSide });
   const windUniforms: Array<{ value: number }> = [];
-  const named = new Set<PropKind>();
   const dummy = new THREE.Object3D();
-  for (const { kind, entries } of buckets.values()) {
+  for (const [kind, entries] of buckets) {
     let geometry = geometries.get(kind);
     if (!geometry) { geometry = geometryFor(kind); geometries.set(kind, geometry); }
     let material = materials.get(kind);
@@ -371,11 +419,10 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       materials.set(kind, material);
     }
     const mesh = new THREE.InstancedMesh(geometry, material, entries.length);
-    mesh.name = named.has(kind) ? 'props-' + kind + '-chunk' : 'props-' + kind;
-    named.add(kind);
-    mesh.castShadow = !isSmall(kind);
-    mesh.receiveShadow = true;
-    mesh.frustumCulled = false;
+    mesh.name = 'props-' + kind;
+    mesh.castShadow = SHADOW_KINDS.has(kind);
+    mesh.receiveShadow = SHADOW_KINDS.has(kind);
+    mesh.frustumCulled = true;
     for (let i = 0; i < entries.length; i++) {
       const prop = entries[i]!;
       const p = prop.transform.position;
@@ -392,29 +439,31 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     mesh.computeBoundingSphere();
     group.add(mesh);
     const drawn: THREE.InstancedMesh[] = [mesh];
-    if (!isSmall(kind)) {
+    if (OUTLINE_KINDS.has(kind)) {
       const hull = new THREE.InstancedMesh(geometry, outlineMat, entries.length);
       hull.name = 'outline-' + kind;
-      hull.frustumCulled = false;
+      hull.frustumCulled = true;
       hull.castShadow = false;
       for (let i = 0; i < entries.length; i++) {
         const prop = entries[i]!;
         const p = prop.transform.position;
         dummy.position.set(p.x, p.y, p.z);
         dummy.rotation.set(0, prop.transform.rotationY, 0);
-        const expansion = 1.03;
+        const expansion = 1.015;
         dummy.scale.set(prop.size.x * expansion, prop.size.y * expansion,
           prop.size.z * expansion);
         dummy.updateMatrix();
         hull.setMatrixAt(i, dummy.matrix);
       }
       hull.instanceMatrix.needsUpdate = true;
+      hull.computeBoundingSphere();
       group.add(hull);
       drawn.push(hull);
     }
     batches.push({
       meshes: drawn, sphere: mesh.boundingSphere?.clone() ?? new THREE.Sphere(),
-      nearOnly: isSmall(kind),
+      // Global instance batches must not vanish when their centre is distant.
+      nearOnly: false,
     });
   }
   return {

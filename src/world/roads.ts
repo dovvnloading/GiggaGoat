@@ -8,9 +8,9 @@ const LINKS: Link[] = [
   { from: 'hoofington', to: 'baa-ardwalk', type: 'road',
     via: [{ x: -110, z: 185 }, { x: -35, z: 222 }, { x: 20, z: 226 }] },
   { from: 'baa-ardwalk', to: 'downtown-bleatsville', type: 'road',
-    via: [{ x: 108, z: 205 }, { x: 165, z: 170 }] },
+    via: [{ x: 108, z: 205 }, { x: 145, z: 170 }] },
   { from: 'downtown-bleatsville', to: 'crane-yard', type: 'road',
-    via: [{ x: 200, z: 60 }, { x: 212, z: 8 }] },
+    via: [{ x: 145, z: 55 }, { x: 200, z: 47 }, { x: 212, z: 8 }] },
   { from: 'crane-yard', to: 'the-dam', type: 'road',
     via: [{ x: 171, z: -112 }, { x: 107, z: -175 }, { x: 38, z: -213 }] },
   { from: 'the-dam', to: 'whispering-pines', type: 'road',
@@ -23,7 +23,7 @@ const LINKS: Link[] = [
   { from: 'mt-gigga', to: 'the-dam', type: 'trail',
     via: [{ x: 73, z: -92 }, { x: 58, z: -161 }] },
   { from: 'downtown-bleatsville', to: 'mt-gigga', type: 'trail',
-    via: [{ x: 88, z: 91 }, { x: 62, z: 54 }] },
+    via: [{ x: 145, z: 40 }, { x: 88, z: 28 }, { x: 62, z: 54 }] },
 ];
 
 function catmullRom(controls: Vec2[], step: number): Vec2[] {
@@ -63,6 +63,21 @@ function mountainSwitchbacks(island: IslandData, destination: PoiId): Vec2[] {
     });
   }
   const outer = points[points.length - 1]!;
+  if (destination === 'downtown-bleatsville') {
+    // The original spiral's final straight diagonal crossed the west side
+    // of Downtown, making several main-street shops face AWAY from their
+    // nearest road. Approach the district from the south and join the
+    // centreline before reaching the storefront rows.
+    const scale = island.size / 600;
+    const approach = { x: farm.x, z: farm.z - 66 * scale };
+    return points.concat(catmullRom([
+      outer,
+      { x: lerp(outer.x, approach.x, 0.55),
+        z: lerp(outer.z, approach.z, 0.55) - 9 * scale },
+      approach,
+      { x: farm.x, z: farm.z },
+    ], 4 * scale).slice(1));
+  }
   return points.concat(catmullRom([outer,
     { x: lerp(outer.x, farm.x, 0.58), z: lerp(outer.z, farm.z, 0.58) },
     { x: farm.x, z: farm.z }], 4).slice(1));
@@ -149,7 +164,40 @@ export function makeRoads(island: IslandData, rng: SeededRandom): RoadDescriptor
       type: link.type, width, points,
     });
   }
+  // Stamp the village and city main roads without changing the public
+  // POI-to-POI road graph (whose edges must start/end at their POI centres).
+  for (const street of makeLocalStreets(island)) {
+    for (let j = 0; j < street.points.length - 1; j++) {
+      stampRoad(island, street.points[j]!, street.points[j + 1]!,
+        street.width, island.river);
+    }
+  }
   return roads;
+}
+
+/**
+ * Visual/physical through-streets within city plots, separate from the POI
+ * connectivity graph. Rendering uses these same graded centreline segments.
+ */
+export function makeLocalStreets(island: IslandData): RoadDescriptor[] {
+  const scale = island.size / 600;
+  return (['hoofington', 'downtown-bleatsville'] as const).map(id => {
+    const centre = island.pois.find(p => p.id === id)!.center;
+    const halfLength = id === 'hoofington' ? 42 : 43;
+    const width = (id === 'hoofington' ? 8.6 : 10) * scale;
+    const points: RoadPoint[] = [];
+    for (let j = 0; j <= 22; j++) {
+      const z = centre.z + (-halfLength + j * 2 * halfLength / 22) * scale;
+      points.push({
+        x: centre.x, z, y: gridSample(island, centre.x, z), bridge: false,
+      });
+    }
+    gradeRoad(points, 0.11);
+    return {
+      id: id + '-main-street', from: id, to: id,
+      type: 'road' as const, width, points,
+    };
+  });
 }
 
 /** Separate collidable planks, rather than a solid barrier across the river. */
