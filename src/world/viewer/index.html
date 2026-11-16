@@ -26,6 +26,7 @@
       background: #263b51; border: 1px solid #4d6f83; border-radius: 7px; font: inherit; }
     button { border: 0; border-radius: 7px; padding: 10px 14px; background: #87f3d3;
       color: #16374c; font-weight: 800; cursor: pointer; }
+    button:disabled { opacity: .65; cursor: progress; }
     input[type=range] { width: 100%; accent-color: #87f3d3; }
     input[type=checkbox] { accent-color: #87f3d3; }
     .checkboxes { display: flex; gap: 20px; align-items: center; }
@@ -69,6 +70,9 @@
     <div class="inline"><select id="bookmark" aria-label="Art reference camera"></select></div>
     <div class="checkboxes">
       <label><input id="compare" type="checkbox" checked /> Side-by-side painting</label>
+    </div>
+    <div class="inline">
+      <button id="capture-all" type="button">Export all bookmarks + paintings (PNG)</button>
     </div>
     <label for="preset">Lighting preset</label>
     <div class="inline"><select id="preset">
