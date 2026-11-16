@@ -101,7 +101,7 @@ export interface RelicSpot {
 
 export interface HeightfieldColliderDescriptor {
   shape: 'heightfield';
-  /** Number of grid *segments*. The heights array is (rows+1)*(cols+1). */
+  /** Number of grid samples per axis. Heights has rows*cols entries. */
   rows: number;
   cols: number;
   heights: Float32Array;

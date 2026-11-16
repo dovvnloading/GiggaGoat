@@ -35,7 +35,7 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
     rapierHeights[x * n + z] = island.heights[z * n + x]!;
   }
   const colliders: ColliderDescriptor[] = [{
-    shape: 'heightfield', rows: n - 1, cols: n - 1, heights: rapierHeights,
+    shape: 'heightfield', rows: n, cols: n, heights: rapierHeights,
     scale: { x: island.size, y: 1, z: island.size },
     position: { x: 0, y: 0, z: 0 },
   }];
