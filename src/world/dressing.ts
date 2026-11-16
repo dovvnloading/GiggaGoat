@@ -183,7 +183,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     }
   }
   // Fountain square is a side plaza, not an obstacle in the street.
-  at(city, 'fountain', -39, -3, 10, 2.3, 10,
+  at(city, 'fountain', -40, -35, 10, 2.3, 10,
     { shape: 'cylinder', color: 0x8bc5d4 });
   for (let i = 0; i < 20; i++) {
     const side = i % 2 ? 1 : -1;
