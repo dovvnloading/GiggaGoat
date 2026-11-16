@@ -159,6 +159,8 @@ export class LocomotionController {
   private flipAngle = 0;
   private flipScored = false;
   private flightStarted: number | null = null;
+  private clingGrace = 0;
+  private clingNormal: Vec3 = V(0,0,1);
   private lastGrounded = false;
   constructor(private readonly goat: GoatRagdoll) {}
 
@@ -202,14 +204,21 @@ export class LocomotionController {
       { groups: GROUND_QUERY_GROUPS },
     ) : null;
     const wallEligible = !!wall && wall.normal.y < .46 && dot(wish,wall.normal) < -.45;
-    const clinging = !g.isRagdoll && this.input.canClimb && wallEligible;
+    if (wallEligible) {
+      this.clingGrace = .34;
+      this.clingNormal = {...wall!.normal};
+    } else {
+      this.clingGrace = Math.max(0,this.clingGrace-dt);
+    }
+    const clinging = !g.isRagdoll && this.input.canClimb && wishLength > .1 &&
+      (wallEligible || (this.isClinging && this.clingGrace > 0));
     // Steep-wall intent takes priority over ordinary ground contact, so a goat can
     // initiate a climb with its hooves still planted on flat terrain.
     if (clinging) this.grounded = false;
     if (clinging !== this.isClinging) {
       this.isClinging = clinging;
       if (clinging) {
-        g.events.emit({type:'wallClingStart',goatId:g.id,time:g.world.time,normal:{...wall!.normal}});
+        g.events.emit({type:'wallClingStart',goatId:g.id,time:g.world.time,normal:{...this.clingNormal}});
       } else {
         g.events.emit({type:'wallClingEnd',goatId:g.id,time:g.world.time});
       }
@@ -250,8 +259,11 @@ export class LocomotionController {
     }
 
     if (this.isClinging) {
-      const upward = clamp(this.tuning.climbSpeed*Math.sqrt(s)-torso.linvel().y,-.2,.34);
-      torso.applyImpulse(V(0,upward*g.mass,0),true);
+      const upward = clamp(this.tuning.climbSpeed*Math.sqrt(s)-torso.linvel().y,-.2,.42);
+      // Keep shoulder and hooves in reach when collisions rebound the torso:
+      // climbing is a constrained push against a real surface, not a teleport.
+      const wallPressure = mul(this.clingNormal,-g.mass*5*dt);
+      torso.applyImpulse(add(V(0,upward*g.mass,0),wallPressure),true);
       g.setPose('climb',g.phase+dt*9);
       return;
     }
