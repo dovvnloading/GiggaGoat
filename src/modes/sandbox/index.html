@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>GIGGA-GOAT // Party Lab</title>
+<style>
+:root{color-scheme:dark;--ink:#fff9ed;--muted:#c5c8dd;--purple:#7a4cff;--gold:#ffd833;--orange:#ff891e;--line:#3b406c;--panel:#191c35;--bg:#0d1125}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;color:var(--ink);background:radial-gradient(ellipse at 70% -35%,#444489 0,transparent 58%),var(--bg);font:14px/1.45 system-ui,Segoe UI,Arial,sans-serif}
+header{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:22px clamp(16px,3vw,44px);border-bottom:2px solid #ffffff16;flex-wrap:wrap}
+.eyebrow{font-size:11px;letter-spacing:.2em;color:var(--gold);font-weight:900;text-transform:uppercase}h1{font-size:clamp(28px,4vw,48px);line-height:1.04;letter-spacing:-.065em;margin:3px 0 4px}h1 b{color:var(--gold)}.subtitle{color:var(--muted);font-size:12px}
+header .mark{background:var(--purple);border:2px solid #bda7ff;border-radius:17px;padding:6px 15px;font-size:22px;font-weight:1000;transform:rotate(-4deg);box-shadow:5px 6px 0 #2a2159}
+main{display:grid;grid-template-columns:minmax(360px,1fr) minmax(290px,335px);gap:17px;max-width:1580px;padding:20px clamp(16px,3vw,44px) 40px;margin:auto}
+.panel{background:linear-gradient(160deg,#262948,#161a31);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 14px 34px #0003}
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px}label{font-size:12px;color:var(--muted);font-weight:750}label select,label input{display:block;margin-top:4px}
+select,input,button,textarea{font:inherit;color:var(--ink)}select,input:not([type=checkbox]),textarea{background:#11152d;border:1px solid #555a83;border-radius:8px;padding:8px;min-width:0}input[type=number]{width:90px}
+button{border:1px solid #7774a7;background:#313454;border-radius:10px;padding:9px 13px;font-weight:800;cursor:pointer}button:hover{background:#424776}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+button.primary{background:var(--gold);border-color:#ffec82;color:#282039}button.secondary{background:var(--purple);border-color:#b49bff}button:disabled{opacity:.46;cursor:default}
+#screen{display:block;width:100%;aspect-ratio:960/620;max-height:78vh;border:2px solid #7080ad;border-radius:13px;background:#0f669e;box-shadow:inset 0 0 40px #0005}
+.hud{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0}.metric{background:#0e142d;border:1px solid #3c4e78;border-radius:9px;padding:9px}.metric strong{display:block;font-size:clamp(15px,2vw,23px);font-weight:950;letter-spacing:-.035em;white-space:nowrap}.metric span{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:800}
+#status{font-size:13px;color:var(--gold);font-weight:800;min-height:22px}.hint{color:var(--muted);font-size:12px;margin:8px 0 0}kbd{font:700 11px monospace;background:#384064;padding:2px 5px;border:1px solid #68769a;border-radius:4px;color:#fff}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.13em;color:var(--gold);margin:0 0 12px}h3{font-size:11px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;margin:17px 0 8px}
+.sidebar{display:flex;flex-direction:column;gap:15px}.row{display:flex;align-items:center;justify-content:space-between;gap:8px}.badge{border:1px solid #515889;padding:3px 7px;border-radius:6px;font-size:10px;color:var(--muted);font-weight:800}
+#standings{display:grid;gap:7px}.goatrow{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #434e74;background:#121830;border-radius:10px;padding:9px}.goatrow.out{opacity:.52}.goatrow .name{font-weight:900}.goatrow small{font-size:11px;color:var(--muted)}.dot{display:inline-block;width:11px;height:11px;border-radius:50%;vertical-align:middle;margin-right:7px;border:2px solid white}
+#log{height:220px;overflow:auto;display:grid;gap:6px;align-content:start;font:12px/1.4 ui-monospace,Consolas,monospace}.event{padding:8px;background:#0e142d;border-left:3px solid var(--purple);border-radius:5px}.event.splash{border-color:#21a8c6}.event.score{border-color:var(--gold)}.event small{color:#aaaed0;margin-right:5px}
+#snapshot{width:100%;height:82px;font:10px/1.45 ui-monospace,monospace;resize:vertical}.tools{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+footer{font-size:11px;color:var(--muted);margin-top:10px}.switch{display:flex;align-items:center;gap:6px}.switch input{accent-color:var(--gold)}
+@media(max-width:1040px){main{grid-template-columns:1fr}.sidebar{display:grid;grid-template-columns:1fr 1fr}.sidebar .panel:last-child{grid-column:1/-1}}@media(max-width:620px){.hud{grid-template-columns:1fr 1fr}.sidebar{grid-template-columns:1fr}.sidebar .panel:last-child{grid-column:auto}main{padding-inline:12px}.toolbar{gap:7px}header{padding-inline:16px}}
+</style>
+</head>
+<body>
+<header><div><div class="eyebrow">Billy Isle / dev-only competitive rules console</div><h1>PARTY <b>LAB.</b></h1><div class="subtitle">No guns. No health bars. Plenty of dramatic splashes.</div></div><div class="mark">🐐 GIGGA!</div></header>
+<main>
+<section class="panel">
+  <div class="toolbar">
+    <label>Mode<select id="mode"><option value="rising-tide">Rising Tide</option><option value="king-of-the-peak">King of the Peak</option><option value="hay-heist">Hay Heist</option></select></label>
+    <label>Goats<select id="count"><option>2</option><option selected>4</option><option>6</option><option>8</option></select></label>
+    <label>AI<select id="difficulty"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></label>
+    <label>Seed<input id="seed" type="number" value="2048" step="1"/></label>
+    <label>Speed<select id="speed"><option value="1">1×</option><option value="4">4×</option><option value="16">16×</option></select></label>
+    <label class="switch"><input id="human" type="checkbox" checked/> Play solo</label>
+  </div>
+  <div class="toolbar"><button id="start" class="primary">New match</button><button id="pause" class="secondary">Pause</button><button id="single">Step 1 tick</button><div id="status" aria-live="polite">Ready to bleat.</div></div>
+  <canvas id="screen" width="960" height="620" role="img" aria-label="Top-down mocked Billy Isle with flooded coast, live goats, barns and hay"></canvas>
+  <div class="hud"><div class="metric"><span>Round</span><strong id="phase">LOBBY</strong></div><div class="metric"><span>Clock</span><strong id="clock">0:00</strong></div><div class="metric"><span>Sea level</span><strong id="tide">0 m</strong></div><div class="metric"><span>Dry land</span><strong id="land">100%</strong></div></div>
+  <p class="hint">Solo controls: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Shift</kbd> sprint · <kbd>T</kbd> hold tongue / carry · <kbd>F</kbd> headbutt · <kbd>G</kbd> drop. Bots and humans use the same intent contract.</p>
+</section>
+<aside class="sidebar">
+<section class="panel"><div class="row"><h2>Scoreboard</h2><span id="teams" class="badge">FREE FOR ALL</span></div><div id="standings" aria-live="polite"></div><h3 id="modeTip">Stay above the waterline. Last goat standing wins.</h3></section>
+<section class="panel"><div class="row"><h2>Isle-wide incidents</h2><span class="badge">LATEST FIRST</span></div><div id="log" aria-live="polite"></div></section>
+<section class="panel"><h2>Save / deterministic replay</h2><div class="subtitle">Exports match state, AI seeds and positions. Load to reproduce the same next tick.</div><textarea id="snapshot" spellcheck="false" aria-label="Match snapshot JSON"></textarea><div class="tools"><button id="save">Export JSON</button><button id="load">Restore JSON</button></div><footer>Pure TypeScript · fixed 60 Hz · zero Three/Rapier imports · mock terrain only</footer></section>
+</aside>
+</main>
+<script type="module" src="./sandbox.ts"></script>
+</body>
+</html>
