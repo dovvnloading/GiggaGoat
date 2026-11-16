@@ -1,3 +1,4 @@
+import { compareIds } from './internal';
 import type { GoatContact, GoatObservation, MatchSnapshot, ModeArena } from './types';
 import type { Emit, RuleOutcome } from './internal';
 
