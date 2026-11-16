@@ -107,11 +107,11 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Gr
   }
   // Off the traffic lane: a stone plaza around the existing collidable
   // fountain, surrounded by benches and planted beds.
-  disc(city.x - 39 * scale, city.z - 3 * scale, 14.8 * scale, TILE, 36);
+  disc(city.x - 40 * scale, city.z - 35 * scale, 14.8 * scale, TILE, 36);
   for (let i = 0; i < 12; i++) {
     const a = i * Math.PI / 6;
-    const x = city.x + (-39 + Math.cos(a) * 12.4) * scale;
-    const z = city.z + (-3 + Math.sin(a) * 12.4) * scale;
+    const x = city.x + (-40 + Math.cos(a) * 12.4) * scale;
+    const z = city.z + (-35 + Math.sin(a) * 12.4) * scale;
     quad(x, z, 2.3 * scale, 1.1 * scale, STONE, a);
   }
   // Bare-earth patches behind the shops and at the village farmyard keep
