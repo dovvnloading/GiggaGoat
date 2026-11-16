@@ -222,6 +222,7 @@ export class GigDirector {
       difficulty: run.setup.offer.difficulty, rating,
       coins, baseCoins, multiplier, firstGoldBonus,
     };
+    if (run.setup.config.kind === 'summit-sprint') award.challengeMetres = run.metrics.climbed;
     if (firstGoldBonus) {
       this.goldGigs.push(award.gigId);
       const cosmetic = run.setup.info.cosmetic.id;
