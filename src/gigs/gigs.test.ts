@@ -127,7 +127,7 @@ function scriptedTick(setup: GigSetup, target: Rating, t: number, finishAt: numb
         if (c.requiresFlop) acts.push({ type: 'flop' });
       }
       if (t === finishAt) {
-        f.goat.position = { x: c.jumpPoint.x, y: c.waterY, z: c.jumpPoint.z };
+        f.goat.position = position(c.landing);
         f.style = [{ type: 'big-splash', points: 40 }];
       }
       break;
@@ -332,7 +332,7 @@ describe('Gig-specific anti-cheat physics fact requirements', () => {
     const d = new GigDirector(catalog);
     const c = configOf(d.startPractice('dam-bomb', 'easy'), 'splash-dive');
     d.step(frame(c.jumpPoint));
-    const splash = frame({ x: c.jumpPoint.x, y: c.waterY, z: c.jumpPoint.z });
+    const splash = frame(c.landing);
     splash.style = [{ type: 'big-splash', points: 30 }];
     d.step(splash);
     expect(d.active?.status).toBe('running');
@@ -358,7 +358,7 @@ describe('Gig-specific anti-cheat physics fact requirements', () => {
     const d = new GigDirector(catalog);
     const c = configOf(d.startPractice('splash-dive', 'easy'), 'splash-dive');
     d.step(frame(c.jumpPoint));
-    const f = frame({ x: c.jumpPoint.x, y: c.waterY, z: c.jumpPoint.z });
+    const f = frame(c.landing);
     d.step(f);
     expect(d.active?.status).toBe('running');
     f.style = [{ type: 'big-splash', points: 25 }];
