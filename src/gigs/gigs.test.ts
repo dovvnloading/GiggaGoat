@@ -117,11 +117,15 @@ function scriptedTick(setup: GigSetup, target: Rating, t: number, finishAt: numb
         t === finishAt ? c.checkpoints.length - 1 : c.checkpoints.length - 2;
       f.goat.position = position(c.checkpoints[Math.max(0, reached)]!);
       if (t <= 100) acts.push({ type: 'climb', metres: 0.25 });
+      if (c.requiresBleat && t === finishAt) acts.push({ type: 'bleat' });
       break;
     }
     case 'splash-dive': {
       if (t === 1) f.goat.position = position(c.jumpPoint);
-      if (t === 2) f.goat.position = shifted(c.jumpPoint, 0, c.minDrop + 3);
+      if (t === 2) {
+        f.goat.position = shifted(c.jumpPoint, 0, c.minDrop + 3);
+        if (c.requiresFlop) acts.push({ type: 'flop' });
+      }
       if (t === finishAt) {
         f.goat.position = { x: c.jumpPoint.x, y: c.waterY, z: c.jumpPoint.z };
         f.style = [{ type: 'big-splash', points: 40 }];
@@ -165,12 +169,15 @@ describe('Gig boards and real world integration', () => {
     expect(before.refreshInTicks).toBe(1);
     expect(after.cycle).toBe(1);
     expect(after.offers).not.toEqual(before.offers);
-    const tiers = new Set< Difficulty >();
+    const tiers = new Set<Difficulty>();
     for (let cycle = 0; cycle < 6; cycle++) {
       for (const offer of catalog.board('crane-yard', cycle * BOARD_CYCLE_TICKS).offers) tiers.add(offer.difficulty);
     }
     expect([...tiers].sort()).toEqual([...DIFFICULTIES].sort());
     for (const id of GIG_IDS) expect(GIG_INFO[id].poiId).toBeDefined();
+    for (const poi of island.pois) {
+      expect(catalog.board(poi.id, 0).offers.length).toBeGreaterThan(0);
+    }
   });
   it('only starts posted offers, and expires old ones', () => {
     const director = new GigDirector(catalog);
@@ -193,9 +200,10 @@ describe('Gig boards and real world integration', () => {
     expect(hay.barn.x).toBe(barn.transform.position.x);
     const roof = configOf(catalog.build(catalog.makeOffer('rooftop-express', 'hard')), 'rooftop-express');
     expect(roof.checkpoints.length).toBe(4);
-    expect(roof.checkpoints.every(cp => island.props.some(p => p.poiId === 'downtown-bleatsville' &&
-      Math.abs(p.transform.position.x - cp.x) < 0.01 && p.kind === 'shop' || 
-      (p.poiId === 'downtown-bleatsville' && Math.abs(p.transform.position.x - cp.x) < 0.01 && p.kind === 'house')))).toBe(true);
+    expect(roof.checkpoints.every(cp => island.props.some(p =>
+      p.poiId === 'downtown-bleatsville' && (p.kind === 'shop' || p.kind === 'house') &&
+      Math.abs(p.transform.position.x - cp.x) < 0.01 &&
+      Math.abs(p.transform.position.z - cp.z) < 0.01))).toBe(true);
     const demolition = catalog.build(catalog.makeOffer('demolition-contract', 'easy'));
     expect(demolition.spawns.every(p => p.role === 'tower' && p.mass > 0)).toBe(true);
     expect(island.props.some(p => p.poiId === 'crane-yard' && p.kind === 'tower')).toBe(true);
@@ -318,6 +326,32 @@ describe('Gig-specific anti-cheat physics fact requirements', () => {
       f.abilities = [{ type: 'climb', metres: 0.4 }];
       d.step(f);
     }
+    expect(d.active?.status).toBe('completed');
+  });
+  it('Dam Bomb requires a flop before a real reservoir splash', () => {
+    const d = new GigDirector(catalog);
+    const c = configOf(d.startPractice('dam-bomb', 'easy'), 'splash-dive');
+    d.step(frame(c.jumpPoint));
+    const splash = frame({ x: c.jumpPoint.x, y: c.waterY, z: c.jumpPoint.z });
+    splash.style = [{ type: 'big-splash', points: 30 }];
+    d.step(splash);
+    expect(d.active?.status).toBe('running');
+    const flop = frame(c.jumpPoint);
+    flop.abilities = [{ type: 'flop' }];
+    d.step(flop);
+    d.step(splash);
+    expect(d.active?.status).toBe('completed');
+  });
+  it('Beacon Bleat requires a real bleat at the lighthouse summit', () => {
+    const d = new GigDirector(catalog);
+    const c = configOf(d.startPractice('beacon-bleat', 'easy'), 'summit-sprint');
+    for (const cp of c.checkpoints) d.step(frame(cp));
+    const final = frame(c.checkpoints[c.checkpoints.length - 1]!);
+    final.abilities = [{ type: 'climb', metres: 0.4 }];
+    for (let i = 0; i < 15; i++) d.step(final);
+    expect(d.active?.status).toBe('running');
+    final.abilities = [{ type: 'bleat' }];
+    d.step(final);
     expect(d.active?.status).toBe('completed');
   });
   it('splash needs a real big-splash gameplay event, not merely touching water', () => {
