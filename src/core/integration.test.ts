@@ -43,7 +43,7 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
     } finally { game.dispose(); }
   });
 
-  it('charges a headbutt through GoatAbilities and moves a world prop with physical momentum', async () => {
+  it('charges a headbutt through GoatAbilities and moves a real dynamic prop with physical momentum', async () => {
     const game = await create();
     try {
       ticks(game, 125);
@@ -52,6 +52,7 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
       // this test isolates the charged interaction rather than prop lifetime.
       const body = game.physics.createBox(V(0, 100, 0), V(.25, .25, .25), 10);
       ticks(game, 35, { chargeHeadbutt: true });
+      expect(game.rules.abilities.headbuttCharge).toBeGreaterThan(.45);
       const head = game.goat.head.translation(), dir = forward(game.goat.locomotion.heading);
       body.setTranslation(V(head.x + dir.x * .9, head.y - .06, head.z + dir.z * .9), true);
       body.setLinvel(V(), true);
