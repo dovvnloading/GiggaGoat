@@ -115,6 +115,8 @@ export interface HeistState {
   scores: Record<string, number>;
   previousHeadbutt: Record<string, boolean>;
   lastKickTick: Record<string, number>;
+  /** Prevent instant re-latching after a shove, exhaustion or deliberate drop. */
+  pickupBlockedUntil: Record<string, number>;
   overtimeScore: boolean;
 }
 export interface MatchSnapshot {
