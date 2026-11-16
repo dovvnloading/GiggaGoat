@@ -30,9 +30,9 @@ export class GameInput {
 
   constructor(private readonly canvas: HTMLCanvasElement, initialYaw: number) {
     this.yaw = initialYaw;
-    const listen = <K extends keyof WindowEventMap>(
-      target: Window | Document | HTMLElement, type: K,
-      fn: (event: WindowEventMap[K]) => void,
+    const listen = <K extends keyof (WindowEventMap & DocumentEventMap & HTMLElementEventMap)>(
+      target: EventTarget, type: K,
+      fn: (event: (WindowEventMap & DocumentEventMap & HTMLElementEventMap)[K]) => void,
     ): void => {
       target.addEventListener(type, fn as EventListener);
       this.unsubscribers.push(() => target.removeEventListener(type, fn as EventListener));
