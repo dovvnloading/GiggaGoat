@@ -31,6 +31,7 @@ const reference = element<HTMLElement>('reference');
 const referenceImage = element<HTMLImageElement>('reference-image');
 const referenceCaption = element<HTMLElement>('reference-caption');
 const performance = element<HTMLElement>('perf');
+const captureButton = element<HTMLButtonElement>('capture-all');
 for (const bookmark of ART_BOOKMARKS) {
   const option = document.createElement('option');
   option.value = bookmark.id;
@@ -75,6 +76,7 @@ const clock = new THREE.Clock();
 let elapsed = 0;
 let fps = 60;
 let sampleSeconds = 0;
+let capturing = false;
 
 function makeColliderGeometry(collider: ColliderDescriptor): THREE.BufferGeometry {
   if (collider.shape === 'heightfield') {
@@ -196,6 +198,113 @@ function applyBookmark(id: string): void {
   reference.hidden = !compareToggle.checked;
   updateStats();
 }
+/**
+ * A single downloadable contact sheet: at 1024×768 each, all 11 rendered
+ * bookmarks at left and the original paintings at right. This deliberately
+ * uses the actual WebGLRenderer/camera rather than an unrendered mockup.
+ */
+async function captureAllBookmarks(): Promise<void> {
+  if (capturing) return;
+  capturing = true;
+  captureButton.disabled = true;
+  const originalLabel = captureButton.textContent;
+  const saved = {
+    id: bookmarkInput.value,
+    position: camera.position.clone(),
+    quaternion: camera.quaternion.clone(),
+    fov: camera.fov,
+    target: orbit.target.clone(),
+    orbitEnabled: orbit.enabled,
+    flyEnabled: fly.enabled,
+    cameraMode: cameraInput.value,
+    day: dayInput.value,
+    tide: tideInput.value,
+    preset: presetInput.value,
+    compare: compareToggle.checked,
+    pixelRatio: renderer.getPixelRatio(),
+  };
+  const width = 1024, height = 768, captionHeight = 35;
+  const rowHeight = height + captionHeight;
+  const sheet = document.createElement('canvas');
+  sheet.width = width * 2;
+  sheet.height = rowHeight * ART_BOOKMARKS.length;
+  const ctx = sheet.getContext('2d');
+  try {
+    if (!ctx) throw new Error('2D canvas unavailable');
+    renderer.setPixelRatio(1);
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+    for (const [row, mark] of ART_BOOKMARKS.entries()) {
+      captureButton.textContent = 'Capturing ' + (row + 1) + ' / ' + ART_BOOKMARKS.length;
+      applyBookmark(mark.id);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      worldView.updateCulling(camera);
+      renderer.render(scene, camera);
+      const y = row * rowHeight;
+      // Copy immediately after render, before WebGL clears its backbuffer.
+      ctx.drawImage(renderer.domElement, 0, y, width, height);
+      const painting = new Image();
+      painting.src = '/docs/art/hifi/' + mark.image;
+      await painting.decode();
+      const factor = Math.min(width / painting.naturalWidth, height / painting.naturalHeight);
+      const w = painting.naturalWidth * factor, h = painting.naturalHeight * factor;
+      ctx.fillStyle = '#172b39';
+      ctx.fillRect(width, y, width, height);
+      ctx.drawImage(painting, width + (width - w) / 2, y + (height - h) / 2, w, h);
+      ctx.fillStyle = '#132235';
+      ctx.fillRect(0, y + height, width * 2, captionHeight);
+      ctx.fillStyle = '#f1f8ff';
+      ctx.font = '18px sans-serif';
+      ctx.fillText(mark.label + ' — live / seed ' + seedInput.value, 15, y + height + 24);
+      ctx.fillText('Concept painting · ' + mark.image, width + 15, y + height + 24);
+    }
+    const blob = await new Promise<Blob>((resolve, reject) => sheet.toBlob(
+      output => output ? resolve(output) : reject(new Error('PNG encoding failed')), 'image/png'));
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'billy-isle-' + seedInput.value.replace(/[^a-z0-9_-]/gi, '_') +
+      '-bookmark-comparison.png';
+    link.click();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('Bookmark comparison capture failed:', error);
+    captureButton.textContent = 'Capture failed (see console)';
+  } finally {
+    applyBookmark(saved.id);
+    camera.position.copy(saved.position);
+    camera.quaternion.copy(saved.quaternion);
+    camera.fov = saved.fov;
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    orbit.target.copy(saved.target);
+    orbit.enabled = saved.orbitEnabled;
+    fly.enabled = saved.flyEnabled;
+    cameraInput.value = saved.cameraMode;
+    bookmarkInput.value = saved.id;
+    dayInput.value = saved.day;
+    tideInput.value = saved.tide;
+    presetInput.value = saved.preset;
+    compareToggle.checked = saved.compare;
+    reference.hidden = !saved.compare;
+    worldView.setDayNight(Number(saved.day));
+    worldView.setTideLevel(Number(saved.tide));
+    const hour = Math.floor(Number(saved.day) * 24);
+    dayLabel.value = String(hour).padStart(2, '0') + ':00';
+    updateStats();
+    renderer.setPixelRatio(saved.pixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    capturing = false;
+    captureButton.disabled = false;
+    if (captureButton.textContent?.startsWith('Capturing')) {
+      captureButton.textContent = originalLabel;
+    }
+  }
+}
+captureButton.addEventListener('click', () => { void captureAllBookmarks(); });
+
 element<HTMLFormElement>('seed-form').addEventListener('submit', event => {
   event.preventDefault();
   regenerate();
@@ -238,6 +347,7 @@ window.addEventListener('resize', () => {
 });
 regenerate();
 renderer.setAnimationLoop(() => {
+  if (capturing) return;
   const delta = Math.min(clock.getDelta(), 0.08);
   elapsed += delta;
   fps = fps * 0.90 + (1 / Math.max(delta, 0.001)) * 0.10;
