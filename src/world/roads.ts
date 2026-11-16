@@ -3,16 +3,27 @@ import { clamp, lerp, SeededRandom } from './random';
 import { gridSample, riverAt, stampRoad } from './terrain';
 
 interface Link { from: PoiId; to: PoiId; type: 'road' | 'trail'; via?: Vec2[] }
+/** Main asphalt loop traces the coastal settlements; dirt spurs access the summit and islet. */
 const LINKS: Link[] = [
+  { from: 'hoofington', to: 'baa-ardwalk', type: 'road',
+    via: [{ x: -110, z: 185 }, { x: -35, z: 222 }, { x: 20, z: 226 }] },
+  { from: 'baa-ardwalk', to: 'downtown-bleatsville', type: 'road',
+    via: [{ x: 108, z: 205 }, { x: 165, z: 170 }] },
+  { from: 'downtown-bleatsville', to: 'crane-yard', type: 'road',
+    via: [{ x: 200, z: 60 }, { x: 212, z: 8 }] },
+  { from: 'crane-yard', to: 'the-dam', type: 'road',
+    via: [{ x: 171, z: -112 }, { x: 107, z: -175 }, { x: 38, z: -213 }] },
+  { from: 'the-dam', to: 'whispering-pines', type: 'road',
+    via: [{ x: -73, z: -217 }, { x: -112, z: -188 }] },
+  { from: 'whispering-pines', to: 'hoofington', type: 'road',
+    via: [{ x: -190, z: -80 }, { x: -209, z: 15 }, { x: -183, z: 88 }] },
+  { from: 'whispering-pines', to: 'old-lighthouse', type: 'trail',
+    via: [{ x: -185, z: -93 }, { x: -211, z: -18 }, { x: -244, z: -18 }] },
   { from: 'mt-gigga', to: 'hoofington', type: 'trail' },
-  { from: 'hoofington', to: 'the-dam', type: 'road', via: [{ x: -157, z: 14 }, { x: -128, z: -38 }] },
-  { from: 'the-dam', to: 'whispering-pines', type: 'trail', via: [{ x: -37, z: -124 }, { x: -77, z: -163 }] },
-  { from: 'whispering-pines', to: 'old-lighthouse', type: 'trail', via: [{ x: -165, z: -158 }] },
-  { from: 'hoofington', to: 'downtown-bleatsville', type: 'road', via: [{ x: -72, z: 155 }, { x: 42, z: 142 }, { x: 127, z: 35 }] },
-  { from: 'downtown-bleatsville', to: 'crane-yard', type: 'road', via: [{ x: 177, z: -10 }] },
-  { from: 'downtown-bleatsville', to: 'baa-ardwalk', type: 'road', via: [{ x: 121, z: 62 }, { x: 105, z: 148 }] },
-  { from: 'baa-ardwalk', to: 'crane-yard', type: 'road', via: [{ x: 198, z: 175 }] },
-  { from: 'old-lighthouse', to: 'hoofington', type: 'trail', via: [{ x: -221, z: 18 }] },
+  { from: 'mt-gigga', to: 'the-dam', type: 'trail',
+    via: [{ x: 73, z: -92 }, { x: 58, z: -161 }] },
+  { from: 'downtown-bleatsville', to: 'mt-gigga', type: 'trail',
+    via: [{ x: 88, z: 91 }, { x: 62, z: 54 }] },
 ];
 
 function catmullRom(controls: Vec2[], step: number): Vec2[] {
@@ -96,7 +107,7 @@ export function makeRoads(island: IslandData, rng: SeededRandom): RoadDescriptor
   const scale = island.size / 600;
   for (const link of LINKS) {
     const from = byId.get(link.from)!, to = byId.get(link.to)!;
-    const waypoints: Vec2[] = link.from === 'mt-gigga'
+    const waypoints: Vec2[] = link.from === 'mt-gigga' && link.to === 'hoofington'
       ? mountainSwitchbacks(island)
       : catmullRom([
         { x: from.center.x, z: from.center.z },
@@ -115,14 +126,21 @@ export function makeRoads(island: IslandData, rng: SeededRandom): RoadDescriptor
     const width = (link.type === 'road' ? 7.5 : 3.8) * scale;
     for (const p of points) {
       const water = riverAt(p, island.river);
-      p.bridge = water.distance < (water.width + width) / 2 + 2 * scale
-        && p.y > water.level - 0.5 * scale;
+      const isletCrossing = (link.to === 'old-lighthouse' || link.from === 'old-lighthouse') &&
+        p.x > -246 * scale && p.x < -203 * scale &&
+        Math.abs(p.z + 18 * scale) < 35 * scale;
+      p.bridge = isletCrossing || (water.distance < (water.width + width) / 2 + 2 * scale
+        && p.y > water.level - 0.5 * scale);
       if (p.bridge) p.y = Math.max(p.y, water.level + 2.3 * scale);
     }
     // Re-project after bridge lifts (both gradients and pads remain constrained).
     gradeRoad(points, link.type === 'trail' ? 0.24 : 0.17);
     for (let i = 0; i < points.length - 1; i++) {
-      stampRoad(island, points[i]!, points[i + 1]!, width, island.river);
+      // Decks span the sea channel without filling it with a terrain causeway.
+      if (!((link.from === 'old-lighthouse' || link.to === 'old-lighthouse') &&
+        (points[i]!.bridge || points[i + 1]!.bridge))) {
+        stampRoad(island, points[i]!, points[i + 1]!, width, island.river);
+      }
     }
     roads.push({
       id: link.from + '--' + link.to, from: link.from, to: link.to,
