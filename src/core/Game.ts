@@ -1,4 +1,4 @@
-import type { RigidBody, Collider } from '@dimforge/rapier3d-compat';
+import type { RigidBody, ColliderDesc } from '@dimforge/rapier3d-compat';
 import {
   PhysicsWorld, GoatRagdoll, RAPIER, V, forward, add, mul, collisionGroups,
   type Vec3, type GoatSize, type PhysicsEvent,
@@ -174,7 +174,7 @@ export class Game {
         body = this.physics.raw.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
           .setTranslation(p.x, p.y, p.z).setRotation(rotation)
           .setLinearDamping(.35).setAngularDamping(.48).setCcdEnabled(true));
-        let shape: InstanceType<typeof RAPIER.ColliderDesc>;
+        let shape: ColliderDesc;
         if (desc.shape === 'cuboid') shape = RAPIER.ColliderDesc.cuboid(desc.size.x / 2, desc.size.y / 2, desc.size.z / 2);
         else if (desc.shape === 'cylinder') shape = RAPIER.ColliderDesc.cylinder(desc.size.y / 2, Math.max(desc.size.x, desc.size.z) / 2);
         else {
