@@ -22,7 +22,13 @@ export type PropKind =
   | 'bumper' | 'booth' | 'satellite-dish' | 'dam-wall'
   | 'fence' | 'hay-bale' | 'crate' | 'barrel' | 'tree-pine' | 'tree-oak'
   | 'rock' | 'log' | 'lamp' | 'ramp' | 'ledge' | 'bridge'
-  | 'bench' | 'sign' | 'flag' | 'buoy' | 'platform';
+  | 'bench' | 'sign' | 'flag' | 'buoy' | 'platform'
+  | 'silo' | 'mailbox' | 'gnome' | 'trampoline' | 'bunting'
+  | 'container' | 'cone' | 'awning' | 'planter' | 'fountain'
+  | 'ac-unit' | 'water-tower' | 'mushroom' | 'stump' | 'lookout'
+  | 'control-house' | 'dock' | 'cottage' | 'shipwreck'
+  | 'cave-mouth' | 'bush' | 'flower' | 'grass-tuft' | 'rope-rail'
+  | 'stepping-stone' | 'chimney' | 'signboard';
 
 export type BodyDescriptor =
   | { type: 'static' }

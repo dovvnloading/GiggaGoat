@@ -1,351 +1,358 @@
 import * as THREE from 'three';
-import type { Biome, IslandData, PropDescriptor, PropKind } from './types';
+import type { Biome, IslandData } from './types';
 import { BIOMES } from './types';
-import { clamp } from './random';
-import { gridCoordinate, gridIndex } from './terrain';
+import { clamp, smoothstep } from './random';
+import { gridCoordinate, gridIndex, segmentProjection } from './terrain';
+import { buildPropVisuals, TOON_RAMP } from './visual-props';
+import { buildWaterVisuals } from './visual-water';
+import { buildSkyVisuals, type LightingPreset } from './visual-sky';
 
 export interface WorldSceneOptions {
-  /** Grid segments per independently culled terrain mesh; default 32. */
+  /** Segments per terrain chunk, default 32. */
   chunkSegments?: number;
-  /** Furthest chunk distance in metres. */
+  /** Maximum distance for full-sized geometry, defaults to 1.4 island widths. */
   cullingDistance?: number;
+  /** Spatial extent of one prop instancing batch, default 96 metres. */
+  propChunkSize?: number;
 }
 export interface WorldScene {
   group: THREE.Group;
   chunks: THREE.Mesh[];
   water: THREE.Mesh;
   sun: THREE.DirectionalLight;
-  /** Day progresses 0..1; 0.25 is sunrise and 0.5 is midday. */
+  /** Phase 0..1, midpoint is noon; backward-compatible with the original lane. */
   setDayNight(phase: number): void;
+  /** Day, painterly golden hour and starry night bookmarks. */
+  setLightingPreset(preset: LightingPreset): void;
+  /** Sea shader and surface position both follow the mutable tide level. */
   setTideLevel(level: number): void;
+  /** Call with elapsed seconds to animate sea, waterfalls and foliage. */
+  update(time: number): void;
+  /** Frustum culling, vegetation distance LOD and a half-resolution terrain LOD. */
   updateCulling(camera: THREE.Camera): void;
   dispose(): void;
 }
-
-const PALETTE: Record<Biome, number> = {
-  ocean: 0x50a7bf, beach: 0xf4dc94, meadow: 0x8fd266,
-  farmland: 0xc2cf73, town: 0xcbd8bc, industrial: 0xc0bbae,
-  'pine-forest': 0x4f9f75, highlands: 0x96ae79, cliff: 0x9da1a9,
-  freshwater: 0x55b7cf,
-};
-const PROP_COLORS: Record<PropKind, number> = {
-  barn: 0xe66b64, house: 0xf5d889, shop: 0x96d4e7, tower: 0xabb7ca,
-  windmill: 0xf9f1d7, lighthouse: 0xf4e7cc, 'ferris-wheel': 0xf9a1bc,
-  crane: 0xffd051, scaffold: 0xd4ad65, beam: 0xffc44e,
-  pier: 0xa57f5a, deck: 0xb68a66, bumper: 0xe38ce2,
-  booth: 0xf7a07e, 'satellite-dish': 0xdce5e8, 'dam-wall': 0xabb3bb,
-  fence: 0xe5c587, 'hay-bale': 0xf5d15c, crate: 0xc4915f,
-  barrel: 0xe67d5d, 'tree-pine': 0x438d5d, 'tree-oak': 0x72af54,
-  rock: 0x969ba7, log: 0x8f6b4b, lamp: 0xffe5b7,
-  ramp: 0xe5b974, ledge: 0xbbb5aa, bridge: 0xb28f6a,
-  bench: 0x8c714e, sign: 0xf6e3c2, flag: 0xf66e95, buoy: 0xf79a4e,
-  platform: 0xc9b08c,
-};
-
-function rampGeometry(): THREE.BufferGeometry {
-  const positions = new Float32Array([
-    -0.5, -0.5, -0.5, 0.5, -0.5, -0.5,
-    -0.5, -0.5, 0.5, 0.5, -0.5, 0.5,
-    -0.5, 0.5, 0.5, 0.5, 0.5, 0.5,
-  ]);
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geometry.setIndex([
-    0, 2, 1, 1, 2, 3, // base
-    2, 4, 3, 3, 4, 5, // high end
-    0, 1, 4, 1, 5, 4, // slope
-    0, 4, 2, 1, 3, 5, // sides
-  ]);
-  geometry.computeVertexNormals();
-  return geometry;
-}
-function primitiveFor(kind: PropKind): THREE.BufferGeometry {
-  if (kind === 'ramp') return rampGeometry();
-  if (kind === 'ferris-wheel') return new THREE.TorusGeometry(0.5, 0.033, 5, 28);
-  if (kind === 'rock') return new THREE.IcosahedronGeometry(0.67, 0);
-  if (kind === 'tree-pine') return new THREE.ConeGeometry(0.5, 1, 5);
-  if (kind === 'tree-oak') return new THREE.DodecahedronGeometry(0.62, 0);
-  if (kind === 'flag') return new THREE.ConeGeometry(0.5, 1, 3);
-  if (['windmill', 'lighthouse', 'crane', 'lamp', 'scaffold', 'satellite-dish',
-    'hay-bale', 'barrel', 'bumper', 'log', 'buoy'].includes(kind)) {
-    return new THREE.CylinderGeometry(0.5, 0.5, 1, 7, 1);
-  }
-  return new THREE.BoxGeometry(1, 1, 1);
-}
+export type { LightingPreset } from './visual-sky';
 
 interface Chunk {
   mesh: THREE.Mesh;
   sphere: THREE.Sphere;
+  high: THREE.BufferGeometry;
+  low: THREE.BufferGeometry;
 }
+const COLORS = {
+  grass: new THREE.Color('#77B754'),
+  pine: new THREE.Color('#568F59'),
+  sand: new THREE.Color('#F7DB99'),
+  rock: new THREE.Color('#8C919E'),
+  farmland: new THREE.Color('#95BA61'),
+  town: new THREE.Color('#83B96A'),
+  industrial: new THREE.Color('#9EAE90'),
+  dirt: new THREE.Color('#C7A372'),
+  freshwater: new THREE.Color('#598F99'),
+  submerged: new THREE.Color('#4D9C9F'),
+} as const;
 
-function buildTerrain(island: IslandData, chunkSegments: number): Chunk[] {
-  const n = island.resolution;
-  const chunks: Chunk[] = [];
+interface RoadSample { x: number; z: number; width: number; type: 'road' | 'trail' }
+function roadGrid(island: IslandData, cell: number): Map<string, RoadSample[]> {
+  const cells = new Map<string, RoadSample[]>();
+  const insert = (x: number, z: number, sample: RoadSample): void => {
+    const key = x + ':' + z;
+    const list = cells.get(key) ?? [];
+    list.push(sample);
+    cells.set(key, list);
+  };
+  for (const road of island.roads) {
+    for (let i = 0; i < road.points.length; i += 2) {
+      const p = road.points[i]!;
+      const sample: RoadSample = { x: p.x, z: p.z, width: road.width, type: road.type };
+      insert(Math.floor(p.x / cell), Math.floor(p.z / cell), sample);
+    }
+  }
+  return cells;
+}
+function roadMix(lookup: Map<string, RoadSample[]>, x: number, z: number,
+  cell: number): number {
+  const cx = Math.floor(x / cell), cz = Math.floor(z / cell);
+  let blend = 0;
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    const samples = lookup.get((cx + dx) + ':' + (cz + dz));
+    if (!samples) continue;
+    for (const p of samples) {
+      if (p.type !== 'trail') continue;
+      const distance = Math.hypot(x - p.x, z - p.z);
+      blend = Math.max(blend, 1 - smoothstep(p.width * 0.28, p.width * 0.70 + 2.3, distance));
+    }
+  }
+  return blend;
+}
+function terrainGeometry(
+  island: IslandData, startX: number, startZ: number, countX: number, countZ: number,
+  lodStep: number, roads: Map<string, RoadSample[]>,
+): THREE.BufferGeometry {
+  const n = island.resolution, metres = island.size / (n - 1);
+  const cx = gridCoordinate(island.size, n, startX + countX / 2);
+  const cz = gridCoordinate(island.size, n, startZ + countZ / 2);
+  const xs: number[] = [], zs: number[] = [];
+  for (let i = 0; i < countX; i += lodStep) xs.push(startX + i);
+  xs.push(startX + countX);
+  for (let i = 0; i < countZ; i += lodStep) zs.push(startZ + i);
+  zs.push(startZ + countZ);
+  const positions: number[] = [], normals: number[] = [], colors: number[] = [];
+  const indices: number[] = [];
   const color = new THREE.Color();
-  for (let startZ = 0; startZ < n - 1; startZ += chunkSegments) {
-    for (let startX = 0; startX < n - 1; startX += chunkSegments) {
-      const countX = Math.min(chunkSegments, n - 1 - startX);
-      const countZ = Math.min(chunkSegments, n - 1 - startZ);
+  const sample = (x: number, z: number): number =>
+    island.heights[gridIndex(n, Math.max(0, Math.min(n - 1, x)),
+      Math.max(0, Math.min(n - 1, z)))]!;
+  for (const iz of zs) for (const ix of xs) {
+    const h = sample(ix, iz);
+    const x = gridCoordinate(island.size, n, ix), z = gridCoordinate(island.size, n, iz);
+    const dx = (sample(ix + 1, iz) - sample(ix - 1, iz)) /
+      ((ix > 0 && ix < n - 1) ? 2 * metres : metres);
+    const dz = (sample(ix, iz + 1) - sample(ix, iz - 1)) /
+      ((iz > 0 && iz < n - 1) ? 2 * metres : metres);
+    const slope = Math.hypot(dx, dz);
+    const normal = new THREE.Vector3(-dx, 1, -dz).normalize();
+    normals.push(normal.x, normal.y, normal.z);
+    positions.push(x - cx, h, z - cz);
+    const biome: Biome = BIOMES[island.biomeMap[gridIndex(n, ix, iz)] ?? 2] ?? 'meadow';
+    const base = biome === 'pine-forest' ? COLORS.pine
+      : biome === 'farmland' ? COLORS.farmland
+      : biome === 'town' ? COLORS.town
+      : biome === 'industrial' ? COLORS.industrial : COLORS.grass;
+    color.copy(base);
+    const sand = 1 - smoothstep(1.8, 7.3, h);
+    color.lerp(COLORS.sand, sand);
+    const cliff = Math.max(smoothstep(0.56, 1.35, slope),
+      smoothstep(82, 112, h) * 0.25);
+    color.lerp(COLORS.rock, cliff);
+    if (biome === 'freshwater') color.lerp(COLORS.freshwater, 0.7);
+    if (h < -0.4) color.lerp(COLORS.submerged, 0.8);
+    color.lerp(COLORS.dirt, roadMix(roads, x, z, 22) * (1 - cliff) * 0.93);
+    // Baked curvature/contact occlusion, plus a very fine hand-painted variance.
+    const depression = Math.max(0,
+      (sample(ix + 1, iz) + sample(ix - 1, iz) +
+       sample(ix, iz + 1) + sample(ix, iz - 1)) * 0.25 - h);
+    const ambient = 1 - clamp(depression * 0.10, 0, 0.23);
+    const variation = 0.972 + Math.sin(x * 0.19 + z * 0.11) *
+      Math.cos(z * 0.13 - x * 0.07) * 0.022;
+    color.multiplyScalar(ambient * variation);
+    colors.push(color.r, color.g, color.b);
+  }
+  const stride = xs.length;
+  for (let z = 0; z < zs.length - 1; z++) for (let x = 0; x < xs.length - 1; x++) {
+    const a = z * stride + x, b = a + 1, c = a + stride, d = c + 1;
+    indices.push(a, c, b, b, c, d);
+  }
+  // LOD skirts hide tiny cracks wherever near and far chunk resolutions meet.
+  const edges: number[][] = [
+    xs.map((_, i) => i),
+    xs.map((_, i) => (zs.length - 1) * stride + i),
+    zs.map((_, i) => i * stride),
+    zs.map((_, i) => i * stride + stride - 1),
+  ];
+  for (const edge of edges) {
+    const bottom: number[] = [];
+    for (const top of edge) {
+      const idx = positions.length / 3;
+      positions.push(positions[top * 3]!, positions[top * 3 + 1]! - 3.5,
+        positions[top * 3 + 2]!);
+      normals.push(normals[top * 3]!, normals[top * 3 + 1]!, normals[top * 3 + 2]!);
+      colors.push(colors[top * 3]! * 0.79, colors[top * 3 + 1]! * 0.79,
+        colors[top * 3 + 2]! * 0.79);
+      bottom.push(idx);
+    }
+    for (let i = 1; i < edge.length; i++) {
+      const a = edge[i - 1]!, b = edge[i]!, c = bottom[i - 1]!, d = bottom[i]!;
+      indices.push(a, b, c, b, d, c, c, b, a, c, d, b);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+function buildTerrain(island: IslandData, segments: number): Chunk[] {
+  const n = island.resolution;
+  const material = new THREE.MeshToonMaterial({
+    vertexColors: true, gradientMap: TOON_RAMP, side: THREE.FrontSide,
+  });
+  const lookup = roadGrid(island, 22);
+  const chunks: Chunk[] = [];
+  for (let startZ = 0; startZ < n - 1; startZ += segments) {
+    for (let startX = 0; startX < n - 1; startX += segments) {
+      const countX = Math.min(segments, n - 1 - startX);
+      const countZ = Math.min(segments, n - 1 - startZ);
       const cx = gridCoordinate(island.size, n, startX + countX / 2);
       const cz = gridCoordinate(island.size, n, startZ + countZ / 2);
-      const positions: number[] = [], colors: number[] = [], indices: number[] = [];
-      let lowest = Infinity, highest = -Infinity;
-      for (let z = 0; z <= countZ; z++) for (let x = 0; x <= countX; x++) {
-        const ix = startX + x, iz = startZ + z;
-        const index = gridIndex(n, ix, iz);
-        const h = island.heights[index]!;
-        lowest = Math.min(lowest, h); highest = Math.max(highest, h);
-        positions.push(gridCoordinate(island.size, n, ix) - cx, h,
-          gridCoordinate(island.size, n, iz) - cz);
-        const biome = BIOMES[island.biomeMap[index]!] ?? 'meadow';
-        color.setHex(PALETTE[biome]);
-        // Small height tint keeps steep faces legible from a distance.
-        const tint = 0.88 + clamp(h / 250, 0, 0.13);
-        colors.push(color.r * tint, color.g * tint, color.b * tint);
-      }
-      const stride = countX + 1;
-      for (let z = 0; z < countZ; z++) for (let x = 0; x < countX; x++) {
-        const a = z * stride + x, b = a + 1, c = a + stride, d = c + 1;
-        indices.push(a, c, b, b, c, d);
-      }
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-      geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-      geometry.setIndex(indices);
-      geometry.computeVertexNormals();
-      const mesh = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({
-        vertexColors: true, side: THREE.FrontSide, flatShading: true,
-      }));
+      const high = terrainGeometry(island, startX, startZ, countX, countZ, 1, lookup);
+      const low = terrainGeometry(island, startX, startZ, countX, countZ, 2, lookup);
+      const mesh = new THREE.Mesh(high, material);
       mesh.position.set(cx, 0, cz);
       mesh.receiveShadow = true;
+      mesh.castShadow = true;
+      mesh.frustumCulled = false;
+      mesh.name = 'terrain-chunk-' + startX + '-' + startZ;
       mesh.userData['terrainChunk'] = true;
-      const spanX = countX * island.size / (n - 1), spanZ = countZ * island.size / (n - 1);
-      const sphere = new THREE.Sphere(new THREE.Vector3(cx, (lowest + highest) / 2, cz),
-        Math.hypot(spanX / 2, spanZ / 2, (highest - lowest) / 2) + 4);
-      chunks.push({ mesh, sphere });
+      const local = high.boundingSphere ?? new THREE.Sphere();
+      const sphere = local.clone();
+      sphere.center.add(new THREE.Vector3(cx, 0, cz));
+      chunks.push({ mesh, sphere, high, low });
     }
   }
   return chunks;
 }
-
-function addInstances(group: THREE.Group, props: readonly PropDescriptor[]): void {
-  const sets = new Map<PropKind, PropDescriptor[]>();
-  for (const p of props) {
-    const list = sets.get(p.kind) ?? [];
-    list.push(p);
-    sets.set(p.kind, list);
-  }
-  const dummy = new THREE.Object3D();
-  for (const [kind, entries] of sets) {
-    const geometry = primitiveFor(kind);
-    const material = new THREE.MeshLambertMaterial({
-      color: 0xffffff, flatShading: true, side: THREE.DoubleSide,
-    });
-    const mesh = new THREE.InstancedMesh(geometry, material, entries.length);
-    const color = new THREE.Color();
-    mesh.name = 'props-' + kind;
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    for (let i = 0; i < entries.length; i++) {
-      const entry = entries[i]!;
-      const { position, rotationY } = entry.transform;
-      dummy.position.set(position.x, position.y, position.z);
-      dummy.rotation.set(0, rotationY, 0);
-      dummy.scale.set(entry.size.x, entry.size.y,
-        kind === 'ferris-wheel' ? 1 : entry.size.z);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-      color.setHex(entry.color ?? PROP_COLORS[kind]);
-      mesh.setColorAt(i, color);
-    }
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    mesh.computeBoundingSphere();
-    group.add(mesh);
-  }
-
-  // Bright, flat, walkable roof caps make the urban parkour language immediately clear.
-  const roofs = props.filter(p => ['barn', 'house', 'shop', 'tower', 'booth'].includes(p.kind));
-  if (roofs.length) {
-    const cap = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshLambertMaterial({ color: 0xffffff }), roofs.length);
-    for (let i = 0; i < roofs.length; i++) {
-      const p = roofs[i]!;
-      dummy.position.set(p.transform.position.x,
-        p.transform.position.y + p.size.y / 2 + 0.09, p.transform.position.z);
-      dummy.rotation.set(0, p.transform.rotationY, 0);
-      dummy.scale.set(p.size.x + 0.22, 0.18, p.size.z + 0.22);
-      dummy.updateMatrix();
-      cap.setMatrixAt(i, dummy.matrix);
-      cap.setColorAt(i, new THREE.Color(p.kind === 'barn' ? 0x8c4850 : 0xedeadf));
-    }
-    cap.name = 'walkable-roof-accents';
-    cap.instanceMatrix.needsUpdate = true;
-    group.add(cap);
-  }
-}
-
-function buildRoads(island: IslandData): THREE.InstancedMesh[] {
-  const meshes: THREE.InstancedMesh[] = [];
-  const base = new THREE.Vector3(0, 0, 1);
+function buildRoads(island: IslandData): THREE.Group {
+  const group = new THREE.Group();
+  group.name = 'graded-ring-road-and-trails';
+  const forward = new THREE.Vector3(0, 0, 1);
   const direction = new THREE.Vector3(), midpoint = new THREE.Vector3();
-  const quaternion = new THREE.Quaternion(), matrix = new THREE.Matrix4(), size = new THREE.Vector3();
+  const rotation = new THREE.Quaternion(), matrix = new THREE.Matrix4();
   for (const type of ['road', 'trail'] as const) {
     const segments = island.roads.filter(r => r.type === type)
-      .flatMap(r => r.points.slice(1).map((b, i) => ({ a: r.points[i]!, b, width: r.width })));
+      .flatMap(r => r.points.slice(1).map((b, i) =>
+        ({ a: r.points[i]!, b, width: r.width })));
+    const material = new THREE.MeshToonMaterial({
+      color: type === 'road' ? 0x727e8a : 0xc3a06c, gradientMap: TOON_RAMP,
+    });
     const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshLambertMaterial({ color: type === 'road' ? 0x6f8094 : 0xc3a577 }),
-      segments.length);
+      material, segments.length);
+    mesh.name = 'paths-' + type;
+    mesh.receiveShadow = true;
     for (let i = 0; i < segments.length; i++) {
       const { a, b, width } = segments[i]!;
       direction.set(b.x - a.x, b.y - a.y, b.z - a.z);
-      const length = direction.length();
-      if (length < 1e-7) continue;
-      quaternion.setFromUnitVectors(base, direction.normalize());
-      midpoint.set((a.x + b.x) / 2, (a.y + b.y) / 2 + 0.12, (a.z + b.z) / 2);
-      size.set(width, 0.15, length + 0.25);
-      matrix.compose(midpoint, quaternion, size);
+      const length = Math.max(0.01, direction.length());
+      rotation.setFromUnitVectors(forward, direction.normalize());
+      midpoint.set((a.x + b.x) / 2, (a.y + b.y) / 2 + 0.13, (a.z + b.z) / 2);
+      matrix.compose(midpoint, rotation,
+        new THREE.Vector3(width, 0.14, length + 0.35));
       mesh.setMatrixAt(i, matrix);
     }
-    mesh.name = 'paths-' + type;
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
-    meshes.push(mesh);
-  }
-  return meshes;
-}
-
-function buildRivers(island: IslandData): THREE.Group {
-  const water = new THREE.Group();
-  const vertices: number[] = [], indices: number[] = [];
-  for (let i = 0; i < island.river.length; i++) {
-    const p = island.river[i]!;
-    const before = island.river[Math.max(0, i - 1)]!;
-    const after = island.river[Math.min(island.river.length - 1, i + 1)]!;
-    const dx = after.x - before.x, dz = after.z - before.z;
-    const length = Math.hypot(dx, dz) || 1;
-    const nx = -dz / length, nz = dx / length;
-    vertices.push(p.x - nx * p.width / 2, p.level + 0.08, p.z - nz * p.width / 2);
-    vertices.push(p.x + nx * p.width / 2, p.level + 0.08, p.z + nz * p.width / 2);
-    if (i > 0) {
-      const offset = i * 2;
-      indices.push(offset - 2, offset - 1, offset, offset - 1, offset + 1, offset);
+    group.add(mesh);
+    if (type === 'road') {
+      const marks = segments.filter((_, i) => i % 5 === 0);
+      const dashes = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1),
+        new THREE.MeshBasicMaterial({ color: 0xffe0a5 }), marks.length);
+      dashes.name = 'road-centre-dashes';
+      for (let i = 0; i < marks.length; i++) {
+        const { a, b } = marks[i]!;
+        direction.set(b.x - a.x, b.y - a.y, b.z - a.z);
+        rotation.setFromUnitVectors(forward, direction.normalize());
+        midpoint.set((a.x + b.x) / 2, (a.y + b.y) / 2 + 0.225, (a.z + b.z) / 2);
+        matrix.compose(midpoint, rotation, new THREE.Vector3(0.18, 0.03, 2.6));
+        dashes.setMatrixAt(i, matrix);
+      }
+      dashes.instanceMatrix.needsUpdate = true;
+      group.add(dashes);
     }
   }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  water.add(new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
-    color: 0x59c7db, transparent: true, opacity: 0.87, side: THREE.DoubleSide,
-  })));
-  const reservoir = island.reservoir;
-  const lake = new THREE.Mesh(new THREE.CircleGeometry(1, 40),
-    new THREE.MeshBasicMaterial({ color: 0x62c5de, transparent: true, opacity: 0.84, side: THREE.DoubleSide }));
-  lake.position.set(reservoir.center.x, reservoir.level + 0.09, reservoir.center.z);
-  lake.rotation.x = -Math.PI / 2;
-  lake.scale.set(reservoir.radiusX, reservoir.radiusZ, 1);
-  water.add(lake);
-  return water;
+  return group;
 }
 
-function buildSky(): { mesh: THREE.Mesh; uniforms: { uDay: { value: number }; uSun: { value: THREE.Vector3 } } } {
-  const uniforms = { uDay: { value: 1 }, uSun: { value: new THREE.Vector3(0, 1, 0) } };
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1800, 24, 16),
-    new THREE.ShaderMaterial({
-      uniforms,
-      side: THREE.BackSide, depthWrite: false,
-      vertexShader: [
-        'varying vec3 vDirection;',
-        'void main() { vDirection = normalize(position);',
-        'gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      ].join('\n'),
-      fragmentShader: [
-        'uniform float uDay; uniform vec3 uSun; varying vec3 vDirection;',
-        'void main() {',
-        '  float h = smoothstep(-0.18, 0.83, normalize(vDirection).y);',
-        '  vec3 day = mix(vec3(0.98, 0.77, 0.54), vec3(0.24, 0.61, 0.92), h);',
-        '  vec3 night = mix(vec3(0.17, 0.18, 0.35), vec3(0.019, 0.042, 0.13), h);',
-        '  float halo = pow(max(dot(normalize(vDirection), normalize(uSun)), 0.0), 160.0);',
-        '  gl_FragColor = vec4(mix(night, day, uDay) + vec3(1.0, 0.84, 0.53) * halo * uDay, 1.0);',
-        '}',
-      ].join('\n'),
-    }));
-  mesh.frustumCulled = false;
-  mesh.name = 'gradient-sky';
-  return { mesh, uniforms };
-}
-
-/** Renderer-only scene construction; never creates a Rapier body or requires WebGL until rendered. */
+/** No renderer or DOM required: consumers own the renderer, physics and camera. */
 export function createWorldScene(island: IslandData, options: WorldSceneOptions = {}): WorldScene {
   const group = new THREE.Group();
   group.name = 'Billy Isle';
-  const chunks = buildTerrain(island, Math.max(4, Math.floor(options.chunkSegments ?? 32)));
+  const segments = Math.max(4, Math.floor(options.chunkSegments ?? 32));
+  const chunks = buildTerrain(island, segments);
   for (const chunk of chunks) group.add(chunk.mesh);
-  const roads = buildRoads(island);
-  roads.forEach(mesh => group.add(mesh));
-  addInstances(group, island.props);
-  const river = buildRivers(island);
-  group.add(river);
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(island.size * 1.65, island.size * 1.65),
-    new THREE.MeshPhongMaterial({
-      color: 0x43b8d4, shininess: 62, transparent: true, opacity: 0.73,
-      depthWrite: false, side: THREE.DoubleSide,
-    }));
-  water.rotation.x = -Math.PI / 2;
-  water.position.y = island.seaLevel;
-  water.name = 'rising-sea';
-  group.add(water);
-
-  const { mesh: sky, uniforms } = buildSky();
-  group.add(sky);
-  const sun = new THREE.DirectionalLight(0xfff6d7, 1.5);
-  sun.position.set(230, 400, -140);
-  sun.castShadow = false;
-  group.add(sun);
-  const hemisphere = new THREE.HemisphereLight(0xd8efff, 0x61764a, 1.2);
-  group.add(hemisphere);
+  group.add(buildRoads(island));
+  const props = buildPropVisuals(island.props, options.propChunkSize ?? 96);
+  group.add(props.group);
+  const waterVisuals = buildWaterVisuals(island);
+  group.add(waterVisuals.inland, waterVisuals.sea);
+  const sky = buildSkyVisuals();
+  group.add(sky.group);
+  const sun = new THREE.DirectionalLight(0xffe9c5, 1.65);
+  sun.name = 'warm-soft-key';
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -310;
+  sun.shadow.camera.right = 310;
+  sun.shadow.camera.top = 310;
+  sun.shadow.camera.bottom = -310;
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 1100;
+  sun.shadow.bias = -0.00015;
+  sun.shadow.normalBias = 0.035;
+  sun.shadow.radius = 3.0;
+  group.add(sun, sun.target);
+  const fill = new THREE.HemisphereLight(0xc8eaff, 0x667956, 1.1);
+  fill.name = 'cool-sky-fill';
+  group.add(fill);
+  group.add(new THREE.AmbientLight(0xb5d4eb, 0.15));
   const frustum = new THREE.Frustum(), matrix = new THREE.Matrix4();
-  const cullingDistance = options.cullingDistance ?? island.size * 0.82;
-  const renderChunks = chunks.map(c => c.mesh);
+  const cullingDistance = options.cullingDistance ?? island.size * 1.4;
+  let tide = island.seaLevel;
+  let elapsed = 0;
 
   function setDayNight(phase: number): void {
-    const angle = phase * Math.PI * 2 - Math.PI / 2;
-    const altitude = Math.sin(angle);
-    const day = clamp(altitude * 1.6 + 0.36, 0.04, 1);
-    sun.position.set(Math.cos(angle) * 500, altitude * 500, -180);
-    sun.intensity = 0.08 + day * 1.6;
-    hemisphere.intensity = 0.23 + day * 1.08;
-    uniforms.uDay.value = day;
-    uniforms.uSun.value.copy(sun.position).normalize();
+    const state = sky.update(((phase % 1) + 1) % 1);
+    sun.position.copy(state.direction).multiplyScalar(560);
+    sun.intensity = 0.07 + state.daylight * 1.55;
+    fill.intensity = 0.19 + state.daylight * 0.98;
+    sun.color.setHex(state.altitude < 0.38 ? 0xffb87f : 0xffebcb);
+  }
+  function setLightingPreset(preset: LightingPreset): void {
+    const phases: Record<LightingPreset, number> = {
+      day: 0.5, 'golden-hour': 0.285, night: 0.025,
+    };
+    setDayNight(phases[preset]);
   }
   function setTideLevel(level: number): void {
-    water.position.y = level;
-    river.visible = level < island.reservoir.level + 2;
+    if (!Number.isFinite(level)) throw new RangeError('Tide height must be finite');
+    tide = level;
+    waterVisuals.update(elapsed, tide);
+  }
+  function update(time: number): void {
+    elapsed = Number.isFinite(time) ? Math.max(0, time) : elapsed;
+    waterVisuals.update(elapsed, tide);
+    props.update(elapsed);
   }
   function updateCulling(camera: THREE.Camera): void {
     camera.updateMatrixWorld();
     matrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     frustum.setFromProjectionMatrix(matrix);
+    const pos = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
     for (const chunk of chunks) {
-      chunk.mesh.visible = frustum.intersectsSphere(chunk.sphere) &&
-        chunk.sphere.center.distanceTo(camera.position) < cullingDistance + chunk.sphere.radius;
+      const dist = chunk.sphere.center.distanceTo(pos);
+      chunk.mesh.visible = dist < cullingDistance + chunk.sphere.radius &&
+        frustum.intersectsSphere(chunk.sphere);
+      const lod = dist > island.size * 0.45 ? chunk.low : chunk.high;
+      if (chunk.mesh.geometry !== lod) chunk.mesh.geometry = lod;
+    }
+    for (const batch of props.batches) {
+      const distance = batch.sphere.center.distanceTo(pos);
+      const visible = distance < (batch.nearOnly ? island.size * 0.32 : cullingDistance) +
+        batch.sphere.radius && frustum.intersectsSphere(batch.sphere);
+      for (const mesh of batch.meshes) mesh.visible = visible;
     }
   }
   function dispose(): void {
     const geometries = new Set<THREE.BufferGeometry>();
     const materials = new Set<THREE.Material>();
     group.traverse(object => {
-      if (object instanceof THREE.Mesh) {
+      if (object instanceof THREE.Mesh || object instanceof THREE.Points) {
         geometries.add(object.geometry);
         const mats = Array.isArray(object.material) ? object.material : [object.material];
-        mats.forEach(m => materials.add(m));
+        for (const mat of mats) materials.add(mat);
       }
     });
-    geometries.forEach(g => g.dispose());
-    materials.forEach(m => m.dispose());
+    for (const chunk of chunks) { geometries.add(chunk.high); geometries.add(chunk.low); }
+    for (const g of geometries) g.dispose();
+    for (const m of materials) m.dispose();
     group.removeFromParent();
   }
   setDayNight(0.5);
-  return { group, chunks: renderChunks, water, sun, setDayNight, setTideLevel, updateCulling, dispose };
+  waterVisuals.update(elapsed, tide);
+  return {
+    group, chunks: chunks.map(c => c.mesh), water: waterVisuals.sea,
+    sun, setDayNight, setLightingPreset, setTideLevel, update, updateCulling, dispose,
+  };
 }
