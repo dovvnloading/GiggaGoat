@@ -139,32 +139,40 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   site(yard, 'ramp', -4, -16, 7, 3, 15, { yaw: 0.9 });
   site(yard, 'ramp', 25, -10, 7, 4, 17, { yaw: -0.3 });
 
-  // DOWNTOWN: two continuous rows of storefronts face a clear main street.
-  // Local +Z is the facade normal, so +/- PI/2 turns each front inward.
+  // DOWNTOWN: five storefronts per side look into the paved main street.
+  // Three four-roof cross-street rows remain intact for Rooftop Express gigs
+  // (the mission selects y-rotated roofs at z = -19, 0 and +19).
   const city: PoiId = 'downtown-bleatsville';
-  for (let row = 0; row < 6; row++) for (let side = -1; side <= 1; side += 2) {
-    const x = side * 21, z = -35 + row * 14;
+  for (let row = 0; row < 5; row++) for (const side of [-1, 1]) {
+    const x = side * 20, z = (row - 2) * 19;
     const height = 9 + ((row * 2 + (side + 1) / 2) % 4) * 2.3;
-    const kind = row === 5 && side === -1 ? 'house' : 'shop';
-    site(city, kind, x, z, 11.0, height, 11.4, {
+    site(city, 'shop', x, z, 11.0, height, 11.4, {
       yaw: -side * Math.PI / 2,
       color: [0x91c9ed, 0xffa27e, 0xf2d47e, 0xb39adf][(row * 2 + (side + 1) / 2) % 4],
     });
-    if (row % 2 === 0) {
-      // Rooftop access is behind the shops rather than in the traffic lane.
-      site(city, 'ramp', x + side * 9.7, z + 3, 4.5, 3, 9,
+    if (row === 0 || row === 4) {
+      site(city, 'ramp', x + side * 9.6, z + 3, 4.5, 3, 9,
         { yaw: side * Math.PI / 2 });
     }
   }
-  site(city, 'tower', 36, -10, 8, 27, 8, { color: 0x95b4d8 });
+  // Rooftop rows need four physical roofs each: one taller rear
+  // townhouse behind each near-side shop in rows -19, 0 and +19.
+  // Rear houses enrich the skyline without obstructing main-street sightlines.
+  for (const z of [-19, 0, 19]) for (const side of [-1, 1]) {
+    site(city, 'house', side * 36, z, 10, 15 + (z === 0 ? 3 : 0), 11.5, {
+      yaw: -side * Math.PI / 2,
+      color: z === 0 ? 0xe4b5a1 : 0xc3d0ed,
+    });
+  }
+  site(city, 'tower', 39, -38, 8, 27, 8, { color: 0x95b4d8 });
   for (let row = 0; row < 6; row++) for (const side of [-1, 1]) {
-    site(city, 'lamp', side * 10.8, -34 + row * 14, 0.6, 8, 0.6,
+    site(city, 'lamp', side * 10.8, -37 + row * 15, 0.6, 8, 0.6,
       { shape: 'cylinder', breakable: true });
   }
   for (let i = 0; i < 14; i++) {
     const side = i % 2 === 0 ? -1 : 1;
     site(city, i % 2 === 0 ? 'crate' : 'barrel',
-      side * rng.range(29, 41), rng.range(-36, 36),
+      side * rng.range(31, 42), rng.range(-39, 39),
       1.5, 1.8, 1.5, {
         dynamicMass: 9, shape: i % 2 ? 'cylinder' : 'cuboid',
       });
