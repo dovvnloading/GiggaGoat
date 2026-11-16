@@ -75,7 +75,7 @@ function resultsForTide(players: PlayerState[]): Placement[] {
     if (a.eliminatedAt !== null || b.eliminatedAt !== null) {
       return a.eliminatedAt !== null && a.eliminatedAt === b.eliminatedAt;
     }
-    return Math.abs(a.headY - b.headY) < 0.01;
+    return Math.round(a.headY * 100) === Math.round(b.headY * 100);
   };
   return sorted.map(p => {
     const rank = sorted.findIndex(other => samePlace(p, other)) + 1;
@@ -223,7 +223,7 @@ export class PartyMatch {
     }
     this.data.tide = this.mode === 'rising-tide'
       ? { levelIndex: 0, nextRiseTick: this.config.tideRiseEveryTicks,
-        warned: false, modeTicks: 0, lastContacts: {} } : null;
+        warned: false, modeTicks: 0, lastContacts: Object.create(null) as Record<string, { attackerId: string; tick: number }> } : null;
     this.data.peak = this.mode === 'king-of-the-peak'
       ? { ownerId: null, contested: false, captureTicks: 0, overtimeScore: false } : null;
     this.data.heist = this.mode === 'hay-heist'
