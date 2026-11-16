@@ -19,7 +19,7 @@ Start with `import { PartyMatch, BotBrain, arenaFromBillyIsle } from './modes';`
 | `match.onEvent(callback)` / `match.drainEvents()` | Typed synchronous event stream; ordered `{tick,sequence,type,…}`, bounded pending history (256). An unsubscribed callback never fires again. |
 | `match.toJSON()` / `PartyMatch.fromJSON(snapshot,arena)` | Versioned JSON snapshot containing counters, scores, contacts, bales, timers, pending events and event sequence. No functions, objects from engines or listener references. |
 | `BotBrain(id, 'easy'|'normal'|'hard', seed)` | A bot with a separate seed-based PRNG. `decide(view,goats)` outputs `ModeInputIntent`, **identical to human inputs**. `goal` exposes current tactic. `toJSON/fromJSON` restore planning/RNG memory. |
-| `arenaFromBillyIsle(island, teamIds?)` | Read-only bridge to `src/world`: consumes `island.tideLevels`, `landAreaAtTideLevel`, `heightAt`, Mt. Gigga's centre and temporary barn positions near POIs. |
+| `arenaFromBillyIsle(island, readers, teamIds?)` | Read-only bridge to `src/world`: consumes `island.tideLevels`, injected public world `landAreaAtTideLevel` / `heightAt` functions, Mt. Gigga's centre and temporary barn positions near POIs; no transitive Rapier load. |
 | `MODE_DEFAULTS`, `TICKS_PER_SECOND` | Named baseline tuning and fixed 60 Hz contract. All tuning is overrideable per match. |
 
 The index also exports the complete type surface: `ModeId`, `Phase`, `Position`,
@@ -31,11 +31,11 @@ The index also exports the complete type surface: `ModeId`, `Phase`, `Position`,
 ### Minimal host integration
 
 ```ts
-import { generateIsland } from '../world';
+import { generateIsland, heightAt, landAreaAtTideLevel } from '../world';
 import { PartyMatch, BotBrain, arenaFromBillyIsle } from './index';
 
 const island = generateIsland({ seed: 'lobby-17' });
-const arena = arenaFromBillyIsle(island);
+const arena = arenaFromBillyIsle(island, { heightAt, landAreaAtTideLevel });
 const match = new PartyMatch({ mode: 'rising-tide', seed: 17 }, arena);
 match.join({ id: 'you', name: 'You' });
 match.join({ id: 'goat-bot', name: 'Velcro Dave', bot: true });
@@ -66,7 +66,7 @@ for (const event of events) {
 }
 ```
 
-In production, the host should use `arenaFromBillyIsle(island)` and listen for
+In production, the host should use `arenaFromBillyIsle(island, { heightAt, landAreaAtTideLevel })` and listen for
 `tide.rose` to update existing Chaos `WaterSystem.setSeaLevel` and world
 `WorldScene.setTideLevel` methods. Pass the same actual head height the physics
 ragdoll uses, including climbing and flotation; don't infer from terrain alone.
