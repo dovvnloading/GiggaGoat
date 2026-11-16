@@ -31,26 +31,37 @@ export function makeTerrain(seed: string | number, size: number, resolution: num
       const u = x / scale, v = z / scale;
       const radius = Math.hypot(u, v);
       const angle = Math.atan2(v, u);
-      const coast = 274 + 10 * Math.sin(angle * 3 + 0.4)
+      // A west-coast embayment separates the lighthouse rock from the mainland.
+      const westChannel = smoothstep(176, 236, -u) *
+        (1 - smoothstep(55, 135, Math.abs(v + 18)));
+      const coast = 272 + 11 * Math.sin(angle * 3 + 0.4)
         + 6 * Math.cos(angle * 5 - 0.6)
-        + 12 * noise.fractal(u / 90, v / 90, 3) - radius;
-      let h: number;
-      if (coast < 0) {
-        h = -1.5 + coast * 0.19;
-      } else {
-        // Wide readable beaches, a grassy inner terrace and a very distinct summit.
-        h = 0.35 + Math.min(coast, 32) * 0.13
-          + Math.min(Math.max(coast - 32, 0), 130) * 0.031;
-        h += smoothstep(9, 38, coast) * noise.fractal(u / 34, v / 34, 4) * 2.1;
-        const peak = 108 * (1 - smoothstep(19, 106, radius));
-        const ridge = 1 + 0.095 * noise.fractal(u / 38, v / 38, 4);
-        h += peak * ridge;
-        // Horizontal stone terraces offer intermediate climbing routes.
-        if (radius > 31 && radius < 85) {
-          const terrace = Math.abs(Math.sin(radius * 0.17));
-          h += (terrace > 0.82 ? (terrace - 0.82) * 15 : 0);
-        }
+        + 10 * noise.fractal(u / 90, v / 90, 3) - radius - 78 * westChannel;
+      const sandShelf = Math.max(0, coast);
+      let h = coast < 0 ? -1.6 + coast * 0.17
+        : 0.3 + Math.min(sandShelf, 33) * 0.14 +
+          Math.min(Math.max(sandShelf - 33, 0), 130) * 0.027;
+      if (coast > 0) {
+        h += smoothstep(7, 38, coast) * noise.fractal(u / 34, v / 34, 4) * 1.65;
+        // Rounded grassy benches between deliberately steep, climbable stone bands.
+        // No height quantisation: both the rendered surface and Rapier are smooth.
+        const mountain = 94
+          - 18 * smoothstep(19, 26, radius)
+          - 19 * smoothstep(38, 45, radius)
+          - 18 * smoothstep(56, 63, radius)
+          - 18 * smoothstep(74, 81, radius)
+          - 21 * smoothstep(91, 104, radius);
+        const ridge = 1 + 0.013 * noise.fractal(u / 37, v / 37, 3);
+        h += mountain * ridge;
       }
+      // The keeper's islet has a narrow underwater channel all the way around.
+      const isletRadius = Math.hypot(u + 259, v + 18);
+      if (isletRadius < 30) {
+        const rock = 8.5 * (1 - smoothstep(14, 26, isletRadius))
+          - 3 * smoothstep(22, 30, isletRadius);
+        h = Math.max(h, rock + noise.fractal(u / 13, v / 13, 2) * 0.6);
+      }
+
       heights[gridIndex(resolution, ix, iz)] = h * scale;
     }
   }
