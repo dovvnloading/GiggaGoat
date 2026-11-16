@@ -15,23 +15,24 @@ interface SiteDefinition {
   id: PoiId; name: string; x: number; z: number; radius: number;
   plot: number; biome: Biome; flat: boolean; description: string;
 }
+/** Map-space: north = negative Z, east = positive X. Anchors remain seed-stable. */
 const SITES: SiteDefinition[] = [
-  { id: 'hoofington', name: 'Hoofington', x: -157, z: 118, radius: 36, plot: 31,
-    biome: 'farmland', flat: true, description: 'Barn roofs, hay paddocks and a spinning windmill' },
-  { id: 'baa-ardwalk', name: 'Baa-ardwalk', x: 91, z: 215, radius: 33, plot: 26,
-    biome: 'beach', flat: true, description: 'A pier over the sea, rides and a giant wheel' },
-  { id: 'crane-yard', name: 'Crane Yard', x: 174, z: 81, radius: 35, plot: 32,
-    biome: 'industrial', flat: true, description: 'Cranes, half-built towers and stackable cargo' },
-  { id: 'downtown-bleatsville', name: 'Downtown Bleatsville', x: 135, z: -80, radius: 42, plot: 38,
-    biome: 'town', flat: true, description: 'A tight parkour maze of brightly coloured rooftops' },
-  { id: 'mt-gigga', name: 'Mt. Gigga', x: 0, z: 0, radius: 62, plot: 8,
-    biome: 'highlands', flat: true, description: 'Terraced cliffs, a summit dish and a spiral climb' },
-  { id: 'whispering-pines', name: 'Whispering Pines', x: -133, z: -166, radius: 39, plot: 0,
-    biome: 'pine-forest', flat: false, description: 'Dense pine trails, a river and tumbling logs' },
-  { id: 'the-dam', name: 'The Dam', x: -105, z: -85, radius: 23, plot: 14,
-    biome: 'highlands', flat: true, description: 'A reservoir, spillway and overhead walkway' },
-  { id: 'old-lighthouse', name: 'Old Lighthouse', x: -218, z: -92, radius: 25, plot: 18,
-    biome: 'cliff', flat: true, description: 'A windswept rocky point and an old beacon' },
+  { id: 'hoofington', name: 'Hoofington', x: -147, z: 133, radius: 37, plot: 31,
+    biome: 'farmland', flat: true, description: 'Barn, silo, windmill and a village green' },
+  { id: 'baa-ardwalk', name: 'Baa-ardwalk', x: 58, z: 228, radius: 33, plot: 24,
+    biome: 'beach', flat: true, description: 'Sunset pier, rides, stalls and sandy launch pads' },
+  { id: 'crane-yard', name: 'Crane Yard', x: 185, z: -47, radius: 36, plot: 31,
+    biome: 'industrial', flat: true, description: 'Two cranes, steel tower and stacked cargo' },
+  { id: 'downtown-bleatsville', name: 'Downtown Bleatsville', x: 145, z: 119, radius: 43, plot: 38,
+    biome: 'town', flat: true, description: 'Colourful shopping streets and rooftop parkour' },
+  { id: 'mt-gigga', name: 'Mt. Gigga', x: 0, z: 0, radius: 63, plot: 8,
+    biome: 'highlands', flat: false, description: 'Four grassy climbing terraces, caves and summit dish' },
+  { id: 'whispering-pines', name: 'Whispering Pines', x: -147, z: -143, radius: 41, plot: 0,
+    biome: 'pine-forest', flat: false, description: 'Deep woodland, stepping-stone river and lookout' },
+  { id: 'the-dam', name: 'The Dam', x: -17, z: -202, radius: 25, plot: 11,
+    biome: 'highlands', flat: false, description: 'Northern reservoir and foaming spillways' },
+  { id: 'old-lighthouse', name: 'Old Lighthouse', x: -259, z: -18, radius: 26, plot: 12,
+    biome: 'cliff', flat: false, description: 'Detached rocky islet, rope bridge and sea cave' },
 ];
 
 export function generateIsland(options: IslandOptions = {}): IslandData {
@@ -45,20 +46,22 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   const scale = size / 600;
   const rng = new SeededRandom(seed);
   const heights = makeTerrain(seed, size, resolution);
+  // The highland stream feeds the northern dam, then arcs through the NW pines to the sea.
   const river: RiverPoint[] = [
-    { x: -11, z: -32, level: 84, width: 4 },
-    { x: -30, z: -56, level: 45, width: 5 },
-    { x: -47, z: -78, level: 15, width: 7 },
-    { x: -56, z: -94, level: 10, width: 12 },
-    { x: -73, z: -124, level: 7, width: 9 },
-    { x: -94, z: -154, level: 4.9, width: 10 },
-    { x: -121, z: -194, level: 2.6, width: 12 },
-    { x: -154, z: -238, level: -0.6, width: 17 },
-    { x: -181, z: -262, level: -1, width: 20 },
+    { x: -30, z: -65, level: 35, width: 4 },
+    { x: -40, z: -103, level: 23, width: 5 },
+    { x: -27, z: -141, level: 14, width: 7 },
+    { x: -18, z: -174, level: 12, width: 9 },
+    { x: -31, z: -198, level: 9, width: 11 },
+    { x: -69, z: -191, level: 6.8, width: 9 },
+    { x: -113, z: -161, level: 4.8, width: 11 },
+    { x: -157, z: -183, level: 2.9, width: 13 },
+    { x: -196, z: -214, level: 0.6, width: 16 },
+    { x: -227, z: -243, level: -1, width: 20 },
   ].map(p => ({ x: p.x * scale, z: p.z * scale, level: p.level * scale, width: p.width * scale }));
   const reservoir = {
-    center: { x: -54 * scale, z: -91 * scale },
-    radiusX: 23 * scale, radiusZ: 20 * scale, level: 10 * scale,
+    center: { x: -16 * scale, z: -175 * scale },
+    radiusX: 26 * scale, radiusZ: 22 * scale, level: 12 * scale,
   };
   const island: IslandData = {
     seed, size, resolution, seaLevel: 0,
