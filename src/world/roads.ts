@@ -47,9 +47,9 @@ function catmullRom(controls: Vec2[], step: number): Vec2[] {
 }
 
 /** A two-turn ascending mountain track: grade stays goat-traversable without bulldozing cliffs. */
-function mountainSwitchbacks(island: IslandData): Vec2[] {
+function mountainSwitchbacks(island: IslandData, destination: PoiId): Vec2[] {
   const summit = island.pois.find(p => p.id === 'mt-gigga')!.center;
-  const farm = island.pois.find(p => p.id === 'hoofington')!.center;
+  const farm = island.pois.find(p => p.id === destination)!.center;
   const endAngle = Math.atan2(farm.z - summit.z, farm.x - summit.x);
   const points: Vec2[] = [{ x: summit.x, z: summit.z }];
   const steps = 220;
@@ -107,9 +107,11 @@ export function makeRoads(island: IslandData, rng: SeededRandom): RoadDescriptor
   const scale = island.size / 600;
   for (const link of LINKS) {
     const from = byId.get(link.from)!, to = byId.get(link.to)!;
-    const waypoints: Vec2[] = link.from === 'mt-gigga' && link.to === 'hoofington'
-      ? mountainSwitchbacks(island)
-      : catmullRom([
+    const waypoints: Vec2[] = link.from === 'mt-gigga'
+      ? mountainSwitchbacks(island, link.to)
+      : link.to === 'mt-gigga'
+        ? mountainSwitchbacks(island, link.from).reverse()
+        : catmullRom([
         { x: from.center.x, z: from.center.z },
         ...(link.via ?? []).map(p => ({
           x: (p.x + rng.range(-2, 2)) * scale,
