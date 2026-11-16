@@ -149,28 +149,40 @@ export function makeRoads(island: IslandData, rng: SeededRandom): RoadDescriptor
       type: link.type, width, points,
     });
   }
-  // Street-level reference cameras need actual, graded through-streets, not
-  // merely POI endpoints on the distant coastal ring road. These are also
-  // used to orient every facade/door toward the nearest street.
-  for (const id of ['hoofington', 'downtown-bleatsville'] as const) {
-    const centre = byId.get(id)!.center;
+  // Stamp the village and city main roads without changing the public
+  // POI-to-POI road graph (whose edges must start/end at their POI centres).
+  for (const street of makeLocalStreets(island)) {
+    for (let j = 0; j < street.points.length - 1; j++) {
+      stampRoad(island, street.points[j]!, street.points[j + 1]!,
+        street.width, island.river);
+    }
+  }
+  return roads;
+}
+
+/**
+ * Visual/physical through-streets within city plots, separate from the POI
+ * connectivity graph. Rendering uses these same graded centreline segments.
+ */
+export function makeLocalStreets(island: IslandData): RoadDescriptor[] {
+  const scale = island.size / 600;
+  return (['hoofington', 'downtown-bleatsville'] as const).map(id => {
+    const centre = island.pois.find(p => p.id === id)!.center;
     const halfLength = id === 'hoofington' ? 42 : 43;
-    const width = (id === 'hoofington' ? 8.6 : 10.0) * scale;
+    const width = (id === 'hoofington' ? 8.6 : 10) * scale;
     const points: RoadPoint[] = [];
     for (let j = 0; j <= 22; j++) {
       const z = centre.z + (-halfLength + j * 2 * halfLength / 22) * scale;
-      points.push({ x: centre.x, z, y: gridSample(island, centre.x, z), bridge: false });
+      points.push({
+        x: centre.x, z, y: gridSample(island, centre.x, z), bridge: false,
+      });
     }
     gradeRoad(points, 0.11);
-    for (let j = 0; j < points.length - 1; j++) {
-      stampRoad(island, points[j]!, points[j + 1]!, width, island.river);
-    }
-    roads.push({
+    return {
       id: id + '-main-street', from: id, to: id,
-      type: 'road', width, points,
-    });
-  }
-  return roads;
+      type: 'road' as const, width, points,
+    };
+  });
 }
 
 /** Separate collidable planks, rather than a solid barrier across the river. */
