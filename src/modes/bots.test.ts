@@ -4,7 +4,7 @@ import { PartyMatch } from './match';
 import { makeMockIsland, MockIslandRunner } from './mock-island';
 import { arenaFromBillyIsle } from './world-adapter';
 import { generateIsland, landAreaAtTideLevel } from '../world/island';
-import { goat } from './match.test';
+import { goat } from './test-utils';
 import type { Difficulty, MatchEvent, ModeId } from './types';
 
 function botMatch(mode: ModeId, seed = 42): { match: PartyMatch; runner: MockIslandRunner } {
