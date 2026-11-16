@@ -99,13 +99,14 @@ export class GameMenu {
     this.view.onFrame = () => this.frame();
     this.view.onInteract = () => this.interact();
     this.view.applySettings(settings);
-    this.render();
+    this.setScreen('title');
   }
 
   private save(): void { saveGame(this.game, this.settings); }
   private setScreen(next: Screen): void {
     this.screen = next;
     this.view.paused = next !== 'playing';
+    if (next !== 'playing') this.view.input.reset();
     this.view.hud.setVisible(next === 'playing');
     if (next !== 'playing' && document.pointerLockElement === this.view.renderer.domElement) {
       document.exitPointerLock();
