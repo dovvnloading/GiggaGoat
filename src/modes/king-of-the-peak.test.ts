@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PartyMatch } from './match';
 import { makeMockIsland } from './mock-island';
-import { frame, goat, readyMatch } from './match.test';
+import { frame, goat, readyMatch } from './test-utils';
 
 const separated = frame(goat('a', 0, 0), goat('b', 45, 0));
 
