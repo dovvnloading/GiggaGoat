@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PartyMatch } from './match';
 import { makeMockIsland } from './mock-island';
-import { frame, goat, readyMatch } from './match.test';
+import { frame, goat, readyMatch } from './test-utils';
 
 const quick = { tideRiseEveryTicks: 4, tideWarningTicks: 2,
   submergeTicks: 2, knockoutWindowTicks: 2, durationTicks: 80, overtimeTicks: 4 };
