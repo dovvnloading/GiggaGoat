@@ -1,7 +1,7 @@
 import type { RigidBody } from '@dimforge/rapier3d-compat';
 import { PhysicsWorld, V, rotate, applyExplosion } from '../physics';
 import type { Vec3 } from '../physics';
-import { EventStream, finitePositive, horizontal, magnitude, unit } from './internal';
+import { colliderHalfExtents, EventStream, finitePositive, horizontal, magnitude, unit } from './internal';
 
 export interface DominoOptions {
   neighbourRadius?: number;
@@ -125,7 +125,7 @@ export class ChainReactions {
         const delta = horizontal(V(target.translation().x-center.x,0,target.translation().z-center.z));
         const dist = magnitude(delta);
         if (dist < .02 || dist > domino.settings.neighbourRadius) continue;
-        const dir = unit(delta), h = target.collider(0)?.halfExtents?.().y ?? .5;
+        const dir = unit(delta), h = target.numColliders() ? colliderHalfExtents(target.collider(0)).y : .5;
         target.wakeUp();
         const impulse = target.mass() * domino.settings.neighbourKickSpeed;
         target.applyImpulseAtPoint(V(dir.x*impulse,0,dir.z*impulse),
