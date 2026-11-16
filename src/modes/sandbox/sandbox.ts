@@ -1,3 +1,4 @@
+import { compareIds } from '../internal';
 import { BotBrain } from '../bots';
 import { PartyMatch } from '../match';
 import { makeMockIsland, MockIslandRunner } from '../mock-island';
@@ -224,7 +225,7 @@ function renderBoard(): void {
     const bRank = placements.find(p => p.playerId === b.id)?.rank;
     return (aRank ?? 99) - (bRank ?? 99) ||
       (match.mode === 'rising-tide' ? (a.eliminatedAt ?? Infinity) - (b.eliminatedAt ?? Infinity) :
-        b.score - a.score) || a.id.localeCompare(b.id);
+        b.score - a.score) || compareIds(a.id, b.id);
   });
   for (let i = 0; i < players.length; i++) {
     const p = players[i]!;
