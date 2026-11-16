@@ -148,10 +148,16 @@ export class GigCatalog {
   private readonly props: PropDescriptor[];
   private readonly seaLevel: number;
   private readonly reservoirLevel: number;
-  constructor(island: Pick<IslandData, 'seed' | 'pois' | 'props' | 'seaLevel' | 'reservoir'>, seed: number | string = 1) {
+  private readonly terrain: Float32Array;
+  private readonly resolution: number;
+  private readonly islandSize: number;
+  constructor(island: Pick<IslandData, 'seed' | 'pois' | 'props' | 'seaLevel' | 'reservoir' | 'heights' | 'resolution' | 'size'>, seed: number | string = 1) {
     this.seed = hash(String(island.seed) + ':' + String(seed));
     this.seaLevel = island.seaLevel;
     this.reservoirLevel = island.reservoir.level;
+    this.terrain = island.heights.slice();
+    this.resolution = island.resolution;
+    this.islandSize = island.size;
     this.pois = new Map(island.pois.map(p => [p.id, {
       ...p, center: copy(p.center),
     }]));
@@ -160,6 +166,18 @@ export class GigCatalog {
         position: copy(p.transform.position), rotationY: p.transform.rotationY,
       }, body: { ...p.body },
     }));
+  }
+  /** Billy Isle row-major bilinear terrain lookup, duplicated as plain data to avoid engine imports. */
+  private terrainY(x: number, z: number): number {
+    const n = this.resolution;
+    const clamp = (v: number): number => Math.max(0, Math.min(n - 1, v));
+    const gx = clamp((x / this.islandSize + 0.5) * (n - 1));
+    const gz = clamp((z / this.islandSize + 0.5) * (n - 1));
+    const ix = Math.min(n - 2, Math.floor(gx)), iz = Math.min(n - 2, Math.floor(gz));
+    const u = gx - ix, v = gz - iz;
+    const a = this.terrain[iz * n + ix]!, b = this.terrain[iz * n + ix + 1]!;
+    const c = this.terrain[(iz + 1) * n + ix]!, d = this.terrain[(iz + 1) * n + ix + 1]!;
+    return (a + (b - a) * u) * (1 - v) + (c + (d - c) * u) * v;
   }
   get ids(): readonly GigId[] { return GIG_IDS; }
   info(id: GigId): GigInfo { return structuredClone(GIG_INFO[id]); }
@@ -265,7 +283,9 @@ export class GigCatalog {
         const center = plus(poi.center, 13 + rng.int(3), 0.2, 8 + rng.int(3));
         const patches: Point[] = [];
         for (let z = 0; z < rows; z++) for (let x = 0; x < cols; x++) {
-          patches.push(plus(center, (x - (cols - 1) / 2) * 2.1, 0, (z - (rows - 1) / 2) * 2.1));
+          const p = plus(center, (x - (cols - 1) / 2) * 2.1, 0, (z - (rows - 1) / 2) * 2.1);
+          p.y = this.terrainY(p.x, p.z) + 0.15;
+          patches.push(p);
         }
         config = { kind: 'mow-down', patches, biteRadius: 2.4 };
         start = copy(patches[0]!);
@@ -277,9 +297,11 @@ export class GigCatalog {
         const gnomeId = 'gig-gnome-' + s;
         const route: Point[] = [];
         const initial = plus(sign.transform.position, 3 + rng.int(3),
-          -sign.size.y / 2 + 0.8, 1 + rng.int(3));
+          0, 1 + rng.int(3));
         for (let i = 0; i < 4 + tier; i++) {
-          route.push(plus(initial, i * 5.5, 0, Math.sin(i * 1.3) * 3 + i * 2));
+          const p = plus(initial, i * 5.5, 0, Math.sin(i * 1.3) * 3 + i * 2);
+          p.y = this.terrainY(p.x, p.z) + 0.8;
+          route.push(p);
         }
         config = { kind: 'escort-the-gnome', gnomeId, route,
           breakImpulse: [48, 36, 27][tier]! };
@@ -291,6 +313,7 @@ export class GigCatalog {
       }
       case 'stack-up': {
         const center = plus(poi.center, 25 + rng.int(3), 0, -25 + rng.int(3));
+        center.y = this.terrainY(center.x, center.z);
         const layers = 2 + tier;
         const crateIds: string[] = [];
         for (let i = 0; i < layers + 2; i++) {
