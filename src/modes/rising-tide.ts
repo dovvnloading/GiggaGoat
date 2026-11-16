@@ -53,7 +53,7 @@ export function updateRisingTide(
     }
   }
   for (const id of eliminated) {
-    const last = tide.lastContacts[id];
+    const last = Object.hasOwn(tide.lastContacts, id) ? tide.lastContacts[id] : undefined;
     const credit = last && state.tick - last.tick <= state.config.knockoutWindowTicks
       ? last.attackerId : null;
     if (credit) {
