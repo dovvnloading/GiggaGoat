@@ -15,7 +15,11 @@ npm run ci       # typecheck + tests + production build (what CI runs)
 
 | Path | Lane |
 |---|---|
-| `src/physics/` | Physics core (Rapier): stepping, goat active ragdoll, tongue, impulses |
-| `src/world/` | Billy Isle generation: terrain, water, POIs, roads, props, colliders |
-| `src/gameplay/` | Engine-agnostic rules: abilities, style/combo/GIGGA, Hay-Build, inventory |
-| `src/core/`, `src/main.ts` | Boot + integration (integration tasks only) |
+| `src/physics/` | Physics core (Rapier): stepping, goat active ragdoll, tongue, headbutt, impulses |
+| `src/world/` | Billy Isle: terrain, water, POIs, roads, dressing, stylised renderer, colliders, viewer |
+| `src/gameplay/` | Engine-agnostic rules: abilities, style/combo/GIGGA, Hay-Build, Cud Coins, unlocks |
+| `src/chaos/` | Water and buoyancy, breakables, chain reactions, surfaces, trampolines, launch pads |
+| `src/modes/` | Party-mode rules (Rising Tide, King of the Peak, Hay Heist) and bot goats |
+| `src/gigs/` | Goat Gigs free-roam jobs |
+| `src/core/`, `src/main.ts` | The playable game: wiring, camera, input, HUD, menus (integration tasks only) |
+| `docs/art/hifi/` | Reference art (see `docs/art/README.md`) |

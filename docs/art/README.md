@@ -8,7 +8,7 @@ level of detail as closely as real-time three.js allows. Read [ART_PLAN.md](ART_
 - **Shapes:** chunky, readable silhouettes; slightly rounded bevels; nothing razor-thin. Props are big enough to read from 30 m.
 - **Shading:** soft stylised 3D with gentle toon ramps and subtle dark outlines (inverted-hull or post-process edge).
   Warm key light, cool soft fill/sky light, soft shadows, light ambient occlusion. Never photoreal.
-- **Colour:** bright and saturated but tasteful. Use the palette in `20_palette.jpg` (hex values printed on it).
+- **Colour:** bright and saturated but tasteful. Palette:
   Grass `#77B754`, sand `#F7DB99`, shallows `#21A8C6` to deep `#0F669E`, rock `#8C919E`, hay `#F2C14F`,
   barn red `#D84F3D`, UI accents gigga purple `#7A4CFF`, orange `#FF891E`, yellow `#FFD833`.
 - **Density:** every location is a playground. Lots of small, physical, lickable/pushable things: crates, bales, cones,
@@ -32,7 +32,4 @@ level of detail as closely as real-time three.js allows. Read [ART_PLAN.md](ART_
 | `hifi/15_poi_lighthouse.png` | Lighthouse islet at sunset: keeper's cottage, shipwreck, sea cave with a Goat Relic. |
 | `hifi/16_mode_rising_tide.png` | Rising-tide party mode: flooded island, last dry terraces, floating debris. |
 
-## Blockouts (Blender, layout reference only)
-
-`01`-`06` (goat, cosmetics, props, Hay-Build pieces), `17` (GIGGA mode) and `19` (HUD) are rough blockouts
-for later phases. They define proportions and layout but not final look. `20_palette.jpg` is final.
+Only the hi-fi images above are reference art. Characters, props and UI get their own hi-fi references when those phases start (see ART_PLAN.md).
