@@ -15,6 +15,9 @@ import {
   WaterSystem, BreakableRegistry, ChainReactions, SurfaceSystem,
   DynamicBodyBudget, applyPhysicsMaterial,
 } from '../chaos';
+import { GigSession } from './GigSession';
+import { PartySession } from './PartySession';
+import type { GameProgress } from './Persistence';
 
 export const FIXED_DT = 1 / 60;
 export interface PlayerIntent extends GoatIntent {
@@ -24,6 +27,8 @@ export interface PlayerIntent extends GoatIntent {
   toggleBuild?: boolean;
   placeBuild?: boolean;
   buildPiece?: PieceType;
+  graze?: boolean;
+  interact?: boolean;
 }
 export interface SurfaceMarker {
   id: string;
@@ -32,7 +37,7 @@ export interface SurfaceMarker {
   halfExtents: Vec3;
 }
 export interface FallingPiece { body: RigidBody; type: PieceType; born: number }
-export interface GameOptions { seed?: string | number; resolution?: number }
+export interface GameOptions { seed?: string | number; resolution?: number; progress?: GameProgress }
 
 /**
  * The entire game simulation, including collision, chaos, and scoring, is headless.
@@ -49,6 +54,8 @@ export class Game {
   readonly chains: ChainReactions;
   readonly surfaces: SurfaceSystem;
   readonly budget: DynamicBodyBudget;
+  readonly gigs: GigSession;
+  readonly party: PartySession;
   readonly surfaceMarkers: SurfaceMarker[] = [];
   readonly destroyedProps = new Set<string>();
   readonly buildBodies = new Map<number, RigidBody>();
@@ -78,18 +85,24 @@ export class Game {
     const physics = await PhysicsWorld.create({ fixedDt: FIXED_DT, maxSubsteps: 5, solverIterations: 8 });
     try {
       const colliders = buildRapierColliders(physics.raw, island);
-      return new Game(physics, island, colliders);
+      return new Game(physics, island, colliders, options);
     } catch (error) {
       physics.dispose();
       throw error;
     }
   }
 
-  private constructor(physics: PhysicsWorld, island: IslandData, colliders: ColliderBuild) {
+  private constructor(physics: PhysicsWorld, island: IslandData, colliders: ColliderBuild, options: GameOptions) {
     this.physics = physics;
     this.island = island;
     this.colliders = colliders;
-    this.rules = new GameSimulation(1987);
+    // Restore only validated, complete progression. Any corrupt save is ignored.
+    try {
+      this.rules = options.progress ? GameSimulation.fromJSON(options.progress.gameplay) :
+        new GameSimulation(1987);
+    } catch {
+      this.rules = new GameSimulation(1987);
+    }
     const spawn = island.spawns[0]!;
     this.buildOrigin = { x: 0, y: heightAt(island, spawn.position.x, spawn.position.z), z: 0 };
 
@@ -153,6 +166,14 @@ export class Game {
       }
     }));
     this.installBuildEvents();
+    for (const piece of this.rules.build.pieces) this.addBuildBody(piece);
+    // Both deterministic lanes are stepped only at completed Rapier tick boundaries.
+    try {
+      this.gigs = new GigSession(this, island.seed, options.progress?.gigs, options.progress?.gigBodies);
+    } catch {
+      this.gigs = new GigSession(this, island.seed);
+    }
+    this.party = new PartySession(this);
   }
 
   private prepareProps(): void {
@@ -349,15 +370,20 @@ export class Game {
   step(intent: PlayerIntent = {}): void { this.advance(FIXED_DT, intent); }
 
   private beforeTick(dt: number): void {
-    const goat = this.goat;
-    if (this.pendingSize !== null && goat.size !== this.pendingSize) {
-      this.water.untrack(goat.torso);
-      goat.resize(this.pendingSize);
-      this.water.track(goat.torso, { buoyancyScale: .7, paddleSpeed: 2.6 });
-      this.lastY = goat.torso.translation().y;
+    if (this.pendingSize !== null && this.goat.size !== this.pendingSize) {
+      this.water.untrack(this.goat.torso);
+      this.goat.resize(this.pendingSize);
+      this.water.track(this.goat.torso, { buoyancyScale: .7, paddleSpeed: 2.6 });
+      this.lastY = this.goat.torso.translation().y;
       this.pendingSize = null;
     }
-    const input = this.intent;
+    this.driveGoat(this.goat, this.intent, this.rules, true, dt);
+    this.party.beforeTick(this.intent);
+  }
+
+  /** Shared player/bot gameplay intent -> ability rules -> physical ragdoll route. */
+  driveGoat(goat: GoatRagdoll, input: PlayerIntent, sim: GameSimulation,
+    player: boolean, dt = FIXED_DT): void {
     const torso = goat.torso;
     const velocity = torso.linvel();
     const cameraYaw = input.cameraYaw ?? goat.locomotion.heading;
@@ -365,7 +391,7 @@ export class Game {
     const mz = Math.max(-1, Math.min(1, input.moveZ ?? 0));
     const wish = V(Math.sin(cameraYaw) * mz + Math.cos(cameraYaw) * mx, 0,
       -Math.cos(cameraYaw) * mz + Math.sin(cameraYaw) * mx);
-    const steep = Math.hypot(wish.x, wish.z) > .1 && this.isFacingWall(wish);
+    const steep = Math.hypot(wish.x, wish.z) > .1 && this.isFacingWall(wish, goat);
     const head = goat.head.translation();
     const hit = this.physics.raycast(head, add(forward(goat.locomotion.heading), V(0, -.10, 0)),
       9 * goat.size, { predicate: collider => !goat.ownsBody(collider.parent()) });
@@ -376,38 +402,41 @@ export class Game {
       airborneTime: goat.locomotion.airborneSeconds,
       touchingSteepWall: steep || goat.locomotion.isClinging,
       speed: Math.hypot(velocity.x, velocity.z),
-      size: this.rules.style.tier,
+      size: sim.style.tier,
       tongueTarget: lickable && hit ? 'hit-' + hit.collider.handle : null,
-      climbDistance: this.climbMetres,
+      climbDistance: player ? this.climbMetres : 0,
     };
-    this.climbMetres = 0;
+    if (player) this.climbMetres = 0;
     const rulesIntent: GoatIntent = {
       sprint: input.sprint, climb: input.climb ?? Math.hypot(mx, mz) > .1,
-      chargeHeadbutt: !this.buildMode && input.chargeHeadbutt,
+      chargeHeadbutt: (player ? !this.buildMode : true) && input.chargeHeadbutt,
       tongue: input.tongue, reelTongue: input.reelTongue,
       flingTongue: input.flingTongue, bleat: input.bleat, flop: input.flop,
       jump: input.jump, glide: input.glide,
     };
-    const result = this.rules.update(dt, rulesIntent, facts);
+    const result = sim.update(dt, rulesIntent, facts);
     const commands = result.commands[0]!;
     goat.locomotion.setInput({
       x: mx, z: mz, cameraYaw, sprint: commands.setSprint,
       canSprint: commands.setSprint, canClimb: commands.setClimb,
     });
     this.water.setPaddle(goat.torso, wish);
-    this.executeCommands(commands);
+    this.executeCommands(commands, goat, player);
+    if (player && input.graze && goat.locomotion.grounded &&
+        this.gigs.active?.setup.config.kind === 'mow-down') {
+      this.gigs.noteAbility({ type: 'eat' });
+    }
   }
 
-  private isFacingWall(wish: Vec3): boolean {
-    const origin = add(this.goat.torso.translation(), V(0, .1 * this.goat.size, 0));
-    const hit = this.physics.raycast(origin, wish, 1.05 * this.goat.size, {
-      predicate: collider => !this.goat.ownsBody(collider.parent()),
+  private isFacingWall(wish: Vec3, goat = this.goat): boolean {
+    const origin = add(goat.torso.translation(), V(0, .1 * goat.size, 0));
+    const hit = this.physics.raycast(origin, wish, 1.05 * goat.size, {
+      predicate: collider => !goat.ownsBody(collider.parent()),
     });
     return !!hit && hit.normal.y < .46 && hit.normal.x * wish.x + hit.normal.z * wish.z < -.45;
   }
 
-  private executeCommands(commands: AbilityCommands): void {
-    const g = this.goat;
+  private executeCommands(commands: AbilityCommands, g = this.goat, player = true): void {
     if (commands.jump) {
       g.locomotion.requestJump();
       if (commands.jump.kind === 'wall-kick') {
@@ -416,7 +445,10 @@ export class Game {
       }
     }
     if (commands.headbutt) {
-      this.lastActionTime = this.physics.time;
+      if (player) {
+        this.lastActionTime = this.physics.time;
+        this.gigs.noteAbility({ type: 'headbutt' });
+      }
       const charge = Math.min(1, commands.headbutt.charge / TUNING.headbutt.maxCharge);
       // The physics lane's downward grazing ray can choose the terrain before a
       // nearby crate. Retain its torso lunge, then resolve an explicitly dynamic
@@ -461,7 +493,14 @@ export class Game {
     if (commands.tongue) {
       const cmd = commands.tongue;
       if (cmd.action === 'attach') {
-        if (g.interactions.attachTongue()) this.lastTongueTime = this.physics.time;
+        if (g.interactions.attachTongue()) {
+          if (player) {
+            this.lastTongueTime = this.physics.time;
+            const body = g.interactions.tongueBody;
+            this.gigs.noteAbility({ type: 'tongue', targetId: body ?
+              this.physics.bodyData(body.handle)?.owner : undefined });
+          }
+        }
       } else if (cmd.action === 'reel') {
         g.interactions.setReel(-1);
       } else if (cmd.action === 'fling') {
@@ -476,10 +515,16 @@ export class Game {
       } else g.interactions.setReel(0);
     } else g.interactions.setReel(0);
     if (commands.bleat) {
-      this.lastActionTime = this.physics.time;
+      if (player) {
+        this.lastActionTime = this.physics.time;
+        this.gigs.noteAbility({ type: 'bleat' });
+      }
       g.interactions.bleat();
     }
-    if (commands.ragdoll) g.flop();
+    if (commands.ragdoll) {
+      g.flop();
+      if (player) this.gigs.noteAbility({ type: 'flop' });
+    }
     if (commands.setGlide && g.torso.linvel().y < -3.2) {
       const slow = Math.min(12, -3.2 - g.torso.linvel().y);
       g.torso.applyImpulse(V(0, slow * g.mass * .5, 0), true);
@@ -488,8 +533,10 @@ export class Game {
 
   private afterTick(dt: number): void {
     const g = this.goat, p = g.torso.translation();
+    let tickClimb = 0;
     if (g.locomotion.isClinging) {
       const climbed = Math.max(0, p.y - this.lastY);
+      tickClimb = climbed;
       this.climbMetres += climbed;
       this.climbRunMetres += climbed;
     }
@@ -500,7 +547,7 @@ export class Game {
       Math.max(-this.island.size/2, Math.min(this.island.size/2, p.z))) < this.water.seaLevel - .3;
     const swimming = offshore && p.y < this.water.seaLevel + 2.1 * g.size;
     this.drownSeconds = swimming ? this.drownSeconds + dt : 0;
-    if (out || this.drownSeconds > 2.5) this.respawn();
+    if (out || (!this.party.match && this.drownSeconds > 2.5)) this.respawn();
     for (const [handle, piece] of this.fallingPieces) {
       if (!this.physics.raw.getRigidBody(handle) || this.physics.time - piece.born > 14 ||
           piece.body.translation().y < -25) {
@@ -509,6 +556,8 @@ export class Game {
         this.fallingPieces.delete(handle);
       }
     }
+    if (!this.party.match) this.gigs.tick(tickClimb);
+    this.party.afterTick();
   }
 
   private onGoatEvent(event: PhysicsEvent): void {
@@ -587,6 +636,11 @@ export class Game {
     this.respawns++;
   }
 
+  exportProgress(): GameProgress {
+    return { gameplay: this.rules.toJSON(), gigs: this.gigs.director.toJSON(),
+      gigBodies: this.gigs.saveBodies() };
+  }
+
   get bodyCount(): number {
     let count = 0;
     this.physics.raw.forEachRigidBody(() => { count++; });
@@ -597,6 +651,8 @@ export class Game {
     if (this.disposed) return;
     this.disposed = true;
     for (const unsub of this.off.splice(0)) unsub();
+    this.party.dispose();
+    this.gigs.dispose();
     this.goat.dispose();
     this.surfaces.dispose();
     this.chains.dispose();
