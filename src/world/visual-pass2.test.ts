@@ -1,0 +1,215 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import * as THREE from 'three';
+import { createWorldScene, generateIsland, heightAt } from './index';
+import type { IslandData, PropDescriptor, WorldScene } from './index';
+import { makeLocalStreets } from './roads';
+import { segmentProjection } from './terrain';
+import { findBookmark } from './viewer/bookmarks';
+
+describe('World visuals pass 2: geometry, streets and draw budget', () => {
+  let island: IslandData;
+  let view: WorldScene;
+
+  beforeAll(() => {
+    island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    view = createWorldScene(island);
+  });
+  afterAll(() => view.dispose());
+
+  it('keeps every prop instance finite, in the right location, and within its descriptor size', () => {
+    const grouped = new Map<string, PropDescriptor[]>();
+    for (const prop of island.props) {
+      const group = grouped.get(prop.kind) ?? [];
+      group.push(prop);
+      grouped.set(prop.kind, group);
+    }
+    for (const [kind, props] of grouped) {
+      const mesh = view.group.getObjectByName('props-' + kind);
+      expect(mesh, kind).toBeInstanceOf(THREE.InstancedMesh);
+      const instances = mesh as THREE.InstancedMesh;
+      // The old implementation duplicated a draw call per kind per 96-m chunk.
+      expect(instances.count, kind).toBe(props.length);
+      instances.geometry.computeBoundingBox();
+      const bounds = instances.geometry.boundingBox!;
+      const span = bounds.getSize(new THREE.Vector3());
+      expect(Math.max(span.x, span.y, span.z), kind).toBeLessThanOrEqual(1.001);
+      const matrix = new THREE.Matrix4();
+      const position = new THREE.Vector3();
+      const scale = new THREE.Vector3();
+      const rotation = new THREE.Quaternion();
+      for (let i = 0; i < props.length; i++) {
+        instances.getMatrixAt(i, matrix);
+        expect(matrix.elements.every(Number.isFinite), kind + ':' + i).toBe(true);
+        matrix.decompose(position, rotation, scale);
+        const prop = props[i]!;
+        expect(position.distanceTo(new THREE.Vector3(
+          prop.transform.position.x, prop.transform.position.y,
+          prop.transform.position.z)), prop.id).toBeLessThan(0.006);
+        expect(Math.abs(scale.x - prop.size.x), prop.id).toBeLessThan(0.006);
+        expect(Math.abs(scale.y - prop.size.y), prop.id).toBeLessThan(0.006);
+        expect(Math.abs(scale.z - prop.size.z), prop.id).toBeLessThan(0.006);
+        // Allow the intentional pier/buoys outside the 600-m terrain square,
+        // never a kilometer-long fence, cable, roof or shadow-caster streak.
+        const limit = island.size / 2 + 150;
+        expect(Math.abs(position.x), prop.id).toBeLessThan(limit);
+        expect(Math.abs(position.z), prop.id).toBeLessThan(limit);
+        expect(prop.size.x, prop.id).toBeLessThan(island.size / 3);
+        expect(prop.size.z, prop.id).toBeLessThan(island.size / 3);
+      }
+    }
+  });
+
+  it('does not draw cliff/grass outlines or cast a shadow per tiny prop', () => {
+    for (const kind of ['rock', 'ledge', 'fence', 'rope-rail', 'grass-tuft',
+      'flower', 'bunting', 'awning', 'signboard']) {
+      expect(view.group.getObjectByName('outline-' + kind)).toBeUndefined();
+    }
+    expect(view.chunks.every(chunk => !chunk.castShadow)).toBe(true);
+    const meshes: THREE.Mesh[] = [];
+    view.group.traverse(object => {
+      if (object instanceof THREE.Mesh) meshes.push(object);
+    });
+    const shadowPass = meshes.filter(mesh => mesh.castShadow).length;
+    const outlines = meshes.filter(mesh => mesh.name.startsWith('outline-')).length;
+    // This detects the previous ~600-call pattern even without a GPU.
+    expect(meshes.length + shadowPass).toBeLessThan(180);
+    expect(shadowPass).toBeLessThan(20);
+    expect(outlines).toBeLessThanOrEqual(8);
+    for (const mesh of meshes) {
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const material of materials) {
+        if (material instanceof THREE.MeshBasicMaterial ||
+            material instanceof THREE.MeshToonMaterial) {
+          expect(Math.max(material.color.r, material.color.g, material.color.b),
+            mesh.name).toBeGreaterThan(0.01);
+        }
+      }
+    }
+    const merged = view.group.getObjectByName('merged-ground-details') as THREE.Group;
+    expect(merged.children.length).toBeGreaterThan(1);
+    expect(merged.children.length).toBeLessThan(18);
+    expect(merged.children.every(child => child instanceof THREE.Mesh)).toBe(true);
+  });
+
+  it('has exact high/low boundary vertex matches, not double-sided skirt geometry', () => {
+    const chunk = view.chunks[0]!;
+    const far = new THREE.PerspectiveCamera(70, 1, 1, 2000);
+    far.position.set(0, 750, 1);
+    far.lookAt(0, 0, 0);
+    view.updateCulling(far);
+    const low = chunk.geometry;
+    const near = new THREE.PerspectiveCamera(70, 1, 1, 2000);
+    near.position.copy(chunk.position).add(new THREE.Vector3(0, 18, 15));
+    near.lookAt(chunk.position);
+    view.updateCulling(near);
+    const high = chunk.geometry;
+    expect(high.index!.count).toBeGreaterThan(low.index!.count);
+    const edgePositions = (geometry: THREE.BufferGeometry): string[] => {
+      const positions = geometry.getAttribute('position');
+      const extremes = geometry.boundingBox ?? (geometry.computeBoundingBox(), geometry.boundingBox!);
+      const points = new Set<string>();
+      const indices = geometry.index!;
+      for (let i = 0; i < indices.count; i++) {
+        const k = indices.getX(i);
+        const x = positions.getX(k), z = positions.getZ(k);
+        if (Math.abs(x - extremes.min.x) < 0.0001 ||
+            Math.abs(x - extremes.max.x) < 0.0001 ||
+            Math.abs(z - extremes.min.z) < 0.0001 ||
+            Math.abs(z - extremes.max.z) < 0.0001) {
+          points.add(x.toFixed(4) + ':' + z.toFixed(4));
+        }
+      }
+      return [...points].sort();
+    };
+    expect(edgePositions(low)).toEqual(edgePositions(high));
+    expect(low.getAttribute('position').count)
+      .toBe(high.getAttribute('position').count);
+  });
+
+  it('makes legible grassy benches between grey Mt. Gigga rock faces', () => {
+    const average = (radius: number): THREE.Color => {
+      const color = new THREE.Color(0, 0, 0);
+      let count = 0;
+      for (const chunk of view.chunks) {
+        const positions = chunk.geometry.getAttribute('position');
+        const tints = chunk.geometry.getAttribute('color');
+        for (let i = 0; i < positions.count; i++) {
+          const x = positions.getX(i) + chunk.position.x;
+          const z = positions.getZ(i) + chunk.position.z;
+          if (Math.abs(Math.hypot(x, z) - radius) > 1.6) continue;
+          color.r += tints.getX(i);
+          color.g += tints.getY(i);
+          color.b += tints.getZ(i);
+          count++;
+        }
+      }
+      expect(count).toBeGreaterThan(10);
+      return color.multiplyScalar(1 / count);
+    };
+    const green = average(32);
+    const cliff = average(42);
+    expect(green.g).toBeGreaterThan(cliff.g * 1.12);
+    expect(cliff.b).toBeGreaterThan(green.b * 1.4);
+    const shelves = island.props.filter(p => p.kind === 'ledge');
+    expect(shelves.length).toBeGreaterThan(30);
+    for (const shelf of shelves) {
+      const radius = Math.hypot(shelf.transform.position.x, shelf.transform.position.z);
+      expect([[27, 35], [46, 55], [64, 74], [82, 92]]
+        .some(([min, max]) => radius >= min! && radius <= max!), shelf.id).toBe(true);
+    }
+  });
+
+  it('places town cameras in the streets and turns every shop facade toward its street', () => {
+    const local = makeLocalStreets(island);
+    for (const [id, poiId] of [
+      ['08', 'hoofington'], ['11', 'downtown-bleatsville'],
+    ] as const) {
+      const mark = findBookmark(id)!;
+      const site = island.pois.find(p => p.id === poiId)!.center;
+      const road = local.find(r => r.from === poiId)!;
+      expect(Math.abs(mark.camera.x - site.x)).toBeLessThan(4);
+      expect(mark.camera.z - mark.target.z).toBeGreaterThan(60);
+      expect(mark.camera.y - heightAt(island, mark.camera.x, mark.camera.z))
+        .toBeGreaterThan(1);
+      expect(mark.camera.y - heightAt(island, mark.camera.x, mark.camera.z))
+        .toBeLessThan(9);
+      expect(road.points.length).toBeGreaterThanOrEqual(20);
+    }
+    const city = local.find(road => road.from === 'downtown-bleatsville')!;
+    const shops = island.props.filter(p => p.kind === 'shop' &&
+      p.poiId === 'downtown-bleatsville');
+    expect(shops.length).toBeGreaterThanOrEqual(10);
+    for (const shop of shops) {
+      let closest: { x: number; z: number } | undefined;
+      let distance = Infinity;
+      for (let i = 0; i < city.points.length - 1; i++) {
+        const a = city.points[i]!, b = city.points[i + 1]!;
+        const p = shop.transform.position;
+        const projection = segmentProjection(p, a, b);
+        if (projection.distance < distance) {
+          const t = projection.t;
+          closest = { x: a.x + (b.x - a.x) * t,
+            z: a.z + (b.z - a.z) * t };
+          distance = projection.distance;
+        }
+      }
+      expect(closest).toBeDefined();
+      const dx = closest!.x - shop.transform.position.x;
+      const dz = closest!.z - shop.transform.position.z;
+      const yaw = shop.transform.rotationY;
+      const frontDot = (dx * Math.sin(yaw) + dz * Math.cos(yaw)) /
+        Math.max(distance, 0.001);
+      expect(frontDot, shop.id).toBeGreaterThan(0.94);
+      const ornaments = island.props.filter(p => p.poiId === 'downtown-bleatsville' &&
+        (p.kind === 'awning' || p.kind === 'signboard') &&
+        Math.hypot(p.transform.position.x - shop.transform.position.x,
+          p.transform.position.z - shop.transform.position.z) < 8.5);
+      expect(ornaments.some(p => {
+        const dX = p.transform.position.x - shop.transform.position.x;
+        const dZ = p.transform.position.z - shop.transform.position.z;
+        return dX * Math.sin(yaw) + dZ * Math.cos(yaw) > shop.size.z * 0.4 &&
+          Math.abs(p.transform.rotationY - yaw) < 0.001;
+      }), shop.id).toBe(true);
+    }
+  });
+});
