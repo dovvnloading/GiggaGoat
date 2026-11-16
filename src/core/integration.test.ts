@@ -84,19 +84,18 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
   it('varied tricks trigger a style tier and really resize the seven-body ragdoll', async () => {
     const game = await create();
     try {
-      const original = game.goat.torso.handle;
+      const originalMass = game.goat.torso.mass();
       expect(game.rules.style.tier).toBe('Kid');
       expect(game.goat.size).toBe(.6);
       for (const type of ['flip', 'knockback', 'topple', 'tongue-swing'] as const) {
-        game.rules.awardStyle({ type, quality: 2 });
+        game.rules.awardStyle({ type, quality: 1 });
       }
       expect(game.rules.style.meter).toBeGreaterThanOrEqual(16);
       expect(game.rules.style.tier).toBe('Billy');
       game.step();
       expect(game.goat.size).toBe(1);
-      expect(game.goat.torso.handle).not.toBe(original);
+      expect(game.goat.torso.mass()).toBeGreaterThan(originalMass * 2.5);
       expect(game.goat.bodies).toHaveLength(7);
-      expect(game.physics.raw.getRigidBody(original)).toBeNull();
       expect(game.water.sample(game.goat.torso).fraction).toBeGreaterThanOrEqual(0);
     } finally { game.dispose(); }
   });
