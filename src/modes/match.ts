@@ -3,7 +3,7 @@ import type {
   ModeArena, ModeFrame, Phase, Placement, PlayerSpec, PlayerState, RulesConfig, TeamPlacement,
 } from './types';
 import type { Emit, EventPayload, RuleOutcome } from './internal';
-import { clone, distanceSquared, finite, integer, validateArena, TICKS_PER_SECOND } from './internal';
+import { clone, distanceSquared, finite, integer, validateArena, TICKS_PER_SECOND, compareIds } from './internal';
 import { updateRisingTide } from './rising-tide';
 import { updateKingOfThePeak, topScoreTied } from './king-of-the-peak';
 import { makeHeistState, updateHayHeist } from './hay-heist';
@@ -54,7 +54,7 @@ function prizeForSlots(rank: number, length: number): number {
   return Math.round(sum / length);
 }
 function resultsByScore(players: readonly PlayerState[]): Placement[] {
-  const sorted = [...players].sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+  const sorted = [...players].sort((a, b) => b.score - a.score || compareIds(a.id, b.id));
   return sorted.map((p, i) => {
     const rank = sorted.findIndex(other => other.score === p.score) + 1;
     const count = sorted.filter(other => other.score === p.score).length;
@@ -66,10 +66,10 @@ function resultsForTide(players: PlayerState[]): Placement[] {
     if (a.eliminatedAt === null && b.eliminatedAt !== null) return -1;
     if (b.eliminatedAt === null && a.eliminatedAt !== null) return 1;
     if (a.eliminatedAt !== null && b.eliminatedAt !== null) {
-      return b.eliminatedAt - a.eliminatedAt || a.id.localeCompare(b.id);
+      return b.eliminatedAt - a.eliminatedAt || compareIds(a.id, b.id);
     }
     // At overtime cap the highest dry perch wins; equal head heights tie.
-    return b.headY - a.headY || a.id.localeCompare(b.id);
+    return b.headY - a.headY || compareIds(a.id, b.id);
   });
   const samePlace = (a: PlayerState, b: PlayerState): boolean => {
     if (a.eliminatedAt !== null || b.eliminatedAt !== null) {
@@ -87,14 +87,14 @@ function resultsForTide(players: PlayerState[]): Placement[] {
 }
 function resultsForTeams(state: MatchSnapshot): { players: Placement[]; teams: TeamPlacement[] } {
   const scores = state.heist!.scores;
-  const teams = Object.keys(scores).sort((a, b) => scores[b]! - scores[a]! || a.localeCompare(b));
+  const teams = Object.keys(scores).sort((a, b) => scores[b]! - scores[a]! || compareIds(a, b));
   const teamPlacements = teams.map(teamId => ({
     teamId, score: scores[teamId]!,
     rank: teams.findIndex(id => scores[id] === scores[teamId]) + 1,
   }));
   const players = [...state.players].sort((a, b) =>
     teamPlacements.find(t => t.teamId === a.teamId)!.rank -
-    teamPlacements.find(t => t.teamId === b.teamId)!.rank || a.id.localeCompare(b.id));
+    teamPlacements.find(t => t.teamId === b.teamId)!.rank || compareIds(a.id, b.id));
   return { teams: teamPlacements, players: players.map(p => {
     const team = teamPlacements.find(t => t.teamId === p.teamId)!;
     const tied = teamPlacements.filter(t => t.rank === team.rank).length;
@@ -194,7 +194,7 @@ export class PartyMatch {
       score: 0, knockouts: 0, eliminatedAt: null, submergedTicks: 0,
       stamina: 100, headY: 0,
     });
-    this.data.players.sort((a, b) => a.id.localeCompare(b.id));
+    this.data.players.sort((a, b) => compareIds(a.id, b.id));
     this.emit({ type: 'player.joined', playerId: spec.id, teamId });
   }
   setReady(playerId: string, ready: boolean): void {
