@@ -123,12 +123,13 @@ export class WaterSystem {
   sample(body: RigidBody): Immersion { return this.immersion(body); }
 
   private immersion(body: RigidBody): Immersion {
-    let displaced = 0, weightedFlow = V(), dominantId = 'sea', dominantAmount = 0;
+    let displaced = 0, fullVolume = 0, weightedFlow = V(), dominantId = 'sea', dominantAmount = 0;
     for (let i = 0; i < body.numColliders(); i++) {
       const c = body.collider(i);
       if (!c || c.isSensor()) continue;
       const volume = c.volume();
       if (!(volume > 0) || !Number.isFinite(volume)) continue;
+      fullVolume += volume;
       const p = c.translation(), h = colliderWorldExtents(c);
       const bottom = p.y - h.y, top = p.y + h.y;
       const height = Math.max(1e-6, top - bottom);
@@ -142,7 +143,8 @@ export class WaterSystem {
           clamp01(overlapZ / Math.max(2 * h.z, 1e-6));
         const overlapY = Math.max(0, Math.min(top, o.y + a.y) - Math.max(bottom, o.y - a.y));
         const localFraction = footprint * clamp01(overlapY / height);
-        if (localFraction > fraction) {
+        // Local currents win an equal-depth tie with the ambient sea.
+        if (localFraction >= fraction && localFraction > 0) {
           fraction = localFraction; flow = local.flow; volumeId = local.id;
         }
       }
@@ -153,8 +155,6 @@ export class WaterSystem {
       weightedFlow.z += amount * flow.z;
       if (amount > dominantAmount) { dominantAmount = amount; dominantId = volumeId; }
     }
-    const fullVolume = Array.from({length:body.numColliders()}, (_,i) => body.collider(i))
-      .reduce((s,c) => s + (c && !c.isSensor() ? Math.max(0,c.volume()) : 0),0);
     return { displaced, fraction: fullVolume > 0 ? clamp01(displaced / fullVolume) : 0,
       flow: displaced > 0 ? V(weightedFlow.x/displaced,weightedFlow.y/displaced,weightedFlow.z/displaced) : V(),
       volumeId: dominantId };
@@ -182,7 +182,8 @@ export class WaterSystem {
       if (!wet || !(mass > 0)) continue;
       const fraction = immersion.fraction;
       const up = Math.min(this.maxBuoyancyAcceleration,
-        this.density * 9.81 * immersion.displaced * tracked.options.buoyancyScale / mass);
+        this.density * Math.max(0,-this.physics.raw.gravity.y) *
+        immersion.displaced * tracked.options.buoyancyScale / mass);
       const drag = Math.min(.9, this.linearDrag * fraction * dt);
       const paddle = tracked.paddle, target = V(
         immersion.flow.x + paddle.x * tracked.options.paddleSpeed,

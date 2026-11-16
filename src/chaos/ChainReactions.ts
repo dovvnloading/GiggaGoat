@@ -43,11 +43,14 @@ export class ChainReactions {
   private readonly dominos = new Map<number, Domino>();
   private readonly sodas = new Map<number, Soda>();
   private readonly pendingSoda = new Set<number>();
+  private readonly newContactPairs = new Set<string>();
   private readonly offContact: () => void;
   private readonly offStep: () => void;
   constructor(readonly physics: PhysicsWorld) {
     this.offContact = physics.onContact(event => {
-      if (event.type !== 'impact') return;
+      const pair = Math.min(event.colliderA,event.colliderB) + ':' + Math.max(event.colliderA,event.colliderB);
+      if (event.type === 'begin') { this.newContactPairs.add(pair); return; }
+      if (event.type !== 'impact' || !this.newContactPairs.has(pair)) return;
       for (const handle of [event.bodyA,event.bodyB]) {
         if (handle === null) continue;
         const soda = this.sodas.get(handle);
@@ -60,6 +63,7 @@ export class ChainReactions {
     this.offStep = physics.onAfterStep(() => {
       for (const handle of this.pendingSoda) this.pop(handle);
       this.pendingSoda.clear();
+      this.newContactPairs.clear();
       this.updateDominos();
     });
   }
@@ -137,6 +141,7 @@ export class ChainReactions {
   }
   dispose(): void {
     this.offContact(); this.offStep();
-    this.dominos.clear(); this.sodas.clear(); this.pendingSoda.clear(); this.events.clear();
+    this.dominos.clear(); this.sodas.clear(); this.pendingSoda.clear();
+    this.newContactPairs.clear(); this.events.clear();
   }
 }

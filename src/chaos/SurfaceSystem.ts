@@ -125,6 +125,8 @@ export class SurfaceSystem {
         const body = other.parent();
         if (!body || !body.isDynamic()) return;
         const handle=body.handle;
+        // Compound bodies may have several colliders inside the same sensor.
+        if (currentlyTouching.has(handle)) return;
         currentlyTouching.add(handle);
         if (surface.kind === 'conveyor') {
           if (!surface.touching.has(handle)) {

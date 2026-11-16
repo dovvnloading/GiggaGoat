@@ -49,6 +49,7 @@ export class BreakableRegistry {
   private readonly entries = new Map<number, Breakable>();
   private readonly fragments: Debris[] = [];
   private readonly pending = new Map<number, number>();
+  private readonly newContactPairs = new Set<string>();
   private readonly offContact: () => void;
   private readonly offStep: () => void;
   readonly maxDebris: number;
@@ -64,7 +65,11 @@ export class BreakableRegistry {
     finitePositive(this.debrisLifetime,'debrisLifetime');
     finitePositive(this.sleepCleanupSeconds,'sleepCleanupSeconds');
     this.offContact = physics.onContact(e => {
-      if (e.type !== 'impact') return;
+      const pair = Math.min(e.colliderA,e.colliderB) + ':' + Math.max(e.colliderA,e.colliderB);
+      if (e.type === 'begin') { this.newContactPairs.add(pair); return; }
+      // Sustained support force is not a new collision: otherwise a crate on a
+      // floor eventually 'takes damage' every tick merely from gravity.
+      if (e.type !== 'impact' || !this.newContactPairs.has(pair)) return;
       for (const handle of [e.bodyA, e.bodyB]) {
         if (handle !== null && this.entries.has(handle))
           this.pending.set(handle,(this.pending.get(handle) ?? 0) + e.impulse);
@@ -76,6 +81,7 @@ export class BreakableRegistry {
         if (entry) this.hit(entry.body,impulse,'impact');
       }
       this.pending.clear();
+      this.newContactPairs.clear();
       this.cleanup(dt);
     });
   }
@@ -186,6 +192,7 @@ export class BreakableRegistry {
   }
   dispose(): void {
     this.offContact(); this.offStep(); this.entries.clear(); this.pending.clear();
+    this.newContactPairs.clear();
     while (this.fragments.length) this.removeOldest();
     this.events.clear();
   }

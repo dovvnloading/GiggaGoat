@@ -85,7 +85,8 @@ physics.dispose();
 - `register(body,{impulseThreshold?,damageThreshold?,chunks?,burstImpulse?})`
   returns an unregister function. Collision thresholds use the physics core's
   actual solver contact impulse (N·s). Damage thresholds accumulate weaker
-  impacts; direct breaking requires at least one threshold. Shattering divides
+  **new** impacts (not resting solver support forces); direct breaking requires
+  at least one threshold. Shattering divides
   the original volume into a deterministic lattice (up to 64 chunks), inherits
   its linear and angular velocity, then adds an outward burst.
 - `hit(body,impulse,cause?)`, `damage(body,amount)`, `shatter(body,cause?)`
@@ -105,7 +106,8 @@ physics.dispose();
 - `registerSoda(body,{impactThreshold?,radius?,shoveImpulse?})` makes a
   kid-friendly, once-only fizzy-soda crate: real contact impulses or
   `shakeSoda(body,impulse)` build shaking pressure. When it pops, the shared
-  physics radial-impulse helper pushes dynamic neighbors. No weapons, fire or
+  physics radial-impulse helper pushes dynamic neighbors. Resting contact support
+  forces do not shake a crate. No weapons, fire or
   damage system.
 - `events.on`, `events.drain`: `knock` (neighbour handles),
   `topple` (tilt radians), `sodaPop` (mass and affected handles).

@@ -48,7 +48,6 @@ scene.add(grid);
 
 type Mesh = THREE.Mesh<THREE.BoxGeometry,THREE.MeshStandardMaterial>;
 const meshes = new Map<number,Mesh>();
-const transientMaterials = new Map<number,number>();
 const makeMaterial = (color:number,opacity=1):THREE.MeshStandardMaterial =>
   new THREE.MeshStandardMaterial({color,roughness:.78,metalness:.02,
     transparent:opacity<1,opacity,depthWrite:opacity===1});
@@ -85,7 +84,7 @@ for (const side of [-1,1]) {
   fixedBox(V(-11+side*4,-1,-5),V(.2,1.55,4.2),0x778e99,'rock');
   fixedBox(V(-11,-1,-5+side*4),V(4.2,1.55,.2),0x778e99,'rock');
 }
-const poolId=water.addVolume({id:'pool',center:V(-11,-.9,-5),halfExtents:V(3.85,1.35,3.85),
+water.addVolume({id:'pool',center:V(-11,-.9,-5),halfExtents:V(3.85,1.35,3.85),
   flow:V(.3,0,.1)});
 const poolWater=visualBox(V(-11,-.9,-5),V(3.85,1.35,3.85),0x1f98df,.3);
 poolWater.material.depthWrite=false;
@@ -101,7 +100,7 @@ water.setPaddle(swimmer,V(.5,0,.4));
 showBody(swimmer,0xffffff);
 // Three stacks of breakable crates with actual rigid-body fragments.
 for (let x=0;x<3;x++) for (let y=0;y<3;y++) for (let z=0;z<2;z++) {
-  const p=V(2.5+x*.9,-.04+y*.86, -3+z*.92);
+  const p=V(2.5+x*.9,.2+y*.86, -3+z*.92);
   const body=world.createBox(p,V(.4,.4,.4),6);
   breakables.register(body,{impulseThreshold:5,damageThreshold:12,chunks:6,burstImpulse:8});
   showBody(body,0xf5b746);
@@ -113,7 +112,7 @@ for (let i=0;i<10;i++) {
   showBody(body,0xe78abf);
 }
 // A soda crate surrounded by loose bottles.
-const soda=world.createBox(V(9,-.02,3),V(.48,.48,.48),9);
+const soda=world.createBox(V(9,.25,3),V(.48,.48,.48),9);
 chains.registerSoda(soda,{impactThreshold:9,radius:4,shoveImpulse:40});
 showBody(soda,0xff6498);
 for(let i=0;i<6;i++) {
@@ -152,7 +151,7 @@ breakables.events.on(e=>{
   note('BREAK '+e.mass.toFixed(1)+'kg / '+e.debrisHandles.length+' pieces');
   for(const handle of e.debrisHandles) {
     const chunk=world.raw.getRigidBody(handle);
-    if(chunk?.isValid()) { showBody(chunk,0xf3c485); transientMaterials.set(handle,0xf3c485); }
+    if(chunk?.isValid()) showBody(chunk,0xf3c485);
   }
 });
 chains.events.on(e=>{
@@ -211,7 +210,7 @@ function frame(now:number):void {
     const body=world.raw.getRigidBody(handle);
     if(!body || !body.isValid()) {
       scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose();
-      meshes.delete(handle); transientMaterials.delete(handle); continue;
+      meshes.delete(handle); continue;
     }
     const pose=world.getInterpolatedTransform(body,world.alpha);
     mesh.position.set(pose.translation.x,pose.translation.y,pose.translation.z);
@@ -232,4 +231,3 @@ addEventListener('beforeunload',()=>{
   surfaces.dispose(); chains.dispose(); breakables.dispose();
   water.dispose(); budget.dispose(); world.dispose(); renderer.dispose();
 });
-void poolId;
