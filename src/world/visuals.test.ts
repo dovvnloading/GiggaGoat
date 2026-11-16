@@ -105,6 +105,25 @@ describe('Billy Isle hi-fi environment map', () => {
     }
   });
 
+  it('places a reachable secret relic inside the lighthouse sea cave', () => {
+    for (const seed of ['sea-cave', 'secret-coast', 'density']) {
+      const island = generateIsland({ seed, resolution: 193 });
+      const cave = island.props.find(p => p.kind === 'cave-mouth' &&
+        p.poiId === 'old-lighthouse');
+      expect(cave).toBeDefined();
+      const collider = island.colliders.find(c => c.shape !== 'heightfield' &&
+        c.id === cave!.id);
+      expect(collider).toBeDefined();
+      if (!collider || collider.shape === 'heightfield') continue;
+      expect(collider.size.z).toBeLessThan(cave!.size.z * 0.25);
+      const relic = island.relics.find(p =>
+        p.poiId === 'old-lighthouse' && p.hint.includes('Inside the sea cave'));
+      expect(relic, seed).toBeDefined();
+      expect(relic && Math.hypot(relic.position.x - cave!.transform.position.x,
+        relic.position.z - cave!.transform.position.z)).toBeLessThan(cave!.size.x);
+    }
+  });
+
   it('replays all new details byte-for-byte with seed and changes for another seed', () => {
     const a = generateIsland({ seed: 'decor-1', resolution: 97 });
     const b = generateIsland({ seed: 'decor-1', resolution: 97 });
