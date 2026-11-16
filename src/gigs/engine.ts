@@ -311,9 +311,8 @@ export class GigDirector {
         const carrying = !!parcel && run.seenIds.includes(c.parcelId) &&
           (parcel.carried === true || parcel.heldByTongue === true) &&
           dist(parcel.position, frame.goat.position) <= 5 * frame.goat.size;
-        if (run.streetStarted &&
-          (frame.goat.onStreet === true || frame.goat.position.y < c.streetY + 1.3 ||
-            (parcel && parcel.position.y < c.streetY + 0.5))) {
+        if (frame.goat.onStreet === true || frame.goat.position.y < c.streetY + 1.3 ||
+          (run.streetStarted && parcel && parcel.position.y < c.streetY + 0.5)) {
           this.fail('Street contact: rooftop-only delivery'); break;
         }
         if (run.streetStarted && !carrying) {
@@ -393,7 +392,7 @@ export class GigDirector {
           used.add(found.id);
           layers++;
         }
-        run.metrics.maxLayers = Math.max(layers, run.metrics.maxLayers);
+        run.metrics.maxLayers = layers;
         run.stableTicks = layers >= c.requiredLayers ? run.stableTicks + 1 : 0;
         done = run.stableTicks >= c.holdTicks;
         break;
@@ -409,8 +408,13 @@ export class GigDirector {
         const next = c.checkpoints[run.checkpointIndex];
         if (next && planar(frame.goat.position, next) <= 6 &&
           frame.goat.position.y >= next.y - 0.7) run.checkpointIndex++;
+        if (c.requiresBleat && actions.some(a => a.type === 'bleat') &&
+          planar(frame.goat.position, c.checkpoints[c.checkpoints.length - 1]!) <= 6 &&
+          frame.goat.position.y >= c.checkpoints[c.checkpoints.length - 1]!.y - 0.7 &&
+          !run.seenIds.includes('beacon-bleated')) run.seenIds.push('beacon-bleated');
         done = run.checkpointIndex === c.checkpoints.length &&
-          run.metrics.climbed >= c.minimumClimb;
+          run.metrics.climbed >= c.minimumClimb &&
+          (!c.requiresBleat || run.seenIds.includes('beacon-bleated'));
         break;
       }
       case 'splash-dive': {
@@ -418,13 +422,16 @@ export class GigDirector {
           planar(frame.goat.position, c.jumpPoint) <= 3.5 &&
           Math.abs(frame.goat.position.y - c.jumpPoint.y) <= 2.5) run.streetStarted = true;
         if (run.streetStarted) {
+          if (c.requiresFlop && actions.some(a => a.type === 'flop') &&
+            !run.seenIds.includes('flopped')) run.seenIds.push('flopped');
           run.peakY = Math.max(run.peakY, frame.goat.position.y);
           run.metrics.splashDrop = Math.max(0,
             Math.round((run.peakY - c.waterY) * 100) / 100);
           if (run.metrics.splashDrop >= c.minDrop &&
             Math.abs(frame.goat.position.y - c.waterY) <= 2 &&
             planar(frame.goat.position, c.jumpPoint) <= 7 &&
-            (frame.style ?? []).some(e => e.type === 'big-splash' && e.points > 0)) {
+            (frame.style ?? []).some(e => e.type === 'big-splash' && e.points > 0) &&
+            (!c.requiresFlop || run.seenIds.includes('flopped'))) {
             run.finishedIds.push('splash');
             done = true;
           }
