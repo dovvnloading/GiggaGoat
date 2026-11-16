@@ -47,18 +47,20 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
     const game = await create();
     try {
       ticks(game, 125);
-      const prop = game.island.props.find(p => p.poiId === 'hoofington' &&
-        p.kind === 'crate' && p.body.type === 'dynamic');
-      expect(prop).toBeDefined();
-      const body = game.colliders.bodies.get(prop!.id)!;
+      // The island's own breakable crates can already have shattered after
+      // settling onto terrain. A controlled *real dynamic collider* ensures
+      // this test isolates the charged interaction rather than prop lifetime.
+      const body = game.physics.createBox(V(0, 100, 0), V(.25, .25, .25), 10);
+      ticks(game, 35, { chargeHeadbutt: true });
       const head = game.goat.head.translation(), dir = forward(game.goat.locomotion.heading);
-      body.setTranslation(V(head.x + dir.x * 1.03, head.y - .2, head.z + dir.z * 1.03), true);
+      body.setTranslation(V(head.x + dir.x * .9, head.y - .06, head.z + dir.z * .9), true);
       body.setLinvel(V(), true);
       body.setAngvel(V(), true);
-      ticks(game, 35, { chargeHeadbutt: true });
       const before = { ...body.translation() };
       game.step({ chargeHeadbutt: false });
-      ticks(game, 12);
+      const immediateVelocity = body.linvel();
+      expect(Math.hypot(immediateVelocity.x, immediateVelocity.z)).toBeGreaterThan(.1);
+      ticks(game, 10);
       const after = body.translation();
       expect(Math.hypot(after.x - before.x, after.z - before.z)).toBeGreaterThan(.045);
       expect(game.rules.style.score).toBeGreaterThan(0);
