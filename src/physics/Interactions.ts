@@ -100,8 +100,11 @@ export class GoatInteractions {
       : straight ?? angled;
     const target = hit?.body ?? null;
     if (target?.isDynamic()) {
-      const kick = mul(add(facing,V(0,.16,0)),g.mass*(.25+c*1.85));
-      applyImpulseAt(target,kick,hit!.point);
+      const kick = mul(add(facing,V(0,.16,0)),g.mass*(.85+c*2.05));
+      // Center-of-mass impulse ensures a clear shove, while the contact-point
+      // component adds the wobbly rotation expected from an off-centre hit.
+      target.applyImpulse(mul(kick,.7),true);
+      applyImpulseAt(target,mul(kick,.3),hit!.point);
       this.emitKnock(target,length(kick));
       return target;
     }
