@@ -63,6 +63,7 @@ export class Game {
   private drownSeconds = 0;
   private lastY = 0;
   private climbMetres = 0;
+  private climbRunMetres = 0;
   private lastTongueTime = 0;
   private lastActionTime = -Infinity;
   private lastStyle = new Map<string, number>();
@@ -487,7 +488,11 @@ export class Game {
 
   private afterTick(dt: number): void {
     const g = this.goat, p = g.torso.translation();
-    if (g.locomotion.isClinging) this.climbMetres += Math.max(0, p.y - this.lastY);
+    if (g.locomotion.isClinging) {
+      const climbed = Math.max(0, p.y - this.lastY);
+      this.climbMetres += climbed;
+      this.climbRunMetres += climbed;
+    }
     this.lastY = p.y;
     const out = Math.max(Math.abs(p.x), Math.abs(p.z)) > this.island.size * .57 ||
       p.y < -35 || p.y > 500 || !Number.isFinite(p.y);
@@ -514,7 +519,10 @@ export class Game {
         if (event.verticalSpeed > 9 && this.goat.isRagdoll) this.award('ragdoll-bounce', 1.3);
         break;
       case 'wallClingEnd':
-        if (this.climbMetres > 0.8) this.award('wall-climb', Math.min(2, this.climbMetres / 3));
+        if (this.climbRunMetres > 0.8) {
+          this.award('wall-climb', Math.min(2, this.climbRunMetres / 3));
+        }
+        this.climbRunMetres = 0;
         break;
       case 'tongueDetach':
         if (this.physics.time - this.lastTongueTime > .5 &&
@@ -569,6 +577,8 @@ export class Game {
       body.setAngvel(V(), true);
     }
     this.drownSeconds = 0;
+    this.climbMetres = 0;
+    this.climbRunMetres = 0;
     this.lastY = this.goat.torso.translation().y;
   }
 
