@@ -326,14 +326,15 @@ export class GigCatalog {
       }
       case 'dam-bomb': {
         const walkway = requireKind(this.props, 'the-dam', 'platform')[0]!;
-        const jumpPoint = plus(walkway.transform.position, rng.int(5) - 2,
-          walkway.size.y / 2 + 0.6, rng.int(3) - 1);
-        config = { kind: 'splash-dive', jumpPoint, waterY: this.reservoirLevel,
+        const jumpPoint = plus(walkway.transform.position,
+          walkway.size.x / 2 - 3 + rng.int(3), walkway.size.y / 2 + 0.6,
+          walkway.size.z / 2 - 1);
+        const landing = plus(jumpPoint, 0, this.reservoirLevel - jumpPoint.y, 6);
+        config = { kind: 'splash-dive', jumpPoint, landing, waterY: this.reservoirLevel,
           minDrop: [3.5, 5.5, 7.5][tier]!, requiresFlop: true };
         start = copy(jumpPoint);
         markers = [marker('dam-board', 'Flop from here', jumpPoint, 3.5, 'start'),
-          marker('dam-splash', 'Reservoir landing',
-            plus(jumpPoint, 0, this.reservoirLevel - jumpPoint.y, 0), 7, 'destination')];
+          marker('dam-splash', 'Reservoir landing', landing, 3.6, 'destination')];
         break;
       }
       case 'beacon-bleat': {
@@ -353,14 +354,15 @@ export class GigCatalog {
         break;
       }
       case 'splash-dive': {
-        const platform = requireKind(this.props, 'baa-ardwalk', 'platform')[0]!;
-        const jumpPoint = plus(platform.transform.position, rng.int(5) - 2,
-          platform.size.y / 2 + 0.7, rng.int(3) - 1);
-        config = { kind: 'splash-dive', jumpPoint, waterY: this.seaLevel,
-          minDrop: [3, 5, 7][tier]! };
+        const pier = requireKind(this.props, 'baa-ardwalk', 'pier')[0]!;
+        const jumpPoint = plus(pier.transform.position, rng.int(5) - 2,
+          pier.size.y / 2 + 0.7, pier.size.z / 2 - 5);
+        const landing = plus(jumpPoint, 0, this.seaLevel - jumpPoint.y, 7);
+        config = { kind: 'splash-dive', jumpPoint, landing, waterY: this.seaLevel,
+          minDrop: [2.5, 3.5, 4.5][tier]! };
         start = copy(jumpPoint);
         markers = [marker('high-board', 'Jump from here', jumpPoint, 3.5, 'start'),
-          marker('splash-zone', 'Make waves', plus(jumpPoint, 0, this.seaLevel - jumpPoint.y, 0), 7, 'destination')];
+          marker('splash-zone', 'Make waves', landing, 3.6, 'destination')];
         break;
       }
     }
