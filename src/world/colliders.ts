@@ -50,8 +50,25 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
       size.x = Math.min(0.76, prop.size.x);
       size.z = size.x;
     }
+    // Cave entrances are open arches: the solid primitive is their recessed back wall,
+    // not a box sealing the passage. The visual rock pillars form the side boundaries.
+    let transform = prop.transform;
+    if (prop.kind === 'cave-mouth') {
+      size.x = prop.size.x * 0.65;
+      size.y = prop.size.y * 0.72;
+      size.z = prop.size.z * 0.12;
+      const offset = -prop.size.z * 0.40;
+      transform = {
+        position: {
+          x: prop.transform.position.x + Math.sin(prop.transform.rotationY) * offset,
+          y: prop.transform.position.y - prop.size.y * 0.06,
+          z: prop.transform.position.z + Math.cos(prop.transform.rotationY) * offset,
+        },
+        rotationY: prop.transform.rotationY,
+      };
+    }
     const collider: PropColliderDescriptor = {
-      id: prop.id, shape, transform: prop.transform, size, body: prop.body,
+      id: prop.id, shape, transform, size, body: prop.body,
       ...(shape === 'convex' ? { vertices: hull(prop) } : {}),
     };
     colliders.push(collider);
