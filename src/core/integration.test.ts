@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Game, FIXED_DT } from './Game';
-import { V, forward } from '../physics';
+import { V, forward, RAPIER, collisionGroups } from '../physics';
 import { heightAt } from '../world';
 
 const create = (): Promise<Game> => Game.create({ seed: 'first-playable-test', resolution: 97 });
@@ -103,6 +103,34 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
       expect(game.goat.torso.mass()).toBeGreaterThan(originalMass * 2.5);
       expect(game.goat.bodies).toHaveLength(7);
       expect(game.water.sample(game.goat.torso).fraction).toBeGreaterThanOrEqual(0);
+    } finally { game.dispose(); }
+  });
+
+  it('scores measured vertical climbing after releasing a real steep wall', async () => {
+    const game = await create();
+    try {
+      ticks(game, 90);
+      const startingY = game.goat.torso.translation().y;
+      const p = game.goat.torso.translation();
+      const facing = forward(game.goat.locomotion.heading);
+      const wall = game.physics.raw.createRigidBody(RAPIER.RigidBodyDesc.fixed()
+        .setTranslation(p.x + facing.x * 1.65, p.y + 2,
+          p.z + facing.z * 1.65));
+      game.physics.raw.createCollider(RAPIER.ColliderDesc.cuboid(3, 3, .35)
+        .setRotation({x:0,y:Math.sin(game.goat.locomotion.heading/2),
+          z:0,w:Math.cos(game.goat.locomotion.heading/2)})
+        .setCollisionGroups(collisionGroups('terrain')), wall);
+      const awarded: string[] = [];
+      const off = game.rules.events.on('style:scored', event => awarded.push(event.trick));
+      let highest = startingY;
+      for (let i = 0; i < 240; i++) {
+        game.step({ moveZ: 1, cameraYaw: game.goat.locomotion.heading, climb: true });
+        highest = Math.max(highest, game.goat.torso.translation().y);
+      }
+      ticks(game, 10, {moveZ: 0, climb: false});
+      off();
+      expect(highest - startingY).toBeGreaterThan(.8);
+      expect(awarded).toContain('wall-climb');
     } finally { game.dispose(); }
   });
 
