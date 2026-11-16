@@ -98,7 +98,7 @@ export class Game {
     this.prepareProps();
 
     this.budget = new DynamicBodyBudget(physics, 240, 45);
-    this.water = new WaterSystem(physics, { seaLevel: island.seaLevel, buoyancyScale: undefined } as never);
+    this.water = new WaterSystem(physics, { seaLevel: island.seaLevel });
     this.addWaterVolumes();
     this.breakables = new BreakableRegistry(physics, {
       maxDebris: 144, debrisLifetime: 18, sleepCleanupSeconds: 4, bodyBudget: this.budget,
@@ -129,11 +129,13 @@ export class Game {
         this.colliders.bodies.delete(prop.id);
         this.propByBody.delete(event.bodyHandle);
       }
-      if (this.nearPlayer(event.position, 24)) this.award('destruction', 1 + Math.min(1, event.mass / 50));
+      if (this.nearPlayer(event.position, 24) && this.recentChaos()) {
+        this.award('destruction', 1 + Math.min(1, event.mass / 50));
+      }
     }));
     this.off.push(this.chains.events.on(event => {
       const body = physics.raw.getRigidBody(event.bodyHandle);
-      if (!body || !this.nearPlayer(body.translation(), 20)) return;
+      if (!body || !this.nearPlayer(body.translation(), 20) || !this.recentChaos()) return;
       if (event.type === 'topple') this.award('topple', Math.min(2, event.tiltRadians));
       else if (event.type === 'sodaPop') this.award('destruction', 1.6);
     }));
@@ -362,12 +364,7 @@ export class Game {
     const mz = Math.max(-1, Math.min(1, input.moveZ ?? 0));
     const wish = V(Math.sin(cameraYaw) * mz + Math.cos(cameraYaw) * mx, 0,
       -Math.cos(cameraYaw) * mz + Math.sin(cameraYaw) * mx);
-    const steep = Math.hypot(wish.x, wish.z) > .1 && !!this.physics.raycast(
-      add(torso.translation(), V(0, .1 * goat.size, 0)),
-      wish, 1.05 * goat.size, {
-        predicate: collider => !goat.ownsBody(collider.parent()),
-      },
-    )?.normal && this.isFacingWall(wish);
+    const steep = Math.hypot(wish.x, wish.z) > .1 && this.isFacingWall(wish);
     const head = goat.head.translation();
     const hit = this.physics.raycast(head, add(forward(goat.locomotion.heading), V(0, -.10, 0)),
       9 * goat.size, { predicate: collider => !goat.ownsBody(collider.parent()) });
@@ -505,6 +502,11 @@ export class Game {
     if (now - previous < (type === 'knockback' ? .28 : .42)) return;
     this.lastStyle.set(type, now);
     this.rules.awardStyle({ type, quality: Math.max(.25, Math.min(2, quality)) });
+  }
+
+  private recentChaos(): boolean {
+    const v = this.goat.torso.linvel();
+    return this.physics.time - this.lastActionTime < 4 || Math.hypot(v.x, v.z) > 3;
   }
 
   private nearPlayer(position: Vec3, distance: number): boolean {
