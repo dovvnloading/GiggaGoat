@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateIsland } from '../world';
+import { generateIsland, heightAt } from '../world';
 import { ChallengeTracker, CudWallet, EventBus } from '../gameplay';
 import { BOARD_CYCLE_TICKS, GigCatalog, GIG_INFO } from './catalog';
 import { GigDirector } from './engine';
@@ -207,6 +207,23 @@ describe('Gig boards and real world integration', () => {
     const demolition = catalog.build(catalog.makeOffer('demolition-contract', 'easy'));
     expect(demolition.spawns.every(p => p.role === 'tower' && p.mass > 0)).toBe(true);
     expect(island.props.some(p => p.poiId === 'crane-yard' && p.kind === 'tower')).toBe(true);
+  });
+  it('grounds generated mowing and gnome routes on actual island terrain', () => {
+    const mow = configOf(catalog.build(catalog.makeOffer('mow-down', 'hard')), 'mow-down');
+    for (const p of mow.patches) expect(p.y).toBeCloseTo(heightAt(island, p.x, p.z) + 0.15, 4);
+    const gnome = configOf(catalog.build(catalog.makeOffer('escort-the-gnome', 'hard')), 'escort-the-gnome');
+    for (const p of gnome.route) expect(p.y).toBeCloseTo(heightAt(island, p.x, p.z) + 0.8, 4);
+    const stack = configOf(catalog.build(catalog.makeOffer('stack-up', 'hard')), 'stack-up');
+    expect(stack.groundY).toBeCloseTo(heightAt(island, stack.center.x, stack.center.z), 4);
+  });
+  it('varies physical layouts for each contract over several seeded rotations', () => {
+    for (const id of GIG_IDS) {
+      const setups = Array.from({ length: 12 }, (_, cycle) =>
+        catalog.build(catalog.makeOffer(id, 'medium', cycle)));
+      // Ignore offer IDs: the start, geometry, target IDs and markers must actually vary.
+      const geometry = setups.map(({ config, start, markers }) => JSON.stringify({ config, start, markers }));
+      expect(new Set(geometry).size, id).toBeGreaterThan(1);
+    }
   });
   it('different seeds and tiers vary meaningful gig layout rather than only an ID', () => {
     for (const id of GIG_IDS) {
