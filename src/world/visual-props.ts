@@ -53,6 +53,13 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
   function append(g: THREE.BufferGeometry, x: number, y: number, z: number,
     sx: number, sy: number, sz: number, color = 0xffffff,
     rz = 0, rx = 0): void {
+    // Icosahedra are non-indexed, while cylinders and boxes are indexed.
+    // Normalize every part before merging so mixed silhouettes stay renderable.
+    if (g.index) {
+      const unpacked = g.toNonIndexed();
+      g.dispose();
+      g = unpacked;
+    }
     g.applyMatrix4(new THREE.Matrix4().compose(
       new THREE.Vector3(x, y, z),
       new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, 0, rz)),
