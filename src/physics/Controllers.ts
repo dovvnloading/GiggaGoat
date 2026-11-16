@@ -185,7 +185,7 @@ export class LocomotionController {
     this.groundHit = ground;
     const walkable = !!ground && ground.normal.y >= Math.cos(this.tuning.maxSlopeDegrees*Math.PI/180);
     this.grounded = !!(walkable && ground && ground.distance <=
-      (g.balance.tuning.rideHeight+.16)*s && this.clock >= this.jumpLockUntil);
+      (g.balance.tuning.rideHeight+.16)*s && this.clock >= this.jumpLockUntil && torso.linvel().y < 1.2);
     if (this.grounded) {
       this.lastGroundAt = this.clock;
       this.jumpConsumed = false;
@@ -202,7 +202,10 @@ export class LocomotionController {
       { groups: GROUND_QUERY_GROUPS },
     ) : null;
     const wallEligible = !!wall && wall.normal.y < .46 && dot(wish,wall.normal) < -.45;
-    const clinging = !g.isRagdoll && this.input.canClimb && !this.grounded && wallEligible;
+    const clinging = !g.isRagdoll && this.input.canClimb && wallEligible;
+    // Steep-wall intent takes priority over ordinary ground contact, so a goat can
+    // initiate a climb with its hooves still planted on flat terrain.
+    if (clinging) this.grounded = false;
     if (clinging !== this.isClinging) {
       this.isClinging = clinging;
       if (clinging) {
