@@ -65,7 +65,7 @@ export function makeRelics(island: IslandData, rng: SeededRandom): RelicSpot[] {
           }
         }
       }
-      if (id === 'baa-ardwalk' && i < 2 && pier) {
+      else if (id === 'baa-ardwalk' && i < 2 && pier) {
         // Under the walking deck, above the sea, between the support piles.
         const z = pier.transform.position.z + (i === 0 ? 13 : -13) * scale;
         const x = pier.transform.position.x + (i === 0 ? -2.2 : 2.2) * scale;
