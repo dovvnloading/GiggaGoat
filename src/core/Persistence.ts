@@ -1,0 +1,72 @@
+import { GameSimulation, type GameSnapshot } from '../gameplay';
+import { GigDirector, GigCatalog, type GigSnapshot } from '../gigs';
+import type { GigBodySave } from './GigSession';
+import type { Game } from './Game';
+
+export interface GameProgress {
+  gameplay: GameSnapshot;
+  gigs: GigSnapshot;
+  gigBodies: GigBodySave[];
+}
+export interface GameSettings {
+  mouseSensitivity: number;
+  invertY: boolean;
+  fov: number;
+  graphics: 'low' | 'medium' | 'high';
+  /** Reserved for the audio lane; persisted without connecting an audio engine. */
+  volume: number;
+}
+export interface GameSave {
+  version: 1;
+  progress: GameProgress;
+  settings: GameSettings;
+}
+export const SAVE_KEY = 'gigga-goat/save/v1';
+export const DEFAULT_SETTINGS: Readonly<GameSettings> = Object.freeze({
+  mouseSensitivity: 1, invertY: false, fov: 67, graphics: 'high', volume: .8,
+});
+
+export function validateSettings(raw: unknown): GameSettings {
+  if (typeof raw !== 'object' || raw === null) return { ...DEFAULT_SETTINGS };
+  const s = raw as Partial<GameSettings>;
+  const between = (n: unknown, lo: number, hi: number, fallback: number): number =>
+    typeof n === 'number' && Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback;
+  return {
+    mouseSensitivity: between(s.mouseSensitivity, .25, 3, DEFAULT_SETTINGS.mouseSensitivity),
+    invertY: typeof s.invertY === 'boolean' ? s.invertY : DEFAULT_SETTINGS.invertY,
+    fov: between(s.fov, 55, 95, DEFAULT_SETTINGS.fov),
+    graphics: s.graphics === 'low' || s.graphics === 'medium' || s.graphics === 'high'
+      ? s.graphics : DEFAULT_SETTINGS.graphics,
+    volume: between(s.volume, 0, 1, DEFAULT_SETTINGS.volume),
+  };
+}
+const storageOrNull = (): Storage | null => {
+  try { return typeof localStorage === 'undefined' ? null : localStorage; }
+  catch { return null; }
+};
+/** Malformed, old and blocked localStorage must never prevent boot. */
+export function loadSave(storage: Pick<Storage, 'getItem'> | null = storageOrNull()): GameSave | null {
+  try {
+    if (!storage) return null;
+    const raw = storage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const data: unknown = JSON.parse(raw);
+    if (!data || typeof data !== 'object' || (data as { version?: unknown }).version !== 1) return null;
+    const value = data as GameSave;
+    if (!value.progress || !Array.isArray(value.progress.gigBodies) ||
+      !value.progress.gameplay || !value.progress.gigs || value.progress.gigs.version !== 1) return null;
+    // Validate the gameplay snapshot before it can restore any wallet/unlocks.
+    GameSimulation.fromJSON(value.progress.gameplay);
+    return { version: 1, progress: value.progress, settings: validateSettings(value.settings) };
+  } catch { return null; }
+}
+export function saveGame(game: Game, settings: GameSettings,
+  storage: Pick<Storage, 'setItem'> | null = storageOrNull()): boolean {
+  try {
+    if (!storage) return false;
+    const payload: GameSave = { version: 1, progress: game.exportProgress(),
+      settings: validateSettings(settings) };
+    storage.setItem(SAVE_KEY, JSON.stringify(payload));
+    return true;
+  } catch { return false; }
+}
