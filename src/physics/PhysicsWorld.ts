@@ -1,4 +1,4 @@
-import RAPIER, { type Collider, type RigidBody, type Shape } from '@dimforge/rapier3d-compat';
+import RAPIER, { type Collider, type RigidBody, type Shape, type World, type EventQueue } from '@dimforge/rapier3d-compat';
 import { collisionGroups, type CollisionGroupName } from './CollisionGroups';
 import { type PhysicsContact } from './events';
 import { add, clamp, lerp, mul, normalize, Q, slerp, V, type Quat, type Vec3 } from './math';
@@ -53,11 +53,11 @@ type ContactListener = (contact: PhysicsContact) => void;
  * Consumers must call PhysicsWorld.create(): WASM must be initialized first.
  */
 export class PhysicsWorld {
-  readonly raw: RAPIER.World;
+  readonly raw: World;
   readonly bodyRegistry = new Map<number, BodyRecord>();
   readonly fixedDt: number;
   readonly maxSubsteps: number;
-  readonly eventQueue: RAPIER.EventQueue;
+  readonly eventQueue: EventQueue;
   private readonly before = new Set<FixedListener>();
   private readonly after = new Set<FixedListener>();
   private readonly contactListeners = new Set<ContactListener>();
