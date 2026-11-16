@@ -163,14 +163,19 @@ describe('rendering and Rapier integration', () => {
     expect(built.bodies.size).toBeGreaterThan(30);
     expect(['heightfield', 'cuboid', 'cylinder', 'convex']
       .every(shape => island.colliders.some(c => c.shape === shape))).toBe(true);
-    const x = 0, z = 0, ground = heightAt(island, x, z);
+    const farm = island.pois.find(p => p.id === 'hoofington')!.center;
+    const x = farm.x + 4, z = farm.z + 3, ground = heightAt(island, farm.x + 4, farm.z + 3);
     const ball = world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic().setTranslation(x, ground + 13, z));
     world.createCollider(RAPIER.ColliderDesc.ball(0.52).setRestitution(0), ball);
     for (let i = 0; i < 250; i++) world.step();
-    const landed = ball.translation().y;
-    expect(landed).toBeGreaterThan(ground + 0.35);
-    expect(landed).toBeLessThan(ground + 1.5);
+    const landing = ball.translation();
+    const landed = landing.y;
+    const finalGround = heightAt(island, landing.x, landing.z);
+    expect(Math.hypot(landing.x - x, landing.z - z)).toBeLessThan(5);
+    expect(landed).toBeGreaterThan(finalGround + 0.35);
+    expect(landed).toBeLessThan(finalGround + 1.1);
+    expect(Math.abs(finalGround - ground)).toBeLessThan(0.6);
     world.free();
   });
 });
