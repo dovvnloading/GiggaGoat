@@ -28,6 +28,7 @@ export function makeHeistState(players: readonly PlayerState[], arena: ModeArena
   return {
     bales, scores, previousHeadbutt: Object.fromEntries(players.map(p => [p.id, false])),
     lastKickTick: Object.fromEntries(players.map(p => [p.id, -KICK_COOLDOWN])),
+    pickupBlockedUntil: Object.fromEntries(players.map(p => [p.id, 0])),
     overtimeScore: false,
   };
 }
@@ -39,8 +40,13 @@ function setBaleAtBarn(bale: Bale, arena: ModeArena): void {
   bale.lastTouchedTeam = null;
 }
 
-function drop(bale: Bale, player: PlayerState, reason: 'released' | 'exhausted' | 'shoved', emit: Emit): void {
+function drop(bale: Bale, player: PlayerState, reason: 'released' | 'exhausted' | 'shoved',
+  state: MatchSnapshot, emit: Emit): void {
   bale.carrierId = null;
+  // A shove grants a real 0.5 s steal window; exhaustion needs a short
+  // recovery. Even deliberate release cannot reattach on the same tick.
+  state.heist!.pickupBlockedUntil[player.id] = state.tick +
+    (reason === 'shoved' ? 30 : reason === 'exhausted' ? 20 : 2);
   emit({ type: 'hay.dropped', baleId: bale.id, playerId: player.id, reason });
 }
 
@@ -65,11 +71,11 @@ export function updateHayHeist(
       const pos = observations.get(player.id)!.position;
       bale.position = { x: pos.x, y: pos.y + 0.65, z: pos.z };
       if (!intent.tongue || intent.dropHay) {
-        drop(bale, player, 'released', emit);
+        drop(bale, player, 'released', state, emit);
       } else {
         player.stamina = Math.max(0, player.stamina -
           state.config.hayCarryDrainPerSecond / TICKS_PER_SECOND);
-        if (player.stamina <= 0) drop(bale, player, 'exhausted', emit);
+        if (player.stamina <= 0) drop(bale, player, 'exhausted', state, emit);
       }
     } else {
       player.stamina = Math.min(100, player.stamina + STAMINA_RECOVERY_PER_SECOND / TICKS_PER_SECOND);
@@ -90,7 +96,7 @@ export function updateHayHeist(
       .find((b): b is Bale => b !== undefined);
     if (victim) {
       const other = players.find(p => p.id === victim.carrierId)!;
-      drop(victim, other, 'shoved', emit);
+      drop(victim, other, 'shoved', state, emit);
       heist.lastKickTick[player.id] = state.tick;
       continue;
     }
@@ -114,6 +120,7 @@ export function updateHayHeist(
   for (const player of players) {
     const intent = intents[player.id] ?? {};
     if (!intent.tongue || intent.dropHay || player.stamina < 5 ||
+      state.tick < (heist.pickupBlockedUntil[player.id] ?? 0) ||
       heist.bales.some(b => b.carrierId === player.id)) continue;
     const pos = observations.get(player.id)!.position;
     const bale = heist.bales.filter(b => b.carrierId === null &&
