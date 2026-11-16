@@ -430,7 +430,7 @@ export class GigDirector {
             Math.round((run.peakY - c.waterY) * 100) / 100);
           if (run.metrics.splashDrop >= c.minDrop &&
             Math.abs(frame.goat.position.y - c.waterY) <= 2 &&
-            planar(frame.goat.position, c.jumpPoint) <= 7 &&
+            planar(frame.goat.position, c.landing) <= 3.6 &&
             (frame.style ?? []).some(e => e.type === 'big-splash' && e.points > 0) &&
             (!c.requiresFlop || run.seenIds.includes('flopped'))) {
             run.finishedIds.push('splash');
