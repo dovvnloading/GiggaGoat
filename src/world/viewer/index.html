@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Billy Isle — World Lab</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, -apple-system, sans-serif; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #12273d; }
+    canvas { display: block; }
+    #app { position: fixed; inset: 0; }
+    #labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+    .poi { position: absolute; transform: translate(-50%, -130%); padding: 4px 9px;
+      color: #fff; white-space: nowrap; font-size: 12px; font-weight: 750;
+      letter-spacing: .03em; border-radius: 7px; background: #173c5fbb;
+      border: 1px solid #ffffff7a; box-shadow: 0 2px 12px #0005; }
+    #panel { position: fixed; top: 20px; left: 20px; width: min(350px, calc(100vw - 40px));
+      background: #101c30e8; color: #e6f5ff; border: 1px solid #7ddfef66;
+      border-radius: 17px; padding: 18px; box-shadow: 0 15px 65px #0007; backdrop-filter: blur(12px); }
+    h1 { margin: 0 0 4px; font-size: 21px; letter-spacing: -.03em; }
+    p { color: #a8c9d5; font-size: 12px; line-height: 1.4; margin: 0 0 15px; }
+    label { display: block; margin-top: 11px; font-size: 12px; font-weight: 650; color: #d9e7ee; }
+    .inline { display: flex; align-items: center; gap: 9px; margin-top: 5px; }
+    input[type=text], select { flex: 1; min-width: 0; padding: 9px 10px; color: #fff;
+      background: #263b51; border: 1px solid #4d6f83; border-radius: 7px; font: inherit; }
+    button { border: 0; border-radius: 7px; padding: 10px 14px; background: #87f3d3;
+      color: #16374c; font-weight: 800; cursor: pointer; }
+    input[type=range] { width: 100%; accent-color: #87f3d3; }
+    input[type=checkbox] { accent-color: #87f3d3; }
+    .checkboxes { display: flex; gap: 20px; align-items: center; }
+    .checkboxes label { display: flex; align-items: center; gap: 6px; font-weight: 500; }
+    #stats { border-top: 1px solid #ffffff2a; margin-top: 13px; padding-top: 10px;
+      font-size: 12px; line-height: 1.7; color: #b8e0e2; }
+    #hint { position: fixed; right: 16px; bottom: 16px; padding: 8px 13px; border-radius: 8px;
+      background: #10263dbb; color: #e0f4fc; font-size: 12px; }
+    @media (max-width: 650px) { #panel { top: 8px; left: 8px; padding: 12px; }
+      h1 { font-size: 18px; } #hint { font-size: 10px; } }
+  </style>
+</head>
+<body>
+  <main id="app" aria-label="Three-dimensional island preview"></main>
+  <div id="labels"></div>
+  <section id="panel" aria-label="World lab controls">
+    <h1>🐐 Billy Isle — World Lab</h1>
+    <p>Deterministic blockout · eight districts · mountain-to-sea traversal</p>
+    <form id="seed-form">
+      <label for="seed">World seed</label>
+      <div class="inline">
+        <input id="seed" type="text" spellcheck="false" value="billy-isle" aria-label="World seed" />
+        <button type="submit">Generate</button>
+      </div>
+    </form>
+    <label for="camera">Camera mode</label>
+    <div class="inline"><select id="camera"><option value="orbit">Orbit and inspect</option>
+      <option value="fly">Fly with WASD</option></select></div>
+    <label for="tide">Rising tide <output id="tide-label">0 m</output></label>
+    <input id="tide" type="range" min="0" max="110" step="0.5" value="0" />
+    <label for="day">Day / night <output id="day-label">Midday</output></label>
+    <input id="day" type="range" min="0" max="1" step="0.005" value="0.5" />
+    <div class="checkboxes">
+      <label><input id="show-pois" type="checkbox" checked /> POI labels</label>
+      <label><input id="show-colliders" type="checkbox" /> Colliders</label>
+    </div>
+    <div id="stats" role="status"></div>
+  </section>
+  <aside id="hint">Orbit: left-drag / wheel · Fly: WASD, R/F up/down, drag to look</aside>
+  <script type="module" src="./viewer.ts"></script>
+</body>
+</html>
