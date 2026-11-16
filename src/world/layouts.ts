@@ -270,6 +270,12 @@ export function isPointInsideProps(point: Vec3, props: readonly PropDescriptor[]
     const dx = point.x - center.x, dz = point.z - center.z;
     const c = Math.cos(prop.transform.rotationY), s = Math.sin(prop.transform.rotationY);
     const lx = c * dx - s * dz, lz = s * dx + c * dz;
+    if (prop.kind === 'cave-mouth') {
+      // Match the recessed Rapier back-wall collider; the front of the arch is walkable.
+      if (Math.abs(lx) < prop.size.x * 0.325 + margin &&
+          Math.abs(lz + prop.size.z * 0.40) < prop.size.z * 0.06 + margin) return true;
+      continue;
+    }
     if (prop.shape === 'cylinder') {
       const radius = prop.kind.startsWith('tree-') ? Math.min(0.9, prop.size.x * 0.2)
         : prop.kind === 'lamp' ? 0.38 : prop.size.x / 2;
