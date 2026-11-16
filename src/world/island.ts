@@ -90,7 +90,9 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
     poi.center.y = gridSample(island, x, z);
   }
   island.roads = makeRoads(island, rng);
-  island.props = [...populateProps(island, rng), ...dressIsland(island, rng), ...makeBridgeDecks(island)];
+  island.props = populateProps(island, rng);
+  // Dressing needs access to the already-authored buildings for roof equipment.
+  island.props.push(...dressIsland(island, rng), ...makeBridgeDecks(island));
   assignBiomes(island);
   island.spawns = makeSpawns(island);
   island.relics = makeRelics(island, rng);
