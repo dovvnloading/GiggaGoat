@@ -2,7 +2,7 @@ import type {
   Bale, GoatObservation, HeistState, MatchSnapshot, ModeArena, ModeInputIntent, PlayerState,
 } from './types';
 import type { Emit, RuleOutcome } from './internal';
-import { direction, distanceSquared, TICKS_PER_SECOND } from './internal';
+import { direction, distanceSquared, TICKS_PER_SECOND, compareIds } from './internal';
 
 const KICK_COOLDOWN = 24;
 const STAMINA_RECOVERY_PER_SECOND = 7;
@@ -60,7 +60,7 @@ export function updateHayHeist(
   emit: Emit,
 ): RuleOutcome {
   const heist = state.heist!;
-  const players = [...state.players].sort((a, b) => a.id.localeCompare(b.id));
+  const players = [...state.players].sort((a, b) => compareIds(a.id, b.id));
 
   // Carried bales follow the goat's observed position. Carrying burns stamina
   // and prevents sprinting (getEffects); releasing the tongue drops immediately.
@@ -103,7 +103,7 @@ export function updateHayHeist(
     const bale = heist.bales.filter(b => b.carrierId === null &&
       distanceSquared(self.position, b.position) <= state.config.hayPickupRadius ** 2)
       .sort((a, b) => distanceSquared(self.position, a.position) -
-        distanceSquared(self.position, b.position) || a.id.localeCompare(b.id))[0];
+        distanceSquared(self.position, b.position) || compareIds(a.id, b.id))[0];
     if (bale) {
       const facing = direction(self.facing);
       bale.position.x += facing.x * state.config.hayKickDistance;
@@ -126,7 +126,7 @@ export function updateHayHeist(
     const bale = heist.bales.filter(b => b.carrierId === null &&
       distanceSquared(pos, b.position) <= state.config.hayPickupRadius ** 2)
       .sort((a, b) => distanceSquared(pos, a.position) - distanceSquared(pos, b.position) ||
-        a.id.localeCompare(b.id))[0];
+        compareIds(a.id, b.id))[0];
     if (!bale) continue;
     bale.carrierId = player.id;
     bale.lastTouchedTeam = player.teamId;
