@@ -1,7 +1,7 @@
 import type {
   Difficulty, GoatObservation, MatchView, ModeInputIntent, Point,
 } from './types';
-import { direction, distanceSquared } from './internal';
+import { direction, distanceSquared, compareIds } from './internal';
 
 type BotGoal = 'wander' | 'chase' | 'shove' | 'flee' | 'capture' | 'grab-hay' | 'carry-hay';
 export interface BotSnapshot {
@@ -65,7 +65,7 @@ export class BotBrain {
       view.players.some(p => p.id === g.id && p.eliminatedAt === null &&
         (view.mode !== 'hay-heist' || p.teamId !== me.teamId)));
     rivals.sort((a, b) => distanceSquared(self.position, a.position) -
-      distanceSquared(self.position, b.position) || a.id.localeCompare(b.id));
+      distanceSquared(self.position, b.position) || compareIds(a.id, b.id));
     const nearest = rivals[0];
     state.targetId = null;
 
@@ -78,7 +78,7 @@ export class BotBrain {
       } else {
         const candidates = view.bales.filter(b => b.homeTeam !== me.teamId && !b.carrierId)
           .sort((a, b) => distanceSquared(self.position, a.position) -
-            distanceSquared(self.position, b.position) || a.id.localeCompare(b.id));
+            distanceSquared(self.position, b.position) || compareIds(a.id, b.id));
         if (candidates.length) {
           state.goal = 'grab-hay';
           state.target = { x: candidates[0]!.position.x, z: candidates[0]!.position.z };
@@ -148,7 +148,7 @@ export class BotBrain {
       view.players.some(p => p.id === g.id && p.eliminatedAt === null &&
         (view.mode !== 'hay-heist' || p.teamId !== me.teamId)))
       .sort((a, b) => distanceSquared(a.position, self.position) -
-        distanceSquared(b.position, self.position) || a.id.localeCompare(b.id))[0];
+        distanceSquared(b.position, self.position) || compareIds(a.id, b.id))[0];
     const opponentClose = nearest && distanceSquared(nearest.position, self.position) <
       skill.shoveRange ** 2;
     const butt = !!opponentClose && view.tick - this.state.lastButtTick >=
