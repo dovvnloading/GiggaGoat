@@ -47,6 +47,24 @@ export function makeRelics(island: IslandData, rng: SeededRandom): RelicSpot[] {
       let position: Vec3 | undefined;
       let category: RelicCategory = 'secret';
       let hint = 'Look beyond the main trail';
+      if (id === 'old-lighthouse' && i === count - 1) {
+        const cave = island.props.find(p => p.poiId === id && p.kind === 'cave-mouth');
+        if (cave) {
+          // Place the hidden relic beneath the overhang, inside the open arch.
+          const c = cave.transform.position, yaw = cave.transform.rotationY;
+          for (const [dx, dz] of [[0, 0.20], [0.15, 0.25], [-0.15, 0.25], [0, 0.40]]) {
+            const x = c.x + (Math.cos(yaw) * dx! + Math.sin(yaw) * dz!) * cave.size.x;
+            const z = c.z + (-Math.sin(yaw) * dx! + Math.cos(yaw) * dz!) * cave.size.z;
+            const candidate = { x, z, y: Math.max(island.seaLevel + 1.0 * scale,
+              gridSample(island, x, z) + 1.2 * scale) };
+            if (!clearPosition(island, candidate)) continue;
+            position = candidate;
+            category = 'secret';
+            hint = 'Inside the sea cave beneath the lighthouse';
+            break;
+          }
+        }
+      }
       if (id === 'baa-ardwalk' && i < 2 && pier) {
         // Under the walking deck, above the sea, between the support piles.
         const z = pier.transform.position.z + (i === 0 ? 13 : -13) * scale;
