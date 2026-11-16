@@ -93,7 +93,7 @@ export class ChainReactions {
   }
   private pop(handle: number): boolean {
     const soda = this.sodas.get(handle), body = this.physics.raw.getRigidBody(handle);
-    if (!soda || soda.popped || !body) return false;
+    if (!soda || soda.popped || !body || !body.isValid()) return false;
     soda.popped = true;
     const mass = body.mass(), center = { ...body.translation() };
     // This is a radial playful shove: no projectiles, combustion or weapon damage.
@@ -106,7 +106,7 @@ export class ChainReactions {
   private updateDominos(): void {
     for (const [handle, domino] of this.dominos) {
       const body = this.physics.raw.getRigidBody(handle);
-      if (!body) { this.dominos.delete(handle); continue; }
+      if (!body || !body.isValid()) { this.dominos.delete(handle); continue; }
       const upright = rotate(body.rotation(),V(0,1,0)).y;
       const tilt = Math.acos(Math.max(-1,Math.min(1,upright)));
       if (!domino.toppled && tilt >= domino.settings.toppleAngle) {
@@ -121,7 +121,7 @@ export class ChainReactions {
       for (const [otherHandle, other] of this.dominos) {
         if (otherHandle === handle || other.triggered) continue;
         const target = this.physics.raw.getRigidBody(otherHandle);
-        if (!target) continue;
+        if (!target || !target.isValid()) continue;
         const delta = horizontal(V(target.translation().x-center.x,0,target.translation().z-center.z));
         const dist = magnitude(delta);
         if (dist < .02 || dist > domino.settings.neighbourRadius) continue;

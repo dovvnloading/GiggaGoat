@@ -164,7 +164,7 @@ export class BreakableRegistry {
     const oldest = this.fragments.shift();
     if (!oldest) return;
     const body = this.physics.raw.getRigidBody(oldest.handle);
-    if (body) {
+    if (body && body.isValid()) {
       this.bodyBudget?.release(body);
       this.physics.removeBody(body);
     }
@@ -174,7 +174,7 @@ export class BreakableRegistry {
       const item = this.fragments[i];
       if (!item) continue;
       const body = this.physics.raw.getRigidBody(item.handle);
-      if (!body) { this.fragments.splice(i,1); continue; }
+      if (!body || !body.isValid()) { this.fragments.splice(i,1); continue; }
       item.sleepingFor = body.isSleeping() ? item.sleepingFor+dt : 0;
       if (item.sleepingFor >= this.sleepCleanupSeconds ||
           this.physics.time-item.spawnedAt >= this.debrisLifetime) {

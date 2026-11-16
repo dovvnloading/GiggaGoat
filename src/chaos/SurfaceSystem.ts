@@ -166,7 +166,7 @@ export class SurfaceSystem {
       // Prevent maps accumulating handles from years of spawned/despawned props.
       if (this.physics.stepCount % 120 === 0) {
         for (const [handle,time] of surface.lastUsed)
-          if (!this.physics.raw.getRigidBody(handle) ||
+          if (!this.physics.raw.getRigidBody(handle)?.isValid() ||
               this.physics.time-time > Math.max(3,surface.cooldown*2)) surface.lastUsed.delete(handle);
       }
     }

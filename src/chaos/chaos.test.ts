@@ -100,20 +100,19 @@ describe('water: actual displaced mass, motion and typed events', () => {
 });
 
 describe('destruction with real Rapier contacts and bounded fragments', () => {
-  async function collisionTrial(strikeSpeed: number): Promise<{registry:BreakableRegistry;targetHandle:number;world:PhysicsWorld}> {
+  async function collisionTrial(strikeSpeed: number): Promise<{registry:BreakableRegistry;target:ReturnType<PhysicsWorld['createBox']>;world:PhysicsWorld}> {
     const world = await scene(V()), registry = manage(new BreakableRegistry(world));
     const target = world.createBox(V(0,0,0),V(.45,.45,.45),8);
-    const targetHandle = target.handle;
     registry.register(target,{impulseThreshold:4,chunks:8,burstImpulse:5});
     const striker = world.createBox(V(-1.1,0,0),V(.35,.35,.35),4);
     striker.setLinvel(V(strikeSpeed,0,0),true);
     steps(world,120);
-    return {registry,targetHandle,world};
+    return {registry,target,world};
   }
 
   it('a hard physical hit shatters; an otherwise identical soft collision does not', async () => {
     const soft = await collisionTrial(.35);
-    expect(soft.world.raw.getRigidBody(soft.targetHandle)).not.toBeNull();
+    expect(soft.target.isValid()).toBe(true);
     expect(soft.registry.events.drain()).toHaveLength(0);
     const hard = await collisionTrial(11);
     const destruction = hard.registry.events.drain();
@@ -121,9 +120,9 @@ describe('destruction with real Rapier contacts and bounded fragments', () => {
     expect(destruction[0]?.cause).toBe('impact');
     expect(destruction[0]?.mass).toBeCloseTo(8);
     expect(destruction[0]?.debrisHandles).toHaveLength(8);
-    expect(hard.world.raw.getRigidBody(hard.targetHandle)).toBeNull();
+    expect(hard.target.isValid()).toBe(false);
     for (const handle of destruction[0]?.debrisHandles ?? [])
-      expect(hard.world.raw.getRigidBody(handle)).not.toBeNull();
+      expect(hard.world.raw.getRigidBody(handle)?.isValid()).toBe(true);
   });
 
   it('supports accumulated damage without breaking on one soft hit', async () => {
@@ -140,17 +139,17 @@ describe('destruction with real Rapier contacts and bounded fragments', () => {
     const world = await scene(V()), registry = manage(new BreakableRegistry(world,{
       maxDebris:9,debrisLifetime:.5,sleepCleanupSeconds:10,
     }));
-    let first: number | undefined;
+    let first: ReturnType<PhysicsWorld['createBox']> | undefined;
     for (let i=0;i<7;i++) {
       const body = world.createBox(V(i*4,0,0),V(.5,.5,.5),8);
       registry.register(body,{impulseThreshold:1,chunks:8});
       expect(registry.hit(body,20)).toBe(true);
-      first ??= registry.debrisHandles[0];
+      first ??= world.raw.getRigidBody(registry.debrisHandles[0]!) ?? undefined;
       expect(registry.debrisCount).toBeLessThanOrEqual(9);
     }
     expect(registry.debrisCount).toBe(9);
     expect(first).toBeDefined();
-    expect(world.raw.getRigidBody(first!)).toBeNull();
+    expect(first!.isValid()).toBe(false);
     steps(world,40);
     expect(registry.debrisCount).toBe(0);
   });

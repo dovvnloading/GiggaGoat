@@ -152,7 +152,7 @@ breakables.events.on(e=>{
   note('BREAK '+e.mass.toFixed(1)+'kg / '+e.debrisHandles.length+' pieces');
   for(const handle of e.debrisHandles) {
     const chunk=world.raw.getRigidBody(handle);
-    if(chunk) { showBody(chunk,0xf3c485); transientMaterials.set(handle,0xf3c485); }
+    if(chunk?.isValid()) { showBody(chunk,0xf3c485); transientMaterials.set(handle,0xf3c485); }
   }
 });
 chains.events.on(e=>{
@@ -185,7 +185,7 @@ renderer.domElement.addEventListener('pointerdown',event=>{
   if(!target) return;
   const handle=Number(target.object.userData.bodyHandle);
   const body=world.raw.getRigidBody(handle);
-  if(!body || !body.isDynamic()) return;
+  if(!body || !body.isValid() || !body.isDynamic()) return;
   const dir=raycaster.ray.direction;
   const mass=Math.max(.5,body.mass());
   const impulse=Math.min(120,Number(powerSlider.value))*Math.sqrt(mass);
@@ -209,7 +209,7 @@ function frame(now:number):void {
   controls.update();
   for(const [handle,mesh] of meshes) {
     const body=world.raw.getRigidBody(handle);
-    if(!body) {
+    if(!body || !body.isValid()) {
       scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose();
       meshes.delete(handle); transientMaterials.delete(handle); continue;
     }

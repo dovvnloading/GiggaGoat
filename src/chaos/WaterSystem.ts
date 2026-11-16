@@ -163,7 +163,7 @@ export class WaterSystem {
     // Impulses are one-shot; do not use persistent Rapier addForce each tick.
     for (const [handle, tracked] of this.tracked) {
       const body = this.physics.raw.getRigidBody(handle);
-      if (!body || !body.isDynamic()) { this.tracked.delete(handle); continue; }
+      if (!body || !body.isValid() || !body.isDynamic()) { this.tracked.delete(handle); continue; }
       const immersion = this.immersion(body);
       const wet = immersion.displaced > 1e-7;
       const velocity = body.linvel();

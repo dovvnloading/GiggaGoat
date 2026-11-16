@@ -41,7 +41,7 @@ export class DynamicBodyBudget {
   cleanup(dt: number): void {
     for (const [handle, item] of this.managed) {
       const body = this.physics.raw.getRigidBody(handle);
-      if (!body) { this.managed.delete(handle); continue; }
+      if (!body || !body.isValid()) { this.managed.delete(handle); continue; }
       item.sleepingFor = body.isSleeping() ? item.sleepingFor + dt : 0;
       if (item.sleepingFor >= this.sleepCleanupSeconds) {
         this.physics.removeBody(body);
