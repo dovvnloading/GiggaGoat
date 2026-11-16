@@ -35,11 +35,11 @@ export class GigGameplayBridge {
           distinct: 1, multiplier: 1, title: 'Demolition Contract', meter: 0,
         });
       }
-      if (award.gigId === 'summit-sprint' &&
+      if ((award.gigId === 'summit-sprint' || award.gigId === 'beacon-bleat') &&
         !this.challenges.getProgress('mountain-goat').completed) {
-        const metres = this.director.active?.attemptId === award.attemptId
-          ? this.director.active.metrics.climbed : 0;
-        if (metres > 0) this.gameplayEvents.emit('traversal', { kind: 'climb', metres });
+        if (award.challengeMetres && award.challengeMetres > 0) {
+          this.gameplayEvents.emit('traversal', { kind: 'climb', metres: award.challengeMetres });
+        }
       }
     }
     return delivered;
