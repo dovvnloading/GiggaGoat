@@ -10,7 +10,7 @@ const STAMINA_RECOVERY_PER_SECOND = 7;
 export function makeHeistState(players: readonly PlayerState[], arena: ModeArena, hayPerTeam: number): HeistState {
   const teams = [...new Set(players.map(p => p.teamId).filter((id): id is string => id !== null))].sort();
   const bales: Bale[] = [];
-  const scores: Record<string, number> = {};
+  const scores: Record<string, number> = Object.create(null) as Record<string, number>;
   for (const team of teams) {
     const barn = arena.barns.find(b => b.teamId === team)!;
     scores[team] = 0;
