@@ -178,12 +178,14 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   site(peak, 'flag', -7, 4, 0.7, 9, 0.7);
   for (let i = 0; i < 21; i++) {
     const angle = i * 2.39996;
-    const radius = (29 + (i % 4) * 12) * scale;
+    // Position shelves on the FLAT, grassy tier bands, never midway down a
+    // steep cliff where a rectangular prop protrudes as a floating dark cube.
+    const radius = [29, 49, 68, 85][i % 4]! * scale;
     const x = summit.x + Math.cos(angle) * radius;
     const z = summit.z + Math.sin(angle) * radius;
     add(peak, 'ledge', x, z,
       { x: (5 + i % 3) * scale, y: 1.2 * scale, z: 4.2 * scale },
-      { yaw: angle, lift: 0.9 * scale, color: 0xc0b8a9 });
+      { yaw: angle, lift: 0.15 * scale, color: 0xffffff });
     if (i % 3 === 0) add(peak, 'rock', x + 4 * scale, z + 2 * scale,
       { x: 4 * scale, y: 3 * scale, z: 3.5 * scale }, { shape: 'convex' });
   }
