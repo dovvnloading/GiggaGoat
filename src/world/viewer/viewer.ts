@@ -8,6 +8,7 @@ import {
 } from '../index';
 import { ART_BOOKMARKS, findBookmark } from './bookmarks';
 import { paintingAssetUrl } from './reference-art';
+import { createStaticShadowCache } from './shadow-cache';
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -45,6 +46,8 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// These static casters/light need one shadow pass per change, not one every frame.
+const shadowCache = createStaticShadowCache(renderer.shadowMap);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -120,6 +123,12 @@ scene.add(streetGoat);
 
 let island: IslandData;
 let worldView: WorldScene;
+// Share the invalidation path with the live viewer and the bookmark exporter.
+function renderWorldFrame(): void {
+  if (worldView.updateCulling(camera)) shadowCache.invalidate();
+  shadowCache.beforeRender();
+  renderer.render(scene, camera);
+}
 let colliderDebug: THREE.Group | null = null;
 const labelById = new Map<string, HTMLDivElement>();
 const projected = new THREE.Vector3();
@@ -208,6 +217,7 @@ function regenerate(): void {
   labelById.clear();
   island = generateIsland({ seed: seedInput.value, resolution: 193 });
   worldView = createWorldScene(island, { chunkSegments: 32 });
+  shadowCache.invalidate();
   scene.add(worldView.group);
   for (const poi of island.pois) {
     const label = document.createElement('div');
@@ -247,6 +257,7 @@ function applyBookmark(id: string): void {
   orbit.update();
   dayInput.value = String(mark.day);
   worldView.setDayNight(mark.day);
+  shadowCache.invalidate();
   const hour = Math.floor(mark.day * 24);
   dayLabel.value = String(hour).padStart(2, '0') + ':00';
   presetInput.value = mark.day < 0.1 ? 'night' : mark.day < 0.35 ? 'golden-hour' : 'day';
@@ -300,8 +311,7 @@ async function captureAllBookmarks(): Promise<void> {
       applyBookmark(mark.id);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      worldView.updateCulling(camera);
-      renderer.render(scene, camera);
+      renderWorldFrame();
       const y = row * rowHeight;
       // Copy immediately after render, before WebGL clears its backbuffer.
       ctx.drawImage(renderer.domElement, 0, y, width, height);
@@ -351,6 +361,7 @@ async function captureAllBookmarks(): Promise<void> {
     compareToggle.checked = saved.compare;
     reference.hidden = !saved.compare;
     worldView.setDayNight(Number(saved.day));
+    shadowCache.invalidate();
     worldView.setTideLevel(Number(saved.tide));
     const hour = Math.floor(Number(saved.day) * 24);
     dayLabel.value = String(hour).padStart(2, '0') + ':00';
@@ -385,6 +396,7 @@ compareToggle.addEventListener('change', () => {
 presetInput.addEventListener('change', () => {
   const preset = presetInput.value as 'day' | 'golden-hour' | 'night';
   worldView.setLightingPreset(preset);
+  shadowCache.invalidate();
   const phase = preset === 'day' ? 0.5 : preset === 'golden-hour' ? 0.285 : 0.025;
   dayInput.value = String(phase);
   dayLabel.value = String(Math.floor(phase * 24)).padStart(2, '0') + ':00';
@@ -396,6 +408,7 @@ tideInput.addEventListener('input', () => {
 dayInput.addEventListener('input', () => {
   const phase = Number(dayInput.value);
   worldView.setDayNight(phase);
+  shadowCache.invalidate();
   const hour = Math.floor(phase * 24);
   dayLabel.value = String(hour).padStart(2, '0') + ':00';
 });
@@ -418,7 +431,6 @@ renderer.setAnimationLoop(() => {
   worldView.update(elapsed);
   if (orbit.enabled) orbit.update();
   else fly.update(delta);
-  worldView.updateCulling(camera);
   if (poiToggle.checked) {
     for (const poi of island.pois) {
       const node = labelById.get(poi.id)!;
@@ -433,7 +445,7 @@ renderer.setAnimationLoop(() => {
       }
     }
   }
-  renderer.render(scene, camera);
+  renderWorldFrame();
   if (sampleSeconds >= 0.4) {
     const info = renderer.info.render;
     performance.textContent = 'FPS ' + fps.toFixed(0) +
