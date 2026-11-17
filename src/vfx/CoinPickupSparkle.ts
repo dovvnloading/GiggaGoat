@@ -321,13 +321,13 @@ export class CoinPickupSparkle {
       return;
     }
     slot.root.visible = true;
+    // Keep even hidden transforms on the same absolute-age timeline: a
+    // single large dt must equal many small dt steps when the coin vanishes.
     slot.coin.visible = frame.coinScale > 0.003;
-    if (slot.coin.visible) {
-      slot.coin.position.set(frame.coinX - cue.position.x,
-        frame.coinY - cue.position.y, frame.coinZ - cue.position.z);
-      slot.coin.rotation.set(frame.coinTilt, frame.coinSpin, -0.08);
-      slot.coin.scale.setScalar(frame.coinScale);
-    }
+    slot.coin.position.set(frame.coinX - cue.position.x,
+      frame.coinY - cue.position.y, frame.coinZ - cue.position.z);
+    slot.coin.rotation.set(frame.coinTilt, frame.coinSpin, -0.08);
+    slot.coin.scale.setScalar(frame.coinScale);
 
     slot.swoosh.visible = frame.ringOpacity > 0.004;
     if (slot.swoosh.visible) {
