@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { loadLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
 import type { PropDescriptor, PropKind } from './types';
 import { buildArchitecture, isArchitecturalKind } from './visual-architecture';
 
@@ -12,6 +14,9 @@ export interface PropVisuals {
   group: THREE.Group;
   batches: PropBatch[];
   update(time: number): void;
+  /** Async asset swaps can change the static shadow caster silhouette. */
+  consumeShadowChange(): boolean;
+  dispose(): void;
 }
 
 /** Shared four-step hand-painted lighting ramp. */
@@ -612,6 +617,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
   const materials = new Map<PropKind, THREE.MeshToonMaterial>();
   const outlineMat = new THREE.MeshBasicMaterial({ color: 0x34424b, side: THREE.BackSide });
   const windUniforms: Array<{ value: number }> = [];
+  const jobs: Array<{ kind: PropKind; entries: PropDescriptor[];
+    mesh: THREE.InstancedMesh; batch: PropBatch }> = [];
   const dummy = new THREE.Object3D();
   for (const [kind, entries] of buckets) {
     const architecture = isArchitecturalKind(kind) ? buildArchitecture(kind) : null;
@@ -706,14 +713,106 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       group.add(hull);
       drawn.push(hull);
     }
-    batches.push({
+    const batch: PropBatch = {
       meshes: drawn, sphere: mesh.boundingSphere?.clone() ?? new THREE.Sphere(),
       // Global instance batches must not vanish when their centre is distant.
       nearOnly: false,
+    };
+    batches.push(batch);
+    jobs.push({ kind, entries, mesh, batch });
+  }
+
+  // The procedural silhouettes are synchronous placeholders and genuine
+  // failure fallbacks. Once loaded, swap their *geometry*, not the mesh:
+  // physics bindings, descriptor order, seeded transforms and draw budget
+  // remain exactly as before (one InstancedMesh per kind).
+  let disposed = false, shadowChanged = false;
+  group.userData['libraryLoaded'] = 0;
+  group.userData['libraryFailed'] = 0;
+  group.userData['libraryPending'] = jobs.length;
+  group.userData['libraryReady'] = typeof document === 'undefined' || !jobs.length;
+  if (typeof document !== 'undefined') {
+    const loader = new GLTFLoader();
+    const cache = new Map<string, Promise<THREE.BufferGeometry>>();
+    const priorityKinds: readonly PropKind[] = [
+      'tree-oak', 'tree-pine', 'planter', 'bush', 'flower', 'grass-tuft',
+      'lamp', 'bench', 'fence', 'shop', 'house', 'cottage', 'crate', 'barrel',
+      'sign', 'container', 'crane', 'ferris-wheel',
+    ];
+    // Populate the art camera first while other district models stream in.
+    jobs.sort((a, b) => {
+      const left = priorityKinds.indexOf(a.kind), right = priorityKinds.indexOf(b.kind);
+      return (left < 0 ? priorityKinds.length : left) -
+        (right < 0 ? priorityKinds.length : right);
     });
+    let next = 0;
+    const white = new THREE.Color(0xffffff), tint = new THREE.Color();
+    async function worker(): Promise<void> {
+      while (!disposed && next < jobs.length) {
+        const job = jobs[next++]!;
+        const path = PROP_LIBRARY_MODELS[job.kind];
+        let pending = cache.get(path);
+        if (!pending) {
+          pending = loadLibraryPropGeometry(job.kind, loader);
+          cache.set(path, pending);
+        }
+        try {
+          const libraryGeometry = await pending;
+          if (disposed) { libraryGeometry.dispose(); return; }
+          const original = job.mesh.geometry;
+          job.mesh.geometry = libraryGeometry;
+          // Retain mild per-descriptor colour variation without tinting the
+          // original model's windows, bark and other paint into a single hue.
+          for (let i = 0; i < job.entries.length; i++) {
+            const color = job.entries[i]!.color;
+            job.mesh.setColorAt(i, color === undefined
+              ? white : tint.setHex(color).lerp(white, 0.82));
+          }
+          if (job.mesh.instanceColor) job.mesh.instanceColor.needsUpdate = true;
+          if (sways(job.kind)) {
+            const material = job.mesh.material as THREE.MeshToonMaterial;
+            material.side = THREE.DoubleSide;
+            material.needsUpdate = true;
+          }
+          job.mesh.computeBoundingSphere();
+          job.batch.sphere.copy(job.mesh.boundingSphere ?? new THREE.Sphere());
+          // Remove legacy roof/detail and outline draws only on success.
+          // On errors they remain as part of the complete fallback.
+          for (const extra of job.batch.meshes.slice(1)) {
+            group.remove(extra);
+            if (extra.geometry !== original) extra.geometry.dispose();
+          }
+          job.batch.meshes.splice(1);
+          original.dispose();
+          group.userData['libraryLoaded'] = (group.userData['libraryLoaded'] as number) + 1;
+          if (job.mesh.castShadow) shadowChanged = true;
+        } catch (error) {
+          if (!disposed) {
+            group.userData['libraryFailed'] = (group.userData['libraryFailed'] as number) + 1;
+            console.warn('Using procedural fallback for ' + job.kind, error);
+          }
+        } finally {
+          if (!disposed) {
+            group.userData['libraryPending'] = (group.userData['libraryPending'] as number) - 1;
+          }
+        }
+      }
+    }
+    // Bounded concurrent loads avoid swamping the main-thread renderer or
+    // starving the landmark model loaders of network/decoding capacity.
+    void Promise.all(Array.from({ length: Math.min(4, jobs.length) }, () => worker()))
+      .then(() => {
+        if (!disposed) group.userData['libraryReady'] = true;
+      });
   }
   return {
     group, batches,
     update(time: number): void { for (const u of windUniforms) u.value = time; },
+    consumeShadowChange(): boolean {
+      const changed = shadowChanged;
+      shadowChanged = false;
+      return changed;
+    },
+    dispose(): void { disposed = true; outlineMat.dispose(); },
   };
 }
