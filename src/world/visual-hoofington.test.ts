@@ -97,6 +97,26 @@ describe('Hoofington sourced village model integration', () => {
     (roof.material as THREE.Material).dispose();
   });
 
+  it('bakes leafy vegetation as coloured canopy rather than transparent-atlas black', () => {
+    const model = new THREE.Group();
+    const leaf = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshStandardMaterial({ color: 0x000000 }));
+    leaf.position.y = 0.6;
+    model.add(leaf);
+    const geometry = bakeHoofingtonGeometry([{
+      model: 'bush', position: { x: 0, y: 1, z: 0 },
+      size: { x: 2, y: 2, z: 2 }, yaw: 0,
+    }], new Map<HoofModel, THREE.Group>([['bush', model]]))!;
+    const colors = geometry.getAttribute('color');
+    for (let i = 0; i < colors.count; i++) {
+      // The source material may be all black while the foliage is intended
+      // to be bright green, as with alpha-cutout models from nature atlases.
+      expect(colors.getY(i)).toBeGreaterThan(0.2);
+    }
+    geometry.dispose(); leaf.geometry.dispose();
+    (leaf.material as THREE.Material).dispose();
+  });
+
   it('retains one original instance per collider and creates no browser loads in node', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
     const before = island.props.length;
