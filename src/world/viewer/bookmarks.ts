@@ -40,7 +40,7 @@ export const ART_BOOKMARKS: readonly ArtBookmark[] = [
     camera: { x: -218, y: 24, z: -86 }, target: { x: -147, y: 12, z: -150 },
     fov: 63, day: 0.49, tide: 0 },
   { id: '14', label: '14 · The Dam', image: '14_poi_the_dam.png',
-    camera: { x: 73, y: 43, z: -258 }, target: { x: -17, y: 16, z: -191 },
+    camera: { x: -52, y: 26, z: -119 }, target: { x: -17, y: 16, z: -191 },
     fov: 57, day: 0.53, tide: 0 },
   { id: '15', label: '15 · Old Lighthouse', image: '15_poi_lighthouse.png',
     camera: { x: -342, y: 30, z: 62 }, target: { x: -259, y: 14, z: -18 },

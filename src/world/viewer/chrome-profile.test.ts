@@ -138,6 +138,44 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
         return response.result?.value === true ? true : null;
       }, 45000);
 
+      // The benchmark starts as soon as the viewer boots, before its async
+      // GLB could arrive. Check the actual model and the painting's bookmark
+      // camera first rather than profiling the temporary fallback.
+      const damView = await until(async () => {
+        const value = await send('Runtime.evaluate', {
+          expression: String.raw`(() => {
+            const menu = document.getElementById('bookmark');
+            if (!menu || !window.__worldProfile) return null;
+            menu.value = '14';
+            menu.dispatchEvent(new Event('change', { bubbles: true }));
+            return window.__worldProfile.damHeroState();
+          })()`,
+          returnByValue: true,
+        });
+        const state = value.result?.value as {
+          loaded: boolean; inFrame: boolean; reservoirHidden: boolean;
+          camera: number[]; target: number[];
+        } | undefined;
+        return state?.loaded ? state : null;
+      }, 30000);
+      expect(damView.inFrame).toBe(true);
+      for (const [axis, value] of [-52, 26, -119].entries()) {
+        expect(damView.camera[axis]).toBeCloseTo(value, 5);
+      }
+      for (const [axis, value] of [-17, 16, -191].entries()) {
+        expect(damView.target[axis]).toBeCloseTo(value, 5);
+      }
+
+      // Run a render pass to apply the async Dam model switch, then ensure
+      // the procedural reservoir is hidden instead of overlapping the GLB.
+      await send('Runtime.evaluate', {
+        expression: 'window.__worldProfile.measure(2)', returnByValue: true,
+      });
+      const latest = await send('Runtime.evaluate', {
+        expression: 'window.__worldProfile.damHeroState()', returnByValue: true,
+      });
+      expect(latest.result?.value?.reservoirHidden).toBe(true);
+
       const expression = String.raw`(() => {
         const profile = window.__worldProfile;
         const menu = document.getElementById('bookmark');
