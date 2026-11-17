@@ -358,7 +358,8 @@ describe.skipIf(!chrome && !process.env['CI'])('production game Chrome runtime s
         } catch (error) {
           faults.push('Browser error inspection: ' + String(error));
         }
-        faults.push(...page.faults.map(message => '[' + page.phase + '] ' + message));
+        const inspectedPage = page;
+        faults.push(...inspectedPage.faults.map(message => '[' + inspectedPage.phase + '] ' + message));
         page.socket.close();
       }
       browser?.kill();
