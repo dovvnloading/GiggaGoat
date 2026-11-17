@@ -50,6 +50,8 @@ export interface WalkingGoat {
 export interface AudioFrame {
   dt: number;
   camera?: CameraAudioPose;
+  /** Input-only one-shots (charge start, UI or explicit jump) in the same frame call. */
+  cues?: readonly AudioCue[];
   /** Partial updates preserve prior music state. Meters are normalized by the adapter. */
   state?: Partial<MusicState>;
   physics?: readonly PhysicsEvent[];
@@ -350,6 +352,7 @@ export class AudioEngine {
     if (frame.state) this.currentState = { ...this.currentState, ...frame.state };
     if (frame.camera) this.updateListener(frame.camera);
     if (!this.context || this.context.state !== 'running') return;
+    const audioNow = this.context.currentTime;
     const resolve = (input: AudioCue): PlayOptions => {
       // Physics/mode events carry goat IDs. Keyed gameplay events don't, so the
       // first observed goat is the local player (documented host convention).
@@ -361,7 +364,9 @@ export class AudioEngine {
         observed?.position ?? frame.goatPosition;
       return {
         position: location, intensity: input.intensity, pitch: input.pitch,
-        combo: input.combo, size: input.size ??
+        combo: input.combo,
+        when: input.delay === undefined ? undefined : audioNow + Math.max(0, input.delay),
+        size: input.size ??
           (owner ? frame.sizeForGoat?.(owner) : undefined) ?? observed?.size,
       };
     };
@@ -373,6 +378,7 @@ export class AudioEngine {
     for (const event of frame.chaos ?? []) playLane({ lane: 'chaos', event });
     for (const event of frame.modes ?? []) playLane({ lane: 'modes', event });
     for (const event of frame.gigs ?? []) playLane({ lane: 'gigs', event });
+    for (const sound of frame.cues ?? []) this.play(sound.sound, resolve(sound));
     for (const goat of frame.goats ?? []) this.updateFootsteps(goat, frame.dt);
     if (this.elapsed % 6 < .26) {
       for (const [id, foot] of this.stepPhases) {
