@@ -41,7 +41,7 @@ export const DOWNTOWN_MODELS = {
   fountain: 'assets/library/kenney/fantasy-town-kit/fountain-round-detail.glb',
   cone: 'assets/library/kenney/city-kit-roads/construction-cone.glb',
   table: 'assets/library/kenney/furniture-kit/tableRound.glb',
-  chair: 'assets/library/kaykit/furniture-bits/chair_B_wood.gltf',
+  chair: 'assets/library/kaykit/furniture-bits/chair_A_wood.gltf',
   bread: 'assets/library/kenney/mini-shop/display-bread.glb',
   produce: 'assets/library/kenney/mini-shop/display-fruit.glb',
   clothes: 'assets/library/kenney/mini-shop/clothing-rack.glb',
