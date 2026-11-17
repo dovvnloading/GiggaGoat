@@ -243,10 +243,14 @@ function applyBookmark(id: string): void {
   // the same foreground scale reference among the downtown shop fronts.
   streetGoat.visible = id === '08' || id === '11';
   if (streetGoat.visible) {
-    const goatZ = mark.camera.z - 6.5 * (island.size / 600);
-    streetGoat.position.set(mark.camera.x,
-      heightAt(island, mark.camera.x, goatZ), goatZ);
-    streetGoat.scale.setScalar(island.size / 600);
+    const scale = island.size / 600;
+    // At bookmark 11 the art places a small goat at the left foreground,
+    // not directly on the camera's central ray (which clipped its horns).
+    // Hoofington's bookmark-08 framing is intentionally unchanged.
+    const goatX = mark.camera.x - (id === '11' ? 4.4 : 0) * scale;
+    const goatZ = mark.camera.z - (id === '11' ? 14 : 6.5) * scale;
+    streetGoat.position.set(goatX, heightAt(island, goatX, goatZ), goatZ);
+    streetGoat.scale.setScalar(scale * (id === '11' ? 0.78 : 1));
   }
   camera.position.set(mark.camera.x, mark.camera.y, mark.camera.z);
   camera.fov = mark.fov;
