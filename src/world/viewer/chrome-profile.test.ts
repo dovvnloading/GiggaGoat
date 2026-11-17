@@ -221,14 +221,6 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
       if (screenshot.data) {
         console.log('WORLD_DOWNTOWN_SCREENSHOT ' + screenshot.data);
       }
-      const picks = await send('Runtime.evaluate', {
-        expression: '[[570,385],[580,410],[590,425],[615,400],' +
-          '[585,370]].map(([x,y]) => ({x,y,hits:window.__worldProfile.debugPick(x,y)}))',
-        returnByValue: true,
-      });
-      console.log('WORLD_DOWNTOWN_HITS ' +
-        JSON.stringify(picks.result?.value ?? []));
-
       // Also capture the unobscured 3D world at precisely the same bookmark
       // for hands-on art review; restore all overlays before profiling.
       await send('Runtime.evaluate', {
@@ -239,24 +231,6 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
         format: 'jpeg', quality: 68, fromSurface: true,
       });
       if (clean.data) console.log('WORLD_DOWNTOWN_CLEAN ' + clean.data);
-      for (const name of ['downtown-library-models',
-        'handcrafted-props', 'graded-ring-road-and-trails']) {
-        const off = await send('Runtime.evaluate', {
-          expression: '(() => { window.__worldProfile.debugGroupVisible(' +
-            JSON.stringify(name) + ', false); window.__worldProfile.measure(2); })()',
-        });
-        if (off.exceptionDetails) throw new Error('Could not isolate ' + name);
-        const probe = await send('Page.captureScreenshot', {
-          format: 'jpeg', quality: 60, fromSurface: true,
-          clip: { x: 450, y: 285, width: 380, height: 240, scale: 1 },
-        });
-        if (probe.data) console.log('WORLD_DOWNTOWN_ISOLATE_' +
-          name.toUpperCase().replaceAll('-', '_') + ' ' + probe.data);
-        await send('Runtime.evaluate', {
-          expression: '(() => { window.__worldProfile.debugGroupVisible(' +
-            JSON.stringify(name) + ', true); window.__worldProfile.measure(1); })()',
-        });
-      }
       await send('Runtime.evaluate', {
         expression: '["panel","reference","labels","hint"].forEach(id => ' +
           '{ document.getElementById(id).style.visibility = ""; });',
