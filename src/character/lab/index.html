@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gigga-Goat | Character Art Lab</title>
+  <style>
+    :root {
+      font: 14px/1.48 ui-rounded, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #342341;
+      background: #fff6f0;
+      accent-color: #783d9b;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    button { font: inherit; cursor: pointer; border: 1px solid #d2bacf; background: white; color: #50305d; border-radius: 9px; padding: 9px 12px; }
+    button:hover { border-color: #86519d; background: #fbf1ff; }
+    button[aria-pressed="true"] { background: #673682; border-color: #673682; color: white; }
+    button:focus-visible, canvas:focus-visible { outline: 3px solid #efa21a; outline-offset: 3px; }
+    header { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; flex-wrap: wrap;
+      background: linear-gradient(100deg,#59317e,#8753a3); color: #fff; padding: 16px 25px;
+      border-bottom: 5px solid #f5a31a; }
+    h1 { margin: 0; font-size: clamp(24px,3vw,37px); font-weight: 950; letter-spacing: -.035em; }
+    h1 em { color: #ffd351; font-style: normal; text-shadow: 1px 2px #5a3262; }
+    header p { margin: 0; color: #f9e4fb; font-size: 13px; }
+    main { display: grid; grid-template-columns: minmax(200px,240px) minmax(340px,1.1fr) minmax(340px,1fr);
+      gap: 14px; padding: 14px; max-width: 2000px; margin: auto; }
+    .panel { border-radius: 16px; border: 1px solid #d7c0cc; background: #fffaf5; overflow: hidden;
+      box-shadow: 0 8px 24px #4d36530e; }
+    .panel h2 { font-size: 16px; margin: 0; color: white; background: #6b4188; padding: 10px 16px; }
+    .controls { padding: 14px; }
+    .controls p { margin: 5px 0 14px; font-size: 12px; color: #795b75; }
+    .eyebrow { font: 800 11px/1.2 system-ui; text-transform: uppercase; letter-spacing: .15em;
+      color: #875d88; margin: 16px 0 9px; }
+    .choices { display: grid; gap: 6px; }
+    #tierButtons { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    #poseButtons { grid-template-columns: 1fr; }
+    #poseButtons button { text-align: left; font-weight: 720; display: flex; justify-content: space-between; align-items: center; }
+    .choices button { padding: 8px 10px; }
+    .subtle { font-size: 11px; color: #806b7c; }
+    .controls .help { background: #f7eef3; border-radius: 12px; padding: 11px; margin-top: 18px;
+      color: #553b5e; font-size: 12px; }
+    .display { min-width: 0; display: flex; flex-direction: column; }
+    #stage { width: 100%; flex: 1; min-height: 460px; display: block; background: #f0e6df;
+      cursor: grab; touch-action: none; }
+    #stage.dragging { cursor: grabbing; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; align-items: center; background: #fffaf5; }
+    .toolbar button { flex: 1; min-width: 122px; font-weight: 780; }
+    #status { margin-left: auto; color: #62476b; font-size: 12px; min-width: 175px; text-align: right; }
+    .reference { padding: 11px; }
+    .reference img { display: block; max-width: 100%; width: 100%; border-radius: 10px; border: 1px solid #ddd0db; }
+    figure { margin: 0 0 12px; }
+    figcaption { color: #6e536f; font-size: 12px; padding: 6px 2px; }
+    .reference .hint { padding: 9px; font-size: 12px; background: #f7eee7; border-radius: 10px; }
+    .reference a { color: #673b82; text-underline-offset: 3px; }
+    footer { padding: 0 24px 22px; max-width: 2000px; margin: auto; font-size: 12px; color: #7b6178; }
+    @media(max-width:1250px) { main { grid-template-columns: 240px minmax(0,1fr); }
+      .reference { grid-column: 1 / -1; } .reference .images { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } }
+    @media(max-width:700px) { main { display: flex; flex-direction: column; padding: 8px; gap: 8px; }
+      .choices#poseButtons { grid-template-columns: repeat(3,minmax(0,1fr)); }
+      #poseButtons button { padding: 8px 5px; justify-content: center; font-size: 11px; }
+      .display { min-height: 440px; } #stage { min-height: 355px; }
+      .reference .images { display: block; } header { padding: 12px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><em>GIGGA-GOAT</em> Character Lab 🐐</h1>
+    <p>Real Three.js character · 4 physical size tiers · 9 poses · approved art side by side</p>
+  </header>
+  <main>
+    <section class="panel">
+      <h2>ART DIRECTOR CONTROLS</h2>
+      <div class="controls">
+        <p>Preview the full procedural model against the approved model sheet. Drag on the 3D stage to orbit; scroll to zoom.</p>
+        <div class="eyebrow">Size tier</div>
+        <div id="tierButtons" class="choices" aria-label="Goat size tiers"></div>
+        <div class="eyebrow">Action / expression</div>
+        <div id="poseButtons" class="choices" aria-label="Pose gallery"></div>
+        <div class="help">
+          <strong>Checks:</strong> cream layered wool, cloven dark hooves,
+          huge banded golden curls, square horizontal pupils, expressive brows,
+          beard, pink ears and animated orange scarf.
+          GIGGA has an oversized horn spiral and violet glow.
+        </div>
+      </div>
+    </section>
+
+    <section class="panel display" aria-label="Live procedural Three.js model">
+      <h2>LIVE 3D SCULPT</h2>
+      <canvas id="stage" aria-label="Orbitable animated goat model" tabindex="0"></canvas>
+      <div class="toolbar">
+        <button id="mode" type="button" aria-pressed="false">Enter real Rapier mode</button>
+        <button id="pause" type="button" aria-pressed="false">Pause animation</button>
+        <button id="reset" type="button">Reset camera</button>
+        <span id="status" role="status">Preview · BILLY · STAND</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>APPROVED VISUAL TARGETS</h2>
+      <div class="reference">
+        <div class="images">
+          <figure>
+            <img src="/docs/art/hifi/21_goat_model_sheet.png" alt="Approved goat model sheet with four turnaround views, KID/BILLY/BIG/GIGGA sizes and gameplay poses." />
+            <figcaption>21 · Goat model sheet · proportions, coloring, expression and poses</figcaption>
+          </figure>
+          <figure>
+            <img src="/docs/art/hifi/07_key_art.png" alt="Approved colorful alpine farm key art featuring the ram-horned cream goat and orange scarf." />
+            <figcaption>07 · Key art · daylight toon shading, saturated scarf and storybook silhouette</figcaption>
+          </figure>
+        </div>
+        <p class="hint">In Rapier mode, the actual seven rigid bodies drive the sculpt. Use
+          <b>WASD</b> to move, <b>Shift</b> sprint, <b>Space</b> jump/flip,
+          <b>Q</b> flop, <b>E</b> bleat and <b>T</b> tongue toggle.
+          Pose selections preview accents; only physics decides the final body transforms.
+          <a href="../../physics/lab/index.html">Open physics lab</a>.</p>
+      </div>
+    </section>
+  </main>
+  <footer>Dev-only page: /src/character/lab/index.html. The legacy core placeholder intentionally remains untouched while the core team integrates this new character renderer.</footer>
+  <script type="module" src="./lab.ts"></script>
+</body>
+</html>
