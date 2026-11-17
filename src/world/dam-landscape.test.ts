@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { generateIsland, heightAt } from './index';
+import { gridSample } from './terrain';
 import { damChannelAt, DAM_CHANNEL } from './dam-landscape';
 import { getDamPlacement } from './the-dam';
 import { buildDamVisuals } from './visual-dam';
@@ -167,6 +168,98 @@ describe('The Dam downstream scenery', () => {
     instance.geometry.dispose();
     mesh.geometry.dispose();
     paint.dispose();
+  });
+
+  it.each([
+    { seed: 'billy-isle', size: 600 },
+    { seed: 'dam-lamp-alt', size: 900 },
+  ])('keeps every roadside lamp outside the Dam plot and walkable deck for $seed',
+    ({ seed, size }) => {
+      const island = generateIsland({ seed, size, resolution: 97 });
+      const plot = island.plots.find(p => p.poiId === 'the-dam')!;
+      const { position, scale } = getDamPlacement(island);
+      const roadside = island.props.filter(p => p.kind === 'lamp' && p.poiId === undefined);
+      expect(roadside.length).toBeGreaterThan(0);
+      for (const lamp of roadside) {
+        const { x, z } = lamp.transform.position;
+        expect(Math.hypot(x - plot.center.x, z - plot.center.z), lamp.id + ' plot')
+          .toBeGreaterThan(plot.radius);
+        const onDeck = Math.abs(x - position.x) <= (30 + 0.275) * scale &&
+          Math.abs(z - position.z) <= (3.7 + 0.275) * scale;
+        expect(onDeck, lamp.id + ' on Dam deck').toBe(false);
+      }
+    });
+
+  it('uses the painted 3.3 x 2.2 x 0.37 m timber sign with its label on the new board', () => {
+    const path = 'assets/library/custom/props/signpost.glb';
+    const manifest = JSON.parse(readFileSync(
+      'public/assets/library/manifest.json', 'utf8',
+    )) as Array<{ path: string; license: string }>;
+    expect(manifest.find(asset => asset.path === path)?.license).toBe('CC0');
+    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    const paint = new THREE.MeshStandardMaterial({ color: 0x7b573c });
+    const root = new THREE.Group();
+    const native = new THREE.Mesh(new THREE.BoxGeometry(4.5, 3, 0.5), paint);
+    root.add(native);
+    const url = publicAssetUrl(path);
+    const load = vi.spyOn(GLTFLoader.prototype, 'load').mockImplementation(
+      (request, onLoad) => {
+        if (request === url) onLoad({
+          scene: root,
+        } as Awaited<ReturnType<GLTFLoader['loadAsync']>>);
+      });
+    const ctx = {
+      beginPath: () => {}, roundRect: () => {}, fill: () => {},
+      stroke: () => {}, fillText: () => {}, moveTo: () => {}, lineTo: () => {},
+    };
+    vi.stubGlobal('document', {
+      createElement: () => ({ width: 512, height: 224, getContext: () => ctx }),
+    });
+    let visuals: ReturnType<typeof buildDamLandscape> | undefined;
+    try {
+      visuals = buildDamLandscape(island, () => {});
+      expect(load.mock.calls.some(([request]) => request === url)).toBe(true);
+      const group = visuals.group.getObjectByName('dam-wooden-direction-sign') as THREE.Group;
+      expect(group).toBeInstanceOf(THREE.Group);
+      const sign = group.children[0] as THREE.InstancedMesh;
+      expect(sign).toBeInstanceOf(THREE.InstancedMesh);
+      expect(sign.count).toBe(1);
+      expect(sign.material).toBe(paint); // Authored wood and arrow colours, no forced tint.
+      const matrix = new THREE.Matrix4();
+      sign.getMatrixAt(0, matrix);
+      const box = new THREE.Vector3().setFromMatrixScale(matrix);
+      expect(box.x).toBeCloseTo(3.3, 5);
+      expect(box.y).toBeCloseTo(2.2, 5);
+      expect(box.z).toBeCloseTo(0.37, 5);
+      const { position: dam, scale } = getDamPlacement(island);
+      const base = Math.max(
+        (gridSample(island, dam.x - 28 * scale, dam.z + 36 * scale) - dam.y) / scale,
+        damChannelAt(36).level + 1.1,
+      );
+      const centre = new THREE.Vector3().setFromMatrixPosition(matrix);
+      expect(centre.x).toBeCloseTo(-28, 6);
+      expect(centre.y).toBeCloseTo(base, 6);
+      expect(centre.z).toBeCloseTo(36, 6);
+      const yaw = new THREE.Euler().setFromRotationMatrix(
+        new THREE.Matrix4().extractRotation(matrix));
+      expect(yaw.y).toBeCloseTo(1.1, 5);
+
+      const label = visuals.group.getObjectByName('dam-wooden-arrow-sign-label') as THREE.Mesh;
+      expect(label).toBeInstanceOf(THREE.Mesh);
+      expect(label.position.y).toBeCloseTo(base + 2.2 * 0.68, 6);
+      expect(label.position.x).toBeCloseTo(-28 + Math.sin(1.1) * (0.37 / 2 + 0.04), 6);
+      expect(label.position.z).toBeCloseTo(36 + Math.cos(1.1) * (0.37 / 2 + 0.04), 6);
+      expect(label.rotation.y).toBeCloseTo(1.1, 6);
+      const bounds = (label.geometry as THREE.PlaneGeometry).parameters;
+      expect(bounds.width).toBeLessThan(3.3);
+      expect(bounds.height).toBeLessThan(2.2);
+    } finally {
+      visuals?.dispose();
+      load.mockRestore();
+      vi.unstubAllGlobals();
+      native.geometry.dispose();
+      paint.dispose();
+    }
   });
 
   it('loads repeated library parts as batched upright GLB instances', () => {
