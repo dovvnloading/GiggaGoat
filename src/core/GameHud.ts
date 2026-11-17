@@ -127,6 +127,18 @@ const CSS = `
 }
 `;
 
+/** Sampled from renderer.info after a submitted frame (renderMs is CPU submit time). */
+export interface FramePerformance {
+  fps: number;
+  frameMs: number;
+  physicsMs: number;
+  renderMs: number;
+  drawCalls: number;
+  triangles: number;
+  textures: number;
+  pixelRatio: number;
+}
+
 export class GameHud {
   private readonly root = document.createElement('div');
   private readonly styles = document.createElement('style');
@@ -151,6 +163,9 @@ export class GameHud {
   private readonly mode: HTMLElement;
   private readonly buildStatus: HTMLElement;
   private readonly slots: HTMLElement[];
+  private readonly quantities: Array<HTMLElement | null>;
+  private readonly supply: HTMLElement;
+  private readonly stageElements: HTMLElement[];
   private readonly materials: HTMLElement;
   private readonly hint: HTMLElement;
   private readonly debug: HTMLElement;
@@ -257,6 +272,7 @@ export class GameHud {
     this.needle = get('needle');
     this.stages = Array.from(this.root.querySelectorAll<HTMLElement>('[data-stage]'));
     this.stageLabels = Array.from(this.root.querySelectorAll<HTMLElement>('[data-stage-label]'));
+    this.stageElements = this.stages.concat(this.stageLabels);
     this.comboTitle = get('combo-title'); this.comboCount = get('combo-count');
     this.comboInfo = get('combo-info'); this.score = get('score');
     this.place = get('place');
@@ -267,6 +283,8 @@ export class GameHud {
     this.charge = get('charge'); this.mode = get('mode');
     this.buildStatus = get('build-status'); this.materials = get('materials');
     this.slots = Array.from(this.root.querySelectorAll<HTMLElement>('[data-slot]'));
+    this.quantities = this.slots.map(element => element.querySelector<HTMLElement>('[data-quantity]'));
+    this.supply = get('supply');
     this.hint = get('hint'); this.debug = get('debug'); this.wallet = get('wallet');
     this.gigCard = get('gig-card'); this.gigCheckbox = get('gig-checkbox');
     this.gigTitle = get('gig-title'); this.gigTask = get('gig-task');
@@ -403,7 +421,8 @@ export class GameHud {
   }
 
   update(game: Game, fps: number, stepMilliseconds: number, debugVisible: boolean,
-    pointerLocked: boolean, goatScreenBox: ScreenRect | null = null): void {
+    pointerLocked: boolean, goatScreenBox: ScreenRect | null = null,
+    perf?: FramePerformance): void {
     const rules = game.rules;
     const run = game.gigs.active;
     const state = deriveHudState({
@@ -426,7 +445,7 @@ export class GameHud {
     this.needle.style.left = state.meter.toFixed(2) + '%';
     this.meterText.textContent = Math.floor(state.meter) + ' / 100';
     this.tier.textContent = state.tier.toUpperCase();
-    for (const element of [...this.stages, ...this.stageLabels]) {
+    for (const element of this.stageElements) {
       const label = element.getAttribute('data-stage') ?? element.getAttribute('data-stage-label');
       element.classList.toggle('is-active', label === state.tier);
     }
@@ -453,12 +472,11 @@ export class GameHud {
       element.classList.toggle('is-selected', slot.selected);
       element.dataset.sprite = slot.selected ? HUD_SPRITES.hotbarSlotSelected : HUD_SPRITES.hotbarSlot;
       element.classList.toggle('is-empty', slot.available === 0);
-      const count = element.querySelector<HTMLElement>('[data-quantity]');
+      const count = this.quantities[i];
       if (count) count.textContent = '×' + slot.available;
       element.title = slot.label + ' · ' + slot.available + ' can be built now · key ' + slot.key;
     }
-    const supply = this.root.querySelector<HTMLElement>('[data-supply]');
-    if (supply) supply.textContent = '×' + rules.inventory.get('scrap');
+    this.supply.textContent = '×' + rules.inventory.get('scrap');
     this.gigTitle.textContent = state.gig.title;
     this.gigTask.textContent = state.gig.task;
     this.gigDetail.textContent = state.gig.detail;
@@ -475,14 +493,17 @@ export class GameHud {
     this.board.hidden = !game.gigs.nearBoard();
     this.hint.style.display = pointerLocked ? 'none' : 'block';
     this.debug.hidden = !debugVisible;
-    if (debugVisible) this.debug.textContent = 'F3 · SIM DEBUG\n' +
-      'FPS: ' + fps.toFixed(0) + '\n' +
-      'PHYSICS FRAME: ' + stepMilliseconds.toFixed(2) + ' ms\n' +
+    if (debugVisible) this.debug.textContent = 'F3 · PERFORMANCE\n' +
+      'FPS: ' + (perf?.fps ?? fps).toFixed(0) + '\n' +
+      'FRAME: ' + (perf?.frameMs ?? 1000 / Math.max(1, fps)).toFixed(2) + ' ms\n' +
+      'PHYSICS/SIM: ' + (perf?.physicsMs ?? stepMilliseconds).toFixed(2) + ' ms\n' +
+      'RENDER CPU: ' + (perf?.renderMs ?? 0).toFixed(2) + ' ms\n' +
+      'DRAW CALLS: ' + (perf?.drawCalls ?? 0) + '\n' +
+      'TRIANGLES: ' + (perf?.triangles ?? 0).toLocaleString() + '\n' +
+      'TEXTURES: ' + (perf?.textures ?? 0) + '\n' +
+      'PIXEL RATIO: ' + (perf?.pixelRatio ?? 1).toFixed(2) + '×\n' +
       'BODIES: ' + game.bodyCount + '\n' +
-      'TICK: ' + game.physics.stepCount + '\n' +
-      'WATER BODIES: ' + game.water.submergedCount + '\n' +
-      'DEBRIS: ' + game.breakables.debrisCount + '\n' +
-      'RESPAWNS: ' + game.respawns;
+      'TICK: ' + game.physics.stepCount;
     this.clearGoat(goatScreenBox);
   }
 

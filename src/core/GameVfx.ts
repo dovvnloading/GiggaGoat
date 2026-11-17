@@ -57,7 +57,21 @@ export class GameVfx {
   private readonly lastSurfaceUse = new Map<string, number>();
   private lastHoofBeat: number;
   private comboStage: number;
+  private camera: THREE.Camera | null = null;
+  private effectDistanceSq = Infinity;
+  private readonly forward = new THREE.Vector3();
+  private readonly toEffect = new THREE.Vector3();
   private disposed = false;
+
+  /** Avoid emitting particles that the current camera cannot see. */
+  private onScreen(position: { x: number; y: number; z: number }): boolean {
+    if (!this.camera) return true;
+    this.toEffect.set(position.x, position.y, position.z).sub(this.camera.position);
+    const distanceSq = this.toEffect.lengthSq();
+    if (distanceSq > this.effectDistanceSq) return false;
+    // Always keep nearby splashes and sparks, including just behind the camera.
+    return distanceSq < 20 * 20 || this.toEffect.dot(this.forward) > 0;
+  }
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -87,16 +101,18 @@ export class GameVfx {
       const ground = game.goat.locomotion.groundHit?.point;
       const torso = game.goat.torso.translation();
       const size = game.goat.size;
-      effects.landing.emit({
+      const position = {
         x: ground?.x ?? torso.x, y: ground?.y ?? torso.y - .92 * size,
         z: ground?.z ?? torso.z,
-      }, Math.min(4, Math.max(.8, event.verticalSpeed / 5, event.airtime * 1.25)));
+      };
+      if (this.onScreen(position)) effects.landing.emit(position,
+        Math.min(4, Math.max(.8, event.verticalSpeed / 5, event.airtime * 1.25)));
     }));
     this.off.push(game.onVfxCue(cue => {
       if (cue.type === 'headbutt-hit') {
-        effects.headbutt.emit(cue.position, cue.direction, cue.power);
+        if (this.onScreen(cue.position)) effects.headbutt.emit(cue.position, cue.direction, cue.power);
       } else if (cue.type === 'crate-break') {
-        effects.crate.emit(cue.position, cue.direction, cue.size);
+        if (this.onScreen(cue.position)) effects.crate.emit(cue.position, cue.direction, cue.size);
       }
     }));
     // WaterSystem publishes 'enter' and (for faster entries) 'splash' together.
@@ -110,7 +126,8 @@ export class GameVfx {
         game.water.listVolumes().find(item => item.id === event.volumeId);
       const surfaceY = volume
         ? volume.center.y + volume.halfExtents.y : game.water.seaLevel;
-      effects.water.emit({ x: p.x, y: surfaceY, z: p.z },
+      const position = { x: p.x, y: surfaceY, z: p.z };
+      if (this.onScreen(position)) effects.water.emit(position,
         Math.max(.6, event.impactSpeed),
         Math.min(8, event.mass / Math.max(1, game.goat.mass)));
     }));
@@ -126,11 +143,13 @@ export class GameVfx {
       if (event.type === 'bounce') {
         if (marker?.kind !== 'trampoline') return;
         this.lastSurfaceUse.set(event.surfaceId, event.time);
-        effects.trampoline.emit({
+        const position = {
           x: marker.position.x,
           y: marker.position.y - marker.halfExtents.y,
           z: marker.position.z,
-        }, marker.halfExtents.x / 2.1, Math.min(4, event.speed / 8));
+        };
+        if (this.onScreen(position)) effects.trampoline.emit(position,
+          marker.halfExtents.x / 2.1, Math.min(4, event.speed / 8));
       } else {
         // Hay-Build launch pads are created dynamically, unlike island markers.
         const built = event.surfaceId.startsWith('hay-')
@@ -139,10 +158,10 @@ export class GameVfx {
         this.lastSurfaceUse.set(event.surfaceId, event.time);
         if (this.lastSurfaceUse.size > 64) this.lastSurfaceUse.clear();
         const p = marker?.position ?? built!.translation();
-        effects.launch.emit({
-          x: p.x, y: marker ? p.y - marker.halfExtents.y : p.y + .14, z: p.z,
-        }, marker?.direction ?? { x: 0, y: 0, z: -1 },
-        Math.min(4, event.speed / 10));
+        const position = { x: p.x, y: marker ? p.y - marker.halfExtents.y : p.y + .14, z: p.z };
+        if (this.onScreen(position)) effects.launch.emit(position,
+          marker?.direction ?? { x: 0, y: 0, z: -1 },
+          Math.min(4, event.speed / 10));
       }
     }));
     this.off.push(game.rules.events.on('style:scored', event => {
@@ -151,8 +170,8 @@ export class GameVfx {
       if (stage <= this.comboStage) return; // no repeated x4+ pops at x5, x6...
       this.comboStage = stage;
       const p = game.goat.torso.translation();
-      effects.combo.emit({ x: p.x, y: p.y + 1.7 * game.goat.size, z: p.z },
-        event.comboCount);
+      const position = { x: p.x, y: p.y + 1.7 * game.goat.size, z: p.z };
+      if (this.onScreen(position)) effects.combo.emit(position, event.comboCount);
     }));
     this.off.push(game.rules.events.on('combo:ended', () => { this.comboStage = 0; }));
     this.off.push(game.rules.events.on('size:changed', event => {
@@ -163,9 +182,10 @@ export class GameVfx {
     this.off.push(game.rules.events.on('coins:changed', event => {
       if (event.after <= event.before) return; // spending isn't a pickup
       const p = game.goat.torso.translation(), size = game.goat.size;
-      effects.coin.emit({
+      const position = {
         x: p.x + 1.1 * size, y: p.y + .45 * size, z: p.z + .35 * size,
-      }, this.coinTarget);
+      };
+      if (this.onScreen(position)) effects.coin.emit(position, this.coinTarget);
     }));
   }
 
@@ -182,7 +202,8 @@ export class GameVfx {
         for (let i = Math.max(this.lastHoofBeat + 1, beat - 1); i <= beat; i++) {
           const part = HOOF_ORDER[((i % 4) + 4) % 4]!;
           const hoof = goat.getPart(part).translation();
-          this.effects.dust.emit({ x: hoof.x, y: ground.point.y + .025, z: hoof.z },
+          const position = { x: hoof.x, y: ground.point.y + .025, z: hoof.z };
+          if (this.onScreen(position)) this.effects.dust.emit(position,
             { x: velocity.x, y: 0, z: velocity.z });
         }
       }
@@ -191,8 +212,11 @@ export class GameVfx {
   }
 
   /** Called once after the character's interpolation, on every render frame. */
-  frame(dt: number): void {
+  frame(dt: number, camera?: THREE.Camera, drawDistance = Infinity): void {
     if (this.disposed) return;
+    this.camera = camera ?? null;
+    this.effectDistanceSq = drawDistance * drawDistance;
+    if (camera) camera.getWorldDirection(this.forward);
     const goat = this.game.goat;
     const p = goat.torso.translation();
     this.hoofAnchor.position.set(p.x, p.y - .92 * goat.size, p.z);

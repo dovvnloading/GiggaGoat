@@ -11,6 +11,9 @@ export class GameCharacters {
   readonly player: GoatCharacter;
   readonly bots = new Map<string, GoatCharacter>();
   private readonly pendingCues: GoatVisualCue[] = [];
+  private readonly frustum = new THREE.Frustum();
+  private readonly cameraMatrix = new THREE.Matrix4();
+  private readonly testPoint = new THREE.Vector3();
   private readonly offCue: () => void;
 
   constructor(private readonly scene: THREE.Scene, private readonly game: Game) {
@@ -21,7 +24,12 @@ export class GameCharacters {
     this.offCue = game.onVisualCue(cue => { this.pendingCues.push(cue); });
   }
 
-  update(dt: number, alpha: number): void {
+  update(dt: number, alpha: number, camera?: THREE.Camera, drawDistance = Infinity): void {
+    if (camera) {
+      camera.updateMatrixWorld();
+      this.cameraMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+      this.frustum.setFromProjectionMatrix(this.cameraMatrix);
+    }
     for (const [id, character] of this.bots) {
       if (this.game.party.bots.get(id)?.goat === character.physics) continue;
       character.dispose();
@@ -39,7 +47,20 @@ export class GameCharacters {
     }
     this.pendingCues.length = 0;
     this.player.update(dt, alpha);
-    for (const character of this.bots.values()) character.update(dt, alpha);
+    for (const character of this.bots.values()) {
+      let visible = true;
+      if (camera) {
+        const position = character.physics?.torso.translation();
+        if (position) {
+          this.testPoint.set(position.x, position.y, position.z);
+          const distanceSq = camera.position.distanceToSquared(this.testPoint);
+          visible = distanceSq < drawDistance * drawDistance &&
+            (distanceSq < 25 * 25 || this.frustum.containsPoint(this.testPoint));
+        } else visible = false;
+      }
+      character.root.visible = visible;
+      if (visible) character.update(dt, alpha);
+    }
   }
 
   /** Release art/event subscriptions before Game tears down its Rapier world. */
