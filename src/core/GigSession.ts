@@ -1,7 +1,7 @@
 import type { RigidBody } from '@dimforge/rapier3d-compat';
 import { GigCatalog, GigDirector, GigGameplayBridge, type AbilityFact, type GigEvent,
   type GigOffer, type GigPropSpawn, type GigSnapshot, type PropFact, type StyleFact } from '../gigs';
-import { RAPIER, V, collisionGroups, type PhysicsContact } from '../physics';
+import { RAPIER, collisionGroups, type PhysicsContact } from '../physics';
 import type { PoiId } from '../world';
 import type { Game } from './Game';
 

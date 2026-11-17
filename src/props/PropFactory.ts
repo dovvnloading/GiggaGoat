@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 /**
  * Visuals only: callers still own their Rapier bodies and update these roots'
- * position/quaternion. The sizes are taken from GameView's current geometry.
+ * position/quaternion. Sizes match the established gameplay collision envelopes.
  * In particular, Hay-Build roots are centred on the physics body, whereas a
  * gig board is anchored at the ground (GameView adds +0.15 to its position).
  */
@@ -35,7 +35,7 @@ export const LIBRARY_MODELS = {
 } as const;
 
 const COLORS = {
-  hay: 0xf4bc35, hayLight: 0xffdc58, rope: 0xba8531,
+  hay: 0xf4bc35, rope: 0xba8531,
   wood: 0xb9722d, woodLight: 0xe5a44e, woodDark: 0x79421f,
   iron: 0x69738b, silver: 0xbac1d3, gold: 0xf9bf31,
   red: 0xe83d50, redLight: 0xff7581, orange: 0xff921d,
@@ -287,7 +287,7 @@ export class PropFactory {
     return root;
   }
 
-  /** The previous debris BoxGeometry(1,1,1) had a radius scalar .12..65. */
+  /** GamePropMapping scales this shared nominal chunk to each debris body's size. */
   createCrateDebris(edge = .35): THREE.Group {
     const s = { x: edge, y: edge, z: edge };
     const root = this.root('crate-debris', s);

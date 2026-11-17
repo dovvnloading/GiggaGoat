@@ -1,9 +1,14 @@
 # Props — library-backed visual lane
 
-This lane only constructs Three.js scene objects. It owns **no physics**, imports
-no other game lane and **does not modify** `src/core/GameView.ts`. The future
-core integration should replace existing meshes with these `Group` roots, and
-keep applying exactly the same rigid-body positions and quaternions.
+This lane constructs Three.js scene objects without owning physics or importing
+from gameplay, world or core. `GameView` now creates library-backed roots through
+`src/core/GamePropMapping.ts`, and `InstancedPropRenderer` batches their shared
+geometry and materials. Rapier still owns transforms and colliders. Each model
+slot retains its box fallback while the GLB loads or if loading fails; the
+factory's intentional decorative trim remains visible after loading.
+
+For a standalone scene (as in the before/after comparison lab), the factory
+can also be used directly:
 
 ```ts
 import { PropFactory } from '../props';
@@ -38,15 +43,16 @@ within this task's `src/props/`-only scope (which prevents editing root
 `CREDITS.md`). If that model is substituted later, the required credit must
 be added to root credits.
 
-**Size reference:** see `GameView.createBoardMarkers`,
-`createSurfaceMarkers`, `buildGeometry`, `updateDebris` and
+**Size reference:** see `src/core/GamePropMapping.ts` and GameView's
+`createBoardMarkers`, `createSurfaceMarkers`, `updateDebris` and
 `updateGigVisuals`. Surface markers take their existing half-extents (currently
 2.1 / 0.23 / 2.1 from `Game.setupSurfaces`); decorative spring and top rim
 rise *above* the box just as today's rim does. Hay-Build sizes are
 floor/launch-pad 2×0.46×2, wall 0.46×2×2 and ramp 2×1.8×2 rising toward +Z.
 The ramp remains aligned with the convex-hull collider.
 
-Open `/src/props/lab/` via `npm run dev` to compare all six factory kinds,
-each Hay-Build variant and spawned gig hay/barrel/crate against the old meshes.
+Open `/src/props/lab/` via `npm run dev` to compare all twelve workshop
+stations, including Hay-Build variants and spawned gig hay/barrel/crate, against
+the intentionally preserved old meshes.
 Vite's existing automatic lab-page discovery includes this page in production
 builds without any changes outside this directory.
