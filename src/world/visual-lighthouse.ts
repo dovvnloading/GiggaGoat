@@ -563,8 +563,8 @@ export function buildLighthouseVisuals(island: IslandData): LighthouseVisuals {
     const r = (28.0 + (i % 4) * 2.5) * scale;
     const x = center.x + Math.cos(angle) * r;
     const z = center.z + Math.sin(angle) * r;
-    if (Math.hypot(x - (center.x - 19 * scale),
-      z - (center.z + 13 * scale)) < 8 * scale) continue;
+    if (Math.hypot(x - (center.x + 2 * scale),
+      z - (center.z + 23 * scale)) < 8 * scale) continue;
     const size = (3.2 + (i % 3) * 1.15) * scale;
     const ground = gridSample(island, x, z);
     rocks.push({
