@@ -420,10 +420,13 @@ export function buildDamLandscape(
   reeds(group);
   const fence = pathAndFence(island, group, origin, scale);
   const sign = { x: -20, z: 68, yaw: 1.1 };
-  signLabel(group, sign.x, height(sign.x, sign.z), sign.z, sign.yaw);
+  const signY = Math.max(height(sign.x, sign.z), damChannelAt(sign.z).level + 1.1);
+  signLabel(group, sign.x, signY, sign.z, sign.yaw);
 
   const cliffs: Placement[] = [];
   const pines: Placement[] = [];
+  const fullPines: Placement[] = [];
+  const shrubs: Placement[] = [];
   const riverRocks: Placement[] = [];
   const flowers: Placement[] = [];
   const yellowFlowers: Placement[] = [];
@@ -457,6 +460,26 @@ export function buildDamLandscape(
       depth: rng.range(3.5, 5.3), yaw: rng.range(0, 6.28),
     });
   }
+  // A second full-canopy pine silhouette and lower green shrubs frame the
+  // river without a row of bare trunks or expensive one-draw-per-tree calls.
+  for (let i = 0; i < 44; i++) {
+    const side = i % 2 ? -1 : 1;
+    const z = 6 + Math.floor(i / 2) * 4.1 + rng.range(-1.6, 1.6);
+    const section = damChannelAt(z);
+    const x = section.x + side * (section.halfWidth + rng.range(13, 27));
+    fullPines.push({
+      x, z, y: height(x, z) - 0.2,
+      width: rng.range(4.1, 6.6), height: rng.range(9, 16),
+      depth: rng.range(4.1, 6.6), yaw: rng.range(0, 6.28),
+    });
+    const bx = section.x + side * (section.halfWidth + rng.range(7, 14));
+    const bz = z + rng.range(-2.5, 2.5);
+    shrubs.push({
+      x: bx, z: bz, y: height(bx, bz) - 0.1,
+      width: rng.range(2.2, 4.2), height: rng.range(1.7, 3.7),
+      depth: rng.range(2.2, 4.2), yaw: rng.range(0, 6.28),
+    });
+  }
   for (let i = 0; i < 25; i++) {
     const z = rng.range(13, 102);
     const section = damChannelAt(z);
@@ -484,9 +507,9 @@ export function buildDamLandscape(
   }
   const buoys: Placement[] = [
     { x: -2, z: 65, y: damChannelAt(65).level - 0.5,
-      width: 1.8, height: 1.85, depth: 1.8, yaw: 0.25 },
-    { x: 7, z: 37, y: damChannelAt(37).level - 0.5,
-      width: 1.8, height: 1.85, depth: 1.8, yaw: 0.9 },
+      width: 2.2, height: 2.3, depth: 2.2, yaw: 0.25 },
+    { x: -11, z: 47, y: damChannelAt(47).level - 0.5,
+      width: 2.2, height: 2.3, depth: 2.2, yaw: 0.9 },
   ];
   const fallbackBuoys = new THREE.InstancedMesh(
     new THREE.CylinderGeometry(0.77, 0.69, 1.6, 9),
@@ -512,6 +535,12 @@ export function buildDamLandscape(
     { name: 'dam-quaternius-pines',
       path: 'quaternius/stylized-nature-megakit/pine_699sFuLCN2.glb',
       placements: pines },
+    { name: 'dam-full-canopy-kenney-pines',
+      path: 'kenney/nature-kit/tree_pineDefaultA.glb',
+      placements: fullPines },
+    { name: 'dam-grassy-bank-shrubs',
+      path: 'kenney/nature-kit/plant_bushDetailed.glb',
+      placements: shrubs },
     { name: 'dam-kenney-purple-wildflowers',
       path: 'kenney/nature-kit/flower_purpleA.glb', placements: flowers },
     { name: 'dam-kenney-yellow-wildflowers',
@@ -522,7 +551,7 @@ export function buildDamLandscape(
     { name: 'dam-wooden-direction-sign',
       path: 'kenney/survival-kit/signpost-single.glb',
       placements: [{
-        x: sign.x, z: sign.z, y: height(sign.x, sign.z),
+        x: sign.x, z: sign.z, y: signY,
         width: 3.7, height: 4.6, depth: 1.0, yaw: sign.yaw,
       }] },
     { name: 'dam-two-orange-survival-barrels',
