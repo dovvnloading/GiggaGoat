@@ -645,12 +645,13 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   const fernRng = new SeededRandom(String(island.seed) + ':pines-ferns');
   const bridgeIndex = island.river.findIndex(p =>
     Math.hypot(p.x - gladeAnchor.x, p.z - gladeAnchor.z) < 1e-5);
-  const upstream = island.river[Math.max(0, bridgeIndex - 1)];
-  const downstream = island.river[Math.min(island.river.length - 1, bridgeIndex + 1)];
-  const run = upstream && downstream ?
-    Math.hypot(upstream.x - downstream.x, upstream.z - downstream.z) : 0;
-  const upstreamX = run > 1e-6 ? (upstream!.x - downstream!.x) / run : 0;
-  const upstreamZ = run > 1e-6 ? (upstream!.z - downstream!.z) / run : 0;
+  const gladeUpstream = island.river[Math.max(0, bridgeIndex - 1)];
+  const gladeDownstream = island.river[Math.min(island.river.length - 1, bridgeIndex + 1)];
+  const run = gladeUpstream && gladeDownstream ?
+    Math.hypot(gladeUpstream.x - gladeDownstream.x,
+      gladeUpstream.z - gladeDownstream.z) : 0;
+  const upstreamX = run > 1e-6 ? (gladeUpstream!.x - gladeDownstream!.x) / run : 0;
+  const upstreamZ = run > 1e-6 ? (gladeUpstream!.z - gladeDownstream!.z) / run : 0;
   const otherProps = [...island.props, ...result];
   let fernCount = 0;
   for (let attempt = 0; attempt < 5000 && fernCount < 40; attempt++) {
