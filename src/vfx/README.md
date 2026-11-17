@@ -1,11 +1,11 @@
-# VFX lane · Running Dust Puffs + Landing Impact Ring + Headbutt Impact Stars
+# VFX lane · Running Dust Puffs + Landing Impact Ring + Headbutt Impact Stars + Water Splash
 
 The top-left **RUNNING DUST PUFFS** and adjacent **LANDING IMPACT RING** panels
 of the approved [`23_vfx_sheet.png`](../../docs/art/hifi/23_vfx_sheet.png)
 are the first two effects implemented here. Dust uses soft, overlapping warm apricot /
 cream lobes and trailing chips. Landing creates a cream-to-gold expanding
 ground ellipse, jagged golden impact spikes, and small airborne sandstone
-chips. The third **HEADBUTT IMPACT STARS** panel is implemented as a bright collision flash that expands into a sharp golden burst, then three orange-rimmed yellow stars and tiny trailing glints. All three effects stay inside this VFX lane and never drive physics or the main game loop.
+chips. The third **HEADBUTT IMPACT STARS** panel is implemented as a bright collision flash that expands into a sharp golden burst, then three orange-rimmed yellow stars and tiny trailing glints. The fourth **WATER SPLASH** panel adds a blue surface ripple, rising cyan crown jets and ejected teardrop droplets. All four effects stay inside this VFX lane and never drive physics or the main game loop.
 
 ## Running dust · call from gameplay
 
@@ -100,14 +100,48 @@ physics or global listeners. `headbuttMath.ts` provides deterministic,
 absolute-time flash and star sampling, with Vitest tests for validation,
 directionality, phase progression and real scene-graph lifecycle.
 
+## Water splash · call from gameplay
+
+```ts
+import { createWaterSplash } from '../vfx';
+
+const water = createWaterSplash({ capacity: 12 });
+scene.add(water.group);
+
+// When the goat breaks a water surface (+Y up, XZ horizontal):
+water.emit(waterSurfaceContactPosition, entrySpeed, relativeMass);
+water.update(dt); // elapsed seconds per render frame
+water.clear();    // optional: reuse all pooled resources
+water.dispose();  // when the scene unloads
+```
+
+`position` is a water **surface contact**, not the goat's torso, and accepts
+`THREE.Vector3` or plain `{x,y,z}`. `speed` is entry speed in world units
+per second (not a direction); `mass` is a relative visual scale (1 ≈ a
+goat-sized body). Both must be finite and non-negative. Zero speed or zero mass
+intentionally emits nothing. Speed is capped at 16 and mass at 8 for readable,
+bounded effects; larger speed lifts jets and droplets higher, larger mass spreads
+the crown and ripple wider. Non-finite coordinates or inputs are rejected.
+
+Three absolute-age stages (~0.6–0.8s) follow the approved fourth panel:
+a thin blue/white concentric ellipse, a smaller low icy-blue crown, then a
+broad curl of 12 tapered cyan jets with pale centers and dark azure edges,
+12 glossy airborne teardrops, a foamy inner pool and quick fade. The rings
+lie on XZ so they appear elliptical from a gameplay camera. The whole effect
+uses bounded, reusable scene-graph slots (oldest recycled when full), shares
+procedural `DataTexture` art, and allocates no GPU objects per update.
+No renderer, canvas, downloads, physics, global listeners or new dependencies
+are owned by the VFX. `waterSplashMath.ts` is pure and deterministically tested;
+the Vitest suite also covers the actual Three.js scene graph without WebGL.
+
 ## Production art-review lab
 
 `/src/vfx/lab/index.html` works under `npm run dev` and in the **production
 Vite build / GitHub Pages**. The repo's existing lab-page discovery in
 `vite.config.ts` includes it automatically. The lab includes a running
-Three.js goat, a studio floor, dust, landing and headbutt triggers, a small
+Three.js goat, a studio floor, dust, landing, headbutt and water triggers, a small
 faceted decorative target rock, pause/direction/speed controls, landing
-strength and headbutt power sliders, and crops of **all three** approved
+strength, headbutt power, water speed and relative mass sliders, and crops of **all four** approved
 panels from the *existing* reference sheet (bundled by Vite from
 `docs/art/hifi`). Headbutt hits replay every 2.75 seconds, and paused
 single-hit triggering freezes a representative gold-star frame.
@@ -157,3 +191,18 @@ single-hit triggering freezes a representative gold-star frame.
 - **Scope boundary:** effect is triggered at arbitrary contact with
   `emit(position, direction, power)`; no gameplay, character source,
   other VFX panels, or repository files outside `src/vfx/` are modified.
+
+### Water Splash
+
+- **Matches:** thin oval bright-blue water rings, a soft blue water surface,
+  a small early splash growing into a broad upright cyan crown with darker
+  azure borders and pale icy highlights, outward-curving jets and detached
+  shiny blue teardrops that rise/fall before a quick fade.
+- **Intentional approximation:** the reference paints sweeping 2D fluid arcs,
+  white foam strokes and distorted reflections. Staggered, double-sided
+  colored triangle ribbons, ring geometry and anti-aliased procedural sprite
+  textures capture the three-stage silhouette and color hierarchy from a
+  moving 3D camera, not the individual brushstrokes or fluid simulation.
+- **Scope boundary:** `emit(position, speed, mass)` is a standalone visual
+  hook. The lab is a cosmetic preview only; no water collision, buoyancy,
+  gameplay or other VFX panels were changed.
