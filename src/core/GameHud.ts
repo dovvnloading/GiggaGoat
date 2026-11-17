@@ -186,7 +186,7 @@ export class GameHud {
       '<strong class="gg-stamina-label">STAMINA</strong><span class="gg-stamina-value" data-stamina-number>100</span>' +
       '</div></section>' +
       '<section class="gg-hotbar" data-hotbar aria-label="Hay-Build hotbar">' +
-      '<div class="gg-hotbar-header>⚒ HAY-BUILD</div>'.replace('gg-hotbar-header>', 'gg-hotbar-header">') +
+      '<div class="gg-hotbar-header">⚒ HAY-BUILD</div>' +
       '<div class="gg-hotbar-slots">' + hotbar +
       '<div class="gg-slot gg-supply" title="Materials in your inventory">' +
       '<span class="gg-slot-key">★</span>' + buildArtwork('supplies') +
