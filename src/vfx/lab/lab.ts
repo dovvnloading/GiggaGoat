@@ -1,4 +1,4 @@
-/** Production art QA: all six VFX panels, with 06 centered by default. */
+/** Production art QA: 01–08, with combo pop centered by default. */
 import * as THREE from 'three';
 import { GoatCharacter } from '../../character/GoatCharacter';
 import { RunningDustPuffs } from '../RunningDustPuffs';
@@ -12,6 +12,8 @@ import {
   sampleTrampolineBoing, type TrampolineBoingBurst,
 } from '../trampolineBoingMath';
 import { LaunchPadBurst } from '../LaunchPadBurst';
+import { ComboPopText } from '../ComboPopText';
+import { makeComboPopCue } from '../comboPopMath';
 import {
   LAUNCH_PAD_TOP_Y, makeLaunchPadBurstCue, makeLaunchPadBurstFrame,
   sampleLaunchPadBurst, type LaunchPadBurstCue,
@@ -59,6 +61,12 @@ const launchButton = element<HTMLButtonElement>('launch');
 const launchStrengthControl = element<HTMLInputElement>('launch-strength');
 const launchStrengthLabel = element<HTMLOutputElement>('launch-strength-value');
 const launchControls = element<HTMLElement>('launch-controls');
+const comboControls = element<HTMLElement>('combo-controls');
+const comboReplayButton = element<HTMLButtonElement>('combo-replay');
+const comboNextButton = element<HTMLButtonElement>('combo-next');
+const comboReference = element<HTMLElement>('combo-reference');
+const launchReference = element<HTMLElement>('launch-reference');
+const targetTitle = element<HTMLElement>('target-title');
 const trampolineControls = element<HTMLElement>('trampoline-controls');
 const previewTitle = element<HTMLElement>('preview-title');
 const poseHint = element<HTMLElement>('pose-hint');
@@ -120,6 +128,8 @@ const trampoline = new TrampolineBoing({ capacity: 3 });
 scene.add(trampoline.group);
 const launchPad = new LaunchPadBurst({ capacity: 3 });
 scene.add(launchPad.group);
+const comboPop = new ComboPopText({ capacity: 4 });
+scene.add(comboPop.group);
 // A static faceted target for QA only; no collider or game physics.
 const rockGeometry = new THREE.DodecahedronGeometry(0.44, 0);
 const rockMaterial = new THREE.MeshToonMaterial({ color: 0x8e8194 });
@@ -140,7 +150,12 @@ let waterClock = 0;
 let crateClock = 0;
 let trampolineClock = 0;
 let launchClock = 0;
-let previewMode: 'launch' | 'trampoline' | 'showcase' = 'launch';
+let comboClock = 0;
+let comboIndex = 0;
+let activeCombo = 2;
+const comboSequence = [2, 3, 4] as const;
+const comboContact = { x: 0, y: 1.7, z: 0 };
+let previewMode: 'combo' | 'launch' | 'trampoline' | 'showcase' = 'combo';
 let trampolineBurst: TrampolineBoingBurst | null = null;
 const trampolinePreviewFrame = makeTrampolineBoingFrame();
 const trampolineContact = { x: 0, y: 0, z: 0 };
@@ -170,6 +185,7 @@ function setDirection(value: string): void {
   crate.clear();
   trampoline.clear();
   launchPad.clear();
+  comboPop.clear();
   emissionClock = 0;
   landingClock = 0;
   headbuttClock = 0;
@@ -177,6 +193,8 @@ function setDirection(value: string): void {
   crateClock = 0;
   trampolineClock = 0;
   launchClock = 0;
+  comboClock = 0;
+  comboIndex = 0;
   trampolineBurst = null;
   launchCue = null;
   goat.mountWorldPosition('head', headContact);
@@ -184,38 +202,54 @@ function setDirection(value: string): void {
 
   const showcase = previewMode === 'showcase';
   const boing = previewMode === 'trampoline';
+  const isCombo = previewMode === 'combo';
   for (const effect of [dust, landing, headbutt, water, crate]) {
     effect.group.visible = showcase;
   }
   trampoline.group.visible = boing;
   launchPad.group.visible = previewMode === 'launch';
+  comboPop.group.visible = isCombo;
   rock.visible = showcase;
+  goat.root.visible = !isCombo;
+  floor.visible = !isCombo;
+  (scene.background as THREE.Color).setHex(isCombo ? 0xfff7f5 : 0xfff3ea);
   showcaseControls.hidden = !showcase;
   showcaseTriggers.hidden = !showcase;
   trampolineControls.hidden = !boing;
   launchControls.hidden = previewMode !== 'launch';
+  comboControls.hidden = !isCombo;
+  comboReference.hidden = !isCombo;
+  launchReference.hidden = isCombo;
+  targetTitle.textContent = isCombo
+    ? '08 · COMBO POP TEXT · approved target' : '07 · Launch Pad Burst · target';
   burstButton.disabled = !showcase;
 
-  previewTitle.textContent = showcase
-    ? '01–05 · Dust + landing + headbutt + water + crate · drag to orbit'
+  previewTitle.textContent = isCombo
+    ? '08 · Combo Pop Text · x2 → x3 → x4! · squash, stretch and float'
+    : showcase
+      ? '01–05 · Dust + landing + headbutt + water + crate · drag to orbit'
     : boing
       ? '06 · Trampoline boing · squash → snap → flight · drag to orbit'
       : '07 · Launch pad burst · lit arrows → gold spikes → flight trails · drag to orbit';
-  poseHint.textContent = showcase
-    ? '01–05 · Five looping legacy effects'
+  poseHint.textContent = isCombo
+    ? '08 · Blue/yellow → orange/gold → purple with extra stars'
+    : showcase
+      ? '01–05 · Five looping legacy effects'
     : boing
       ? '06 · Downward dip → golden fan → violet launch arcs'
       : '07 · Glowing steel pad → gold fountain → long golden goat trail';
-  lookAt.set(showcase ? -0.35 : boing ? 0 : 0.22,
-    showcase ? 0.83 : boing ? 1.70 : 1.63, 0);
-  distance = showcase ? 5.1 : boing ? 7.7 : 8.9;
+  lookAt.set(isCombo ? 0 : showcase ? -0.35 : boing ? 0 : 0.22,
+    isCombo ? 1.98 : showcase ? 0.83 : boing ? 1.70 : 1.63, 0);
+  distance = isCombo ? 6.7 : showcase ? 5.1 : boing ? 7.7 : 8.9;
   goat.root.rotation.z = 0;
   goat.setPreview(showcase ? 'sprint' : boing ? 'stand' : 'sprint', 'BILLY');
-  if (boing) {
+  if (isCombo) {
+    emitCombo();
+  } else if (boing) {
     goat.root.rotation.y = -Math.PI / 2;
     emitTrampoline();
     poseTrampolineGoat();
-  } else if (!showcase) {
+  } else if (previewMode === 'launch') {
     emitLaunch();
     poseLaunchGoat();
   }
@@ -280,6 +314,13 @@ function emitLaunch(): void {
   launchPad.emit(launchContact, launchDirection, strength);
 }
 
+function emitCombo(): void {
+  activeCombo = comboSequence[comboIndex]!;
+  comboIndex = (comboIndex + 1) % comboSequence.length;
+  comboClock = 0;
+  comboPop.emit(comboContact, activeCombo);
+}
+
 function poseLaunchGoat(): void {
   const frame = launchCue && sampleLaunchPadBurst(launchCue, launchClock, launchFrame);
   goat.root.position.set(launchContact.x + (frame?.goatX ?? 0),
@@ -298,8 +339,11 @@ function emitCrate(): void {
 }
 
 function refreshUi(): void {
-  state.textContent = previewMode === 'launch'
-    ? (paused ? 'Paused' : 'Running') + ' / ' + launchPad.activeCount +
+  state.textContent = previewMode === 'combo'
+    ? (paused ? 'Paused' : 'Running') + ' / COMBO x' + activeCombo +
+      (activeCombo >= 4 ? '!' : '') + ' / pop → overshoot → rise + fade'
+    : previewMode === 'launch'
+      ? (paused ? 'Paused' : 'Running') + ' / ' + launchPad.activeCount +
       ' gold launch / lit arrows + spike fountain + golden flight trails'
     : previewMode === 'trampoline'
       ? (paused ? 'Paused' : 'Running') + ' / ' + trampoline.activeCount +
@@ -323,7 +367,8 @@ function refreshUi(): void {
 }
 
 previewModeControl.addEventListener('change', () => {
-  previewMode = previewModeControl.value === 'showcase' ? 'showcase' :
+  previewMode = previewModeControl.value === 'combo' ? 'combo' :
+    previewModeControl.value === 'showcase' ? 'showcase' :
     previewModeControl.value === 'trampoline' ? 'trampoline' : 'launch';
   setDirection(directionControl.value);
   if (previewMode === 'showcase') {
@@ -353,6 +398,25 @@ waterMassControl.addEventListener('input', refreshUi);
 crateSizeControl.addEventListener('input', refreshUi);
 trampolineScaleControl.addEventListener('input', () => { emitTrampoline(); poseTrampolineGoat(); refreshUi(); });
 trampolineStrengthControl.addEventListener('input', () => { emitTrampoline(); poseTrampolineGoat(); refreshUi(); });
+comboReplayButton.addEventListener('click', () => {
+  if (previewMode !== 'combo') {
+    previewMode = 'combo';
+    previewModeControl.value = 'combo';
+    setDirection(directionControl.value);
+  } else {
+    comboPop.clear();
+    comboIndex = 0;
+    emitCombo();
+  }
+  if (paused) { comboPop.update(0.16); comboClock = 0.16; }
+  refreshUi();
+});
+comboNextButton.addEventListener('click', () => {
+  comboPop.clear();
+  emitCombo();
+  if (paused) { comboPop.update(0.16); comboClock = 0.16; }
+  refreshUi();
+});
 launchStrengthControl.addEventListener('input', () => {
   if (previewMode === 'launch') { launchPad.clear(); emitLaunch(); poseLaunchGoat(); }
   refreshUi();
@@ -429,6 +493,7 @@ clearButton.addEventListener('click', () => {
   crate.clear();
   trampoline.clear();
   launchPad.clear();
+  comboPop.clear();
   emissionClock = 0;
   landingClock = 0;
   headbuttClock = 0;
@@ -436,6 +501,8 @@ clearButton.addEventListener('click', () => {
   crateClock = 0;
   trampolineClock = 0;
   launchClock = 0;
+  comboClock = 0;
+  comboIndex = 0;
   trampolineBurst = null;
   launchCue = null;
   if (previewMode === 'trampoline') poseTrampolineGoat();
@@ -496,6 +563,11 @@ function frame(now: number): void {
   const dt = lastTime ? Math.min(0.05, Math.max(0, (now - lastTime) / 1000)) : 0;
   lastTime = now;
   if (!paused) {
+    if (previewMode === 'combo') {
+      comboClock += dt;
+      comboPop.update(dt);
+      if (comboClock >= 1.67) emitCombo();
+    } else {
     goat.update(dt);
     if (previewMode === 'launch') {
       launchClock += dt;
@@ -547,6 +619,7 @@ function frame(now: number): void {
     }
     crate.update(dt);
     }
+    }
   }
 
   const horizontal = Math.cos(elevation) * distance;
@@ -566,12 +639,16 @@ function frame(now: number): void {
 
 setDirection(directionControl.value);
 goat.update(0);
-// Start the centered seventh-panel loop mid-flight, with pad, spikes and
-// sweeping gold ribbons visible. The other six previews remain selectable.
+// Start 08 mid-pop so the reference comparison is immediately readable.
+// The launch pad keeps its mid-flight initial seek when 07 is selected.
 const initialLaunch = makeLaunchPadBurstCue(
   launchContact, launchDirection, Number(launchStrengthControl.value),
 );
-if (initialLaunch) {
+if (previewMode === 'combo') {
+  const first = makeComboPopCue(comboContact, 2)!;
+  comboClock = first.lifetime * 0.16;
+  comboPop.update(comboClock);
+} else if (initialLaunch) {
   launchClock = initialLaunch.lifetime * 0.60;
   launchPad.update(launchClock);
   poseLaunchGoat();
@@ -592,6 +669,7 @@ window.addEventListener('pagehide', () => {
   crate.dispose();
   trampoline.dispose();
   launchPad.dispose();
+  comboPop.dispose();
   rockGeometry.dispose();
   rockMaterial.dispose();
   goat.dispose();
