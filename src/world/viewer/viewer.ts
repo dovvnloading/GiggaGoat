@@ -9,6 +9,7 @@ import {
 import { ART_BOOKMARKS, findBookmark } from './bookmarks';
 import { paintingAssetUrl } from './reference-art';
 import { createStaticShadowCache } from './shadow-cache';
+import { createAdaptiveViewerResolution } from './adaptive-resolution';
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -43,7 +44,8 @@ for (const bookmark of ART_BOOKMARKS) {
 bookmarkInput.value = '07';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+const resolutionBudget = createAdaptiveViewerResolution(window.devicePixelRatio);
+renderer.setPixelRatio(resolutionBudget.ratio);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 // These static casters/light need one shadow pass per change, not one every frame.
@@ -422,9 +424,76 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 regenerate();
+// Optional browser profiling bridge. Not active in normal viewer sessions.
+// The benchmark synchronously waits for WebGL completion to measure actual
+// frame cost rather than mistaking a 60 Hz rAF cadence for GPU throughput.
+if (new URLSearchParams(window.location.search).has('profile')) {
+  const gl = renderer.getContext();
+  const debug = gl.getExtension('WEBGL_debug_renderer_info');
+  Object.assign(window, {
+    __worldProfile: {
+      pixelRatio(ratio: number): void {
+        renderer.setPixelRatio(THREE.MathUtils.clamp(ratio, 0.5, 2));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      },
+      water(visible: boolean): void { worldView.water.visible = visible; },
+      sky(visible: boolean): void {
+        const dome = worldView.group.getObjectByName('gradient-sky');
+        if (dome) dome.visible = visible;
+      },
+      shadows(enabled: boolean): void {
+        renderer.shadowMap.enabled = enabled;
+        if (enabled) shadowCache.invalidate();
+      },
+      outlines(visible: boolean): void {
+        // Culling owns mesh.visible and would restore an outline next frame;
+        // the material switch makes this pass-disabled diagnostic stable.
+        worldView.group.traverse(object => {
+          if (object.name.startsWith('outline-') && object instanceof THREE.Mesh) {
+            const materials = Array.isArray(object.material) ? object.material : [object.material];
+            for (const material of materials) material.visible = visible;
+          }
+        });
+      },
+      measure(frames = 16): {
+        frameTimesMs: number[]; drawCalls: number; triangles: number;
+        width: number; height: number; pixelRatio: number; gpu: string;
+      } {
+        const frameTimesMs: number[] = [];
+        for (let i = 0; i < frames + 4; i++) {
+          const start = window.performance.now();
+          worldView.update(elapsed + i / 60);
+          if (orbit.enabled) orbit.update();
+          else fly.update(1 / 60);
+          renderWorldFrame();
+          gl.finish();
+          if (i >= 4) frameTimesMs.push(window.performance.now() - start);
+        }
+        return {
+          frameTimesMs,
+          drawCalls: renderer.info.render.calls,
+          triangles: renderer.info.render.triangles,
+          width: renderer.domElement.width,
+          height: renderer.domElement.height,
+          pixelRatio: renderer.getPixelRatio(),
+          gpu: String(debug ? gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) :
+            gl.getParameter(gl.RENDERER)),
+        };
+      },
+    },
+  });
+}
 renderer.setAnimationLoop(() => {
   if (capturing) return;
-  const delta = Math.min(clock.getDelta(), 0.08);
+  const rawDelta = clock.getDelta();
+  const delta = Math.min(rawDelta, 0.08);
+  // Measure real delivered-frame time, including browser composition. A tab
+  // coming back from suspension must never be interpreted as a slow GPU.
+  const nextRatio = document.hidden ? null : resolutionBudget.frame(rawDelta);
+  if (nextRatio !== null) {
+    renderer.setPixelRatio(nextRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
   elapsed += delta;
   fps = fps * 0.90 + (1 / Math.max(delta, 0.001)) * 0.10;
   sampleSeconds += delta;
@@ -451,7 +520,8 @@ renderer.setAnimationLoop(() => {
     performance.textContent = 'FPS ' + fps.toFixed(0) +
       ' · Draw calls ' + info.calls.toLocaleString() +
       ' · Triangles ' + info.triangles.toLocaleString() +
-      ' · Meshes ' + island.props.length.toLocaleString();
+      ' · Meshes ' + island.props.length.toLocaleString() +
+      ' · Resolution ' + renderer.getPixelRatio().toFixed(2) + '×';
     sampleSeconds = 0;
   }
 });
