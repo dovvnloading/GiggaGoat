@@ -59,13 +59,15 @@ export interface HoofingtonVisuals {
   dispose(): void;
 }
 
-const PALETTES = {
-  pink: { wall: 0xf28fb5, roof: 0x54647f },
-  cream: { wall: 0xffecdb, roof: 0xc85842 },
-  yellow: { wall: 0xf3d15d, roof: 0x526c82 },
-  blue: { wall: 0xaed9eb, roof: 0x57657a },
-  red: { wall: 0xde5343, roof: 0x596778 },
-};
+/** Painting-sampled sRGB hex values; THREE.Color converts to linear on setHex. */
+export const HOOFINGTON_PALETTE = {
+  pink: { wall: 0xd99ea0, roof: 0x4b4960 },
+  red: { wall: 0xaa3f39, roof: 0x6d6b88 },
+  cream: { wall: 0xfcdfba, roof: 0xce5c55 },
+  yellow: { wall: 0xf2c84b, roof: 0x635f75 },
+  shutters: 0x83a9ce,
+  mailbox: 0xf54036,
+} as const;
 
 /** A deterministic village art plan that does not touch RNG or physics. */
 export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
@@ -81,18 +83,18 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
     let paint: { wall?: number; roof?: number } = {};
     switch (prop.kind) {
       case 'house':
-        if (dx < 0 && dz > 0) { model = 'pinkHome'; paint = PALETTES.pink; }
-        else if (dx > 0 && dz > 0) { model = 'creamHome'; paint = PALETTES.cream; }
-        else if (dx > 0) { model = 'yellowHome'; paint = PALETTES.yellow; }
-        else { model = 'farmhouse'; paint = PALETTES.red; }
+        if (dx < 0 && dz > 0) { model = 'pinkHome'; paint = HOOFINGTON_PALETTE.pink; }
+        else if (dx > 0 && dz > 0) { model = 'creamHome'; paint = HOOFINGTON_PALETTE.cream; }
+        else if (dx > 0) { model = 'yellowHome'; paint = HOOFINGTON_PALETTE.yellow; }
+        else { model = 'farmhouse'; paint = HOOFINGTON_PALETTE.red; }
         break;
-      case 'cottage': model = 'cottage'; paint = PALETTES.blue; break;
-      case 'barn': model = 'barn'; paint = PALETTES.red; break;
+      case 'cottage': model = 'cottage'; paint = HOOFINGTON_PALETTE.yellow; break;
+      case 'barn': model = 'barn'; paint = HOOFINGTON_PALETTE.red; break;
       case 'silo': model = 'silo'; paint = { wall: 0xf6ead8, roof: 0xce5648 }; break;
       case 'windmill': model = 'windmill'; paint = { wall: 0xffeedc, roof: 0xc75c48 }; break;
       case 'fence': model = 'fence'; paint = { wall: 0xfff8e9 }; break;
       case 'mailbox': model = 'mailbox';
-        paint = { wall: 0xce493d, roof: 0xc84338 }; break;
+        paint = { wall: HOOFINGTON_PALETTE.mailbox, roof: HOOFINGTON_PALETTE.mailbox }; break;
       case 'bench': model = 'bench'; break;
       case 'gnome': model = 'gnome'; break;
       case 'trampoline': model = 'playPad'; break;
@@ -176,6 +178,7 @@ export function bakeLibraryGeometry<Model extends string>(
   const vertex = new THREE.Vector3();
   const tint = new THREE.Color();
   const body = new THREE.Color(), roof = new THREE.Color();
+  const shutters = new THREE.Color().setHex(HOOFINGTON_PALETTE.shutters, THREE.SRGBColorSpace);
   const quat = new THREE.Quaternion(), local = new THREE.Vector3();
 
   function pixels(map: THREE.Texture): PixelMap | null {
@@ -215,8 +218,15 @@ export function bakeLibraryGeometry<Model extends string>(
     // solid green and blossom colours; they still occupy one merged draw.
     const foliageModel = placement.model === 'oak' || placement.model === 'pine' ||
       placement.model === 'bush' || placement.model === 'flower';
-    const wallColor = placement.wall === undefined ? null : body.setHex(placement.wall).clone();
-    const roofColor = placement.roof === undefined ? null : roof.setHex(placement.roof).clone();
+    // setHex reads sRGB and converts to linear once; the vertex buffer stays linear.
+    const wallColor = placement.wall === undefined ? null :
+      body.setHex(placement.wall, THREE.SRGBColorSpace).clone();
+    const roofColor = placement.roof === undefined ? null :
+      roof.setHex(placement.roof, THREE.SRGBColorSpace).clone();
+    const paintingBuilding = placement.model === 'pinkHome' ||
+      placement.model === 'creamHome' || placement.model === 'yellowHome' ||
+      placement.model === 'farmhouse' || placement.model === 'cottage' ||
+      placement.model === 'barn';
     quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), placement.yaw);
     root.traverse(object => {
       if (!(object instanceof THREE.Mesh)) return;
@@ -308,8 +318,20 @@ export function bakeLibraryGeometry<Model extends string>(
           }
           const detail = /window|glass|door|shutter|trim|metal|flower/.test(hint);
           const roofVertex = /roof|tile|shingle|thatch/.test(hint) || height > 0.71;
-          if (roofColor && roofVertex) tint.lerp(roofColor, 0.82);
-          else if (wallColor && !detail) tint.lerp(wallColor, 0.68);
+          // Hoofington's painting colours replace grey source paints instead
+          // of mixing with them. Other districts retain their source blending.
+          if (placement.model === 'mailbox' && wallColor) {
+            tint.copy(wallColor);
+          } else if (paintingBuilding && /shutter/.test(hint)) {
+            tint.copy(shutters);
+          } else if (roofColor && roofVertex &&
+                     (!paintingBuilding || !/window|glass|door/.test(hint))) {
+            if (paintingBuilding) tint.copy(roofColor);
+            else tint.lerp(roofColor, 0.82);
+          } else if (wallColor && !detail) {
+            if (paintingBuilding) tint.copy(wallColor);
+            else tint.lerp(wallColor, 0.68);
+          }
           // Keep the source's lit windows and decorative contrast, even on
           // otherwise pastel/cream buildings.
           colours.push(tint.r, tint.g, tint.b);
