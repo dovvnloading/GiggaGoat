@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { IslandData, PropDescriptor } from './types';
+import type { IslandData } from './types';
 import { BIOMES } from './types';
 import { SeededRandom } from './random';
 import { gridIndex, gridSample } from './terrain';
@@ -32,7 +32,7 @@ export function buildMeadowScatter(island: IslandData): THREE.Group {
   const architecture = island.props.filter(p =>
     ['house', 'barn', 'shop', 'booth', 'cottage', 'control-house', 'windmill'].includes(p.kind));
   const roadSamples = [...island.roads, ...makeLocalStreets(island)].flatMap(road =>
-    road.points.filter((_, i) => i % 3 === 0).map(point => ({
+    road.points.map(point => ({
       x: point.x, z: point.z, margin: road.width * 0.5 + 1.1 * scale,
     })));
 
@@ -107,10 +107,13 @@ export function buildMeadowScatter(island: IslandData): THREE.Group {
   const flowerParts: THREE.BufferGeometry[] = [];
   const petals: number[] = [];
   function flowerPart(geometry: THREE.BufferGeometry, color: number): void {
-    const vertices = geometry.getAttribute('position').count;
+    // Cylinders are indexed, icosahedra are not. Merge requires one topology.
+    const unpacked = geometry.index ? geometry.toNonIndexed() : geometry;
+    if (unpacked !== geometry) geometry.dispose();
+    const vertices = unpacked.getAttribute('position').count;
     const tint = new THREE.Color(color);
     for (let i = 0; i < vertices; i++) petals.push(tint.r, tint.g, tint.b);
-    flowerParts.push(geometry);
+    flowerParts.push(unpacked);
   }
   const stalk = new THREE.CylinderGeometry(0.021, 0.035, 0.63, 5);
   stalk.translate(0, 0.31, 0);
