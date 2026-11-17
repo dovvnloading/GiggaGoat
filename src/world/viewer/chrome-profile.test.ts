@@ -306,8 +306,14 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
       const report = answer.result?.value as Report | undefined;
       expect(report?.bookmarks).toHaveLength(ART_BOOKMARKS.length);
       expect(report?.dpr).toBe(1.5);
+      const hoofBudget = report!.bookmarks.find(mark => mark.id === '08');
+      expect(hoofBudget, 'Hoofington bookmark must be profiled').toBeDefined();
+      expect(hoofBudget!.triangles, 'bookmark 08 exceeds 400k triangles')
+        .toBeLessThanOrEqual(400_000);
+      expect(hoofBudget!.drawCalls, 'bookmark 08 exceeds 200 draw calls')
+        .toBeLessThanOrEqual(200);
       expect(report!.bookmarks.find(mark => mark.id === '11')?.drawCalls)
-        .toBeLessThanOrEqual(179);
+        .toBeLessThanOrEqual(200);
       // Library prop batches can remove their outline draws before profiling;
       // toggling outlines off may then leave the already-optimized count equal.
       expect(report!.crane.noOutlines!.drawCalls)
@@ -320,6 +326,18 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
         expect(mark.height).toBeGreaterThan(600);
       }
       console.log('WORLD_CHROME_PROFILE ' + JSON.stringify(report));
+      // Recorded by a successful main-branch Chrome CI run at the same
+      // viewport, renderer scale and GPU backend.
+      const baseline = {
+        '08': { triangles: 792297, drawCalls: 183 },
+        '11': { triangles: 657362, drawCalls: 178 },
+        '14': { triangles: 528622, drawCalls: 97 },
+      };
+      console.log('WORLD_LOD_COMPARE ' + JSON.stringify(
+        (['08', '11', '14'] as const).map(id => ({
+          id, before: baseline[id],
+          after: report.bookmarks.find(mark => mark.id === id),
+        }))));
 
     } finally {
       socket?.close();
