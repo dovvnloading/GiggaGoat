@@ -1,4 +1,4 @@
-/** Production-ready art QA for the first five approved VFX panels. */
+/** Production art QA: all six VFX panels, with 06 centered by default. */
 import * as THREE from 'three';
 import { GoatCharacter } from '../../character/GoatCharacter';
 import { RunningDustPuffs } from '../RunningDustPuffs';
@@ -6,6 +6,11 @@ import { LandingImpactRing } from '../LandingImpactRing';
 import { HeadbuttImpactStars } from '../HeadbuttImpactStars';
 import { WaterSplash } from '../WaterSplash';
 import { CrateBreakDebris } from '../CrateBreakDebris';
+import { TrampolineBoing } from '../TrampolineBoing';
+import {
+  TRAMPOLINE_MAT_Y, makeTrampolineBoingBurst, makeTrampolineBoingFrame,
+  sampleTrampolineBoing, type TrampolineBoingBurst,
+} from '../trampolineBoingMath';
 import { getViewportSize } from './viewport';
 
 function element<T extends HTMLElement>(id: string): T {
@@ -37,6 +42,16 @@ const waterMassLabel = element<HTMLOutputElement>('water-mass-value');
 const crateButton = element<HTMLButtonElement>('crate');
 const crateSizeControl = element<HTMLInputElement>('crate-size');
 const crateSizeLabel = element<HTMLOutputElement>('crate-size-value');
+const previewModeControl = element<HTMLSelectElement>('preview-mode');
+const showcaseControls = element<HTMLElement>('showcase-controls');
+const showcaseTriggers = element<HTMLElement>('showcase-triggers');
+const trampolineButton = element<HTMLButtonElement>('trampoline');
+const trampolineScaleControl = element<HTMLInputElement>('trampoline-scale');
+const trampolineScaleLabel = element<HTMLOutputElement>('trampoline-scale-value');
+const trampolineStrengthControl = element<HTMLInputElement>('trampoline-strength');
+const trampolineStrengthLabel = element<HTMLOutputElement>('trampoline-strength-value');
+const previewTitle = element<HTMLElement>('preview-title');
+const poseHint = element<HTMLElement>('pose-hint');
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xfff3ea);
@@ -91,6 +106,8 @@ const water = new WaterSplash({ capacity: 10 });
 scene.add(water.group);
 const crate = new CrateBreakDebris({ capacity: 8 });
 scene.add(crate.group);
+const trampoline = new TrampolineBoing({ capacity: 3 });
+scene.add(trampoline.group);
 // A static faceted target for QA only; no collider or game physics.
 const rockGeometry = new THREE.DodecahedronGeometry(0.44, 0);
 const rockMaterial = new THREE.MeshToonMaterial({ color: 0x8e8194 });
@@ -109,6 +126,11 @@ let landingClock = 0;
 let headbuttClock = 0;
 let waterClock = 0;
 let crateClock = 0;
+let trampolineClock = 0;
+let previewMode: 'trampoline' | 'showcase' = 'trampoline';
+let trampolineBurst: TrampolineBoingBurst | null = null;
+const trampolinePreviewFrame = makeTrampolineBoingFrame();
+const trampolineContact = { x: 0, y: 0, z: 0 };
 let lastTime = 0;
 let yaw = 0;
 let elevation = 0.19;
@@ -129,13 +151,40 @@ function setDirection(value: string): void {
   headbutt.clear();
   water.clear();
   crate.clear();
+  trampoline.clear();
   emissionClock = 0;
   landingClock = 0;
   headbuttClock = 0;
   waterClock = 0;
   crateClock = 0;
+  trampolineClock = 0;
+  trampolineBurst = null;
   goat.mountWorldPosition('head', headContact);
   rock.position.set(headContact.x + heading * 0.58, 0.38, headContact.z - 0.05);
+  const showcase = previewMode === 'showcase';
+  for (const effect of [dust, landing, headbutt, water, crate]) {
+    effect.group.visible = showcase;
+  }
+  trampoline.group.visible = !showcase;
+  rock.visible = showcase;
+  showcaseControls.hidden = !showcase;
+  showcaseTriggers.hidden = !showcase;
+  burstButton.disabled = !showcase;
+  previewTitle.textContent = showcase
+    ? 'Live 3D dust + landing + headbutt + water + crate · drag to orbit'
+    : '06 · Trampoline boing · squash → snap → flight · drag to orbit';
+  poseHint.textContent = showcase
+    ? '01–05 · Five looping legacy effects'
+    : '06 · Downward dip → golden fan → violet launch arcs';
+  lookAt.set(showcase ? -0.35 : 0, showcase ? 0.83 : 1.70, 0);
+  distance = showcase ? 5.1 : 7.7;
+  goat.root.rotation.z = 0;
+  goat.setPreview(showcase ? 'sprint' : 'stand', 'BILLY');
+  if (!showcase) {
+    goat.root.rotation.y = -Math.PI / 2;
+    emitTrampoline();
+    poseTrampolineGoat();
+  }
 }
 
 function emitHoof(): void {
@@ -174,6 +223,22 @@ function emitWater(): void {
   );
 }
 
+function emitTrampoline(): void {
+  const scale = Number(trampolineScaleControl.value);
+  const strength = Number(trampolineStrengthControl.value);
+  trampolineBurst = makeTrampolineBoingBurst(trampolineContact, scale, strength);
+  trampolineClock = 0;
+  trampoline.emit(trampolineContact, scale, strength);
+}
+
+function poseTrampolineGoat(): void {
+  const frame = trampolineBurst &&
+    sampleTrampolineBoing(trampolineBurst, trampolineClock, trampolinePreviewFrame);
+  const lift = frame?.goatLift ?? 0;
+  goat.root.position.set(0, TRAMPOLINE_MAT_Y + lift, 0);
+  goat.root.rotation.z = -0.12 * Math.min(1, Math.max(0, lift / 1.5));
+}
+
 function emitCrate(): void {
   // Standalone break preview next to the goat, not a gameplay collider.
   crate.emit(
@@ -184,7 +249,10 @@ function emitCrate(): void {
 }
 
 function refreshUi(): void {
-  state.textContent = (paused ? 'Paused' : 'Running') + ' / ' +
+  state.textContent = previewMode === 'trampoline'
+    ? (paused ? 'Paused' : 'Running') + ' / ' + trampoline.activeCount +
+      ' trampoline bounce / target mat + speed rays + launch arcs'
+    : (paused ? 'Paused' : 'Running') + ' / ' +
     dust.activeCount + ' dust sprites / ' + landing.activeCount +
     ' landing rings / ' + headbutt.activeCount + ' headbutt impacts / ' +
     water.activeCount + ' water splashes / ' +
@@ -197,12 +265,28 @@ function refreshUi(): void {
   waterSpeedLabel.textContent = Number(waterSpeedControl.value).toFixed(1);
   waterMassLabel.textContent = Number(waterMassControl.value).toFixed(1);
   crateSizeLabel.textContent = Number(crateSizeControl.value).toFixed(2);
+  trampolineScaleLabel.textContent = Number(trampolineScaleControl.value).toFixed(2);
+  trampolineStrengthLabel.textContent = Number(trampolineStrengthControl.value).toFixed(1);
 }
 
+previewModeControl.addEventListener('change', () => {
+  previewMode = previewModeControl.value === 'showcase' ? 'showcase' : 'trampoline';
+  setDirection(directionControl.value);
+  if (previewMode === 'showcase') {
+    emitHoof(); dust.update(0.19);
+    emitLanding(); landing.update(0.19);
+    emitHeadbutt(); headbutt.update(0.27);
+    emitWater(); water.update(0.37);
+    emitCrate(); crate.update(0.34);
+  }
+  refreshUi();
+});
 directionControl.addEventListener('change', () => {
   setDirection(directionControl.value);
-  emitHoof();
-  dust.update(0.14);
+  if (previewMode === 'showcase') {
+    emitHoof();
+    dust.update(0.14);
+  }
 });
 rateControl.addEventListener('input', () => {
   cadence = Number(rateControl.value);
@@ -213,6 +297,24 @@ headbuttPowerControl.addEventListener('input', refreshUi);
 waterSpeedControl.addEventListener('input', refreshUi);
 waterMassControl.addEventListener('input', refreshUi);
 crateSizeControl.addEventListener('input', refreshUi);
+trampolineScaleControl.addEventListener('input', () => { emitTrampoline(); poseTrampolineGoat(); refreshUi(); });
+trampolineStrengthControl.addEventListener('input', () => { emitTrampoline(); poseTrampolineGoat(); refreshUi(); });
+trampolineButton.addEventListener('click', () => {
+  if (previewMode !== 'trampoline') {
+    previewMode = 'trampoline';
+    previewModeControl.value = 'trampoline';
+    setDirection(directionControl.value);
+  } else {
+    emitTrampoline();
+  }
+  if (paused && trampolineBurst) {
+    const seek = trampolineBurst.lifetime * 0.65;
+    trampoline.update(seek);
+    trampolineClock = seek;
+    poseTrampolineGoat();
+  }
+  refreshUi();
+});
 crateButton.addEventListener('click', () => {
   emitCrate();
   if (paused) crate.update(0.31); // show flying planks in paused art review
@@ -250,11 +352,15 @@ clearButton.addEventListener('click', () => {
   headbutt.clear();
   water.clear();
   crate.clear();
+  trampoline.clear();
   emissionClock = 0;
   landingClock = 0;
   headbuttClock = 0;
   waterClock = 0;
   crateClock = 0;
+  trampolineClock = 0;
+  trampolineBurst = null;
+  goat.root.position.y = previewMode === 'trampoline' ? TRAMPOLINE_MAT_Y : 0;
   refreshUi();
 });
 
@@ -311,6 +417,14 @@ function frame(now: number): void {
   lastTime = now;
   if (!paused) {
     goat.update(dt);
+    if (previewMode === 'trampoline') {
+      trampolineClock += dt;
+      trampoline.update(dt);
+      if (!trampolineBurst || trampolineClock >= trampolineBurst.lifetime) {
+        emitTrampoline();
+      }
+      poseTrampolineGoat();
+    } else {
     emissionClock += dt;
     const period = 1 / cadence;
     // Bound work after background-tab stalls without discarding real effect ages.
@@ -347,6 +461,7 @@ function frame(now: number): void {
       emitCrate();
     }
     crate.update(dt);
+    }
   }
 
   const horizontal = Math.cos(elevation) * distance;
@@ -366,17 +481,17 @@ function frame(now: number): void {
 
 setDirection(directionControl.value);
 goat.update(0);
-// Start with a visible small→large group instead of an empty first frame.
-emitHoof();
-dust.update(0.19);
-emitLanding();
-landing.update(0.19);
-emitHeadbutt();
-headbutt.update(0.27);
-emitWater();
-water.update(0.37);
-emitCrate();
-crate.update(0.34);
+// Start the main viewport on the airborne sixth-panel beat, with the target
+// below the goat. The other five seeded previews remain available in showcase.
+const initialTrampoline = makeTrampolineBoingBurst(
+  trampolineContact, Number(trampolineScaleControl.value),
+  Number(trampolineStrengthControl.value),
+);
+if (initialTrampoline) {
+  trampolineClock = initialTrampoline.lifetime * 0.62;
+  trampoline.update(trampolineClock);
+  poseTrampolineGoat();
+}
 refreshUi();
 resizeViewport();
 requestAnimationFrame(frame);
@@ -391,6 +506,7 @@ window.addEventListener('pagehide', () => {
   headbutt.dispose();
   water.dispose();
   crate.dispose();
+  trampoline.dispose();
   rockGeometry.dispose();
   rockMaterial.dispose();
   goat.dispose();

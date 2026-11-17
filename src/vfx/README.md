@@ -1,4 +1,4 @@
-# VFX lane · Running Dust Puffs + Landing Impact Ring + Headbutt Impact Stars + Water Splash
+# VFX lane · Approved effects 01–06 (dust, landing, headbutt, water, crate, trampoline)
 
 The top-left **RUNNING DUST PUFFS** and adjacent **LANDING IMPACT RING** panels
 of the approved [`23_vfx_sheet.png`](../../docs/art/hifi/23_vfx_sheet.png)
@@ -174,14 +174,55 @@ validation, stage order, direction, scale, fragment bounds and reproducibility.
 listeners, extra packages or per-frame GPU allocation. It owns and disposes
 only its preallocated meshes, shared geometries and procedural DataTextures.
 
+## Trampoline boing · call from gameplay (panel 06)
+
+```ts
+import { createTrampolineBoing } from '../vfx';
+
+const boing = createTrampolineBoing({ capacity: 6 });
+scene.add(boing.group);
+
+// When the goat contacts a trampoline, trigger the cosmetic animation:
+// position = ground center; scale = platform visual size; strength = rebound power.
+boing.emit(trampolineGroundCenter, 1, 1.5);
+boing.update(dt); // elapsed seconds, once per render frame
+boing.clear();    // optionally reuse all the pooled slots
+boing.dispose();  // on scene teardown
+```
+
+The ground-center position accepts THREE.Vector3 or plain {x,y,z}; +Y is up.
+Scale and strength must be finite and non-negative; zero is a no-op; positive
+values are capped at 4. The visual timeline (roughly 1.4–1.7s) depicts a
+stationary red/coral-and-cream concentric bullseye mat, visibly depressed
+under the goat with a short yellow downward cue, followed by a slight rebound
+overshoot, fanning golden speed-line rays from the purple/blue rim and four
+rising violet/lilac arc ribbons behind the launched goat. Purple trim, gold
+rim clamps, and four splayed wooden legs keep the reference silhouette.
+
+`sampleTrampolineBoing` accepts a caller-owned mutable frame, so the renderer
+does not allocate any object per update. Each pooled slot owns one prebuilt,
+dynamic vertex buffer for its deforming mat; the torus/cylinder/box/leg/arrow/
+ray/arc geometries and opaque toon materials are shared by all slots.
+Only the translucent ray/arc/arrow opacity materials are per-slot. No GPU
+resources, arrays, or temporary vectors are constructed by `update`.
+The oldest live bounce is recycled when at capacity, inactive slots are used
+first, and `clear` leaves every object ready for re-emission.
+
+`makeTrampolineBoingBurst` validates input; `sampleTrampolineBoing` samples
+absolute elapsed age deterministically; `makeTrampolineBoingFrame` creates
+a reusable output frame. The pure math includes a `goatLift` preview
+offset used only in the lab. Gameplay must apply its own physical vertical
+impulse and move its own goat; the effect never owns or modifies a collider,
+game character, simulation, renderer, canvas or event listener.
+
 ## Production art-review lab
 
 `/src/vfx/lab/index.html` works under `npm run dev` and in the **production
 Vite build / GitHub Pages**. The repo's existing lab-page discovery in
 `vite.config.ts` includes it automatically. The lab includes a running
-Three.js goat, a studio floor, dust, landing, headbutt, water and crate triggers, a small
+Three.js goat, a studio floor, dust, landing, headbutt, water, crate and trampoline triggers, a small
 faceted decorative target rock, pause/direction/speed controls, landing
-strength, headbutt power, water speed and relative mass sliders, and crops of **all four** approved
+strength, headbutt power, water speed and relative mass sliders, and crops of **all six** approved
 panels from the *existing* reference sheet (bundled by Vite from
 `docs/art/hifi`). Headbutt hits replay every 2.75 seconds, and paused
 single-hit triggering freezes a representative gold-star frame.
@@ -191,8 +232,11 @@ or the taller reference column to dictate its height. The pure
 `lab/viewport.ts` helper derives the drawing-buffer's logical dimensions from
 the wrapper width alone; a ResizeObserver, window resize handler and per-frame
 device-pixel-ratio check keep the camera projection and retina resolution in
-sync without a height feedback loop. All five seeded previews play immediately
-and replay on their existing timers while motion is unpaused. The sizing helper
+sync without a height feedback loop. The centered 06 trampoline preview loops immediately by default with a standing/
+airborne goat above the deforming mat; the 01–05 showcase remains selectable
+with its original effect triggers and timer cadence. The sixth-panel crop is
+sourced from the lower middle of the same existing sheet (no new image file).
+Both the trampoline's scale and its rebound strength are adjustable. The sizing helper
 has headless Vitest coverage in `lab/viewport.test.ts`.
 
 ## Art-direction self-review
@@ -273,3 +317,20 @@ has headless Vitest coverage in `lab/viewport.test.ts`.
   crate entity. The gameplay caller remains responsible for deleting its
   actual crate and for collisions, loot or physics. No files outside
   `src/vfx/` or other VFX cues were changed.
+
+
+### Trampoline Boing
+
+- **Matches:** strong red/cream target rings, deep visibly lowered center
+  during the down-arrow compression beat, violet/blue padded hoop, gold clamps,
+  four angled amber wooden legs, upward golden speed streaks from the rim,
+  purple/lilac curved motion trails and a rising orange-scarfed in-repo goat.
+- **Intentional approximation:** this is a 3D low-poly / toon preview, not the
+  illustration's brushwork or exact facial pose. The fan uses prebuilt flat
+  triangular rays and the upward purple curls use prebuilt translucent ribbon
+  strips. The mat's vertical deformation is a light CPU vertex update rather
+  than a physically simulated fabric sheet.
+- **Scope boundary:** `emit(position, scale, strength)` is purely cosmetic;
+  the lab applies the sampled goat offset for comparison only. Real goat
+  velocity, collisions and trampoline gameplay remain in their owning lanes.
+  All edits for effect 06 are within `src/vfx/`.
