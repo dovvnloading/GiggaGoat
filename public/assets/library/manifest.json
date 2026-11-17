@@ -33636,5 +33636,50 @@
   "license": "CC0",
   "credit": "Gigga-Goat (original, built in Blender)",
   "url": ""
+ },
+ {
+  "path": "assets/library/custom/props/palm-tree.glb",
+  "name": "props palm-tree",
+  "source": "custom",
+  "pack": "props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/props/floodlight.glb",
+  "name": "props floodlight",
+  "source": "custom",
+  "pack": "props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/props/life-ring.glb",
+  "name": "props life-ring",
+  "source": "custom",
+  "pack": "props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/props/cable-spool.glb",
+  "name": "props cable-spool",
+  "source": "custom",
+  "pack": "props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/props/pallet-stack.glb",
+  "name": "props pallet-stack",
+  "source": "custom",
+  "pack": "props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
  }
 ]
