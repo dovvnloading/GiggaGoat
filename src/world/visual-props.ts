@@ -803,11 +803,11 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
           }
           const original = job.mesh.geometry;
           job.mesh.geometry = libraryGeometry;
-          // Retain mild per-descriptor colour variation without tinting the
-          // original model's windows, bark and other paint into a single hue.
+          // Daisy clumps keep their authored paint exactly; other props retain
+          // mild per-descriptor variation without repainting their whole model.
           for (let i = 0; i < job.entries.length; i++) {
             const color = job.entries[i]!.color;
-            job.mesh.setColorAt(i, color === undefined
+            job.mesh.setColorAt(i, job.kind === 'grass-tuft' || color === undefined
               ? white : tint.setHex(color).lerp(white, 0.82));
           }
           if (job.mesh.instanceColor) job.mesh.instanceColor.needsUpdate = true;

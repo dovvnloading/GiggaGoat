@@ -1,6 +1,6 @@
 import type { IslandData, PoiId, PropDescriptor, PropKind } from './types';
 import { SeededRandom } from './random';
-import { gridSample, riverAt } from './terrain';
+import { gridSample, riverAt, stampPlot } from './terrain';
 import { getDamPlacement } from './the-dam';
 import { damChannelAt } from './dam-landscape';
 
@@ -59,7 +59,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
 
   // Hoofington: two sided village street, with front gardens and mailboxes.
   const farm: PoiId = 'hoofington';
-  at(farm, 'silo', -32, -20, 7.5, 21, 7.5,
+  at(farm, 'silo', -32, -19.2, 7.5, 21, 7.5,
     { shape: 'cylinder', color: 0xe5d7ac });
   at(farm, 'house', 22, 29, 10, 8, 10,
     { yaw: -Math.PI / 2, color: 0xffecdb });
@@ -84,7 +84,10 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       0.85, 1.6, 0.85, { yaw: turn(), color: i % 2 ? 0xff891e : 0x7a4cff });
   }
   for (const side of [-1, 1]) for (let i = 0; i < 8; i++) {
-    at(farm, 'fence', side * 34.5, -36 + i * 10,
+    // The outer west fence runs behind both barn and silo foundations.
+    const x = side === -1 && i < 2 ? -36.8
+      : side === -1 && i === 2 ? -36.0 : side * 34.5;
+    at(farm, 'fence', x, -36 + i * 10,
       9, 1.85, 0.34, { yaw: Math.PI / 2, color: 0xeac995 });
   }
   for (let i = 0; i < 16; i++) {
@@ -94,11 +97,17 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   // Dense planted borders occupy the lawn strips, not the paved roadway.
   for (const side of [-1, 1]) for (let i = 0; i < 13; i++) {
     const z = -34 + i * 5.5;
-    at(farm, 'flower', side * 14.5 + rand(-0.6, 0.6), z,
+    const flowerX = side * 14.5 + rand(-0.6, 0.6) +
+      (side < 0 ? i === 4 ? 0.12 : i === 8 ? 0.28 : 0 : 0);
+    at(farm, 'flower', flowerX, z,
       0.9, 1.0 + rand(0, 0.45), 0.9,
       { yaw: turn(), color: i % 2 ? 0xffd833 : 0xf2777f });
     if (i % 2 === 0) {
-      at(farm, 'bush', side * 17, z + 2,
+      // Nudge only garden shrubs that would sit inside a nearby house.
+      const bushX = side * 17 + (side < 0
+        ? i === 4 ? 2.9 : i === 8 ? 2.4 : 0
+        : i === 2 ? -1.9 : i === 8 ? -0.45 : i === 12 ? -0.9 : 0);
+      at(farm, 'bush', bushX, z + 2,
         1.7, 1.4, 1.8, { color: 0x79b958 });
     }
   }
@@ -108,6 +117,76 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   }
   at(farm, 'bench', -14, 34, 3.6, 1.55, 1.3,
     { yaw: Math.PI / 2, color: 0x9d6f57 });
+
+  // The main road is 6.8 m wide and the POI access roads bend around the
+  // farm. Procedural foliage must not be allowed to grow through either road
+  // or the village buildings. Find the first clear nearby spot, without
+  // switching sides of the street or consuming additional RNG draws.
+  interface Footprint { x: number; z: number; sx: number; sz: number; yaw: number }
+  function footprintOverlaps(a: Footprint, b: Footprint): boolean {
+    const corners = (f: Footprint): Array<{ x: number; z: number }> => {
+      const c = Math.cos(f.yaw), s = Math.sin(f.yaw);
+      const points: Array<{ x: number; z: number }> = [];
+      for (const x of [-f.sx / 2, f.sx / 2])
+        for (const z of [-f.sz / 2, f.sz / 2])
+          points.push({ x: f.x + c * x + s * z, z: f.z - s * x + c * z });
+      return points;
+    };
+    const ac = corners(a), bc = corners(b);
+    for (const angle of [a.yaw, b.yaw]) {
+      const c = Math.cos(angle), s = Math.sin(angle);
+      for (const axis of [{ x: c, z: -s }, { x: s, z: c }]) {
+        const project = (p: { x: number; z: number }): number =>
+          p.x * axis.x + p.z * axis.z;
+        const av = ac.map(project), bv = bc.map(project);
+        if (Math.max(...av) <= Math.min(...bv) + 1e-5 ||
+            Math.max(...bv) <= Math.min(...av) + 1e-5) return false;
+      }
+    }
+    return true;
+  }
+  const farmCenter = sites.get(farm)!;
+  const hoofRoads: Footprint[] = [{
+    x: farmCenter.x, z: farmCenter.z, sx: 6.8 * scale, sz: 84 * scale, yaw: 0,
+  }];
+  for (const road of island.roads) {
+    if (road.type !== 'road' || (road.from !== farm && road.to !== farm)) continue;
+    for (let i = 1; i < road.points.length; i++) {
+      const a = road.points[i - 1]!, b = road.points[i]!;
+      const dx = b.x - a.x, dz = b.z - a.z, distance = Math.hypot(dx, dz);
+      if (distance < 1e-6) continue;
+      hoofRoads.push({ x: (a.x + b.x) / 2, z: (a.z + b.z) / 2,
+        sx: road.width, sz: distance, yaw: Math.atan2(dx, dz) });
+    }
+  }
+  function clearHoofingtonFoliage(
+    x: number, z: number, width: number, yaw: number,
+  ): { x: number; z: number } {
+    const buildings = [...island.props, ...result]
+      .filter(p => p.poiId === farm &&
+        ['barn', 'house', 'cottage', 'silo', 'windmill'].includes(p.kind))
+      .map(p => ({ x: p.transform.position.x, z: p.transform.position.z,
+        sx: p.size.x, sz: p.size.z, yaw: p.transform.rotationY }));
+    const free = (px: number, pz: number): boolean => {
+      const f = { x: px, z: pz, sx: width, sz: width, yaw };
+      return !buildings.some(b => footprintOverlaps(f, b)) &&
+        !hoofRoads.some(r => footprintOverlaps(f, r));
+    };
+    if (free(x, z)) return { x, z };
+    const side = Math.sign(x - farmCenter.x);
+    for (let step = 1; step <= 100; step++) {
+      const radius = step * 0.12 * scale;
+      for (let j = 0; j < 36; j++) {
+        const angle = j * Math.PI / 18;
+        const nx = x + Math.cos(angle) * radius;
+        const nz = z + Math.sin(angle) * radius;
+        if (side && Math.sign(nx - farmCenter.x) !== side) continue;
+        if (Math.hypot(nx - farmCenter.x, nz - farmCenter.z) > 55 * scale) continue;
+        if (free(nx, nz)) return { x: nx, z: nz };
+      }
+    }
+    return { x, z }; // An unresolvable layout must fail the regression test.
+  }
 
   // Floating buoys outline the pier and the surf. The kiosks, pennants and
   // benches are built by buildBaaardwalk at deck height, never on sand.
@@ -313,9 +392,39 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       : kind === 'flower' ? rand(0.8, 1.5) : rand(0.7, 1.35);
     const width = kind.startsWith('tree-') ? height * 0.39
       : kind === 'bush' ? height * 1.25 : height * 0.55;
-    place(kind, x, z, width, height, width, near?.id,
-      { shape: 'cylinder', yaw: turn() });
+    const yaw = turn();
+    const position = near?.id === farm &&
+      (kind === 'flower' || kind === 'bush' || kind.startsWith('tree-'))
+      ? clearHoofingtonFoliage(x, z, width * scale, yaw) : { x, z };
+    place(kind, position.x, position.z, width, height, width, near?.id,
+      { shape: 'cylinder', yaw });
     accepted++;
+  }
+  // generateIsland makes one more grading pass for the dressed farmhouse and
+  // cottage *after* this function returns. Preview that pass on a height copy,
+  // then anchor the Hoofington colliders to the final ground. This is only a
+  // placement-Y correction: it neither changes terrain nor collider dimensions.
+  const finalGround = {
+    size: island.size, resolution: island.resolution, heights: island.heights.slice(),
+  };
+  for (const prop of result) {
+    if (prop.poiId !== farm || prop.body.type !== 'static' ||
+        !['barn', 'house', 'shop', 'booth', 'cottage', 'control-house'].includes(prop.kind))
+      continue;
+    stampPlot(finalGround, {
+      poiId: farm,
+      center: { x: prop.transform.position.x, z: prop.transform.position.z },
+      elevation: prop.transform.position.y - prop.size.y / 2,
+      radius: Math.hypot(prop.size.x, prop.size.z) / 2 + 5 * scale,
+      flat: true,
+    });
+  }
+  for (const prop of [...island.props, ...result]) {
+    if (prop.poiId !== farm) continue;
+    const p = prop.transform.position;
+    const ground = gridSample(finalGround, p.x, p.z);
+    const delta = p.y - prop.size.y / 2 - ground;
+    if (delta > 0.05 || delta < -0.15) p.y = ground + prop.size.y / 2;
   }
   return result;
 }

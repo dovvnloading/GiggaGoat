@@ -40,9 +40,18 @@ export async function createDistrictLod<Model extends string>(
   meshName: string,
 ): Promise<DistrictLod> {
   const cells = new Map<string, Cell<Model>>();
-  // Slender freestanding geometry can lose whole beams when aggressively
-  // decimated, even though the bulk of a district's buildings simplify well.
-  const silhouetteModels = new Set(['skylineCrane', 'waterTower', 'windmill']);
+  // Art rule (docs/art/qa/hoofington-qa-1.md, pass 2): buildings are never
+  // decimated. At the distant ratio, houses, the silo and the barn crumpled
+  // into faceted shards in the World Lab art camera. Only foliage and small
+  // dressing simplify; slender landmarks keep their silhouette as before.
+  const silhouetteModels = new Set([
+    'skylineCrane', 'waterTower', 'windmill',
+    // Hoofington buildings
+    'pinkHome', 'creamHome', 'yellowHome', 'farmhouse', 'cottage', 'barn', 'silo',
+    // Downtown buildings
+    'bakery', 'arcade', 'cinema', 'cafe', 'market', 'boutique', 'cornerShop',
+    'kayShop', 'townhouse', 'brickHouse', 'kayHouse', 'highrise', 'fountain',
+  ]);
   for (const range of placements) {
     if (range.count === 0) continue;
     const p = range.placement;

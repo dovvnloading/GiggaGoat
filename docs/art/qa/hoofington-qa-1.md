@@ -23,3 +23,16 @@ C = polish.
 
 Order: P1, P2, P3/P3b, B2, B4, then the B and C items. Each fix gets a render next to the painting crop
 before merge and a live check after deploy.
+
+## Pass 2 (main @ a6f5c64, after the prop wiring)
+
+Fixed and confirmed live in the World Lab: P1 white picket fences, P2 small red mailboxes, P4 flower clumps,
+E1 zebra crossing instead of the tan patch, E2 soft white clouds, painting-palette houses with shutters,
+no shadow acne. All 23 house/prop GLBs load (0 failures).
+
+| # | Sev | Issue | Root cause | Fix (owner) |
+|---|---|---|---|---|
+| L1 | A | Silo and white farmhouse look crumpled into faceted shards from the art camera | Distance LOD keeps 19% of triangles beyond 60 m (`WORLD_LOD.distantTriangleRatio`) and only protected the windmill/crane/water tower | Buildings are never decimated: all Hoofington and Downtown building models keep their silhouette (Claude, `district-lod.ts`) |
+| P3b | A | Lamps still grey highway lamps | Lamp swap PR #88 still in CI | World agent |
+| G1 | B | Brown dirt strips in front gardens | Path/yard plane colour | Stone path tiles like the painting (Claude) |
+| W1 | C | Shaded cream walls still read slightly grey | Sun direction puts the street-facing walls in shade at the art camera | Re-check after lamps; consider a warmer fill only for buildings |
