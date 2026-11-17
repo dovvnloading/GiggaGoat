@@ -196,6 +196,9 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
     shape: 'cuboid', body: STATIC, collidable: false,
     breakable: false, lickable: false, climbable: true,
   });
+  // The ten removed loose props previously consumed twenty RNG samples.
+  // Keep later POIs' seeded landmarks and collectible positions unchanged.
+  for (let i = 0; i < 20; i++) rng.next();
 
   // OLD LIGHTHOUSE: a rocky cape with a climbable beacon and cliffside secrets.
   const cape: PoiId = 'old-lighthouse';
