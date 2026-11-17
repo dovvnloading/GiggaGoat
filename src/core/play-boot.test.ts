@@ -99,6 +99,12 @@ describe('production title-screen PLAY boot', () => {
       expect(view.paused).toBe(false);
       expect(menu.root.hidden).toBe(true);
 
+      // The browser shell is no longer needed once PLAY has selected free roam.
+      // Keep the real GameInput's gamepad API, but avoid letting fake DOM globals
+      // alter Rapier's WASM runtime during the headless physics simulation.
+      vi.unstubAllGlobals();
+      vi.stubGlobal('navigator', { getGamepads: () => [] });
+
       const facing = rotate(game.goat.torso.rotation(), V(0, 0, -1));
       const intended = forward(game.goat.locomotion.heading);
       const headingAlignment = facing.x * intended.x + facing.z * intended.z;
@@ -138,11 +144,15 @@ describe('production title-screen PLAY boot', () => {
         expect(state.headY, JSON.stringify(state)).toBeGreaterThan(state.legY);
       }
     } catch (error) {
-      // Preserve the actual gameplay/DOM failure if teardown also hits a
-      // poisoned Rapier world; never let cleanup mask the reproduction.
+      // Restore the actual click-handler's fake browser host for cleanup,
+      // preserving the primary reproduction error even if disposal also fails.
+      vi.stubGlobal('document', documentStub);
+      vi.stubGlobal('window', windowStub);
       try { app.dispose(); } catch (cleanup) { console.error('cleanup after failure:', cleanup); }
       throw error;
     }
+    vi.stubGlobal('document', documentStub);
+    vi.stubGlobal('window', windowStub);
     app.dispose();
   });
 });
