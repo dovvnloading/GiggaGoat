@@ -33618,5 +33618,23 @@
   "license": "CC0",
   "credit": "Gigga-Goat (original, built in Blender)",
   "url": ""
+ },
+ {
+  "path": "assets/library/custom/props/buoy.glb",
+  "name": "props buoy",
+  "source": "custom",
+  "pack": "props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/pines/log-bridge.glb",
+  "name": "pines log-bridge",
+  "source": "custom",
+  "pack": "pines",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
  }
 ]
