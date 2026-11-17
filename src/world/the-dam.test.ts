@@ -18,7 +18,7 @@ describe('The Dam hero POI', () => {
     const damProps = island.props.filter(prop => prop.poiId === 'the-dam');
     expect(damProps.some(prop => prop.id === 'the-dam-compat-walkway')).toBe(true);
     expect(damProps.every(prop => prop.id === 'the-dam-compat-walkway' ||
-      prop.kind === 'bush' || prop.kind === 'flower' || prop.kind === 'grass-tuft'))
+      ['bush', 'flower', 'grass-tuft', 'rock'].includes(prop.kind)))
       .toBe(true);
     expect(island.props.find(prop => prop.id === 'the-dam-compat-walkway')?.collidable)
       .toBe(false);
