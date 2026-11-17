@@ -31,7 +31,7 @@ export const PROP_LIBRARY_MODELS = {
   'satellite-dish': 'assets/library/custom/mt-gigga/satellite-dish.glb',
   'dam-wall': 'assets/library/kenney/factory-kit/structure-wall.glb',
   'fence': 'assets/library/custom/hoofington-props/picket-fence.glb',
-  'hay-bale': 'assets/library/polypizza/hay-bale/hay_Yu8TOERkpw.glb',
+  'hay-bale': 'assets/library/custom/hoofington-props/hay-bale.glb',
   'crate': 'assets/library/kenney/platformer-kit/crate.glb',
   'barrel': 'assets/library/kenney/survival-kit/barrel.glb',
   'tree-pine': 'assets/library/custom/pines/pine.glb',
@@ -39,25 +39,25 @@ export const PROP_LIBRARY_MODELS = {
   'rock': 'assets/library/kenney/nature-kit/rock_largeB.glb',
   'log': 'assets/library/kenney/nature-kit/log.glb',
   'lamp': 'assets/library/usdcraft/street-lamp-lantern.glb',
-  'ramp': 'assets/library/kenney/platformer-kit/platform-ramp.glb',
+  'ramp': 'assets/library/custom/hoofington-props/wooden-ramp.glb',
   'ledge': 'assets/library/custom/mt-gigga/ledge.glb',
   'bridge': 'assets/library/custom/props/bridge-deck.glb',
-  'bench': 'assets/library/kenney/retro-urban-kit/detail-bench.glb',
+  'bench': 'assets/library/custom/town/park-bench.glb',
   'sign': 'assets/library/custom/props/signpost.glb',
   'flag': 'assets/library/custom/mt-gigga/pennant-pole.glb',
-  'buoy': 'assets/library/kenney/watercraft-kit/buoy.glb',
+  'buoy': 'assets/library/custom/props/buoy.glb',
   'platform': 'assets/library/custom/pines/timber-deck.glb',
   'silo': 'assets/library/custom/hoofington-props/silo.glb',
   'mailbox': 'assets/library/custom/hoofington-props/mailbox.glb',
-  'gnome': 'assets/library/polypizza/garden-gnome/gnome_Yy3yuQ4l6r.glb',
+  'gnome': 'assets/library/custom/town/gnome.glb',
   'trampoline': 'assets/library/custom/baaardwalk/trampoline.glb',
   'bunting': 'assets/library/custom/crane-yard/bunting.glb',
   'container': 'assets/library/custom/crane-yard/container.glb',
   'cone': 'assets/library/kenney/city-kit-roads/construction-cone.glb',
   'awning': 'assets/library/custom/baaardwalk/striped-awning.glb',
-  'planter': 'assets/library/kenney/city-kit-suburban/planter.glb',
+  'planter': 'assets/library/custom/town/planter.glb',
   'fountain': 'assets/library/kenney/fantasy-town-kit/fountain-round.glb',
-  'ac-unit': 'assets/library/kenney/factory-kit/machine.glb',
+  'ac-unit': 'assets/library/custom/town/ac-unit.glb',
   'water-tower': 'assets/library/kenney/city-kit-industrial/water-tower.glb',
   'mushroom': 'assets/library/kenney/nature-kit/mushroom_red.glb',
   'stump': 'assets/library/kenney/nature-kit/stump_round.glb',
@@ -141,8 +141,8 @@ export function bakeLibraryPropGeometry(
   const colour = new THREE.Color(), texel = new THREE.Color();
   const white = new THREE.Color(0xffffff);
   const imageCache = new Map<THREE.Texture, PixelMap | null>();
-  // The Blender pine has its own paint; only the legacy planter needs a height ramp.
-  const paintedFoliage = new Set<PropKind>(['planter']);
+  // Source-painted Blender planters do not need the legacy alpha-atlas ramp.
+  const legacyPlanter = kind === 'planter' && !authored;
 
   root.traverse(object => {
     if (!(object instanceof THREE.Mesh)) return;
@@ -182,9 +182,9 @@ export function bakeLibraryPropGeometry(
           colour.b *= vertexColours.getZ(index);
         }
         const map = (material as THREE.MeshStandardMaterial).map;
-        // Legacy planter foliage needs height-based paint in place of alpha padding.
-        // Blender props, including pines, retain their source paint.
-        if (!paintedFoliage.has(kind) && map && textureCoords && textureCoords.itemSize >= 2) {
+        // Sample source textures for authored props; only old non-authored
+        // alpha-cutout planters need a procedural paint replacement.
+        if (!legacyPlanter && map && textureCoords && textureCoords.itemSize >= 2) {
           const image = pixels(map, imageCache);
           if (image) {
             uv.set(textureCoords.getX(index), textureCoords.getY(index));
@@ -205,7 +205,7 @@ export function bakeLibraryPropGeometry(
             }
           }
         }
-        if (kind === 'planter') colour.setHex(height > 0.57 ? 0x77b65f : 0xbb8967);
+        if (legacyPlanter) colour.setHex(height > 0.57 ? 0x77b65f : 0xbb8967);
         colours.push(colour.r, colour.g, colour.b);
       }
     }

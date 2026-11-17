@@ -70,7 +70,7 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
     { yaw: Math.PI / 2, color: 0xde5343 });
   site(farm, 'house', 22, 12, 10, 8, 9,
     { yaw: -Math.PI / 2, color: 0xffecdb });
-  site(farm, 'windmill', 30, -38, 5, 23, 5, { shape: 'cylinder' });
+  site(farm, 'windmill', 30, -38, 12.5, 18, 7.9, { shape: 'cuboid' });
   site(farm, 'platform', 35, 26, 15, 1, 12);
   for (const side of [-1, 1]) for (let i = 0; i < 7; i++) {
     site(farm, 'fence', side * 11.6, -33 + i * 11,

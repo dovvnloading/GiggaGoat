@@ -4,8 +4,8 @@ import * as THREE from 'three';
 import { createWorldScene, generateIsland } from './index';
 import { gridSample } from './terrain';
 import {
-  GNOME_STATUE_HEIGHT, HOOFINGTON_MODELS, bakeHoofingtonGeometry,
-  createTexturedGnomeInstances, createLanternLampInstances, makeHoofingtonPlacements,
+  HOOFINGTON_MODELS, bakeHoofingtonGeometry,
+  createLanternLampInstances, makeHoofingtonPlacements,
   type HoofModel, type HoofPlacement,
 } from './visual-hoofington';
 
@@ -16,14 +16,8 @@ describe('Hoofington sourced village model integration', () => {
     )) as Array<{ path: string; license: string }>;
     for (const [model, path] of Object.entries(HOOFINGTON_MODELS)) {
       expect(path.endsWith('.glb'), model).toBe(true);
-      if (model === 'gnome') {
-        // The new CC0 Meshy asset is present but not yet in the library manifest.
-        expect(readFileSync('public/assets/library/meshy/garden-gnome/README.md', 'utf8'))
-          .toContain('CC0');
-      } else {
-        expect(manifest.find(entry => entry.path === path)?.license, model)
-          .toBe(model === 'lamp' ? 'Apache-2.0' : 'CC0');
-      }
+      expect(manifest.find(entry => entry.path === path)?.license, model)
+        .toBe(model === 'lamp' ? 'Apache-2.0' : 'CC0');
     }
     // One building family: painting-palette Kenney suburban houses.
     for (const home of ['pinkHome', 'creamHome', 'yellowHome', 'farmhouse', 'cottage'] as const) {
@@ -52,79 +46,65 @@ describe('Hoofington sourced village model integration', () => {
       expect(HOOFINGTON_MODELS).not.toHaveProperty(retired);
   });
 
-  it('selects the CC0 Meshy GLB with a WebP baseColor texture', () => {
-    expect(HOOFINGTON_MODELS.gnome)
-      .toBe('assets/library/meshy/garden-gnome/garden-gnome.glb');
-    const glb = readFileSync('public/' + HOOFINGTON_MODELS.gnome);
-    expect(glb.toString('utf8', 0, 4)).toBe('glTF');
-    const chunkLength = glb.readUInt32LE(12);
-    expect(glb.toString('utf8', 16, 20)).toBe('JSON');
-    const asset = JSON.parse(glb.toString('utf8', 20, 20 + chunkLength)) as {
-      meshes: Array<{ primitives: Array<{ material: number }> }>;
-      materials: Array<{ pbrMetallicRoughness?: { baseColorTexture?: { index: number } } }>;
-      textures: Array<{ extensions?: { EXT_texture_webp?: { source: number } } }>;
-      images: Array<{ mimeType: string }>;
-    };
-    expect(asset.meshes).toHaveLength(1);
-    expect(asset.meshes[0]?.primitives).toHaveLength(1);
-    const materialIndex = asset.meshes[0]!.primitives[0]!.material;
-    const textureIndex = asset.materials[materialIndex]?.pbrMetallicRoughness
-      ?.baseColorTexture?.index;
-    expect(textureIndex).toBeDefined();
-    expect(asset.textures[textureIndex!]?.extensions?.EXT_texture_webp?.source)
-      .toBe(0);
-    expect(asset.images[0]?.mimeType).toBe('image/webp');
+  it('routes benches, gnomes, planters, play pads and hay to their painted CC0 GLBs', () => {
+    const expected = {
+      bench: 'assets/library/custom/town/park-bench.glb',
+      gnome: 'assets/library/custom/town/gnome.glb',
+      planter: 'assets/library/custom/town/planter.glb',
+      playPad: 'assets/library/custom/baaardwalk/trampoline.glb',
+      hay: 'assets/library/custom/hoofington-props/hay-bale.glb',
+    } as const;
+    for (const [model, path] of Object.entries(expected))
+      expect(HOOFINGTON_MODELS[model as keyof typeof expected]).toBe(path);
   });
 
-  it('instances all gnomes in one textured half-metre draw, on the lawn facing the street', () => {
+  it('bakes flat-colour gnomes at 0.5 x 0.9 x 0.5 without the textured draw', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    const scale = island.size / 600;
     const placements = makeHoofingtonPlacements(island).filter(p => p.model === 'gnome');
+    const sources = island.props.filter(p => p.poiId === 'hoofington' && p.kind === 'gnome');
+    expect(placements).toHaveLength(sources.length);
     expect(placements.length).toBeGreaterThan(1);
-    expect(placements).toHaveLength(island.props.filter(p =>
-      p.kind === 'gnome' && p.poiId === 'hoofington').length);
-    const farmX = island.pois.find(p => p.id === 'hoofington')!.center.x;
-    const originalMap = new THREE.Texture();
-    const originalMaterial = new THREE.MeshStandardMaterial({ map: originalMap });
-    const originalGeometry = new THREE.BoxGeometry(0.2, 0.5, 0.2);
-    originalGeometry.translate(0, 0.25, 0);
+    const paint = new THREE.Color(0x5286ca);
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshStandardMaterial({ color: paint }));
     const model = new THREE.Group();
-    model.add(new THREE.Mesh(originalGeometry, originalMaterial));
-
-    const batch = createTexturedGnomeInstances(placements, model, farmX,
-      (x, z) => gridSample(island, x, z));
-    expect(batch).toBeInstanceOf(THREE.InstancedMesh);
-    expect(batch!.count).toBe(placements.length);
-    expect(batch!.geometry.getAttribute('uv')).toBeDefined();
-    expect(batch!.geometry.getAttribute('color')).toBeUndefined();
-    const material = batch!.material as THREE.MeshStandardMaterial;
-    expect(material.map).toBeInstanceOf(THREE.Texture);
-    expect(material.map).not.toBe(originalMap);
-    expect(material.map!.source).toBe(originalMap.source);
-    expect(material.vertexColors).toBe(false);
-    const matrix = new THREE.Matrix4();
-    const bounds = new THREE.Box3();
-    const forward = new THREE.Vector3();
-    for (let i = 0; i < batch!.count; i++) {
-      const placement = placements[i]!;
-      batch!.getMatrixAt(i, matrix);
-      bounds.setFromBufferAttribute(batch!.geometry.getAttribute('position') as
-        THREE.BufferAttribute).applyMatrix4(matrix);
-      expect(bounds.max.y - bounds.min.y).toBeCloseTo(GNOME_STATUE_HEIGHT, 5);
-      expect(bounds.min.y)
-        .toBeCloseTo(gridSample(island, placement.position.x, placement.position.z), 5);
-      forward.set(0, 0, 1).transformDirection(matrix);
-      expect(forward.x).toBeCloseTo(placement.position.x < farmX ? 1 : -1, 5);
-      expect(forward.z).toBeCloseTo(0, 5);
+    model.add(mesh);
+    const ranges: Array<{ start: number; count: number }> = [];
+    const baked = bakeHoofingtonGeometry(placements,
+      new Map<HoofModel, THREE.Group>([['gnome', model]]),
+      (_, start, count) => ranges.push({ start, count }))!;
+    try {
+      expect(ranges).toHaveLength(placements.length);
+      const vertices = baked.getAttribute('position');
+      const colors = baked.getAttribute('color');
+      expect(colors.count).toBe(vertices.count);
+      for (const [i, placement] of placements.entries()) {
+        expect(placement.source).toBe(sources[i]);
+        expect(placement.size).toEqual({
+          x: 0.5 * scale, y: 0.9 * scale, z: 0.5 * scale,
+        });
+        const segment = ranges[i]!;
+        const bounds = new THREE.Box3();
+        for (let j = segment.start; j < segment.start + segment.count; j++) {
+          bounds.expandByPoint(new THREE.Vector3(
+            vertices.getX(j), vertices.getY(j), vertices.getZ(j)));
+          expect(colors.getX(j)).toBeCloseTo(paint.r, 5);
+          expect(colors.getY(j)).toBeCloseTo(paint.g, 5);
+          expect(colors.getZ(j)).toBeCloseTo(paint.b, 5);
+        }
+        const ground = placement.position.y - placement.size.y / 2;
+        expect(bounds.min.y).toBeGreaterThan(ground);
+        expect(bounds.min.y - ground).toBeLessThan(0.02 * scale);
+        expect(bounds.max.y - bounds.min.y).toBeCloseTo(0.9 * scale * 0.98, 4);
+        expect(bounds.max.x - bounds.min.x).toBeLessThan(0.72 * scale);
+        expect(bounds.max.z - bounds.min.z).toBeLessThan(0.72 * scale);
+      }
+    } finally {
+      baked.dispose();
+      mesh.geometry.dispose();
+      mesh.material.dispose();
     }
-    // An untextured source must keep the procedural fallback, not become a blank statue.
-    originalMaterial.map = null;
-    expect(createTexturedGnomeInstances(placements, model, farmX, () => 0)).toBeNull();
-    batch!.geometry.dispose();
-    material.map!.dispose();
-    material.dispose();
-    originalGeometry.dispose();
-    originalMap.dispose();
-    originalMaterial.dispose();
   });
 
   it('instances the authored lantern parts without tint, paint or height stretch', async () => {
@@ -268,11 +248,48 @@ describe('Hoofington sourced village model integration', () => {
       // collider descriptor's dimensions. No extra island props are invented.
       expect(placement.position).toBe(placement.source!.transform.position);
       expect(placement.size).toBe(placement.source!.size);
-      expect(placement.yaw).toBe(placement.source!.transform.rotationY);
+      expect(placement.yaw).toBe(placement.source!.transform.rotationY +
+        (placement.source!.kind === 'bench' ? Math.PI : 0));
     }
     const repeat = makeHoofingtonPlacements(island);
     expect(plan.map(p => [p.model, p.position, p.yaw, p.wall, p.roof]))
       .toEqual(repeat.map(p => [p.model, p.position, p.yaw, p.wall, p.roof]));
+  });
+
+  it('uses collider-scale cuboid windmill and park benches with flipped visual yaw', () => {
+    for (const size of [400, 600, 850]) {
+      const island = generateIsland({ seed: 'billy-isle', resolution: 97, size });
+      const scale = size / 600;
+      const windmill = island.props.find(p => p.poiId === 'hoofington' &&
+        p.kind === 'windmill')!;
+      expect(windmill).toBeDefined();
+      expect(windmill.size).toEqual({
+        x: 12.5 * scale, y: 18 * scale, z: 7.9 * scale,
+      });
+      expect(windmill.shape).toBe('cuboid');
+      const windmillCollider = island.colliders.find(c =>
+        c.shape !== 'heightfield' && c.id === windmill.id);
+      expect(windmillCollider?.shape).toBe('cuboid');
+      const benches = island.props.filter(p => p.poiId === 'hoofington' &&
+        p.kind === 'bench');
+      expect(benches.length).toBeGreaterThan(0);
+      const plan = makeHoofingtonPlacements(island);
+      for (const bench of benches) {
+        expect(bench.size).toEqual({
+          x: 2 * scale, y: 0.95 * scale, z: 0.75 * scale,
+        });
+        const appearance = plan.find(p => p.source?.id === bench.id)!;
+        expect(appearance.model).toBe('bench');
+        expect(appearance.size).toBe(bench.size);
+        expect(appearance.yaw).toBeCloseTo(bench.transform.rotationY + Math.PI, 6);
+      }
+      for (const gnome of island.props.filter(p =>
+        p.poiId === 'hoofington' && p.kind === 'gnome')) {
+        expect(gnome.size).toEqual({
+          x: 0.5 * scale, y: 0.9 * scale, z: 0.5 * scale,
+        });
+      }
+    }
   });
 
   it('bakes multiple source materials into one rooftop-aligned, vertex-coloured draw', () => {
@@ -319,6 +336,7 @@ describe('Hoofington sourced village model integration', () => {
   });
 
   it.each(['barn', 'silo', 'windmill', 'fence', 'mailbox',
+    'bench', 'gnome', 'planter', 'playPad', 'hay',
     'flowerPink', 'flowerPurple', 'flowerSunny', 'bushA', 'bushB',
     'oakA', 'oakB', 'oakC'] as const)(
     'preserves the GLB material paint for %s even with legacy wall/roof hints', model => {

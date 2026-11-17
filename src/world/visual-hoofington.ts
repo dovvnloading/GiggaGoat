@@ -8,9 +8,8 @@ import { createDistrictLod, type BakedPlacement, type DistrictLod } from './dist
 import { WORLD_LOD, simplifiedWorldGeometry } from './lod';
 
 /**
- * CC0 models only. The Poly Pizza trampoline is CC-BY and CREDITS.md is
- * outside this lane; the CC0 Kenney spring deck is used for the play pad.
- * All URLs are resolved by publicAssetUrl (including the nested World Lab).
+ * CC0 authored models are resolved by publicAssetUrl, including World Lab.
+ * The Baa-ardwalk trampoline is shared with the farm play pad.
  */
 export const HOOFINGTON_MODELS = {
   // One building family (Kenney suburban), recoloured per part in Blender
@@ -25,11 +24,11 @@ export const HOOFINGTON_MODELS = {
   windmill: 'assets/library/custom/hoofington-props/windmill.glb',
   fence: 'assets/library/custom/hoofington-props/picket-fence.glb',
   mailbox: 'assets/library/custom/hoofington-props/mailbox.glb',
-  bench: 'assets/library/quaternius/medieval-village-pack/bench_7uSlZo3n9Y.glb',
-  gnome: 'assets/library/meshy/garden-gnome/garden-gnome.glb',
-  playPad: 'assets/library/kenney/platformer-kit/spring.glb',
+  bench: 'assets/library/custom/town/park-bench.glb',
+  gnome: 'assets/library/custom/town/gnome.glb',
+  playPad: 'assets/library/custom/baaardwalk/trampoline.glb',
   lamp: 'assets/library/usdcraft/street-lamp-lantern.glb',
-  planter: 'assets/library/kenney/city-kit-suburban/planter.glb',
+  planter: 'assets/library/custom/town/planter.glb',
   flowerPink: 'assets/library/custom/hoofington-props/flowers-pink.glb',
   flowerPurple: 'assets/library/custom/hoofington-props/flowers-purple.glb',
   flowerSunny: 'assets/library/custom/hoofington-props/flowers-sunny.glb',
@@ -39,7 +38,7 @@ export const HOOFINGTON_MODELS = {
   oakB: 'assets/library/custom/hoofington-props/tree-round-b.glb',
   oakC: 'assets/library/custom/hoofington-props/tree-round-c.glb',
   pine: 'assets/library/kenney/nature-kit/tree_pineTallA.glb',
-  hay: 'assets/library/quaternius/medieval-village-pack/hay_Yu8TOERkpw.glb',
+  hay: 'assets/library/custom/hoofington-props/hay-bale.glb',
   cow: 'assets/library/quaternius/farm-animal-pack/cow_5XSc2Fka3F.glb',
   sheep: 'assets/library/quaternius/farm-animal-pack/sheep_C39AUXUUes.glb',
   pig: 'assets/library/quaternius/farm-animal-pack/pig_TNvG3QUFlp.glb',
@@ -55,6 +54,7 @@ const OAK_VARIANTS = ['oakA', 'oakB', 'oakC'] as const;
 // accidental wall/roof overrides even if a caller supplies legacy paint.
 const UNPAINTED_HOOF_MODELS = new Set<string>([
   'barn', 'silo', 'windmill', 'fence', 'mailbox',
+  'bench', 'gnome', 'planter', 'playPad', 'hay', 'lights',
   ...FLOWER_VARIANTS, ...BUSH_VARIANTS, ...OAK_VARIANTS,
 ]);
 
@@ -119,7 +119,8 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
     }
     if (model) plan.push({
       model, source: prop, position: prop.transform.position,
-      size: prop.size, yaw: prop.transform.rotationY,
+      size: prop.size,
+      yaw: prop.transform.rotationY + (prop.kind === 'bench' ? Math.PI : 0),
     });
   }
 
@@ -313,7 +314,7 @@ export function bakeLibraryGeometry<Model extends string>(
           const hint = (mesh.name + ' ' + material.name).toLowerCase();
           if (placement.model === 'pine') {
             tint.setHex(height > 0.23 ? 0x478f62 : 0x8d694b);
-          } else if (placement.model === 'planter') {
+          } else if (placement.model === 'planter' && !authored) {
             // Sourced planters use an alpha atlas with black padding at the
             // leaf tips; keep the pot terracotta and the leaves lively green.
             tint.setHex(height > 0.58 ? 0x73b65c : 0xbd8865);
@@ -321,7 +322,7 @@ export function bakeLibraryGeometry<Model extends string>(
             // Decorative upper windows should read as reflective blue glass,
             // not as black alpha-atlas voids in the sunny concept painting.
             tint.lerp(new THREE.Color(0x9bc8e5), 0.86);
-          } else if (placement.model === 'lights') {
+          } else if (placement.model === 'lights' && !authored) {
             // Holiday-kit bulbs are tiny on the atlas; UV vertex samples can
             // otherwise read the transparent black padding instead of bulbs.
             const bulbPalette = [0xffdf70, 0xf5a1c9, 0x8fd2ef, 0x95d675];
@@ -368,61 +369,6 @@ function disposeModel(root: THREE.Object3D): void {
   geometries.forEach(geometry => geometry.dispose());
   materials.forEach(material => material.dispose());
   textures.forEach(texture => texture.dispose());
-}
-
-/** One 0.5 m Meshy statue per garden, all sharing a single textured draw. */
-export const GNOME_STATUE_HEIGHT = 0.5;
-
-/**
- * The CC0 Meshy GLB is one UV-mapped mesh/primitive with a WebP baseColor map.
- * Clone its geometry, material and map before the loader scene is disposed;
- * never send gnomes through the vertex-colour geometry baker.
- */
-export function createTexturedGnomeInstances(
-  placements: readonly HoofPlacement[], model: ModelScene, streetX: number,
-  groundAt: (x: number, z: number) => number,
-): THREE.InstancedMesh | null {
-  if (!placements.length) return null;
-  model.updateMatrixWorld(true);
-  const meshes: THREE.Mesh[] = [];
-  model.traverse(object => {
-    if (object instanceof THREE.Mesh) meshes.push(object);
-  });
-  const source = meshes[0];
-  if (meshes.length !== 1 || !source ||
-      !(source.material instanceof THREE.MeshStandardMaterial) ||
-      !source.material.map || !source.geometry.getAttribute('uv')) return null;
-
-  const geometry = source.geometry.clone();
-  geometry.applyMatrix4(source.matrixWorld);
-  geometry.computeBoundingBox();
-  const bounds = geometry.boundingBox!;
-  const sourceHeight = bounds.max.y - bounds.min.y;
-  if (sourceHeight <= 0.00001) {
-    geometry.dispose();
-    return null;
-  }
-  const material = source.material.clone();
-  material.map = source.material.map.clone();
-  material.vertexColors = false;
-  const scale = GNOME_STATUE_HEIGHT / sourceHeight;
-  const batch = new THREE.InstancedMesh(geometry, material, placements.length);
-  batch.name = 'hoofington-garden-gnomes';
-  batch.castShadow = true;
-  batch.receiveShadow = true;
-  const dummy = new THREE.Object3D();
-  for (let i = 0; i < placements.length; i++) {
-    const { x, z } = placements[i]!.position;
-    dummy.position.set(x, groundAt(x, z) - bounds.min.y * scale, z);
-    // The statue faces local +Z. Gardens on opposite sides face the road.
-    dummy.rotation.set(0, x < streetX ? Math.PI / 2 : -Math.PI / 2, 0);
-    dummy.scale.setScalar(scale);
-    dummy.updateMatrix();
-    batch.setMatrixAt(i, dummy.matrix);
-  }
-  batch.instanceMatrix.needsUpdate = true;
-  batch.computeBoundingSphere();
-  return batch;
 }
 
 /**
@@ -636,9 +582,10 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
       }
       try {
         if (disposed) return;
-        // Gnomes and material-authored lamps must never be vertex-colour baked.
-        const staticPlan = plan.filter(p => p.model !== 'gnome' &&
-          p.model !== 'lamp' && models.has(p.model));
+        // The flat-colour gnome now joins the normal vertex-colour batch.
+        // Only material-authored lamps need a separate native-material draw.
+        const staticPlan = plan.filter(p => p.model !== 'lamp' &&
+          models.has(p.model));
         const ranges: BakedPlacement<HoofModel>[] = [];
         const geometry = bakeLibraryGeometry(staticPlan, models,
           (placement, start, count) => ranges.push({ placement, start, count }));
@@ -648,24 +595,13 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
           if (disposed) { lod.dispose(); return; }
           districtLod = lod;
         }
-        const gnomePlan = plan.filter(p => p.model === 'gnome');
-        const gnomeModel = models.get('gnome');
-        const streetX = island.pois.find(p => p.id === 'hoofington')!.center.x;
-        const gnomes = gnomeModel
-          ? createTexturedGnomeInstances(gnomePlan, gnomeModel, streetX,
-            (x, z) => gridSample(island, x, z))
-          : null;
-        if (gnomes) group.add(gnomes);
-        else if (gnomeModel && gnomePlan.length)
-          console.warn('Hoofington gnome GLB needs one UV-mapped, textured mesh');
         const lampPlan = plan.filter(p => p.model === 'lamp');
         const lampModel = models.get('lamp');
         lanterns = lampModel ? await createLanternLampInstances(lampPlan, lampModel, island.size) : null;
         if (disposed) { lanterns?.dispose(); return; }
         if (lanterns) group.add(lanterns.group);
-        if (geometry || gnomes || lanterns) {
-          const drawn = [...(geometry ? staticPlan : []), ...(gnomes ? gnomePlan : []),
-            ...(lanterns ? lampPlan : [])];
+        if (geometry || lanterns) {
+          const drawn = [...(geometry ? staticPlan : []), ...(lanterns ? lampPlan : [])];
           suppressOldArt(island, oldProps, new Set(drawn.map(p => p.model)),
             drawn, fullyHidden);
           shadowChanged = true;
@@ -724,12 +660,7 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
         if (!(object instanceof THREE.Mesh)) return;
         object.geometry.dispose();
         const materials = Array.isArray(object.material) ? object.material : [object.material];
-        materials.forEach(material => {
-          // The gnome batch owns a cloned WebP map, not the loader's map.
-          if (object.name === 'hoofington-garden-gnomes' &&
-              material instanceof THREE.MeshStandardMaterial) material.map?.dispose();
-          material.dispose();
-        });
+        materials.forEach(material => material.dispose());
       });
       group.clear();
       group.removeFromParent();

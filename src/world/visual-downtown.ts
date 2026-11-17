@@ -24,14 +24,14 @@ export const DOWNTOWN_MODELS = {
   townhouse: 'assets/library/custom/downtown-shops/shop-l-peach.glb',
   brickHouse: 'assets/library/custom/downtown-shops/shop-m-pink.glb',
   kayHouse: 'assets/library/custom/downtown-shops/shop-f-lavender.glb',
-  highrise: 'assets/library/custom/downtown-shops/shop-l-peach.glb',
+  highrise: 'assets/library/custom/town/downtown-tower.glb',
   canopy: 'assets/library/kenney/city-kit-commercial/detail-awning-wide.glb',
   retroCanopy: 'assets/library/kenney/retro-urban-kit/detail-awning-wide.glb',
   retroWindow: 'assets/library/kenney/retro-urban-kit/window-wide-type-a.glb',
   retroBalcony: 'assets/library/kenney/retro-urban-kit/balcony-type-a.glb',
   lamp: 'assets/library/usdcraft/street-lamp-lantern.glb',
-  bench: 'assets/library/kenney/furniture-kit/bench.glb',
-  planter: 'assets/library/kenney/city-kit-suburban/planter.glb',
+  bench: 'assets/library/custom/town/park-bench.glb',
+  planter: 'assets/library/custom/town/planter.glb',
   flowerPink: 'assets/library/custom/hoofington-props/flowers-pink.glb',
   flowerPurple: 'assets/library/custom/hoofington-props/flowers-purple.glb',
   flowerSunny: 'assets/library/custom/hoofington-props/flowers-sunny.glb',
@@ -41,7 +41,7 @@ export const DOWNTOWN_MODELS = {
   oakB: 'assets/library/custom/hoofington-props/tree-round-b.glb',
   oakC: 'assets/library/custom/hoofington-props/tree-round-c.glb',
   trash: 'assets/library/kenney/furniture-kit/trashcan.glb',
-  ac: 'assets/library/kenney/modular-buildings/detail-ac-a.glb',
+  ac: 'assets/library/custom/town/ac-unit.glb',
   waterTower: 'assets/library/kenney/city-kit-industrial/water-tower.glb',
   fountain: 'assets/library/kenney/fantasy-town-kit/fountain-round-detail.glb',
   cone: 'assets/library/kenney/city-kit-roads/construction-cone.glb',
@@ -50,7 +50,7 @@ export const DOWNTOWN_MODELS = {
   bread: 'assets/library/kenney/mini-shop/display-bread.glb',
   produce: 'assets/library/kenney/mini-shop/display-fruit.glb',
   clothes: 'assets/library/kenney/mini-shop/clothing-rack.glb',
-  lights: 'assets/library/kenney/holiday-kit/lights-colored.glb',
+  lights: 'assets/library/custom/crane-yard/bunting.glb',
   skylineCrane: 'assets/library/custom/crane-yard/skyline-tower-crane.glb',
 } as const;
 export type DowntownModel = keyof typeof DOWNTOWN_MODELS;
@@ -73,7 +73,7 @@ export const DOWNTOWN_SIGN_ANCHORS = {
   kayHouse: { centre: 0.243, halfHeight: 0.022 }, // shop-f-lavender
   townhouse: { centre: 0.182, halfHeight: 0.017 }, // shop-l-peach
   brickHouse: { centre: 0.131, halfHeight: 0.012 }, // shop-m-pink
-  highrise: { centre: 0.182, halfHeight: 0.017 }, // same shop-l-peach GLB
+  highrise: { centre: 0.182, halfHeight: 0.017 }, // tower has no storefront label
 } as const satisfies Partial<Record<DowntownModel, {
   centre: number; halfHeight: number;
 }>>;
@@ -171,7 +171,8 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
       default: break;
     }
     if (model) plan.push({
-      model, source, position, size: source.size, yaw,
+      model, source, position, size: source.size,
+      yaw: source.kind === 'bench' ? yaw + Math.PI : yaw,
     });
   }
 
@@ -211,8 +212,8 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
   scatter('produce', 14.5, 15, 2.2, 1.85, 1.2, -Math.PI / 2);
   scatter('clothes', 14.6, 34, 2.2, 2.4, 1.5, -Math.PI / 2);
   for (const dz of [5, 22]) {
-    scatter('cone', -2.1, dz, 0.65, 1.15, 0.65);
-    scatter('cone', 2.2, dz + 1.4, 0.65, 1.15, 0.65);
+    scatter('cone', -2.1, dz, 0.45, 0.7, 0.45);
+    scatter('cone', 2.2, dz + 1.4, 0.45, 0.7, 0.45);
   }
   // Two slender source-model garlands cross the street; keep their span.
   for (const dz of [-14, 6])
