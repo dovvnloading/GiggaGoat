@@ -24,7 +24,7 @@ export function goatCameraLookAhead(size: number, yaw: number, clearance = 1): V
   const weight = Math.max(0, Math.min(1, clearance));
   return {
     x: Math.sin(yaw) * ahead * weight,
-    y: .76 * size * weight,
+    y: 1.28 * size * weight,
     z: -Math.cos(yaw) * ahead * weight,
   };
 }
