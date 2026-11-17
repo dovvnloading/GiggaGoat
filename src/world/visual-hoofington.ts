@@ -352,6 +352,8 @@ function suppressOldArt(
 export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group): HoofingtonVisuals {
   const group = new THREE.Group();
   group.name = 'hoofington-library-models';
+  group.userData['ready'] = typeof document === 'undefined';
+  group.userData['loadedModels'] = 0;
   const fullyHidden = new Set<PropKind>();
   let shadowChanged = false, disposed = false;
   if (typeof document !== 'undefined') {
@@ -414,6 +416,8 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
       } catch (error) {
         if (!disposed) console.error('Could not assemble Hoofington model batch:', error);
       } finally {
+        group.userData['loadedModels'] = models.size;
+        group.userData['ready'] = true;
         for (const root of models.values()) disposeModel(root);
       }
     });
@@ -431,6 +435,13 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
     },
     dispose(): void {
       disposed = true;
+      group.traverse(object => {
+        if (!(object instanceof THREE.Mesh)) return;
+        object.geometry.dispose();
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        materials.forEach(material => material.dispose());
+      });
+      group.clear();
       group.removeFromParent();
     },
   };
