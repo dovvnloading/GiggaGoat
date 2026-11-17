@@ -351,10 +351,16 @@ function makeSeaCave(island: IslandData, cave: PropDescriptor): THREE.Group {
         part.material = new THREE.MeshBasicMaterial({ color: GOLD });
       }
     });
+    // A small unshadowed warm light makes the relic illuminate the real
+    // recess. The collider and secret-relic coordinates remain untouched.
+    const warmLight = new THREE.PointLight(0xffb64f, 2.7, 10 * island.size / 600, 2);
+    warmLight.name = 'lighthouse-relic-warm-cave-glow';
+    warmLight.position.set(secret.position.x, secret.position.y + 0.5, secret.position.z);
+    warmLight.userData['worldSpaceRelic'] = true;
     // The world builder lifts these out to world space below.
     gold.userData['worldSpaceRelic'] = true;
     pedestal.userData['worldSpaceRelic'] = true;
-    group.add(gold, pedestal);
+    group.add(gold, pedestal, warmLight);
   }
   return group;
 }
@@ -646,6 +652,26 @@ export function buildLighthouseVisuals(island: IslandData): LighthouseVisuals {
       x, y: Math.max(-1.8 * scale, ground - size * 0.12), z,
       width: size * 1.3, height: size, depth: size,
       yaw: angle, roll: Math.sin(i) * 0.18,
+    });
+  }
+  // Faceted blocks embedded along the steep shoulder break up the former
+  // smooth, mesa-like cliff wall. Shared Kenney GLBs and the grey fallback
+  // are instanced over this same array: no additional draw calls per stone.
+  for (let i = 0; i < 88; i++) {
+    const angle = i * 2.399963 + 0.8;
+    const radius = (19.0 + (i % 9) * 1.05) * scale;
+    const x = center.x + Math.cos(angle) * radius;
+    const z = center.z + Math.sin(angle) * radius;
+    const surface = gridSample(island, x, z);
+    if (surface < 1.5 * scale || surface > 16 * scale ||
+        Math.hypot(x - (center.x + 2 * scale),
+          z - (center.z + 23 * scale)) < 8.5 * scale) continue;
+    const extent = (3.1 + (i % 4) * 0.8) * scale;
+    rocks.push({
+      x, y: surface - extent * 0.37, z,
+      width: extent * 1.35, height: extent * 0.96,
+      depth: extent * 1.05, yaw: angle + (i % 3) * 0.2,
+      roll: Math.sin(i * 1.9) * 0.29,
     });
   }
   const rockFallback = makeFallbackRocks(rocks);
