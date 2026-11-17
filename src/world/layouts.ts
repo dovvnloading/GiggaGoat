@@ -242,6 +242,8 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   site(cape, 'flag', 27.25, 11, 2.8, 9, 0.4);
 
   // Roads have lamp posts / obstacles along the shoulders, not in driving lanes.
+  // Exclude both the Dam plot and the wider 60 × 7.4 m solid walkway.
+  const damPlot = island.plots.find(plot => plot.poiId === 'the-dam');
   for (const road of island.roads) {
     if (road.type === 'trail') continue;
     for (let i = 13; i < road.points.length - 5; i += 18) {
@@ -252,6 +254,12 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
       const side = i % 2 === 0 ? -1 : 1;
       const x = p.x + side * (road.width * 0.5 + 3 * scale) * -dz / length;
       const z = p.z + side * (road.width * 0.5 + 3 * scale) * dx / length;
+      const insideDamPlot = damPlot !== undefined &&
+        Math.hypot(x - damPlot.center.x, z - damPlot.center.z) <= damPlot.radius;
+      // Include the roadside lamp's half-width at the physical deck edges.
+      const onDamWalkway = Math.abs(x - dam.position.x) <= (30 + 0.275) * scale &&
+        Math.abs(z - dam.position.z) <= (3.7 + 0.275) * scale;
+      if (insideDamPlot || onDamWalkway) continue;
       if (gridSample(island, x, z) > 2 * scale) {
         add(undefined, 'lamp', x, z,
           { x: 0.55 * scale, y: 8.5 * scale, z: 0.55 * scale },
