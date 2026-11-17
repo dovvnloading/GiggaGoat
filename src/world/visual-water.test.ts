@@ -165,8 +165,100 @@ describe('island sea, shoreline and horizon', () => {
 
 });
 
+describe('Dam reservoir gradient, shoreline and visual-only level (DM-3 / DM-6)', () => {
+  it.each([400, 600, 900])('tints the animated disc radially and keeps water physics unchanged at %i m',
+    size => {
+      const island = generateIsland({ seed: 'billy-isle', resolution: 97, size });
+      const lake = island.reservoir;
+      const originalLevel = lake.level;
+      const originalLake = { ...lake, center: { ...lake.center } };
+      const scale = size / 600;
+      const { sea, inland, update } = buildWaterVisuals(island);
+      try {
+        const water = inland.getObjectByName('dam-reservoir') as THREE.Mesh;
+        const foam = inland.getObjectByName('dam-reservoir-foam') as THREE.Mesh;
+        expect(water).toBeInstanceOf(THREE.Mesh);
+        expect(foam).toBeInstanceOf(THREE.Mesh);
+        expect(water.geometry).toBeInstanceOf(THREE.CircleGeometry);
+        expect(water.position.x).toBe(lake.center.x);
+        expect(water.position.z).toBe(lake.center.z);
+        expect(water.position.y).toBeCloseTo(originalLevel - 1.5 * scale, 6);
+        expect(water.scale.x).toBe(lake.radiusX);
+        expect(water.scale.y).toBe(lake.radiusZ);
+        expect(water.rotation.x).toBeCloseTo(-Math.PI / 2, 6);
+
+        const positions = water.geometry.getAttribute('position');
+        const colors = water.geometry.getAttribute('color');
+        expect(colors).toBeDefined();
+        expect(colors.count).toBe(positions.count);
+        expect(positions.count).toBeGreaterThan(60);
+        const deep = new THREE.Color(0x2a8fc0);
+        const shore = new THREE.Color(0x48c9c9);
+        const expectColour = (index: number, desired: THREE.Color): void => {
+          expect(colors.getX(index)).toBeCloseTo(desired.r, 6);
+          expect(colors.getY(index)).toBeCloseTo(desired.g, 6);
+          expect(colors.getZ(index)).toBeCloseTo(desired.b, 6);
+        };
+        expect(Math.hypot(positions.getX(0), positions.getY(0))).toBeCloseTo(0, 6);
+        expectColour(0, deep);
+        for (const i of [1, 16, 32, 48, 64]) {
+          expect(Math.hypot(positions.getX(i), positions.getY(i)))
+            .toBeCloseTo(1, 6);
+          expectColour(i, shore);
+        }
+
+        const animated = water.material as THREE.ShaderMaterial;
+        const river = inland.getObjectByName('rippling-river') as THREE.Mesh;
+        const riverMat = river.material as THREE.ShaderMaterial;
+        // Preserve the original separated upstream/downstream vertices and
+        // animation but batch both reaches into one draw alongside the new foam.
+        expect(inland.getObjectByName('forest-river-after-dam')).toBeUndefined();
+        const riverTriangles = (5 - 1) + (island.river.length - 11 - 1);
+        expect(river.geometry.index?.count).toBe(riverTriangles * 6);
+        expect(animated).toBeInstanceOf(THREE.ShaderMaterial);
+        expect(animated.vertexShader).toContain('vReservoirColor = color');
+        expect(animated.fragmentShader).toContain('mix(vReservoirColor, col, 0.18)');
+        expect(animated.fragmentShader).toContain('uTime');
+        expect(animated.uniforms['uTime']).toBe(riverMat.uniforms['uTime']);
+        update(4.25, originalLevel);
+        expect(animated.uniforms['uTime']!.value).toBe(4.25);
+        expect(lake).toEqual(originalLake);
+        expect(lake.level).toBe(originalLevel);
+
+        const ring = foam.geometry as THREE.RingGeometry;
+        expect(ring).toBeInstanceOf(THREE.RingGeometry);
+        expect(ring.parameters.innerRadius).toBeCloseTo(0.96, 6);
+        expect(ring.parameters.outerRadius).toBeCloseTo(1.02, 6);
+        expect(foam.scale.x).toBe(lake.radiusX);
+        expect(foam.scale.y).toBe(lake.radiusZ);
+        expect(foam.position.x).toBe(lake.center.x);
+        expect(foam.position.z).toBe(lake.center.z);
+        expect(foam.position.y).toBeCloseTo(water.position.y + 0.05 * scale, 6);
+        expect(foam.rotation.x).toBeCloseTo(-Math.PI / 2, 6);
+        const foamPaint = foam.material as THREE.MeshBasicMaterial;
+        expect(foamPaint.color.getHex()).toBe(0xf2fbff);
+        expect(foamPaint.opacity).toBe(0.7);
+        expect(foamPaint.transparent).toBe(true);
+        expect(foamPaint.depthWrite).toBe(false);
+      } finally {
+        sea.geometry.dispose();
+        (sea.material as THREE.Material).dispose();
+        const geometries = new Set<THREE.BufferGeometry>();
+        const materials = new Set<THREE.Material>();
+        inland.traverse(object => {
+          if (!(object instanceof THREE.Mesh)) return;
+          geometries.add(object.geometry);
+          const own = Array.isArray(object.material) ? object.material : [object.material];
+          own.forEach(mat => materials.add(mat));
+        });
+        geometries.forEach(geometry => geometry.dispose());
+        materials.forEach(material => material.dispose());
+      }
+    });
+});
+
 describe('Mt. Gigga cascades and Dam plot exclusion (MG-5, DM-1)', () => {
-  it('widens both waterfall families by 2.6 and replaces each foam torus with three blobs', () => {
+  it('widens both waterfall families by 2.6 and sinks five translucent foam flecks per cascade', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
     const { inland, sea } = buildWaterVisuals(island);
     try {
@@ -205,28 +297,47 @@ describe('Mt. Gigga cascades and Dam plot exclusion (MG-5, DM-1)', () => {
         const foam = inland.getObjectByName(
           fall.name + '-foam') as THREE.InstancedMesh;
         expect(foam, fall.name).toBeInstanceOf(THREE.InstancedMesh);
-        expect(foam.count, fall.name + ' blob count').toBe(3);
+        expect(foam.count, fall.name + ' blob count').toBe(5);
         expect(foam.geometry).toBeInstanceOf(THREE.IcosahedronGeometry);
         const mat = foam.material as THREE.MeshBasicMaterial;
-        expect(mat.color.getHex()).toBe(0xffffff);
-        expect(mat.opacity).toBe(0.85);
+        expect(mat.color.getHex()).toBe(0xeaf8ff);
+        expect(mat.opacity).toBe(0.6);
         expect(mat.transparent).toBe(true);
         expect(mat.depthWrite).toBe(false);
         const transform = new THREE.Matrix4();
         const size = new THREE.Vector3();
+        const offsets = [-0.4, -0.2, 0, 0.2, 0.4] as const;
+        const jitter = [0.94, 1.11, 0.89, 1.07, 0.97] as const;
+        const base = new THREE.Vector3(
+          (vertices.getX(2) + vertices.getX(3)) / 2,
+          vertices.getY(2) - width * 0.03,
+          (vertices.getZ(2) + vertices.getZ(3)) / 2);
+        const across = new THREE.Vector3(
+          vertices.getX(3) - vertices.getX(2), 0,
+          vertices.getZ(3) - vertices.getZ(2)).normalize();
         const locations: THREE.Vector3[] = [];
         for (let i = 0; i < foam.count; i++) {
           foam.getMatrixAt(i, transform);
           size.setFromMatrixScale(transform);
-          expect(size.x, foam.name).toBeCloseTo(width * 0.45, 5);
-          expect(size.y, foam.name).toBeCloseTo(width * 0.3, 5);
-          expect(size.z, foam.name).toBeCloseTo(width * 0.45, 5);
+          // Deterministic, per-blob jitter stays inside +/-15%.
+          expect(jitter[i], foam.name).toBeGreaterThanOrEqual(0.85);
+          expect(jitter[i], foam.name).toBeLessThanOrEqual(1.15);
+          expect(size.x, foam.name).toBeCloseTo(width * 0.16 * jitter[i]!, 4);
+          expect(size.y, foam.name).toBeCloseTo(width * 0.07 * jitter[i]!, 4);
+          expect(size.z, foam.name).toBeCloseTo(width * 0.16 * jitter[i]!, 4);
           const location = new THREE.Vector3().setFromMatrixPosition(transform);
-          expect(location.y, foam.name).toBeCloseTo(vertices.getY(2), 5);
+          const expected = base.clone().addScaledVector(across, offsets[i]! * width);
+          expect(location.distanceTo(expected), foam.name + ' position')
+            .toBeLessThan(0.0002);
+          expect(location.y, foam.name).toBeCloseTo(vertices.getY(2) - width * 0.03, 4);
           locations.push(location);
         }
-        expect(locations[0]!.distanceTo(locations[2]!))
-          .toBeCloseTo(width * 0.56, 4);
+        for (let i = 1; i < locations.length; i++) {
+          expect(locations[i]!.distanceTo(locations[i - 1]!))
+            .toBeCloseTo(width * 0.2, 4);
+        }
+        expect(locations[0]!.distanceTo(locations[4]!))
+          .toBeCloseTo(width * 0.8, 4);
       }
       const torus: THREE.Mesh[] = [];
       inland.traverse(o => {
