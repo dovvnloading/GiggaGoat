@@ -258,28 +258,39 @@ function reeds(group: THREE.Group): void {
 function cliffUnderpainting(
   island: IslandData, group: THREE.Group, origin: THREE.Vector3, scale: number,
 ): void {
-  const geometry = new THREE.IcosahedronGeometry(1, 0);
-  const mesh = new THREE.InstancedMesh(geometry,
-    new THREE.MeshToonMaterial({ color: 0xffffff }), 38);
-  mesh.name = 'dam-rocky-bank-underpainting';
-  const matrix = new THREE.Matrix4(), quat = new THREE.Quaternion();
+  // The right bank is rugged; the left near bank has an open footpath and
+  // direction sign, so do not bury that walkable foreground under large rocks.
   const rng = new SeededRandom(String(island.seed) + ':dam-cliff-base');
-  for (let i = 0; i < mesh.count; i++) {
+  const pieces: Array<{ x: number; y: number; z: number;
+    width: number; height: number; depth: number; yaw: number; tint: number }> = [];
+  for (let i = 0; i < 38; i++) {
     const side = i % 2 ? -1 : 1;
-    const z = 8 + (i / mesh.count) * 84;
+    const z = 8 + (i / 38) * 84;
     const p = damChannelAt(z);
     const x = p.x + side * (p.halfWidth + rng.range(1, 6));
     const ground = (gridSample(island, origin.x + x * scale,
       origin.z + z * scale) - origin.y) / scale;
     const y = Math.max(ground - 1.9, p.level - 0.8);
-    quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng.range(0, 6.28));
-    matrix.compose(new THREE.Vector3(x, y, z), quat,
-      new THREE.Vector3(rng.range(3.8, 7.5), rng.range(3.0, 6.8),
-        rng.range(2.7, 5.5)));
-    mesh.setMatrixAt(i, matrix);
-    mesh.setColorAt(i, new THREE.Color(
-      [0x9da5a6, 0xa8aba1, 0x818c8d, 0xb6b2a2][i % 4]!));
+    const yaw = rng.range(0, 6.28);
+    const width = rng.range(3.8, 7.5);
+    const height = rng.range(3.0, 6.8);
+    const depth = rng.range(2.7, 5.5);
+    if (side < 0 && z > 22 && z < 94) continue;
+    pieces.push({ x, y, z, width, height, depth, yaw,
+      tint: [0x9da5a6, 0xa8aba1, 0x818c8d, 0xb6b2a2][i % 4]! });
   }
+  const mesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0),
+    new THREE.MeshToonMaterial({ color: 0xffffff }), pieces.length);
+  mesh.name = 'dam-rocky-bank-underpainting';
+  const matrix = new THREE.Matrix4(), quat = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  pieces.forEach((p, i) => {
+    quat.setFromAxisAngle(up, p.yaw);
+    matrix.compose(new THREE.Vector3(p.x, p.y, p.z), quat,
+      new THREE.Vector3(p.width, p.height, p.depth));
+    mesh.setMatrixAt(i, matrix);
+    mesh.setColorAt(i, new THREE.Color(p.tint));
+  });
   mesh.instanceMatrix.needsUpdate = true;
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   mesh.computeBoundingSphere();
@@ -419,7 +430,7 @@ export function buildDamLandscape(
   cliffUnderpainting(island, group, origin, scale);
   reeds(group);
   const fence = pathAndFence(island, group, origin, scale);
-  const sign = { x: -20, z: 68, yaw: 1.1 };
+  const sign = { x: -28, z: 36, yaw: 1.1 };
   const signY = Math.max(height(sign.x, sign.z), damChannelAt(sign.z).level + 1.1);
   signLabel(group, sign.x, signY, sign.z, sign.yaw);
 
@@ -435,6 +446,8 @@ export function buildDamLandscape(
     const z = 10 + Math.floor(i / 2) * 6.0 + rng.range(-1, 1);
     const section = damChannelAt(z);
     const x = section.x + side * (section.halfWidth + rng.range(3.4, 8.8));
+    // Preserve the winding left-bank path instead of walling it in.
+    if (side < 0 && z > 22 && z < 94) continue;
     cliffs.push({
       x, z, y: height(x, z) - rng.range(1.5, 2.8),
       width: rng.range(4.5, 7.6), height: rng.range(3.4, 6.8),
@@ -506,9 +519,9 @@ export function buildDamLandscape(
     (i % 2 ? flowers : yellowFlowers).push(sample);
   }
   const buoys: Placement[] = [
-    { x: -2, z: 65, y: damChannelAt(65).level - 0.5,
+    { x: 8, z: 35, y: damChannelAt(35).level - 0.5,
       width: 2.2, height: 2.3, depth: 2.2, yaw: 0.25 },
-    { x: -11, z: 47, y: damChannelAt(47).level - 0.5,
+    { x: 5, z: 48, y: damChannelAt(48).level - 0.5,
       width: 2.2, height: 2.3, depth: 2.2, yaw: 0.9 },
   ];
   const fallbackBuoys = new THREE.InstancedMesh(
