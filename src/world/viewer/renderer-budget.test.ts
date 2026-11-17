@@ -66,8 +66,11 @@ describe('world-viewer GPU fragment work budget', () => {
       expect(sea.fragmentShader).toContain('uTerrain');
       expect(sea.fragmentShader).toContain('uLevel');
       expect(sea.fragmentShader).toContain('foam');
-      expect(sea.fragmentShader.match(/\bsin\s*\(/g)).toHaveLength(1);
-      expect(sea.fragmentShader).not.toMatch(/\b(pow|hash21|cos)\s*\(/);
+      // Inspect GLSL statements rather than treating documentation comments
+      // describing removed operations as executable shader instructions.
+      const seaCode = sea.fragmentShader.replace(/\/\/[^\n]*/g, '');
+      expect(seaCode.match(/\bsin\s*\(/g)).toHaveLength(1);
+      expect(seaCode).not.toMatch(/\b(pow|hash21|cos)\s*\(/);
       const dome = view.group.getObjectByName('gradient-sky') as THREE.Mesh;
       expect(dome).toBeDefined();
       const sky = dome.material as THREE.ShaderMaterial;
