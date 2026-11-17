@@ -33,14 +33,14 @@ function makeModel(width: number, height: number, depth: number): THREE.Group {
 describe('aspect-preserving library model fitting', () => {
   it('turns a Z-long 1x1x4 model into an X-long 4x1x1 box, without distortion', () => {
     const fit = fitLibraryModel(new THREE.Vector3(1, 1, 4),
-      new THREE.Vector3(4, 1, 1), 'assets/library/kenney/container.glb');
+      new THREE.Vector3(4, 1, 1), 'assets/library/kenney/city-kit-industrial/shipping-container-a.glb');
     expect(fit.yaw).toBeCloseTo(Math.PI / 2, 8);
     expect(fit.scale).toEqual(new THREE.Vector3(1, 1, 1));
   });
 
   it('fits a 2x1x1 model uniformly by 2 into 4x4x4', () => {
     const fit = fitLibraryModel(new THREE.Vector3(2, 1, 1),
-      new THREE.Vector3(4, 4, 4), 'assets/library/kenney/test.glb');
+      new THREE.Vector3(4, 4, 4), 'assets/library/kenney/platformer-kit/crate.glb');
     expect(fit.yaw).toBe(0);
     expect(fit.scale).toEqual(new THREE.Vector3(2, 2, 2));
   });
@@ -56,7 +56,7 @@ describe('aspect-preserving library model fitting', () => {
       expect(fit.yaw).toBe(0);
       expect(fit.scale).toEqual(new THREE.Vector3(4, 4, 1));
     }
-    expect(isAuthoredLibraryAsset('assets/library/kenney/example.glb')).toBe(false);
+    expect(isAuthoredLibraryAsset('assets/library/kenney/nature-kit/rock_largeB.glb')).toBe(false);
   });
 
   it('grounds and rotates the Hoofington/Downtown merged baker without extra draws', () => {
@@ -90,7 +90,7 @@ describe('aspect-preserving library model fitting', () => {
     const root = makeModel(2, 1, 1);
     const group = instantiateLibraryModel(root, [{
       x: 10, y: 3, z: -12, width: 4, height: 4, depth: 4, yaw: 0,
-    }], 'lighthouse-fit-test', false, 'assets/library/kenney/test.glb');
+    }], 'lighthouse-fit-test', false, 'assets/library/kenney/platformer-kit/crate.glb');
     expect(group.children).toHaveLength(1);
     const mesh = group.children[0] as THREE.InstancedMesh;
     expect(mesh.count).toBe(1);
@@ -105,7 +105,7 @@ describe('aspect-preserving library model fitting', () => {
 
     const custom = instantiateLibraryModel(root, [{
       x: 0, y: 3, z: 0, width: 4, height: 4, depth: 4,
-    }], 'lighthouse-custom-test', false, 'assets/library/custom/house.glb');
+    }], 'lighthouse-custom-test', false, 'assets/library/custom/hoofington-props/windmill.glb');
     const instance = custom.children[0] as THREE.InstancedMesh;
     instance.getMatrixAt(0, matrix);
     expectExtent(boxBounds(instance.geometry, matrix), [4, 4, 4], 3);
@@ -122,7 +122,7 @@ describe('aspect-preserving library model fitting', () => {
   it('keeps Dam parts batched, rotates their long axis and grounds each instance', () => {
     const root = makeModel(1, 1, 4);
     const group = instanceDamAsset(root, {
-      name: 'dam-fit-test', path: 'kenney/container.glb',
+      name: 'dam-fit-test', path: 'kenney/city-kit-industrial/shipping-container-a.glb',
       placements: [
         { x: 0, y: 5, z: 0, width: 4, height: 1, depth: 1, yaw: 0 },
         { x: 12, y: 6, z: 0, width: 8, height: 2, depth: 2, yaw: 0 },
