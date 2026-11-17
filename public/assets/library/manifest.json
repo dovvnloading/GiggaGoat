@@ -33006,5 +33006,23 @@
   "license": "CC0",
   "credit": "Kenney city-kit-suburban (CC0), recoloured with shutters and window boxes in Blender for Gigga-Goat",
   "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-props/picket-fence.glb",
+  "name": "Hoofington picket fence",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-props/mailbox.glb",
+  "name": "Hoofington mailbox",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
  }
 ]
