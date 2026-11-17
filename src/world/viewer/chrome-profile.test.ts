@@ -166,7 +166,8 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
         expect(damView.target[axis]).toBeCloseTo(value, 5);
       }
 
-      // Temporary visual QA snapshot (removed after review).
+      // Run a render pass to apply the async Dam model switch, then ensure
+      // the procedural reservoir is hidden instead of overlapping the GLB.
       await send('Runtime.evaluate', {
         expression: 'window.__worldProfile.measure(2)', returnByValue: true,
       });
@@ -174,14 +175,6 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
         expression: 'window.__worldProfile.damHeroState()', returnByValue: true,
       });
       expect(latest.result?.value?.reservoirHidden).toBe(true);
-      const snapshot = await send('Page.captureScreenshot', {
-        format: 'jpeg', quality: 55, captureBeyondViewport: false,
-      });
-      expect(snapshot.data.length).toBeGreaterThan(10000);
-      for (let i = 0; i < snapshot.data.length; i += 6000) {
-        console.log('WORLD_DAM_JPEG_' + String(i / 6000).padStart(4, '0') +
-          ' ' + snapshot.data.slice(i, i + 6000));
-      }
 
       const expression = String.raw`(() => {
         const profile = window.__worldProfile;
