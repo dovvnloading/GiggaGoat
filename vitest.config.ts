@@ -25,7 +25,7 @@ export default defineConfig({
           include: chromeTests,
           pool: 'forks',
           fileParallelism: false,
-          poolOptions: { forks: { singleFork: true } },
+          maxWorkers: 1,
           testTimeout: 420000,
           hookTimeout: 60000,
         },
