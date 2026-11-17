@@ -60,7 +60,7 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   // The road remains clear for third-person traversal, with garden strips
   // between the house fronts and the carriageway.
   const farm: PoiId = 'hoofington';
-  site(farm, 'barn', -28, -34, 15, 12, 17, { yaw: Math.PI / 2, color: 0xd9534f });
+  site(farm, 'barn', -28, -30.7, 15, 12, 17, { yaw: Math.PI / 2, color: 0xd9534f });
   site(farm, 'house', 21, -19, 10, 9, 10,
     { yaw: -Math.PI / 2, color: 0xf7db77 });
   site(farm, 'house', -20, 11, 9, 8, 9,
@@ -70,7 +70,7 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   site(farm, 'house', 22, 12, 10, 8, 9,
     { yaw: -Math.PI / 2, color: 0xffecdb });
   site(farm, 'windmill', 30, -38, 5, 23, 5, { shape: 'cylinder' });
-  site(farm, 'platform', 35, 26, 15, 1, 12, { lift: 0.5 });
+  site(farm, 'platform', 35, 26, 15, 1, 12);
   for (const side of [-1, 1]) for (let i = 0; i < 7; i++) {
     site(farm, 'fence', side * 11.6, -33 + i * 11,
       9.2, 1.85, 0.35, { yaw: Math.PI / 2, breakable: true });
