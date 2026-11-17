@@ -44,3 +44,12 @@ export {
   makeCrateBreakBurst, sampleCrateBreak, sampleCrateFragment, sampleCrateDust,
   type CrateBreakBurst, type CrateBreakFrame, type CrateFragmentFrame, type CrateDustFrame,
 } from './crateDebrisMath';
+
+export {
+  TrampolineBoing, createTrampolineBoing,
+  type TrampolineBoingOptions,
+} from './TrampolineBoing';
+export {
+  TRAMPOLINE_MAT_Y, makeTrampolineBoingBurst, makeTrampolineBoingFrame,
+  sampleTrampolineBoing, type TrampolineBoingBurst, type TrampolineBoingFrame,
+} from './trampolineBoingMath';
