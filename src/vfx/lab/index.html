@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#78449a" />
-  <title>GIGGA-GOAT · Dust, Landing, Headbutt &amp; Water VFX Lab</title>
+  <title>GIGGA-GOAT · Dust, Landing, Headbutt, Water &amp; Crate VFX Lab</title>
   <style>
     :root { font: 14px/1.48 ui-rounded, system-ui, sans-serif; color: #463151;
       background: #fff6ef; accent-color: #8650a3; }
@@ -42,6 +42,8 @@
     .crop--landing img { transform: translate(-25%, -11.4%); }
     .crop--headbutt img { transform: translate(-50%, -11.4%); }
     .crop--water img { transform: translate(-75%, -11.4%); }
+    .crop--crate { aspect-ratio: 1.82; }
+    .crop--crate img { width: 333%; transform: translateY(-41.7%); }
     .landing-reference { margin-top: 15px; }
     figcaption { color: #7c607d; font-size: 11px; padding-top: 8px; }
     figure { margin: 0; }
@@ -76,21 +78,21 @@
 </head>
 <body>
   <header>
-    <h1><span>GIGGA-GOAT</span> · Dust + Landing + Headbutt + Water</h1>
-    <p>01–04 / GAME VFX LAB · approved visual targets · real Three.js, no added packages</p>
+    <h1><span>GIGGA-GOAT</span> · Dust + Landing + Headbutt + Water + Crate</h1>
+    <p>01–05 / GAME VFX LAB · approved visual targets · real Three.js, no added packages</p>
   </header>
   <main>
-    <section class="panel stage" aria-label="Live goat with dust, landing rings, headbutt stars and water splashes">
-      <h2>Live 3D dust + landing + headbutt + water · drag to orbit / scroll to zoom</h2>
-      <canvas id="stage" tabindex="0" aria-label="Three-dimensional goat with dust, landing shockwaves, headbutt stars and blue water splashes"></canvas>
+    <section class="panel stage" aria-label="Live goat with dust, landing rings, headbutt stars, water splashes and crate debris">
+      <h2>Live 3D dust + landing + headbutt + water + crate · drag to orbit / scroll to zoom</h2>
+      <canvas id="stage" tabindex="0" aria-label="Three-dimensional goat with dust, landing shockwaves, headbutt stars, water splashes and flying crate debris"></canvas>
       <div class="overlay">
-        <span id="state" role="status">Running / 0 dust sprites / 0 landing rings / 0 headbutt impacts / 0 water splashes</span>
-        <span>Water: blue ripple → cyan crown → flying droplets</span>
+        <span id="state" role="status">Running / 0 dust sprites / 0 landing rings / 0 headbutt impacts / 0 water splashes / 0 crate breaks</span>
+        <span>Crate: intact → cracked → planks &amp; chips</span>
       </div>
     </section>
     <aside aria-label="Controls and approved VFX comparison">
       <section class="panel">
-        <h2>Approved panels · top row</h2>
+        <h2>Approved panels · top row and crate break</h2>
         <div class="content">
           <figure>
             <div class="crop">
@@ -120,12 +122,19 @@
             </div>
             <figcaption>04 · Water Splash: thin blue ripple → low crown → tall icy jets and droplets.</figcaption>
           </figure>
+          <figure class="landing-reference">
+            <div class="crop crop--crate">
+              <img src="../../../docs/art/hifi/23_vfx_sheet.png"
+                alt="Approved Crate Break Debris panel: intact wooden crate, dark branching crack, bright yellow impact flash, long wooden planks and tiny chips spreading outward." />
+            </div>
+            <figcaption>05 · Crate Break Debris: intact box → black cracks → golden flash and flying planks → little chips.</figcaption>
+          </figure>
         </div>
       </section>
       <section class="panel">
         <h2>Art direction / motion</h2>
         <div class="content">
-          <p>Four reusable Three.js effects run here. Dust trails the hooves, a golden ring pulses on landing, headbutt scatters outlined stars at the decorative rock, and water forms concentric blue ripples, curling cyan jets and glossy droplets.</p>
+          <p>Five reusable Three.js effects run here. Dust trails the hooves, a golden ring pulses on landing, headbutt scatters stars at the rock, water forms a blue splash, and a wooden crate cracks then bursts into tumbling planks, small chips and cream dust.</p>
           <label for="direction">Run direction</label>
           <select id="direction">
             <option value="left" selected>← Left (reference)</option>
@@ -146,6 +155,9 @@
           <label for="water-mass">Relative mass · <output id="water-mass-value">1.5</output></label>
           <input id="water-mass" type="range" min="0.5" max="8" step="0.5" value="1.5" />
           <div class="mini"><span>Small body</span><span>Heavy impact</span></div>
+          <label for="crate-size">Crate side length · <output id="crate-size-value">0.85</output></label>
+          <input id="crate-size" type="range" min="0.4" max="2.2" step="0.05" value="0.85" />
+          <div class="mini"><span>Small crate</span><span>Large crate</span></div>
           <div class="buttons">
             <button id="pause" class="primary" type="button" aria-pressed="false">Pause motion</button>
             <button id="burst" type="button">Single hoof puff</button>
@@ -153,6 +165,7 @@
           <button id="landing" class="full primary" type="button">Trigger landing impact ring</button>
           <button id="headbutt" class="full primary" type="button">Trigger headbutt impact stars</button>
           <button id="water" class="full primary" type="button">Trigger water splash</button>
+          <button id="crate" class="full primary" type="button">Trigger crate break debris</button>
           <button id="clear" class="full" type="button">Clear effects</button>
           <div class="phases" aria-label="Landing impact ring progression">
             <span>① Ivory ellipse</span><b>›</b><span>② Gold halo</span><b>›</b><span>③ Jagged shockwave</span><b>›</b><span>④ Fade</span>
@@ -163,9 +176,12 @@
           <div class="phases" aria-label="Water splash progression">
             <span>① Blue ripple</span><b>›</b><span>② Low crown</span><b>›</b><span>③ Jets + droplets</span><b>›</b><span>④ Fade</span>
           </div>
+          <div class="phases" aria-label="Crate break debris progression">
+            <span>① Wooden crate</span><b>›</b><span>② Dark cracks</span><b>›</b><span>③ Flash + planks</span><b>›</b><span>④ Chips + fade</span>
+          </div>
         </div>
       </section>
-      <div class="note">All four effects are cosmetic only: no physics forces, new runtime dependencies or main-game changes. Landings pulse every 1.65 seconds, headbutts every 2.75 seconds, and water every 3.2 seconds. Pause and trigger any effect to compare with its approved panel. The original sheet remains bundled by Vite.</div>
+      <div class="note">All five effects are cosmetic only: no physics forces, new runtime dependencies or main-game changes. Landings pulse every 1.65 seconds, headbutts every 2.75 seconds, water every 3.2 seconds, and crates every 3.85 seconds. Pause and trigger any effect to compare with its approved panel. The original sheet remains bundled by Vite.</div>
     </aside>
   </main>
   <footer>Production lab URL: /src/vfx/lab/index.html · This page is not development-gated.</footer>

@@ -5,7 +5,7 @@ of the approved [`23_vfx_sheet.png`](../../docs/art/hifi/23_vfx_sheet.png)
 are the first two effects implemented here. Dust uses soft, overlapping warm apricot /
 cream lobes and trailing chips. Landing creates a cream-to-gold expanding
 ground ellipse, jagged golden impact spikes, and small airborne sandstone
-chips. The third **HEADBUTT IMPACT STARS** panel is implemented as a bright collision flash that expands into a sharp golden burst, then three orange-rimmed yellow stars and tiny trailing glints. The fourth **WATER SPLASH** panel adds a blue surface ripple, rising cyan crown jets and ejected teardrop droplets. All four effects stay inside this VFX lane and never drive physics or the main game loop.
+chips. The third **HEADBUTT IMPACT STARS** panel is implemented as a bright collision flash that expands into a sharp golden burst, then three orange-rimmed yellow stars and tiny trailing glints. The fourth **WATER SPLASH** panel adds a blue surface ripple, rising cyan crown jets and ejected teardrop droplets. All five effects stay inside this VFX lane and never drive physics or the main game loop.
 
 ## Running dust · call from gameplay
 
@@ -134,12 +134,52 @@ No renderer, canvas, downloads, physics, global listeners or new dependencies
 are owned by the VFX. `waterSplashMath.ts` is pure and deterministically tested;
 the Vitest suite also covers the actual Three.js scene graph without WebGL.
 
+## Crate break debris · call from gameplay
+
+```ts
+import { createCrateBreakDebris } from '../vfx';
+
+const crates = createCrateBreakDebris({ capacity: 10 });
+scene.add(crates.group);
+
+// When a crate is destroyed: bottom-center ground position, direction of the
+// incoming impact, and the crate's side length in world units.
+crates.emit(crateBottomCenter, incomingImpactDirection, crateSize);
+crates.update(dt); // elapsed seconds per render frame
+crates.clear();    // optional reset without reallocating
+crates.dispose();  // owning scene teardown
+```
+
+`position` and `direction` accept `THREE.Vector3` or plain `{x,y,z}` values;
++Y is up, XZ is the ground plane. Provide the crate **base center** (not its
+midpoint). The incoming impact direction is projected onto XZ; a vertical or
+zero heading falls back to +X. `crateSize` is a side length in world units,
+not an impact strength. It must be finite and non-negative; zero emits nothing
+and values above 3 are capped to protect visual readability. All coordinates
+and direction components must be finite.
+
+The approved fifth-panel progression is an orange/amber wooden crate with
+distinct vertical slats and four grey riveted corners, dark Y-shaped cracks,
+an ivory-centered gold collision star, seven long wooden boards tumbling
+outward, eleven smaller angular wood chips and five warm apricot dust lobes.
+The impact direction biases the fragment fan, while crate size uniformly
+scales the visible dimensions and scattering distance. Pieces follow
+deterministic, gravity-like arcs with a ground clamp, fade, and clear by
+~0.9–1.1 seconds; no physics impulses are applied. Oldest bursts are recycled
+when the fixed pool is full.
+
+`crateDebrisMath.ts` has pure, absolute-age sampling and Vitest coverage for
+validation, stage order, direction, scale, fragment bounds and reproducibility.
+`CrateBreakDebris.ts` has no renderer, DOM/canvas, downloaded art, global
+listeners, extra packages or per-frame GPU allocation. It owns and disposes
+only its preallocated meshes, shared geometries and procedural DataTextures.
+
 ## Production art-review lab
 
 `/src/vfx/lab/index.html` works under `npm run dev` and in the **production
 Vite build / GitHub Pages**. The repo's existing lab-page discovery in
 `vite.config.ts` includes it automatically. The lab includes a running
-Three.js goat, a studio floor, dust, landing, headbutt and water triggers, a small
+Three.js goat, a studio floor, dust, landing, headbutt, water and crate triggers, a small
 faceted decorative target rock, pause/direction/speed controls, landing
 strength, headbutt power, water speed and relative mass sliders, and crops of **all four** approved
 panels from the *existing* reference sheet (bundled by Vite from
@@ -206,3 +246,21 @@ single-hit triggering freezes a representative gold-star frame.
 - **Scope boundary:** `emit(position, speed, mass)` is a standalone visual
   hook. The lab is a cosmetic preview only; no water collision, buoyancy,
   gameplay or other VFX panels were changed.
+
+### Crate Break Debris
+
+- **Matches:** wooden orange-gold planks with darker seams; the squared crate
+  silhouette and grey riveted metal corner plates; a bold branching black
+  crack before an ivory/yellow burst; several *large* rotating plank pieces,
+  much smaller angular splinters and a low, warm dust cloud that disperses
+  rapidly. Directional wood spray and size controls are previewable in the lab.
+- **Intentional approximation:** the approved panel uses painted irregular
+  fracture surfaces, stylized brushstroke sparks and a 2D storyboard. Reused
+  shaded cuboids, small tetrahedral chips and procedurally soft sprites retain
+  the silhouettes, orange/brown/grey hierarchy and intact→cracked→burst→chips
+  timing, not exact hand-painted grain or bespoke broken-end profiles.
+- **Scope boundary:** this is cosmetic feedback at
+  `emit(crateBottomCenter, impactDirection, crateSize)`, not a persistent
+  crate entity. The gameplay caller remains responsible for deleting its
+  actual crate and for collisions, loot or physics. No files outside
+  `src/vfx/` or other VFX cues were changed.
