@@ -457,6 +457,49 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       { shape: 'cylinder', yaw });
     accepted++;
   }
+  // MG-7: Populate the grassy mountain tiers with the same low-poly foliage
+  // family used in Whispering Pines. Run after island-wide scenery so that
+  // existing authored placements and their RNG sequence stay unchanged.
+  const summit = sites.get(peak)!;
+  const slopeStep = 1.5 * scale;
+  const mountainSlope = (x: number, z: number): number => Math.hypot(
+    (gridSample(island, x + slopeStep, z) -
+      gridSample(island, x - slopeStep, z)) / (2 * slopeStep),
+    (gridSample(island, x, z + slopeStep) -
+      gridSample(island, x, z - slopeStep)) / (2 * slopeStep),
+  );
+  const mountainRoadPoints = island.roads.flatMap(road => road.points.filter(point =>
+    Math.hypot(point.x - summit.x, point.z - summit.z) < 110 * scale));
+  // Snapshot only the pre-existing mountain props; don't impose the same
+  // five-metre exclusion between the 100 newly planted foliage descriptors.
+  const mountainProps = [...island.props, ...result]
+    .filter(prop => prop.poiId === peak).map(prop => prop.transform.position);
+  const clearance = 5 * scale;
+  // These radial ranges cover the flat summit-side benches between risers.
+  const tierBands = [[22, 38], [45, 56], [63, 74], [81, 100]] as const;
+  for (const [kind, wanted] of [['tree-pine', 70], ['bush', 30]] as const) {
+    let accepted = 0;
+    for (let attempt = 0; attempt < 30_000 && accepted < wanted; attempt++) {
+      const [inner, outer] = tierBands[attempt % tierBands.length]!;
+      const radius = Math.sqrt(rand(inner * inner, outer * outer)) * scale;
+      const angle = turn();
+      const x = summit.x + Math.cos(angle) * radius;
+      const z = summit.z + Math.sin(angle) * radius;
+      if (mountainSlope(x, z) >= 0.5) continue;
+      if (mountainRoadPoints.some(p => Math.hypot(x - p.x, z - p.z) < clearance))
+        continue;
+      if (mountainProps.some(p => Math.hypot(x - p.x, z - p.z) < clearance))
+        continue;
+      const height = kind === 'tree-pine' ? rand(6, 10) : rand(1.6, 2.4);
+      const width = height * (kind === 'tree-pine' ? 0.35 : 1.25);
+      place(kind, x, z, width, height, width, peak,
+        { shape: 'cylinder', yaw: turn() });
+      accepted++;
+    }
+    if (accepted !== wanted)
+      throw new Error('Not enough clear Mt. Gigga tier sites for ' + kind);
+  }
+
   // generateIsland makes one more grading pass for the dressed farmhouse and
   // cottage *after* this function returns. Preview that pass on a height copy,
   // then anchor the Hoofington colliders to the final ground. This is only a

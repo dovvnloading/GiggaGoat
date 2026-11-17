@@ -164,3 +164,138 @@ describe('island sea, shoreline and horizon', () => {
   });
 
 });
+
+describe('Mt. Gigga cascades and Dam plot exclusion (MG-5, DM-1)', () => {
+  it('widens both waterfall families by 2.6 and replaces each foam torus with three blobs', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const { inland, sea } = buildWaterVisuals(island);
+    try {
+      const falls = inland.children.filter(o =>
+        o.name.startsWith('mountain-waterfall-') ||
+        o.name.startsWith('front-terrace-waterfall-'));
+      const cascades = falls.filter(o => !o.name.endsWith('-foam')) as THREE.Mesh[];
+      expect(cascades.length).toBeGreaterThanOrEqual(2);
+      expect(cascades.some(o => o.name.startsWith('front-terrace-waterfall-')))
+        .toBe(true);
+      for (const fall of cascades) {
+        const vertices = fall.geometry.getAttribute('position');
+        const width = Math.hypot(vertices.getX(1) - vertices.getX(0),
+          vertices.getZ(1) - vertices.getZ(0));
+        let original: number;
+        if (fall.name.startsWith('mountain-waterfall-')) {
+          const index = Number(fall.name.slice('mountain-waterfall-'.length));
+          const a = island.river[index]!, b = island.river[index + 1]!;
+          original = (a.width + b.width) * 0.4;
+          expect(vertices.getY(0)).toBeCloseTo(a.level + 0.3, 5);
+          expect(vertices.getY(2)).toBeCloseTo(b.level + 0.2, 5);
+        } else {
+          const index = Number(fall.name.slice('front-terrace-waterfall-'.length)) - 1;
+          const angle = [0.54, 0.89][index]!;
+          const r0 = (index === 0 ? 38 : 74) * island.size / 600;
+          const r1 = (index === 0 ? 46 : 83) * island.size / 600;
+          original = (index === 0 ? 5.1 : 4.2) * island.size / 600;
+          expect(vertices.getY(0)).toBeCloseTo(gridSample(island,
+            Math.cos(angle) * r0, Math.sin(angle) * r0) +
+            0.26 * island.size / 600, 5);
+          expect(vertices.getY(2)).toBeCloseTo(gridSample(island,
+            Math.cos(angle) * r1, Math.sin(angle) * r1) +
+            0.18 * island.size / 600, 5);
+        }
+        expect(width, fall.name).toBeCloseTo(original * 2.6, 4);
+        const foam = inland.getObjectByName(
+          fall.name + '-foam') as THREE.InstancedMesh;
+        expect(foam, fall.name).toBeInstanceOf(THREE.InstancedMesh);
+        expect(foam.count, fall.name + ' blob count').toBe(3);
+        expect(foam.geometry).toBeInstanceOf(THREE.IcosahedronGeometry);
+        const mat = foam.material as THREE.MeshBasicMaterial;
+        expect(mat.color.getHex()).toBe(0xffffff);
+        expect(mat.opacity).toBe(0.85);
+        expect(mat.transparent).toBe(true);
+        expect(mat.depthWrite).toBe(false);
+        const transform = new THREE.Matrix4();
+        const size = new THREE.Vector3();
+        const locations: THREE.Vector3[] = [];
+        for (let i = 0; i < foam.count; i++) {
+          foam.getMatrixAt(i, transform);
+          size.setFromMatrixScale(transform);
+          expect(size.x, foam.name).toBeCloseTo(width * 0.45, 5);
+          expect(size.y, foam.name).toBeCloseTo(width * 0.3, 5);
+          expect(size.z, foam.name).toBeCloseTo(width * 0.45, 5);
+          const location = new THREE.Vector3().setFromMatrixPosition(transform);
+          expect(location.y, foam.name).toBeCloseTo(vertices.getY(2), 5);
+          locations.push(location);
+        }
+        expect(locations[0]!.distanceTo(locations[2]!))
+          .toBeCloseTo(width * 0.56, 4);
+      }
+      const torus: THREE.Mesh[] = [];
+      inland.traverse(o => {
+        if (o instanceof THREE.Mesh && o.geometry instanceof THREE.TorusGeometry)
+          torus.push(o);
+      });
+      expect(torus).toHaveLength(0);
+    } finally {
+      inland.traverse(o => {
+        if (o instanceof THREE.Mesh) {
+          o.geometry.dispose();
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          mats.forEach(mat => mat.dispose());
+        }
+      });
+      sea.geometry.dispose();
+      (sea.material as THREE.Material).dispose();
+    }
+  });
+
+  it('never generates a cascade whose top point is within the Dam plot', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const dam = island.plots.find(p => p.poiId === 'the-dam')!;
+    const topInside = (x: number, z: number) =>
+      Math.hypot(x - dam.center.x, z - dam.center.z) <= dam.radius;
+    const first = buildWaterVisuals(island);
+    try {
+      for (const mesh of first.inland.children) {
+        if (!mesh.name.startsWith('mountain-waterfall-') ||
+            mesh.name.endsWith('-foam')) continue;
+        const pos = (mesh as THREE.Mesh).geometry.getAttribute('position');
+        expect(topInside((pos.getX(0) + pos.getX(1)) / 2,
+          (pos.getZ(0) + pos.getZ(1)) / 2), mesh.name).toBe(false);
+      }
+    } finally {
+      first.sea.geometry.dispose();
+      (first.sea.material as THREE.Material).dispose();
+      first.inland.traverse(o => {
+        if (o instanceof THREE.Mesh) {
+          o.geometry.dispose();
+          (o.material as THREE.Material).dispose();
+        }
+      });
+    }
+    // Move only the Dam test plot over a known descending segment, proving
+    // that the guard suppresses that waterfall rather than merely missing it.
+    const index = island.river.findIndex((p, i) => i < island.river.length - 1 &&
+      p.level - island.river[i + 1]!.level > 3.4 * island.size / 600);
+    expect(index).toBeGreaterThanOrEqual(0);
+    const a = island.river[index]!, b = island.river[index + 1]!;
+    dam.center.x = (a.x + b.x) / 2;
+    dam.center.z = (a.z + b.z) / 2;
+    dam.radius = 0.5 * island.size / 600;
+    const guarded = buildWaterVisuals(island);
+    try {
+      expect(guarded.inland.getObjectByName('mountain-waterfall-' + index))
+        .toBeUndefined();
+      expect(guarded.inland.getObjectByName('mountain-waterfall-' + index +
+        '-foam')).toBeUndefined();
+    } finally {
+      guarded.sea.geometry.dispose();
+      (guarded.sea.material as THREE.Material).dispose();
+      guarded.inland.traverse(o => {
+        if (o instanceof THREE.Mesh) {
+          o.geometry.dispose();
+          (o.material as THREE.Material).dispose();
+        }
+      });
+    }
+  });
+});
+
