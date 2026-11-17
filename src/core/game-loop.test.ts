@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Game, FIXED_DT } from './Game';
 import { heightAt } from '../world';
+import { GROUND_QUERY_GROUPS, V } from '../physics';
 import { loadSave, saveGame, SAVE_KEY, type GameSave } from './Persistence';
 
 const create = (): Promise<Game> => Game.create({ seed: 'full-loop-core-test', resolution: 97 });
@@ -33,7 +34,15 @@ describe('Core game loop — production adapters on real Rapier ticks', () => {
       expect(game.gigs.active?.objective.kind).toBe('coverage');
       for (const patch of run.setup.config.patches) {
         game.teleport(patch);
-        expect(game.canGraze()).toBe(true);
+        const actual = game.goat.torso.translation();
+        const terrainHit = game.physics.raycast(actual, V(0,-1,0), 10,
+          { groups: GROUND_QUERY_GROUPS });
+        expect(game.canGraze(), JSON.stringify({
+          patch, actual, terrain: heightAt(game.island,patch.x,patch.z),
+          ground: terrainHit ? { distance: terrainHit.distance,
+            normal: terrainHit.normal, body: terrainHit.body?.handle } : null,
+          locomotionGrounded: game.goat.locomotion.grounded,
+        })).toBe(true);
         game.step({ graze: true });
         game.step({ graze: false });
       }
