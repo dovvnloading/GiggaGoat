@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { IslandData } from './types';
 import type { HoofPlacement } from './visual-hoofington';
-import { TOON_RAMP } from './visual-props';
+import { BUILDING_RAMP, TOON_RAMP } from './visual-props';
 import {
   WORLD_LOD, completelyOccluded, isSmallWorldModel,
   simplifiedWorldGeometry,
@@ -93,7 +93,11 @@ export async function createDistrictLod<Model extends string>(
     const low = cell.keepSilhouette ? high : await simplifiedWorldGeometry(high);
     const mesh = new THREE.Mesh(high, new THREE.MeshToonMaterial({
       color: 0xffffff, vertexColors: true,
-      gradientMap: TOON_RAMP, side: THREE.DoubleSide,
+      // Buildings/trees read as solid lit volumes (BUILDING_RAMP); small
+      // flowers and bushes keep the soft foliage ramp. Back faces go into
+      // the shadow map so sunlit walls never self-shadow into acne.
+      gradientMap: cell.small ? TOON_RAMP : BUILDING_RAMP, side: THREE.DoubleSide,
+      shadowSide: THREE.BackSide,
     }));
     mesh.name = i === 0 ? meshName : meshName + '-cell-' + i;
     mesh.castShadow = !cell.small;

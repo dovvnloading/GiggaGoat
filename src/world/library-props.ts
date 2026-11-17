@@ -12,7 +12,8 @@ import { publicAssetUrl } from './public-assets';
  */
 export const PROP_LIBRARY_MODELS = {
   'barn': 'assets/library/quaternius/farm-buildings-bundle/small-barn_aTcDP7UERC.glb',
-  'house': 'assets/library/kenney/city-kit-suburban/building-type-a.glb',
+  // Painting-palette Kenney suburban houses (docs/art/WORLD_ART_PLAN.md).
+  'house': 'assets/library/custom/hoofington-houses/house-t-white.glb',
   'shop': 'assets/library/kenney/city-kit-commercial/building-a.glb',
   'tower': 'assets/library/kenney/pirate-kit/tower-watch.glb',
   'windmill': 'assets/library/kenney/fantasy-town-kit/windmill.glb',
@@ -62,7 +63,7 @@ export const PROP_LIBRARY_MODELS = {
   'lookout': 'assets/library/kenney/pirate-kit/tower-watch.glb',
   'control-house': 'assets/library/kenney/city-kit-industrial/building-a.glb',
   'dock': 'assets/library/kenney/pirate-kit/structure-platform-dock-small.glb',
-  'cottage': 'assets/library/kenney/city-kit-suburban/building-type-f.glb',
+  'cottage': 'assets/library/custom/hoofington-houses/house-f-white.glb',
   'shipwreck': 'assets/library/kenney/pirate-kit/ship-wreck.glb',
   'cave-mouth': 'assets/library/kenney/nature-kit/cliff_cave_rock.glb',
   'bush': 'assets/library/kenney/nature-kit/plant_bushDetailed.glb',

@@ -4,7 +4,6 @@ import type { IslandData, PropDescriptor, PropKind, Vec3 } from './types';
 import { gridSample } from './terrain';
 import { publicAssetUrl } from './public-assets';
 import { createDistrictLod, type BakedPlacement, type DistrictLod } from './district-lod';
-import { TOON_RAMP } from './visual-props';
 
 /**
  * CC0 models only. The Poly Pizza trampoline is CC-BY and CREDITS.md is
@@ -12,11 +11,13 @@ import { TOON_RAMP } from './visual-props';
  * All URLs are resolved by publicAssetUrl (including the nested World Lab).
  */
 export const HOOFINGTON_MODELS = {
-  pinkHome: 'assets/library/kenney/city-kit-suburban/building-type-a.glb',
-  creamHome: 'assets/library/kenney/city-kit-suburban/building-type-f.glb',
-  yellowHome: 'assets/library/kenney/city-kit-suburban/building-type-d.glb',
-  farmhouse: 'assets/library/quaternius/medieval-village-pack/fantasy-house_BH2XHWUNmF.glb',
-  cottage: 'assets/library/quaternius/medieval-village-pack/fantasy-house_dcPho4SUA3.glb',
+  // One building family (Kenney suburban), recoloured per part in Blender
+  // from the Hoofington painting. See docs/art/WORLD_ART_PLAN.md.
+  pinkHome: 'assets/library/custom/hoofington-houses/house-f-pink.glb',
+  creamHome: 'assets/library/custom/hoofington-houses/house-t-cream.glb',
+  yellowHome: 'assets/library/custom/hoofington-houses/house-e-yellow.glb',
+  farmhouse: 'assets/library/custom/hoofington-houses/house-c-white.glb',
+  cottage: 'assets/library/custom/hoofington-houses/house-r-sky.glb',
   barn: 'assets/library/polypizza/barn/barn_A6UkPq33aZ.glb',
   silo: 'assets/library/quaternius/farm-buildings-bundle/silo_5GhLrv5Ce3.glb',
   windmill: 'assets/library/quaternius/farm-buildings-bundle/tower-windmill_52yaPyaAAG.glb',
@@ -82,13 +83,15 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
     let model: HoofModel | null = null;
     let paint: { wall?: number; roof?: number } = {};
     switch (prop.kind) {
+      // Houses are pre-painted per part (walls, roof, trim, glass, door,
+      // shutters, window boxes) in their GLBs; never repaint them here.
       case 'house':
-        if (dx < 0 && dz > 0) { model = 'pinkHome'; paint = PALETTES.pink; }
-        else if (dx > 0 && dz > 0) { model = 'creamHome'; paint = PALETTES.cream; }
-        else if (dx > 0) { model = 'yellowHome'; paint = PALETTES.yellow; }
-        else { model = 'farmhouse'; paint = PALETTES.red; }
+        if (dx < 0 && dz > 0) model = 'pinkHome';
+        else if (dx > 0 && dz > 0) model = 'creamHome';
+        else if (dx > 0) model = 'yellowHome';
+        else model = 'farmhouse';
         break;
-      case 'cottage': model = 'cottage'; paint = PALETTES.blue; break;
+      case 'cottage': model = 'cottage'; break;
       case 'barn': model = 'barn'; paint = PALETTES.red; break;
       case 'silo': model = 'silo'; paint = { wall: 0xf6ead8, roof: 0xce5648 }; break;
       case 'windmill': model = 'windmill'; paint = { wall: 0xffeedc, roof: 0xc75c48 }; break;

@@ -376,9 +376,13 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   sun.shadow.camera.bottom = -310;
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 1100;
-  sun.shadow.bias = -0.00015;
-  sun.shadow.normalBias = 0.035;
-  sun.shadow.radius = 3.0;
+  // 1536 texels over 620 m = 0.40 m per texel. A normal offset of ~1.5
+  // texels and a single-texel filter remove the diagonal acne on large flat
+  // walls; radius 3 spread three's rotated PCF taps into a cross-hatch.
+  // The game overrides these per graphics preset (GameView.applySettings).
+  sun.shadow.bias = -0.0005;
+  sun.shadow.normalBias = 0.6;
+  sun.shadow.radius = 1.0;
   group.add(sun, sun.target);
   const fill = new THREE.HemisphereLight(0xc8eaff, 0x667956, 1.1);
   fill.name = 'cool-sky-fill';

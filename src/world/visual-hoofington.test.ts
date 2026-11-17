@@ -24,8 +24,10 @@ describe('Hoofington sourced village model integration', () => {
         expect(manifest.find(entry => entry.path === path)?.license, model).toBe('CC0');
       }
     }
-    expect(HOOFINGTON_MODELS.pinkHome).toContain('city-kit-suburban');
-    expect(HOOFINGTON_MODELS.farmhouse).toContain('medieval-village-pack');
+    // One building family: painting-palette Kenney suburban houses.
+    for (const home of ['pinkHome', 'creamHome', 'yellowHome', 'farmhouse', 'cottage'] as const) {
+      expect(HOOFINGTON_MODELS[home], home).toContain('custom/hoofington-houses/');
+    }
     expect(HOOFINGTON_MODELS.windmill).toContain('farm-buildings-bundle');
     expect(HOOFINGTON_MODELS.bush).toContain('stylized-nature-megakit');
   });
@@ -116,9 +118,15 @@ describe('Hoofington sourced village model integration', () => {
     }
     const homes = linked.filter(p => p.source!.kind === 'house');
     expect(homes.length).toBeGreaterThanOrEqual(5);
-    expect(homes.some(p => p.model === 'pinkHome' && p.wall === 0xf28fb5)).toBe(true);
-    expect(homes.some(p => p.model === 'creamHome' && p.roof === 0xc85842)).toBe(true);
+    expect(homes.some(p => p.model === 'pinkHome')).toBe(true);
+    expect(homes.some(p => p.model === 'creamHome')).toBe(true);
     expect(homes.some(p => p.model === 'yellowHome')).toBe(true);
+    // Houses carry their per-part painting colours in the GLB; the baker must
+    // not repaint walls/roofs (that flattened roofs and trim to one colour).
+    for (const home of linked.filter(p => p.source!.kind === 'house' || p.source!.kind === 'cottage')) {
+      expect(home.wall, home.model).toBeUndefined();
+      expect(home.roof, home.model).toBeUndefined();
+    }
     expect(linked.filter(p => p.source!.kind === 'barn')).toHaveLength(1);
     expect(linked.filter(p => p.source!.kind === 'silo')).toHaveLength(1);
     expect(linked.filter(p => p.source!.kind === 'windmill')).toHaveLength(1);

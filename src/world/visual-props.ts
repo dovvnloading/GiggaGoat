@@ -35,6 +35,21 @@ TOON_RAMP.minFilter = THREE.NearestFilter;
 TOON_RAMP.generateMipmaps = false;
 TOON_RAMP.needsUpdate = true;
 
+/**
+ * Buildings read as solid painted volumes in the concept art: sunlit walls
+ * are clearly brighter than walls facing away. The foliage ramp above is too
+ * flat for that (shaded faces kept ~60% of the key light), so batched
+ * buildings use this two-band ramp instead (~1.7:1 lit vs shaded).
+ */
+export const BUILDING_RAMP = new THREE.DataTexture(
+  new Uint8Array([88,88,88,255, 88,88,88,255, 214,214,214,255, 255,255,255,255]),
+  4, 1, THREE.RGBAFormat,
+);
+BUILDING_RAMP.magFilter = THREE.NearestFilter;
+BUILDING_RAMP.minFilter = THREE.NearestFilter;
+BUILDING_RAMP.generateMipmaps = false;
+BUILDING_RAMP.needsUpdate = true;
+
 const COLORS: Partial<Record<PropKind, number>> = {
   barn: 0xd84f3d, house: 0xf4da9a, shop: 0x9ed4e8, tower: 0xb6bbc7,
   windmill: 0xf3ead6, lighthouse: 0xf9e5cc, 'ferris-wheel': 0xf5a0c1,
