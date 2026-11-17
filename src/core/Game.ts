@@ -1,4 +1,4 @@
-import type { RigidBody, ColliderDesc, RevoluteImpulseJoint } from '@dimforge/rapier3d-compat';
+import type { RigidBody, ColliderDesc } from '@dimforge/rapier3d-compat';
 import {
   PhysicsWorld, GoatRagdoll, RAPIER, V, forward, add, sub, mul, rotate, collisionGroups,
   type Vec3, type Quat, type GoatSize, type PhysicsEvent,
@@ -153,7 +153,7 @@ export class Game {
     this.goat.locomotion.heading = -spawn.heading;
     // Registered after GoatRagdoll's motor hook so standing-only head
     // corrections reach Rapier before the same physical tick is solved.
-    this.off.push(physics.onBeforeStep(() => this.holdStandingHead()));
+    this.off.push(physics.onBeforeStep(dt => this.holdStandingHead(dt)));
     this.water.track(this.goat.torso, { buoyancyScale: 0.7, paddleSpeed: 2.6 });
     this.lastY = this.goat.torso.translation().y;
     this.off.push(physics.onAfterStep(dt => this.afterTick(dt)));
@@ -204,23 +204,30 @@ export class Game {
   }
 
   /**
-   * The scaled KID neck/head hinge springs cannot hold the forward-extending
-   * head under gravity during idle. Keep both physical hinges driven into an
-   * elevated neck posture, without touching torso/leg motors, replacing joints,
-   * or faking the GoatCharacter art. Gameplay poses (walk, climb, flop, jump)
-   * retain the physics lane's own tuning and motor targets.
+   * At KID scale the neck/head hinge motors sag under the weight of the
+   * forward-extending head. A damped physical spring to each body's original
+   * *relative* standing anchor gives the six real hinges enough lift during
+   * idle, without changing their constraint or the character's render pose.
+   * All movement, tricks, climbing and ragdoll states use the native physics.
    */
-  private holdStandingHead(): void {
+  private holdStandingHead(dt: number): void {
     const g = this.goat;
     if (g.pose !== 'stand' || g.isRagdoll || g.size !== .6) return;
-    const neck = g.joints[0] as RevoluteImpulseJoint | undefined;
-    const head = g.joints[1] as RevoluteImpulseJoint | undefined;
-    if (!neck || !head) return;
-    const s5 = g.size ** 5;
-    neck.configureMotorPosition(.34, 950 * s5, 110 * s5);
-    neck.setMotorMaxForce(1600 * s5);
-    head.configureMotorPosition(.20, 950 * s5, 110 * s5);
-    head.setMotorMaxForce(1600 * s5);
+    const torso = g.torso;
+    const origin = torso.translation();
+    const orientation = torso.rotation();
+    const velocity = torso.linvel();
+    const support = (body: RigidBody, rest: Vec3): void => {
+      const target = add(origin, rotate(orientation, mul(rest, g.size)));
+      const displacement = sub(target, body.translation());
+      const relativeVelocity = sub(body.linvel(), velocity);
+      const acceleration = sub(mul(displacement, 110), mul(relativeVelocity, 18));
+      const magnitude = Math.hypot(acceleration.x, acceleration.y, acceleration.z);
+      const limited = mul(acceleration, Math.min(1, 55 / Math.max(1, magnitude)));
+      body.applyImpulse(mul(limited, body.mass() * dt), true);
+    };
+    support(g.neck, V(0, .32, -.62));
+    support(g.head, V(0, .56, -.84));
   }
 
   private prepareProps(): void {
