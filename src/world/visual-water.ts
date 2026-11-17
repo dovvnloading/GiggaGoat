@@ -178,7 +178,14 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
   const inland = new THREE.Group();
   inland.name = 'rivers-reservoir-and-falls';
   const stream = inlandMaterial();
-  inland.add(riverMesh(island.river, stream.material));
+  // The bespoke Dam plunge-pool surface occupies the middle reaches. Do
+  // not draw the old thin river ribbon over it: its extra side vertices
+  // make a bright diagonal sheet across the otherwise sculpted pool.
+  const upstream = riverMesh(island.river.slice(0, 5), stream.material);
+  upstream.name = 'rippling-river';
+  const forestOutflow = riverMesh(island.river.slice(11), stream.material);
+  forestOutflow.name = 'forest-river-after-dam';
+  inland.add(upstream, forestOutflow);
   const lake = island.reservoir;
   const reservoir = new THREE.Mesh(new THREE.CircleGeometry(1, 64), stream.material);
   reservoir.name = 'dam-reservoir';

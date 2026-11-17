@@ -1,6 +1,8 @@
 import type { IslandData, PoiId, PropDescriptor, PropKind } from './types';
 import { SeededRandom } from './random';
 import { gridSample, riverAt } from './terrain';
+import { getDamPlacement } from './the-dam';
+import { damChannelAt } from './dam-landscape';
 
 interface DetailOptions {
   yaw?: number;
@@ -203,10 +205,33 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       { shape: 'cylinder', color: 0x976744 });
   }
 
-  // The Dam's hut, rails, pipes, rocks and loose equipment are authored in
-  // the hero GLB, not duplicated as procedural dressing.
-  // The retired fourteen crates/barrels consumed two RNG samples each.
-  // Preserve the existing lighthouse and secret-relic seed layout.
+  // The hero GLB handles the Dam itself. Keep its landscaped riverbanks
+  // physically meaningful: low wildflowers, bushes, grass and climbable
+  // stones use the same collidable prop descriptors as other districts.
+  // A separate RNG leaves subsequent lighthouse/relic layouts untouched.
+  const damOrigin = getDamPlacement(island).position;
+  const damRng = new SeededRandom(String(island.seed) + ':dam-bank-details');
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 27; i++) {
+      const z = 13 + i * 3.25 + damRng.range(-0.7, 0.7);
+      const section = damChannelAt(z);
+      const x = section.x + side * (section.halfWidth + damRng.range(10, 18));
+      const kind: PropKind = i % 7 === 0 ? 'rock' :
+        i % 5 === 0 ? 'bush' : i % 3 === 0 ? 'grass-tuft' : 'flower';
+      const sx = kind === 'rock' ? damRng.range(1.8, 3.7) :
+        kind === 'bush' ? 1.8 : 0.9;
+      const sy = kind === 'rock' ? damRng.range(1.4, 3.0) :
+        kind === 'bush' ? 1.5 : 1.1;
+      place(kind, damOrigin.x + x * scale, damOrigin.z + z * scale,
+        sx, sy, sx, 'the-dam', {
+          shape: kind === 'rock' ? 'convex' : 'cuboid',
+          yaw: damRng.range(0, Math.PI * 2),
+          color: kind === 'rock' ? 0x9da6a5 : kind === 'bush' ? 0x6fa75b :
+            i % 2 ? 0xffda65 : 0xdca5ee,
+        });
+    }
+  }
+  // The retired fourteen crates/barrels consumed two main RNG samples each.
   for (let i = 0; i < 28; i++) rng.next();
 
   // Mt. Gigga: alternating green landings, a cave recess and climbable boulder stacks.
