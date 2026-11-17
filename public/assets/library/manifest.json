@@ -33458,46 +33458,100 @@
   "url": ""
  },
  {
-  "path": "assets/library/custom/town/ac-unit.glb",
-  "name": "town ac-unit",
+  "path": "assets/library/custom/lighthouse/lighthouse.glb",
+  "name": "Old Lighthouse striped tower",
   "source": "custom",
-  "pack": "town",
+  "pack": "lighthouse",
   "license": "CC0",
   "credit": "Gigga-Goat (original, built in Blender)",
   "url": ""
  },
  {
-  "path": "assets/library/custom/town/planter.glb",
-  "name": "town planter",
+  "path": "assets/library/custom/mt-gigga/satellite-dish.glb",
+  "name": "mt-gigga satellite-dish",
   "source": "custom",
-  "pack": "town",
+  "pack": "mt-gigga",
   "license": "CC0",
   "credit": "Gigga-Goat (original, built in Blender)",
   "url": ""
  },
  {
-  "path": "assets/library/custom/town/park-bench.glb",
-  "name": "town park-bench",
+  "path": "assets/library/custom/mt-gigga/ledge.glb",
+  "name": "mt-gigga ledge",
   "source": "custom",
-  "pack": "town",
+  "pack": "mt-gigga",
   "license": "CC0",
   "credit": "Gigga-Goat (original, built in Blender)",
   "url": ""
  },
  {
-  "path": "assets/library/custom/town/gnome.glb",
-  "name": "town gnome",
+  "path": "assets/library/custom/mt-gigga/cave-arch.glb",
+  "name": "mt-gigga cave-arch",
   "source": "custom",
-  "pack": "town",
+  "pack": "mt-gigga",
   "license": "CC0",
   "credit": "Gigga-Goat (original, built in Blender)",
   "url": ""
  },
  {
-  "path": "assets/library/custom/town/downtown-tower.glb",
-  "name": "town downtown-tower",
+  "path": "assets/library/custom/mt-gigga/pennant-pole.glb",
+  "name": "mt-gigga pennant-pole",
   "source": "custom",
-  "pack": "town",
+  "pack": "mt-gigga",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/pines/lookout.glb",
+  "name": "pines lookout",
+  "source": "custom",
+  "pack": "pines",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/pines/timber-deck.glb",
+  "name": "pines timber-deck",
+  "source": "custom",
+  "pack": "pines",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/pines/pine.glb",
+  "name": "pines pine",
+  "source": "custom",
+  "pack": "pines",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/props/signpost.glb",
+  "name": "props signpost",
+  "source": "custom",
+  "pack": "props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/props/rope-post.glb",
+  "name": "props rope-post",
+  "source": "custom",
+  "pack": "props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/props/bridge-deck.glb",
+  "name": "props bridge-deck",
+  "source": "custom",
+  "pack": "props",
   "license": "CC0",
   "credit": "Gigga-Goat (original, built in Blender)",
   "url": ""

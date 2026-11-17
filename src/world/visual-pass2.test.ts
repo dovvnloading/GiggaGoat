@@ -17,8 +17,9 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
   afterAll(() => view.dispose());
 
   it('keeps every prop instance finite, with only replaced lighthouse art hidden', () => {
+    // The striped tower (QA LH-1) is the generic 'lighthouse' prop: not hidden.
     const replacedLighthouseKinds = new Set([
-      'lighthouse', 'cottage', 'shipwreck', 'dock', 'cave-mouth',
+      'cottage', 'shipwreck', 'dock', 'cave-mouth',
     ]);
     const grouped = new Map<string, PropDescriptor[]>();
     for (const prop of island.props) {

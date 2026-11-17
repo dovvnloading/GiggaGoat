@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+
+/** Daytime horizon RGB in the sky shader's linear working space. */
+export const SKY_HORIZON_COLOR = new THREE.Color(0.76, 0.88, 0.98);
 // Clouds need a brighter, gentler shade than the shared prop toon ramp.
 const CLOUD_RAMP = new THREE.DataTexture(
   new Uint8Array([
@@ -29,10 +32,11 @@ export function buildSkyVisuals(): SkyVisuals {
     uDay: { value: 1 },
     uGolden: { value: 0 },
     uSun: { value: new THREE.Vector3(0, 1, 0) },
+    uHorizon: { value: SKY_HORIZON_COLOR },
   };
   const dome = new THREE.Mesh(new THREE.SphereGeometry(1800, 32, 18),
     new THREE.ShaderMaterial({
-      uniforms, side: THREE.BackSide, depthWrite: false,
+      uniforms, side: THREE.BackSide, depthWrite: false, fog: false,
       vertexShader: [
         'varying vec3 vDirection;',
         'void main() {',
@@ -41,12 +45,12 @@ export function buildSkyVisuals(): SkyVisuals {
         '}',
       ].join('\n'),
       fragmentShader: [
-        'uniform float uDay, uGolden; uniform vec3 uSun;',
+        'uniform float uDay, uGolden; uniform vec3 uSun, uHorizon;',
         'varying vec3 vDirection;',
         'void main() {',
         '  vec3 dir = normalize(vDirection);',
         '  float horizon = smoothstep(-0.15, 0.90, dir.y);',
-        '  vec3 sunny = mix(vec3(0.76, 0.88, 0.98), vec3(0.08, 0.48, 0.94), horizon);',
+        '  vec3 sunny = mix(uHorizon, vec3(0.08, 0.48, 0.94), horizon);',
         '  vec3 sunset = mix(vec3(1.0, 0.60, 0.47), vec3(0.56, 0.45, 0.73), horizon);',
         '  vec3 night = mix(vec3(0.18, 0.22, 0.38), vec3(0.018, 0.045, 0.14), horizon);',
         '  vec3 dayColor = mix(sunny, sunset, uGolden);',
@@ -64,13 +68,14 @@ export function buildSkyVisuals(): SkyVisuals {
   // One cloud draw call; deterministic ellipsoid clusters rather than flat billboards.
   const cloudMaterial = new THREE.MeshToonMaterial({
     color: 0xffffff, gradientMap: CLOUD_RAMP,
-    emissive: 0xdfe9f7, emissiveIntensity: 0.18,
-    transparent: true, opacity: 0.94, depthWrite: false,
+    emissive: 0xffffff, emissiveIntensity: 0.3,
+    transparent: true, opacity: 0.94, depthWrite: false, fog: true,
   });
   const cloudCount = 72;
   const clouds = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 2),
     cloudMaterial, cloudCount);
   clouds.name = 'puffy-cloud-banks';
+  clouds.renderOrder = 3; // Transparent clouds draw after rising-sea (order 2).
   const matrix = new THREE.Matrix4();
   let s = 0x49a0b12d;
   const rand = (): number => {
@@ -78,9 +83,9 @@ export function buildSkyVisuals(): SkyVisuals {
     return s / 0x100000000;
   };
   for (let i = 0; i < cloudCount / 3; i++) {
-    const a = rand() * Math.PI * 2, r = 265 + rand() * 370;
+    const a = rand() * Math.PI * 2, r = 330 + rand() * 380;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
-    const y = 100 + rand() * 110;
+    const y = 150 + rand() * 100;
     const breadth = 28 + rand() * 28;
     for (let j = 0; j < 3; j++) {
       matrix.compose(

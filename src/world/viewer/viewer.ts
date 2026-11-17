@@ -10,6 +10,7 @@ import { ART_BOOKMARKS, findBookmark } from './bookmarks';
 import { paintingAssetUrl } from './reference-art';
 import { createStaticShadowCache } from './shadow-cache';
 import { createAdaptiveViewerResolution } from './adaptive-resolution';
+import { SKY_HORIZON_COLOR } from '../visual-sky';
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -220,6 +221,7 @@ function regenerate(): void {
   labels.replaceChildren();
   labelById.clear();
   island = generateIsland({ seed: seedInput.value, resolution: 193 });
+  scene.fog = new THREE.Fog(SKY_HORIZON_COLOR, island.size * 0.9, island.size * 3.2);
   worldView = createWorldScene(island, { chunkSegments: 32 });
   shadowCache.invalidate();
   scene.add(worldView.group);
