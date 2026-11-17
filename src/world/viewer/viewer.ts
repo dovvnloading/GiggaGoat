@@ -50,8 +50,10 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 // These static casters/light need one shadow pass per change, not one every frame.
 const shadowCache = createStaticShadowCache(renderer.shadowMap);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
+// Match the game (no tone mapping): ACES at 1.2 exposure bleached the
+// painting's pastels toward cream, so the Lab no longer showed real colours.
+renderer.toneMapping = THREE.NoToneMapping;
+renderer.toneMappingExposure = 1.0;
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 host.appendChild(renderer.domElement);
