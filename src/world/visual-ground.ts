@@ -18,8 +18,7 @@ const STONE = new THREE.Color('#D8C7A7');
 const TILE = new THREE.Color('#C2B6A2');
 const GRAVEL = new THREE.Color('#E1C18B');
 const YARD_CONCRETE = new THREE.Color('#A7A3A0');
-const YARD_WARM = new THREE.Color('#999493');
-const YARD_JOINT = new THREE.Color('#858789');
+const YARD_PUDDLE = new THREE.Color(0x5f7f8f);
 const YARD_MARKING = new THREE.Color('#EDC350');
 
 /**
@@ -48,14 +47,14 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Gr
     return result;
   }
   function addVertex(bucket: ChunkBuffer, x: number, z: number,
-    color: THREE.Color, shade = 1): number {
+    color: THREE.Color, shade = 1, lift = 0): number {
     const index = bucket.positions.length / 3;
-    bucket.positions.push(x, gridSample(island, x, z) + 0.075 * scale, z);
+    bucket.positions.push(x, gridSample(island, x, z) + (0.075 + lift) * scale, z);
     bucket.colors.push(...colour(color, shade));
     return index;
   }
   function quad(x: number, z: number, width: number, length: number,
-    color: THREE.Color, yaw = 0): void {
+    color: THREE.Color, yaw = 0, shade?: number): void {
     const bucket = verticesAt(x, z);
     const c = Math.cos(yaw), s = Math.sin(yaw);
     const corners: [number, number][] = [
@@ -64,37 +63,44 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Gr
     ];
     const v = corners.map(([dx, dz], i) => addVertex(
       bucket, x + c * dx + s * dz, z - s * dx + c * dz,
-      color, 0.965 + (i % 3) * 0.015,
+      color, shade ?? (0.965 + (i % 3) * 0.015),
     ));
     bucket.indices.push(v[0]!, v[2]!, v[1]!, v[1]!, v[2]!, v[3]!);
   }
   function disc(x: number, z: number, radius: number,
-    color: THREE.Color, sides = 28): void {
+    color: THREE.Color, sides = 28, lift = 0): void {
     const bucket = verticesAt(x, z);
-    const mid = addVertex(bucket, x, z, color, 1.035);
+    const mid = addVertex(bucket, x, z, color, 1.035, lift);
     const rim: number[] = [];
     for (let i = 0; i < sides; i++) {
       const angle = i * Math.PI * 2 / sides;
       rim.push(addVertex(bucket,
         x + Math.cos(angle) * radius, z + Math.sin(angle) * radius,
-        color, 0.93 + (i % 4) * 0.015));
+        color, 0.93 + (i % 4) * 0.015, lift));
     }
     for (let i = 0; i < sides; i++) {
       bucket.indices.push(mid, rim[(i + 1) % sides]!, rim[i]!);
     }
   }
   // Crane Yard: tessellated paved apron following the real stamped heightfield.
-  // Small concrete slabs prevent a giant flat quad from cutting into the coast
-  // or floating over terrain. The road remains visible above this paving.
+  // Large, closely fitted slabs prevent a giant flat quad from cutting into
+  // the coast or floating over terrain. The road remains visible above paving.
   const yard = site('crane-yard');
-  for (let ix = -40; ix < 40; ix += 4) {
-    for (let iz = -36; iz < 36; iz += 4) {
-      const x = yard.x + (ix + 2) * scale;
-      const z = yard.z + (iz + 2) * scale;
-      const variant = (Math.floor((ix + 40) / 4) * 7 + Math.floor((iz + 36) / 4)) % 11;
-      quad(x, z, 3.96 * scale, 3.96 * scale,
-        variant < 3 ? YARD_WARM : variant === 8 ? YARD_JOINT : YARD_CONCRETE);
+  for (let ix = -40; ix < 40; ix += 8) {
+    for (let iz = -36; iz < 36; iz += 8) {
+      const slabX = (ix + 40) / 8;
+      const slabZ = (iz + 36) / 8;
+      const shade = 0.97 + 0.03 * ((slabX * 7 + slabZ * 3) % 3) / 2;
+      quad(yard.x + (ix + 4) * scale, yard.z + (iz + 4) * scale,
+        7.92 * scale, 7.92 * scale, YARD_CONCRETE, 0, shade);
     }
+  }
+  // Three flat, dark puddles sit slightly above the slabs to avoid z-fighting.
+  for (const [dx, dz, radius] of [
+    [-8, 14, 1.6], [15, -4, 1.1], [-24, -2, 2.0],
+  ] as const) {
+    disc(yard.x + dx * scale, yard.z + dz * scale,
+      radius * scale, YARD_PUDDLE, 28, 0.012);
   }
   // Loading-bay striping, crane clearance and worn yellow pedestrian marks.
   for (let i = 0; i < 13; i++) {
