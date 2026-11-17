@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { generateIsland } from './index';
 import { buildWaterVisuals } from './visual-water';
 import { buildSkyVisuals } from './visual-sky';
+import { gridSample } from './terrain';
 
 describe('island sea, shoreline and horizon', () => {
   it.each([400, 600, 900])('uses a round eight-island-width sea with 96x96 core grid at size %i', size => {
@@ -93,4 +94,73 @@ describe('island sea, shoreline and horizon', () => {
     sea.geometry.dispose();
     material.dispose();
   });
+  it.each([400, 600, 900])('joins a coloured 128-angle seabed to the terrain edge at size %i', size => {
+    const island = generateIsland({ seed: 'cape-skirt', size, resolution: 97 });
+    const { sea, update } = buildWaterVisuals(island);
+    const skirt = sea.getObjectByName('seabed-skirt') as THREE.Mesh;
+    expect(skirt).toBeInstanceOf(THREE.Mesh);
+    try {
+      expect(skirt.parent).toBe(sea);
+      expect(skirt.name).toBe('seabed-skirt');
+      expect(skirt.renderOrder).toBe(1);
+      expect(skirt.renderOrder).toBeLessThan(sea.renderOrder);
+      expect(skirt.castShadow).toBe(false);
+      expect(skirt.receiveShadow).toBe(false);
+      const material = skirt.material as THREE.MeshLambertMaterial;
+      expect(material).toBeInstanceOf(THREE.MeshLambertMaterial);
+      expect(material.vertexColors).toBe(true);
+      expect(material.fog).toBe(true);
+
+      const points = skirt.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const colors = skirt.geometry.getAttribute('color') as THREE.BufferAttribute;
+      expect(points.count).toBe(128 * 3);
+      expect(colors.count).toBe(points.count);
+      expect(skirt.geometry.index!.count).toBe(128 * 2 * 6);
+      const colours = [0xd9c79a, 0x5fa9a8, 0x1d5f73];
+      for (let ring = 0; ring < 3; ring++) {
+        const tint = new THREE.Color(colours[ring]!);
+        expect(colors.getX(ring)).toBeCloseTo(tint.r, 6);
+        expect(colors.getY(ring)).toBeCloseTo(tint.g, 6);
+        expect(colors.getZ(ring)).toBeCloseTo(tint.b, 6);
+      }
+
+      const s = island.size / 600, half = size / 2;
+      for (let i = 0; i < 128; i++) {
+        const index = i * 3;
+        const x = points.getX(index), z = points.getZ(index);
+        const innerRadius = Math.hypot(x, z);
+        const middle = Math.hypot(points.getX(index + 1), points.getZ(index + 1));
+        const outer = Math.hypot(points.getX(index + 2), points.getZ(index + 2));
+        expect(Math.max(Math.abs(x), Math.abs(z))).toBeCloseTo(half, 4);
+        expect(middle).toBeCloseTo(innerRadius * 1.35, 4);
+        expect(outer).toBeGreaterThanOrEqual(size * 3.9);
+        expect(points.getY(index + 1)).toBeCloseTo(island.seaLevel - 10 * s, 5);
+        expect(points.getY(index + 2)).toBeCloseTo(island.seaLevel - 40 * s, 5);
+        if (i % 16 === 0) {
+          expect(Math.abs(points.getY(index) -
+            (gridSample(island, x, z) - 0.05 * s)))
+            .toBeLessThan(0.1 * s);
+        }
+      }
+
+      sea.updateMatrixWorld(true);
+      const vertex = new THREE.Vector3(
+        points.getX(0), points.getY(0), points.getZ(0));
+      const before = vertex.clone().applyMatrix4(skirt.matrixWorld);
+      expect(before.distanceTo(vertex)).toBeLessThan(0.0001);
+      update(1.5, island.seaLevel + 40);
+      sea.updateMatrixWorld(true);
+      const after = vertex.clone().applyMatrix4(skirt.matrixWorld);
+      expect(after.distanceTo(before)).toBeLessThan(0.0001);
+      expect(sea.position.y).toBe(island.seaLevel + 40);
+      // Unlike inland river surfaces, the seabed stays present at high tide.
+      expect(skirt.visible).toBe(true);
+    } finally {
+      skirt.geometry.dispose();
+      (skirt.material as THREE.Material).dispose();
+      sea.geometry.dispose();
+      (sea.material as THREE.Material).dispose();
+    }
+  });
+
 });

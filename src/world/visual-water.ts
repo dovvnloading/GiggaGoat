@@ -62,6 +62,48 @@ function circularSeaGeometry(islandSize: number): THREE.BufferGeometry {
   return geometry;
 }
 
+/**
+ * Extend the terrain's square border down to a deep, circular seabed.
+ * Three rings share 128 angular samples: the first ray/square intersection
+ * coincides with the terrain's +/-size/2 grid boundary in world XZ.
+ */
+function seabedSkirtGeometry(island: IslandData): THREE.BufferGeometry {
+  const sides = 128;
+  const scale = island.size / 600;
+  const half = island.size / 2;
+  const positions: number[] = [], colours: number[] = [], indices: number[] = [];
+  const wetSand = new THREE.Color(0xd9c79a);
+  const shallows = new THREE.Color(0x5fa9a8);
+  const deep = new THREE.Color(0x1d5f73);
+  for (let i = 0; i < sides; i++) {
+    const theta = i * Math.PI * 2 / sides;
+    const x = Math.cos(theta), z = Math.sin(theta);
+    const distance = half / Math.max(Math.abs(x), Math.abs(z));
+    for (const [radius, y, colour] of [
+      [distance, gridSample(island, x * distance, z * distance) - 0.05 * scale, wetSand],
+      [distance * 1.35, island.seaLevel - 10 * scale, shallows],
+      [island.size * 4, island.seaLevel - 40 * scale, deep],
+    ] as const) {
+      positions.push(x * radius, y, z * radius);
+      colours.push(colour.r, colour.g, colour.b);
+    }
+  }
+  for (let i = 0; i < sides; i++) {
+    const next = (i + 1) % sides;
+    for (let ring = 0; ring < 2; ring++) {
+      const a = i * 3 + ring, b = next * 3 + ring;
+      indices.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
 interface AnimatedUniforms {
   uTime: { value: number };
   uLevel: { value: number };
@@ -243,6 +285,18 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
   sea.position.y = island.seaLevel;
   sea.name = 'rising-sea';
   sea.renderOrder = 2;
+  const skirt = new THREE.Mesh(seabedSkirtGeometry(island),
+    new THREE.MeshLambertMaterial({ vertexColors: true, fog: true }));
+  skirt.name = 'seabed-skirt';
+  skirt.renderOrder = 1;
+  skirt.castShadow = false;
+  skirt.receiveShadow = false;
+  // The water renderer already adds the sea to the scene. Parent the skirt
+  // there without making it follow the sea's rotation or changing tide:
+  // Rx(-90) * T(0, 0, -tide) * Rx(+90) cancels in world coordinates.
+  skirt.rotation.x = Math.PI / 2;
+  skirt.position.z = -island.seaLevel;
+  sea.add(skirt);
   const inland = new THREE.Group();
   inland.name = 'rivers-reservoir-and-falls';
   const stream = inlandMaterial();
@@ -301,6 +355,7 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
       seaMat.uniforms.uLevel.value = tide;
       stream.time.value = time;
       sea.position.y = tide;
+      skirt.position.z = -tide; // Keep the skirt fixed under the rising sea.
       inland.visible = tide < lake.level + 2 * scale;
     },
   };

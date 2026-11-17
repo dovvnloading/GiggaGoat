@@ -6,7 +6,7 @@ import { gridSample } from './terrain';
 import { publicAssetUrl } from './public-assets';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import { buildArchitecture } from './visual-architecture';
-import { TOON_RAMP } from './visual-props';
+import { TOON_RAMP, BUILDING_RAMP } from './visual-props';
 
 export interface LighthouseVisuals {
   group: THREE.Group;
@@ -26,6 +26,16 @@ const WOOD = 0x97603d;
 const DARK_WOOD = 0x63432e;
 const CREAM = 0xf6e6c5;
 const GOLD = 0xffcf56;
+
+/**
+ * MeshToonMaterial does not declare flatShading in Three.js's r187 TS types,
+ * but WebGLRenderer checks this shader flag for flat face normals.
+ */
+function rockToonMaterial(color: number | THREE.Color): THREE.MeshToonMaterial {
+  return Object.assign(new THREE.MeshToonMaterial({
+    color, gradientMap: BUILDING_RAMP, side: THREE.DoubleSide,
+  }), { flatShading: true });
+}
 
 /** Merge all painted parts into one vertex-coloured mesh per landmark. */
 function makePainter() {
@@ -301,10 +311,7 @@ function makeSeaCave(island: IslandData, cave: PropDescriptor): THREE.Group {
 
   const rocks = new THREE.InstancedMesh(
     new THREE.DodecahedronGeometry(1, 0),
-    new THREE.MeshLambertMaterial({
-      color: 0xa8a8b0, flatShading: true, side: THREE.DoubleSide,
-      emissive: 0x747882, emissiveIntensity: 0.53,
-    }), 13);
+    rockToonMaterial(0xa8a8b0), 13);
   rocks.name = 'lighthouse-cave-sunlit-arch-boulders';
   const dummy = new THREE.Object3D();
   for (let i = 0; i < 13; i++) {
@@ -390,11 +397,14 @@ export function instantiateLibraryModel(root: THREE.Object3D, placements: readon
     const geometry = object.geometry.clone();
     geometry.applyMatrix4(normalize.clone().multiply(object.matrixWorld));
     if (!geometry.getAttribute('normal')) geometry.computeVertexNormals();
-    const material = rock
-      ? new THREE.MeshLambertMaterial({
-        color: STONE, side: THREE.DoubleSide, flatShading: true,
-        emissive: 0x777b85, emissiveIntensity: 0.55,
-      }) : object.material;
+    // One GPU draw and one toon material per GLB primitive. Preserve its own
+    // stone/grass paint instead of overriding everything with emissive grey.
+    const sourceMaterial = Array.isArray(object.material)
+      ? object.material[0]! : object.material;
+    const sourceColor = 'color' in sourceMaterial &&
+      sourceMaterial.color instanceof THREE.Color
+      ? sourceMaterial.color : new THREE.Color(0xffffff);
+    const material = rock ? rockToonMaterial(sourceColor) : object.material;
     const instanced = new THREE.InstancedMesh(geometry, material, placements.length);
     instanced.name = name + '-instanced-part';
     instanced.castShadow = false;
@@ -420,10 +430,7 @@ export function instantiateLibraryModel(root: THREE.Object3D, placements: readon
 function makeFallbackRocks(placements: readonly Placement[]): THREE.InstancedMesh {
   const geometry = new THREE.DodecahedronGeometry(1, 0);
   geometry.computeVertexNormals();
-  const mesh = new THREE.InstancedMesh(geometry, new THREE.MeshLambertMaterial({
-    color: 0xadb0b4, side: THREE.DoubleSide, flatShading: true,
-    emissive: 0x838791, emissiveIntensity: 0.58,
-  }), placements.length);
+  const mesh = new THREE.InstancedMesh(geometry, rockToonMaterial(0xadb0b4), placements.length);
   mesh.name = 'lighthouse-fallback-grey-rocks';
   const dummy = new THREE.Object3D();
   placements.forEach((p, i) => {
@@ -681,7 +688,7 @@ export function buildLighthouseVisuals(island: IslandData,
     depth: p.size.z * 1.18, yaw: p.transform.rotationY,
   }));
   // Shore boulders below the grass line, excluding the accessible cave floor.
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < 16; i += 2) {
     const angle = i * 2.399963 + 0.65;
     const r = (28.0 + (i % 4) * 2.5) * scale;
     const x = center.x + Math.cos(angle) * r;
@@ -699,7 +706,7 @@ export function buildLighthouseVisuals(island: IslandData,
   // Faceted blocks embedded along the steep shoulder break up the former
   // smooth, mesa-like cliff wall. Shared Kenney GLBs and the grey fallback
   // are instanced over this same array: no additional draw calls per stone.
-  for (let i = 0; i < 88; i++) {
+  for (let i = 0; i < 88; i += 2) {
     const angle = i * 2.399963 + 0.8;
     const radius = (19.0 + (i % 9) * 1.05) * scale;
     const x = center.x + Math.cos(angle) * radius;
@@ -716,6 +723,9 @@ export function buildLighthouseVisuals(island: IslandData,
       roll: Math.sin(i * 1.9) * 0.29,
     });
   }
+  // All three sources store the base Y of the rock's visual box. Embed
+  // both the GLB instances and their fallback in the terrain by 35%.
+  for (const rock of rocks) rock.y -= 0.35 * rock.height;
   const rockFallback = makeFallbackRocks(rocks);
   group.add(rockFallback);
 
