@@ -3,7 +3,8 @@ import {
   createWorldScene, type PropDescriptor, type WorldScene,
 } from '../world';
 import { V, type Vec3 } from '../physics';
-import type { GameSettings } from './Persistence';
+import { DEFAULT_SETTINGS, type GameSettings } from './Persistence';
+import type { GameAudio } from './GameAudio';
 import { type BuildPiece, type PieceType } from '../gameplay';
 import { Game } from './Game';
 import { GameCharacters } from './GameCharacters';
@@ -38,8 +39,7 @@ export class GameView {
   private readonly textTextures = new Set<THREE.Texture>();
   private displayedGig = -1;
   private displayedMode: string | null = null;
-  private currentSettings: GameSettings = { mouseSensitivity: 1, invertY: false, fov: 67,
-    graphics: 'high', volume: .8 };
+  private currentSettings: GameSettings = { ...DEFAULT_SETTINGS };
   paused = false;
   onFrame: (() => void) | null = null;
   onInteract: (() => boolean) | null = null;
@@ -60,7 +60,8 @@ export class GameView {
   private simMs = 0;
   private disposed = false;
 
-  constructor(private readonly host: HTMLElement, readonly game: Game) {
+  constructor(private readonly host: HTMLElement, readonly game: Game,
+    private readonly audio?: GameAudio) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.7));
@@ -531,6 +532,7 @@ export class GameView {
         intent = { ...intent, interact: false, bleat: false };
       }
       if (!this.paused) {
+        this.audio?.onInput(intent);
         const start = performance.now();
         const result = this.game.advance(dt, intent);
         alpha = result.alpha;
@@ -545,7 +547,8 @@ export class GameView {
     this.updateDebris(alpha);
     this.world.setTideLevel(this.game.water.seaLevel);
     this.world.update(this.game.physics.time);
-    this.world.setDayNight(.5 + Math.sin(this.game.physics.time / 150) * .035);
+    const dayPhase = .5 + Math.sin(this.game.physics.time / 150) * .035;
+    this.world.setDayNight(dayPhase);
     this.updateCamera(alpha, dt);
     const viewport = this.renderer.domElement.getBoundingClientRect();
     const goatBounds = visibleGoatBounds(this.characters.player.root, this.playerWorldBox);
@@ -569,6 +572,11 @@ export class GameView {
     const goatScreenBox = projectGoatScreenBox(goatBounds, this.camera, viewport);
     this.hud.update(this.game, this.fps, this.simMs, this.input.debugVisible,
       document.pointerLockElement === this.renderer.domElement, goatScreenBox);
+    this.audio?.frame(dt, {
+      position: this.camera.position,
+      forward: this.camera.getWorldDirection(new THREE.Vector3()),
+      up: { x: 0, y: 1, z: 0 },
+    }, dayPhase < .25 || dayPhase > .75);
     this.renderer.render(this.scene, this.camera);
     this.onFrame?.();
   }
