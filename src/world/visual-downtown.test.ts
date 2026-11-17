@@ -1,16 +1,18 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { createWorldScene, generateIsland } from './index';
 import {
-  DOWNTOWN_MODELS, makeDowntownPlacements, makeDowntownSigns,
-  stripedAwningGeometry, type DowntownModel, type DowntownPlacement,
+  DOWNTOWN_MODELS, DOWNTOWN_SIGN_ANCHORS, downtownSignGeometry,
+  makeDowntownPlacements, makeDowntownSigns,
+  type DowntownModel, type DowntownPlacement,
 } from './visual-downtown';
 import { bakeLibraryGeometry } from './visual-hoofington';
 import { isDowntownRoadOverlay } from './render';
 
 describe('Downtown Bleatsville sourced streetscape', () => {
-  it('loads only CC0 library models from the required city, shop and furniture packs', () => {
+
+  it('loads CC0 models and maps every building to the 11 painted shop GLBs', () => {
     const manifest = JSON.parse(readFileSync(
       'public/assets/library/manifest.json', 'utf8',
     )) as Array<{ path: string; license: string }>;
@@ -20,14 +22,30 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       expect(manifest.find(entry => entry.path === path)?.license, name)
         .toBe(name === 'lamp' ? 'Apache-2.0' : 'CC0');
     }
-    for (const pack of ['city-kit-commercial', 'retro-urban-kit',
-      'modular-buildings', 'city-builder-bits', 'city-kit-roads',
-      'furniture-kit', 'mini-shop', 'furniture-bits']) {
-      expect(Object.values(DOWNTOWN_MODELS).some(path =>
-        path.includes('/' + pack + '/')), pack).toBe(true);
+    const buildings = {
+      bakery: 'shop-h-pink.glb',
+      arcade: 'shop-k-lavender.glb',
+      cinema: 'shop-d-mint.glb',
+      cafe: 'shop-e-peach.glb',
+      market: 'shop-g-yellow.glb',
+      boutique: 'shop-j-cream.glb',
+      cornerShop: 'shop-b-pink.glb',
+      kayShop: 'shop-c-yellow.glb',
+      kayHouse: 'shop-f-lavender.glb',
+      townhouse: 'shop-l-peach.glb',
+      brickHouse: 'shop-m-pink.glb',
+      highrise: 'shop-l-peach.glb',
+    } as const;
+    for (const [model, file] of Object.entries(buildings)) {
+      const path = DOWNTOWN_MODELS[model as keyof typeof buildings];
+      expect(path, model).toBe('assets/library/custom/downtown-shops/' + file);
+      expect(existsSync('public/' + path), model).toBe(true);
+      expect(path).not.toMatch(/kaykit|modular-buildings/);
     }
+    expect(new Set(Object.values(buildings)).size).toBe(11);
     expect(DOWNTOWN_MODELS.lamp).toBe('assets/library/usdcraft/street-lamp-lantern.glb');
-    expect(DOWNTOWN_MODELS.skylineCrane).toContain('/factory-kit/');
+    expect(DOWNTOWN_MODELS.skylineCrane)
+      .toBe('assets/library/custom/crane-yard/skyline-tower-crane.glb');
     expect(DOWNTOWN_MODELS.waterTower).toContain('/city-kit-industrial/');
   });
 
@@ -39,15 +57,21 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     }));
     const plan = makeDowntownPlacements(island);
     const linked = plan.filter(p => p.source);
+    for (const item of linked.filter(p => p.model === 'lamp')) {
+      expect(item.wall).toBeUndefined();
+      expect(item.roof).toBeUndefined();
+      expect(item.position).toBe(item.source!.transform.position);
+    }
     const shops = linked.filter(p => p.source!.kind === 'shop');
     const houses = linked.filter(p => p.source!.kind === 'house');
     expect(shops).toHaveLength(10);
     expect(houses).toHaveLength(6);
-    expect(linked.filter(p => p.source!.kind === 'tower')).toHaveLength(1);
-    expect(new Set(shops.map(p => p.wall)).size).toBeGreaterThanOrEqual(6);
-    expect(shops.some(p => p.model === 'bakery' && p.wall === 0xf08cae)).toBe(true);
-    expect(shops.some(p => p.model === 'arcade' && p.wall === 0xd08cdd)).toBe(true);
-    for (const p of [...shops, ...houses]) {
+    const towers = linked.filter(p => p.source!.kind === 'tower');
+    expect(towers).toHaveLength(1);
+    // Blender-authored building colours must pass through the baker unchanged.
+    for (const p of [...shops, ...houses, ...towers]) {
+      expect(p.wall, p.model).toBeUndefined();
+      expect(p.roof, p.model).toBeUndefined();
       expect(p.position).toBe(p.source!.transform.position);
       expect(p.size).toBe(p.source!.size);
       expect(p.yaw).toBe(p.source!.transform.rotationY);
@@ -62,11 +86,6 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       'ac-unit', 'water-tower', 'fountain']) {
       expect(linked.some(p => p.source!.kind === kind), kind).toBe(true);
     }
-    for (const lamp of linked.filter(p => p.model === 'lamp')) {
-      expect(lamp.wall).toBeUndefined();
-      expect(lamp.roof).toBeUndefined();
-      expect(lamp.position).toBe(lamp.source!.transform.position);
-    }
     expect(island.props.map(p => ({
       id: p.id, kind: p.kind, transform: p.transform, size: p.size,
     }))).toEqual(before);
@@ -75,38 +94,91 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       .toEqual(plan.map(p => [p.model, p.position, p.size, p.wall, p.roof]));
   });
 
-  it('has readable bakery/cafe signs, pavilion details and open traffic lanes', () => {
+
+  it('keeps street details, but only two 45%-thickness garlands and no striped overlay', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
     const centre = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
+    const scale = island.size / 600;
     const signs = makeDowntownSigns(island);
     expect(signs).toHaveLength(10);
-    expect(signs.map(s => s.title)).toContain('BAAKERY');
-    expect(signs.map(s => s.title)).toContain('CAFE');
-    expect(signs.map(s => s.title)).toContain('KID ARCADE');
-    expect(signs.map(s => s.title)).toContain('HOOF & CO');
-    expect(signs.map(s => s.title)).toContain('HAY MART');
+    for (const name of ['BAAKERY', 'CAFE', 'KID ARCADE', 'HOOF & CO', 'HAY MART'])
+      expect(signs.map(s => s.title)).toContain(name);
+
     const plan = makeDowntownPlacements(island);
-    expect(plan.filter(p => p.model === 'lights')).toHaveLength(4);
-    expect(plan.filter(p => p.model === 'skylineCrane')).toHaveLength(1);
+    const garlands = plan.filter(p => p.model === 'lights')
+      .sort((a, b) => a.position.z - b.position.z);
+    expect(garlands.map(p =>
+      Math.round((p.position.z - centre.z) / scale))).toEqual([-14, 6]);
+    for (const garland of garlands) {
+      expect(garland.size.x).toBeCloseTo(27 * scale, 6);
+      expect(garland.size.y).toBeCloseTo(0.36 * 0.45 * scale, 6);
+      expect(garland.size.z).toBeCloseTo(0.28 * 0.45 * scale, 6);
+    }
+    const skyline = plan.filter(p => p.model === 'skylineCrane');
+    expect(skyline).toHaveLength(1);
+    expect(skyline[0]!.wall).toBeUndefined();
     expect(plan.filter(p => p.model === 'retroWindow').length).toBeGreaterThan(10);
     expect(plan.filter(p => p.model === 'flower').length).toBeGreaterThan(30);
-    for (const model of ['table','chair','trash','cone','bread','produce','clothes','oak']) {
+    for (const model of ['table','chair','trash','cone','bread','produce','clothes','oak'])
       expect(plan.some(p => p.model === model), model).toBe(true);
-    }
-    // Sidewalk furniture stays beyond x = +/-13; street lamps already
-    // occupy their existing x = +/-10.8 curb positions.
     const furniture = plan.filter(p => ['table','chair','trash','bread',
       'produce','clothes'].includes(p.model));
     expect(furniture.every(p =>
-      Math.abs(p.position.x - centre.x) >= 13 * island.size / 600)).toBe(true);
-    const stripe = stripedAwningGeometry(signs.map(s => s.source));
-    const positions = stripe.getAttribute('position');
-    const colors = stripe.getAttribute('color');
-    expect(positions.count).toBe(10 * 12 * 4 * 3);
-    expect(colors.count).toBe(positions.count);
-    expect(new Set(Array.from({ length: colors.count }, (_, i) =>
-      colors.getX(i).toFixed(3))).size).toBeGreaterThan(2);
-    stripe.dispose();
+      Math.abs(p.position.x - centre.x) >= 13 * scale)).toBe(true);
+    const renderer = readFileSync('src/world/visual-downtown.ts', 'utf8');
+    expect(renderer).not.toContain('stripedAwningGeometry');
+    expect(renderer).not.toContain('downtown-striped-awnings');
+  });
+
+  it('anchors each shop label flush to its model-specific cream sign board', () => {
+    expect(DOWNTOWN_SIGN_ANCHORS).toEqual({
+      bakery: { centre: 0.318, halfHeight: 0.029 },
+      arcade: { centre: 0.280, halfHeight: 0.026 },
+      cinema: { centre: 0.318, halfHeight: 0.029 },
+      cafe: { centre: 0.335, halfHeight: 0.030 },
+      market: { centre: 0.243, halfHeight: 0.022 },
+      boutique: { centre: 0.243, halfHeight: 0.022 },
+      cornerShop: { centre: 0.318, halfHeight: 0.029 },
+      kayShop: { centre: 0.335, halfHeight: 0.030 },
+      kayHouse: { centre: 0.243, halfHeight: 0.022 },
+      townhouse: { centre: 0.182, halfHeight: 0.017 },
+      brickHouse: { centre: 0.131, halfHeight: 0.012 },
+      highrise: { centre: 0.182, halfHeight: 0.017 },
+    });
+    const signs = makeDowntownSigns(generateIsland({
+      seed: 'billy-isle', resolution: 97,
+    }));
+    expect(signs.every(s => s.background === 0xf6ead2 && s.ink === 0x543b3d))
+      .toBe(true);
+    const geometry = downtownSignGeometry(signs);
+    const positions = geometry.getAttribute('position');
+    expect(positions.count).toBe(signs.length * 4);
+    expect(geometry.index!.count).toBe(signs.length * 6);
+    for (let i = 0; i < signs.length; i++) {
+      const sign = signs[i]!, p = sign.source;
+      const anchor = DOWNTOWN_SIGN_ANCHORS[sign.model];
+      const yaw = p.transform.rotationY;
+      const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+      const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+      const vertices = Array.from({ length: 4 }, (_, j) =>
+        new THREE.Vector3().fromBufferAttribute(positions, i * 4 + j));
+      const center = vertices.reduce((sum, point) => sum.add(point),
+        new THREE.Vector3()).multiplyScalar(0.25);
+      const expected = new THREE.Vector3(
+        p.transform.position.x,
+        p.transform.position.y - p.size.y / 2 + anchor.centre * p.size.y,
+        p.transform.position.z,
+      ).addScaledVector(forward, p.size.z / 2 + 0.04);
+      expect(center.distanceTo(expected), sign.model).toBeLessThan(0.0002);
+      expect(vertices[1]!.clone().sub(vertices[0]!).dot(right), sign.model)
+        .toBeCloseTo(0.80 * p.size.x, 3);
+      expect(vertices[3]!.y - vertices[0]!.y, sign.model)
+        .toBeCloseTo(2 * anchor.halfHeight * p.size.y, 3);
+      expect(center.clone().sub(new THREE.Vector3(
+        p.transform.position.x, center.y, p.transform.position.z,
+      )).dot(forward) - p.size.z / 2).toBeCloseTo(0.04, 3);
+    }
+    geometry.dispose();
   });
 
   it('bakes texture-ready multi-material assets into one roof-aligned static draw', () => {
@@ -120,11 +192,9 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     const models = new Map<DowntownModel, THREE.Group>([['bakery', prefab]]);
     const shops: DowntownPlacement[] = [
       { model: 'bakery', position: { x: -19, y: 9, z: 20 },
-        size: { x: 11, y: 12, z: 11.4 }, yaw: Math.PI / 2,
-        wall: 0xf08cae, roof: 0x53667f },
+        size: { x: 11, y: 12, z: 11.4 }, yaw: Math.PI / 2 },
       { model: 'bakery', position: { x: 19, y: 8, z: 20 },
-        size: { x: 11, y: 10, z: 11.4 }, yaw: -Math.PI / 2,
-        wall: 0xa9e2d7, roof: 0x5c8aa7 },
+        size: { x: 11, y: 10, z: 11.4 }, yaw: -Math.PI / 2 },
     ];
     const baked = bakeLibraryGeometry(shops, models)!;
     expect(baked).toBeInstanceOf(THREE.BufferGeometry);
@@ -138,8 +208,18 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     expect(box.max.x).toBeLessThan(19 + 11 / 2 + 0.001);
     expect(box.max.y).toBeLessThan(9 + 12 / 2 + 0.001);
     expect(box.min.y).toBeGreaterThan(9 - 12 / 2 - 0.001);
-    expect(new Set(Array.from({ length: colours.count }, (_, i) =>
-      colours.getX(i).toFixed(3))).size).toBeGreaterThan(1);
+    // Neither authored material is tinted toward a storefront wall/roof color.
+    const authored = [new THREE.Color(0xffffff), new THREE.Color(0x647995)];
+    const seen = new Set<number>();
+    for (let i = 0; i < colours.count; i++) {
+      const match = authored.findIndex(color =>
+        Math.abs(colours.getX(i) - color.r) < 0.00001 &&
+        Math.abs(colours.getY(i) - color.g) < 0.00001 &&
+        Math.abs(colours.getZ(i) - color.b) < 0.00001);
+      expect(match).toBeGreaterThanOrEqual(0);
+      seen.add(match);
+    }
+    expect(seen.size).toBe(2);
     baked.dispose();
     plaster.geometry.dispose(); cap.geometry.dispose();
     (plaster.material as THREE.Material).dispose();
