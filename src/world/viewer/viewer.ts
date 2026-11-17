@@ -9,6 +9,7 @@ import {
 import { ART_BOOKMARKS, findBookmark } from './bookmarks';
 import { paintingAssetUrl } from './reference-art';
 import { createStaticShadowCache } from './shadow-cache';
+import { createAdaptiveViewerResolution } from './adaptive-resolution';
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -43,7 +44,8 @@ for (const bookmark of ART_BOOKMARKS) {
 bookmarkInput.value = '07';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+const resolutionBudget = createAdaptiveViewerResolution(window.devicePixelRatio);
+renderer.setPixelRatio(resolutionBudget.ratio);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 // These static casters/light need one shadow pass per change, not one every frame.
@@ -478,7 +480,15 @@ if (new URLSearchParams(window.location.search).has('profile')) {
 }
 renderer.setAnimationLoop(() => {
   if (capturing) return;
-  const delta = Math.min(clock.getDelta(), 0.08);
+  const rawDelta = clock.getDelta();
+  const delta = Math.min(rawDelta, 0.08);
+  // Measure real delivered-frame time, including browser composition. A tab
+  // coming back from suspension must never be interpreted as a slow GPU.
+  const nextRatio = document.hidden ? null : resolutionBudget.frame(rawDelta);
+  if (nextRatio !== null) {
+    renderer.setPixelRatio(nextRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
   elapsed += delta;
   fps = fps * 0.90 + (1 / Math.max(delta, 0.001)) * 0.10;
   sampleSeconds += delta;
@@ -505,7 +515,8 @@ renderer.setAnimationLoop(() => {
     performance.textContent = 'FPS ' + fps.toFixed(0) +
       ' · Draw calls ' + info.calls.toLocaleString() +
       ' · Triangles ' + info.triangles.toLocaleString() +
-      ' · Meshes ' + island.props.length.toLocaleString();
+      ' · Meshes ' + island.props.length.toLocaleString() +
+      ' · Resolution ' + renderer.getPixelRatio().toFixed(2) + '×';
     sampleSeconds = 0;
   }
 });
