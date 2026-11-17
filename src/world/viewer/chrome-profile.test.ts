@@ -192,7 +192,8 @@ describe.skipIf(!process.env['CI'])('world viewer real-Chrome frame profiling', 
       expect(downtown.models).toBeGreaterThanOrEqual(28);
       expect(downtown.triangles).toBeGreaterThan(5000);
       expect(downtown.signs).toBe(10);
-      expect(downtown.awnings).toBe(true);
+      // Blender shop GLBs include their awnings; no procedural overlay remains.
+      expect(downtown.awnings).toBe(false);
       // Wait for the *actual* prop GLBs, not only the Downtown facades.
       // This prevents a fast procedural fallback from disguising broken paths.
       const library = await until(async () => {
