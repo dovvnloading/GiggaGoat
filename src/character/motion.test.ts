@@ -3,7 +3,7 @@ import {
   ACTIONS, TIERS, TIER_PROFILES, actionFromPhysics, clamp01,
   decayLanding, previewRig, sampleMotion, tierFromPhysicsScale,
 } from './motion';
-import { GoatCharacter } from './GoatCharacter';
+import { LegacyGoatCharacter as GoatCharacter } from './LegacyGoatCharacter';
 import { GoatRagdoll, PhysicsWorld, V } from '../physics';
 
 describe('Gigga-Goat art contracts / pure deterministic motion', () => {

@@ -1,271 +1,471 @@
 import * as THREE from 'three';
-import type { GoatRagdoll, GoatPart, GoatSize } from '../physics';
+import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
+import type { GoatRagdoll } from '../physics';
 import {
-  ACTIONS, actionFromPhysics, clamp01, decayLanding, previewRig, sampleMotion,
-  tierFromPhysicsScale, TIER_PROFILES,
-  type CharacterAction, type CharacterPart, type GoatTier, type MotionFrame,
+  ACTIONS, actionFromPhysics, clamp01, sampleMotion, tierFromPhysicsScale,
+  TIER_PROFILES, type CharacterAction, type GoatTier, type MotionFrame,
 } from './motion';
-import { animateRibbon, sculptGoat, type GoatMesh } from './mesh';
+import { LegacyGoatCharacter } from './LegacyGoatCharacter';
+import {
+  GOAT_CLIPS, GOAT_GLB_FILES, clipForAction, goatPublicAssetUrl,
+  locomotionBlend, selectGoatVariant, type GoatCharacterOptions,
+  type GoatClip, type GoatOneShot, type GoatVariant,
+} from './rigged';
 
-const PARTS: readonly CharacterPart[] = [
-  'torso', 'neck', 'head', 'frontLeft', 'frontRight', 'backLeft', 'backRight',
-];
-const V3 = (x: number, y: number, z: number): THREE.Vector3 =>
-  new THREE.Vector3(x, y, z);
-const UP = new THREE.Vector3(0, 1, 0);
-const MOUTH = new THREE.Vector3(0, -.20, -.36);
+type MountName = 'head' | 'neck' | 'back';
+const MOUNT_NAMES: readonly MountName[] = ['head', 'neck', 'back'];
+const LOCOMOTION = ['Idle', 'Walk', 'Run'] as const;
+const ANCHOR_POINTS: Readonly<Record<MountName, readonly [number, number, number]>> = {
+  head: [0, 1.72, -.84],
+  neck: [0, 1.31, -.63],
+  back: [0, 1.22, .06],
+};
+
+type AnchorHome = {
+  parent: THREE.Object3D;
+  position: THREE.Vector3;
+  quaternion: THREE.Quaternion;
+  scale: THREE.Vector3;
+};
+type Shot = { clip: GoatOneShot; duration: number; elapsed: number };
+type Rig = {
+  model: THREE.Group;
+  skeleton: THREE.Object3D;
+  mixer: THREE.AnimationMixer;
+  actions: Record<GoatClip, THREE.AnimationAction>;
+  weights: { Idle: number; Walk: number; Run: number };
+  shot: Shot | null;
+  previewing: boolean;
+};
+
+const glbTemplates = new Map<GoatVariant, Promise<GLTF>>();
+function loadTemplate(variant: GoatVariant): Promise<GLTF> {
+  let promise = glbTemplates.get(variant);
+  if (!promise) {
+    promise = new GLTFLoader().loadAsync(goatPublicAssetUrl(GOAT_GLB_FILES[variant]));
+    glbTemplates.set(variant, promise);
+    // A failed request must be retryable (and the legacy model stays displayed).
+    void promise.catch(() => { if (glbTemplates.get(variant) === promise) glbTemplates.delete(variant); });
+  }
+  return promise;
+}
+
+/** Pick a skinned bone by semantic name, with a position fallback for unnamed auto-rigs. */
+function findMountBone(
+  skeleton: THREE.Object3D, name: MountName, model: THREE.Group,
+): THREE.Bone | null {
+  const bones = new Set<THREE.Bone>();
+  skeleton.traverse(object => {
+    if (object instanceof THREE.SkinnedMesh) {
+      for (const bone of object.skeleton.bones) bones.add(bone);
+    } else if (object instanceof THREE.Bone) bones.add(object);
+  });
+  if (!bones.size) return null;
+  const point = ANCHOR_POINTS[name];
+  const target = new THREE.Vector3(point[0], point[1], point[2]);
+  const world = new THREE.Vector3();
+  const local = new THREE.Vector3();
+  const scoreName = (value: string): number => {
+    const n = value.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (name === 'head') return /head|skull|cranium/.test(n) ? 0 : /face|muzzle|snout/.test(n) ? 1 : 3;
+    if (name === 'neck') return /neck/.test(n) ? 0 : /chest|spine/.test(n) ? 1 : 3;
+    return /back|spine|chest|torso/.test(n) ? 0 : /body|hip|pelvis/.test(n) ? 1 : 3;
+  };
+  let chosen: THREE.Bone | null = null;
+  let best = Infinity;
+  model.updateWorldMatrix(true, true);
+  for (const bone of bones) {
+    local.copy(model.worldToLocal(bone.getWorldPosition(world)));
+    const score = scoreName(bone.name) * 5 + local.distanceTo(target);
+    if (score < best) { best = score; chosen = bone; }
+  }
+  return chosen;
+}
 
 /**
- * Seven independently transformed art pieces, one per authoritative Rapier body.
- * Secondary motion never sets rigid-body poses or invokes simulation steps.
- *
- * Include character.root in an unscaled/world-space Three scene (NOT a scaled
- * parent), and call update() after physics.step(). All physics imports are types.
+ * GLB renderer with the same public surface as the original procedural goat.
+ * Until a template resolves, root IS the old seven-part sculpt (including its
+ * mounts), so existing GameCharacters integration and headless tests still work.
+ * Both renderers only consume Rapier state; neither advances or mutates physics.
  */
 export class GoatCharacter {
   readonly root: THREE.Group;
-  /** Stable costume anchors; add gear to these groups and it follows animations. */
-  readonly mounts: GoatMesh['mounts'];
-  private readonly mesh: GoatMesh;
+  readonly mounts: LegacyGoatCharacter['mounts'];
+  private readonly legacy: LegacyGoatCharacter;
+  private readonly legacyParts: THREE.Object3D[];
+  private readonly homes: Record<MountName, AnchorHome>;
+  private readonly options: GoatCharacterOptions;
   private bound: GoatRagdoll | null = null;
-  private unsubscribe: (() => void) | null = null;
+  private rig: Rig | null = null;
+  private variantValue: GoatVariant;
   private tierValue: GoatTier = 'BILLY';
   private actionValue: CharacterAction = 'stand';
   private previewAction: CharacterAction = 'stand';
-  private clock = 0;
-  private landing = 0;
+  private previewClip: GoatClip = 'Idle';
   private override: { action: CharacterAction; remaining: number } | null = null;
+  private lastGrounded = false;
+  private clock = 0;
+  private generation = 0;
   private disposed = false;
-  private readonly target = new THREE.Vector3();
-  private readonly tip = new THREE.Vector3();
-  private readonly direction = new THREE.Vector3();
+  private readonly offset = new THREE.Vector3();
 
-  constructor(goat?: GoatRagdoll) {
-    this.mesh = sculptGoat();
-    this.root = this.mesh.root;
-    this.mounts = this.mesh.mounts;
-    this.applyTier('BILLY');
+  constructor(goat?: GoatRagdoll, options: GoatCharacterOptions = {}) {
+    this.options = { ...options };
+    this.variantValue = selectGoatVariant(goat, options);
+    this.legacy = new LegacyGoatCharacter();
+    this.root = this.legacy.root;
+    this.mounts = this.legacy.mounts;
+    this.legacyParts = [...this.root.children];
+    const home = (name: MountName): AnchorHome => {
+      const mount = this.mounts[name];
+      if (!mount.parent) throw new Error('Legacy mount missing parent: ' + name);
+      return {
+        parent: mount.parent,
+        position: mount.position.clone(),
+        quaternion: mount.quaternion.clone(),
+        scale: mount.scale.clone(),
+      };
+    };
+    this.homes = { head: home('head'), neck: home('neck'), back: home('back') };
     if (goat) this.bind(goat);
     else this.update(0);
+    this.requestLoad();
   }
+
   get tier(): GoatTier { return this.tierValue; }
   get action(): CharacterAction { return this.actionValue; }
   get physics(): GoatRagdoll | null { return this.bound; }
+  get variant(): GoatVariant { return this.variantValue; }
+  get isReady(): boolean { return this.rig !== null; }
 
-  /** Attach/detach without taking ownership of the physics world or rigid bodies. */
+  /** Switch binding without changing simulation state or owning the ragdoll. */
   bind(goat: GoatRagdoll | null): void {
     if (this.disposed) throw new Error('GoatCharacter is disposed');
-    this.unsubscribe?.();
-    this.unsubscribe = null;
     this.bound = goat;
+    this.legacy.bind(goat);
     this.override = null;
-    this.landing = 0;
-    if (!goat) {
-      this.actionValue = this.previewAction;
-      return;
-    }
-    this.applyTier(tierFromPhysicsScale(goat.size));
-    this.unsubscribe = goat.events.on(event => {
-      if (event.type === 'landed') {
-        this.landing = Math.max(this.landing, clamp01(Math.abs(event.verticalSpeed) / 9));
-      } else if (event.type === 'impact') {
-        this.landing = Math.max(this.landing, clamp01(event.impulse / (goat.mass * 7)) * .6);
-      } else if (event.type === 'ragdollStart') {
-        this.play('flop', 0.35);
+    this.lastGrounded = goat?.locomotion.grounded ?? false;
+    if (goat) {
+      this.tierValue = tierFromPhysicsScale(goat.size);
+      const variant = selectGoatVariant(goat, this.options);
+      if (variant !== this.variantValue) {
+        this.generation++;
+        this.clearRig();
+        this.variantValue = variant;
+        this.requestLoad();
       }
-    });
-    this.update(0, goat.world.alpha);
+    }
+    if (this.rig) this.configureActions(this.rig);
+    this.update(0, goat?.world.alpha);
   }
 
-  /**
-   * Read-only presentation for model-sheet poses (not physically simulated).
-   * If bound, call bind(null) first; physical gameplay always wins.
-   */
+  /** Same approved pose vocabulary as LegacyGoatCharacter. */
   setPreview(action: CharacterAction, tier: GoatTier = this.tierValue): void {
-    if (!ACTIONS.includes(action)) throw new RangeError('Unknown character pose');
-    if (!(tier in TIER_PROFILES)) throw new RangeError('Unknown character tier');
     if (this.bound) throw new Error('Unbind physics before setting a preview pose');
+    this.legacy.setPreview(action, tier);
     this.previewAction = action;
-    this.actionValue = action;
-    this.applyTier(tier);
+    this.previewClip = clipForAction(action);
+    this.tierValue = tier;
+    if (this.rig) this.configureActions(this.rig);
     this.update(0);
   }
 
-  /** Short visual accents for actions without a Rapier event (bleat/headbutt/glide). */
-  play(action: CharacterAction, seconds = 0.65): void {
-    if (!ACTIONS.includes(action)) throw new RangeError('Unknown character action');
-    if (!Number.isFinite(seconds) || seconds < 0) throw new RangeError('Invalid duration');
-    this.override = { action, remaining: seconds };
+  /** Extra lab-only control: audition all six baked clips, including Walk. */
+  setPreviewClip(clip: GoatClip, tier: GoatTier = this.tierValue): void {
+    if (!(GOAT_CLIPS as readonly string[]).includes(clip)) {
+      throw new RangeError('Unknown GLB clip: ' + clip);
+    }
+    if (this.bound) throw new Error('Unbind physics before setting a preview clip');
+    const action: CharacterAction =
+      clip === 'Run' ? 'sprint' :
+      clip === 'Jump' ? 'jump-flip' :
+      clip === 'Headbutt' ? 'headbutt' :
+      clip === 'Bleat' ? 'bleat' : 'stand';
+    this.legacy.setPreview(action, tier);
+    this.previewAction = action;
+    this.previewClip = clip;
+    this.tierValue = tier;
+    if (this.rig) this.configureActions(this.rig);
+    this.update(0);
   }
 
-  /** Force secondary animation time for deterministic screenshots/art comparisons. */
+  /** Existing action API; "jump" is also accepted as an alias for jump-flip. */
+  play(action: CharacterAction | 'jump', seconds = .65): void {
+    if (action !== 'jump' && !ACTIONS.includes(action)) {
+      throw new RangeError('Unknown character action');
+    }
+    if (!Number.isFinite(seconds) || seconds < 0) throw new RangeError('Invalid duration');
+    const selected = action === 'jump' ? 'jump-flip' : action;
+    this.legacy.play(selected, seconds);
+    this.override = { action: selected, remaining: seconds };
+    const clip = clipForAction(action);
+    if (this.rig && seconds > 0 && (clip === 'Jump' ||
+      clip === 'Headbutt' || clip === 'Bleat')) {
+      this.startShot(this.rig, clip, seconds);
+    }
+  }
+
+  /** For deterministic preview screenshots (also supported by the legacy sculpt). */
   seek(seconds: number): void {
     if (!Number.isFinite(seconds) || seconds < 0) throw new RangeError('Invalid time');
     this.clock = seconds;
+    this.legacy.seek(seconds);
+    this.rig?.mixer.setTime(seconds);
     this.update(0);
   }
 
-  /** Stable, tier-scaled mount in world coordinates (requires prior update). */
-  mountWorldPosition(name: 'head' | 'neck' | 'back', out = new THREE.Vector3()): THREE.Vector3 {
+  mountWorldPosition(name: MountName, out = new THREE.Vector3()): THREE.Vector3 {
     this.root.updateWorldMatrix(true, true);
     return this.mounts[name].getWorldPosition(out);
   }
 
-  /**
-   * Render-frame work. alpha is the PhysicsWorld.step() interpolation fraction;
-   * omitted alpha defaults to the world's current interpolation fraction.
-   * Never advances physics, changes motor targets or modifies Rapier transforms.
-   */
   update(dt: number, alpha?: number): MotionFrame {
     if (this.disposed) throw new Error('GoatCharacter is disposed');
     if (!Number.isFinite(dt) || dt < 0) throw new RangeError('dt must be non-negative and finite');
     const frameDt = Math.min(dt, .1);
     this.clock += frameDt;
-    this.landing = decayLanding(this.landing, frameDt);
     const goat = this.bound;
-    let selected = this.previewAction;
+    if (goat) this.tierValue = tierFromPhysicsScale(goat.size);
+
+    if (!this.rig) {
+      const motion = this.legacy.update(dt, alpha);
+      this.actionValue = this.legacy.action;
+      this.tickOverride(frameDt);
+      return motion;
+    }
+
+    const rig = this.rig;
+    let selected = goat ? actionFromPhysics({
+      ragdoll: goat.isRagdoll,
+      tongueAttached: goat.interactions.isTongueAttached,
+      clinging: goat.locomotion.isClinging,
+      pose: goat.pose,
+      sprinting: goat.locomotion.input.sprint,
+      grounded: goat.locomotion.grounded,
+    }) : this.previewAction;
+
     if (goat) {
-      const tier = tierFromPhysicsScale(goat.size);
-      if (tier !== this.tierValue) this.applyTier(tier);
-      selected = actionFromPhysics({
-        ragdoll: goat.isRagdoll,
-        tongueAttached: goat.interactions.isTongueAttached,
-        clinging: goat.locomotion.isClinging,
-        pose: goat.pose,
-        sprinting: goat.locomotion.input.sprint,
-        grounded: goat.locomotion.grounded,
-      });
-      // Always place all seven parts from physics each frame. Goat.resize()
-      // replaces body handles, so deliberately do not cache RigidBody objects.
+      // Torso center is y=.92 at Billy rest; the rig's hooves are at y=0.
+      // Apply the local offset after interpolated torso rotation to retain
+      // real yaw, pitch and roll in physics (including airborne/flop poses).
       const interpolation = alpha === undefined ? goat.world.alpha : clamp01(alpha);
-      const scale = goat.size;
-      for (const name of PARTS) {
-        const transform = goat.world.getInterpolatedTransform(
-          goat.getPart(name as GoatPart), interpolation);
-        const part = this.mesh.parts[name];
-        part.position.set(transform.translation.x, transform.translation.y,
-          transform.translation.z);
-        part.quaternion.set(transform.rotation.x, transform.rotation.y,
-          transform.rotation.z, transform.rotation.w);
-        part.scale.setScalar(scale);
-      }
+      const transform = goat.world.getInterpolatedTransform(goat.torso, interpolation);
+      rig.model.quaternion.set(transform.rotation.x, transform.rotation.y,
+        transform.rotation.z, transform.rotation.w);
+      rig.model.position.set(transform.translation.x, transform.translation.y,
+        transform.translation.z).add(this.offset.set(0, -.92 * goat.size, 0)
+          .applyQuaternion(rig.model.quaternion));
+      rig.model.scale.setScalar(goat.size);
+      if (!goat.locomotion.grounded && this.lastGrounded && goat.pose === 'jumpTuck' &&
+          !rig.shot) this.startShot(rig, 'Jump', 1);
+      this.lastGrounded = goat.locomotion.grounded;
     } else {
-      const pose = previewRig(selected, this.clock);
-      const scale = TIER_PROFILES[this.tierValue].physicsScale;
-      for (const name of PARTS) {
-        const part = this.mesh.parts[name];
-        const transform = pose[name];
-        part.position.set(
-          transform.position[0] * scale,
-          transform.position[1] * scale,
-          transform.position[2] * scale,
-        );
-        part.quaternion.setFromEuler(new THREE.Euler(...transform.rotation, 'XYZ'));
-        part.scale.setScalar(scale);
-      }
+      rig.model.position.set(0, 0, 0);
+      rig.model.quaternion.identity();
+      rig.model.scale.setScalar(TIER_PROFILES[this.tierValue].physicsScale);
     }
 
-    if (this.override) {
-      selected = this.override.action;
-      this.override.remaining -= frameDt;
-      if (this.override.remaining <= 0) this.override = null;
-    }
+    if (this.override) selected = this.override.action;
     this.actionValue = selected;
-    const motion = sampleMotion(selected, this.clock, this.landing);
-    this.animateSecondary(motion, selected, goat);
-    return motion;
-  }
+    this.tickOverride(frameDt);
+    // The legacy cosmetic glider lives on the stable back mount, so the
+    // existing glide cue still has a visible result with a rigged goat.
+    const glider = this.mounts.back.getObjectByName('optional hang-glider cosmetic');
+    if (glider) glider.visible = selected === 'glide';
 
-  private applyTier(tier: GoatTier): void {
-    this.tierValue = tier;
-    const profile = TIER_PROFILES[tier];
-    for (const horn of this.mesh.horns) horn.scale.setScalar(profile.hornScale);
-    const gigga = profile.glow > 0;
-    for (const aura of this.mesh.aura) aura.visible = gigga;
-    this.mesh.purpleLight.intensity = gigga ? 0.85 : 0;
-  }
-
-  private animateSecondary(motion: MotionFrame, action: CharacterAction,
-    goat: GoatRagdoll | null): void {
-    // Stretch fluffy skin, not ragdoll bones. A landing compresses the barrel.
-    const fleece = TIER_PROFILES[this.tierValue].woolLayers;
-    this.mesh.torsoFur.scale.set(
-      fleece * (1 + motion.squash * .30),
-      1 - motion.squash,
-      fleece * (1 + motion.squash * .22));
-    this.mesh.torsoFur.position.y = -motion.squash * .055;
-    this.mesh.headFur.position.y = motion.bodyBob;
-    this.mesh.headFur.rotation.x = motion.bodyLean;
-    this.mesh.jaw.position.y = -.186 - motion.jawOpen * .077;
-    this.mesh.mouthOpening.scale.y = .020 + motion.jawOpen * .105;
-    this.mesh.jaw.rotation.x = motion.jawOpen * .15;
-    for (let index = 0; index < 2; index++) {
-      const sign = index === 0 ? -1 : 1;
-      const ear = this.mesh.ears[index]!;
-      ear.rotation.z = sign * (.08 + motion.earWag);
-      ear.rotation.x = motion.earWag * .56;
-      const brow = this.mesh.eyebrows[index]!;
-      brow.position.y = .167 + motion.browLift * .064;
-      brow.rotation.z = sign * motion.browTilt;
-      const lid = this.mesh.eyelids[index]!;
-      lid.scale.y = .012 + motion.blink * .102;
-      lid.position.y = .152 - motion.blink * .067;
+    let shotWeight = 0;
+    if (rig.shot) {
+      const shot = rig.shot;
+      shot.elapsed += frameDt;
+      const remaining = Math.max(0, shot.duration - shot.elapsed);
+      shotWeight = Math.min(1, shot.elapsed / .10, remaining / .15);
+      rig.actions[shot.clip].setEffectiveWeight(shotWeight);
+      if (remaining <= 0) {
+        rig.actions[shot.clip].stop();
+        rig.shot = null;
+        shotWeight = 0;
+        if (!goat) this.configureActions(rig);
+      }
     }
-    this.mesh.tail.rotation.z = motion.tailWag;
-    const speed = goat ? Math.hypot(
-      goat.torso.linvel().x, goat.torso.linvel().z,
-    ) / Math.max(.1, goat.size) : (action === 'sprint' ? 7 : 1);
-    const wind = clamp01(speed / 10);
-    for (const ribbon of this.mesh.scarf) {
-      animateRibbon(ribbon, this.clock, wind);
+
+    if (goat) {
+      // Physics controller speeds grow only with size^.16. Keep animation
+      // cadence size-independent while still responding to actual ground speed.
+      const velocity = goat.torso.linvel();
+      const speed = Math.hypot(velocity.x, velocity.z) / goat.size ** .16;
+      const desired = locomotionBlend(speed);
+      const smoothing = frameDt ? 1 - Math.exp(-12 * frameDt) : 1;
+      for (const clip of LOCOMOTION) {
+        rig.weights[clip] += (desired[clip] - rig.weights[clip]) * smoothing;
+        rig.actions[clip].setEffectiveWeight(rig.weights[clip] * (1 - shotWeight));
+      }
+      rig.actions.Walk.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / 1.2, .5, 2.5));
+      rig.actions.Run.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / 3.5, .5, 2.5));
+    } else if (!rig.shot) {
+      // In nonphysical lab preview one selected clip loops at authored 30 fps.
+      rig.actions[this.previewClip].setEffectiveWeight(1);
     }
-    this.mesh.glider.visible = action === 'glide';
-    this.mesh.purpleLight.intensity =
-      TIER_PROFILES[this.tierValue].glow * (0.75 + motion.glowPulse * .27);
-    this.updateTongue(action, motion, goat);
+
+    rig.mixer.update(frameDt);
+    return sampleMotion(selected, this.clock);
   }
 
-  private updateTongue(action: CharacterAction, motion: MotionFrame,
-    goat: GoatRagdoll | null): void {
-    const tethered = !!goat?.interactions.isTongueAttached;
-    const active = tethered || motion.tongueOut > 0;
-    this.mesh.tongue.visible = active;
-    this.mesh.tongueTip.visible = active;
-    if (!active) return;
-    const size = TIER_PROFILES[this.tierValue].physicsScale;
-    const head = this.mesh.parts.head;
-    // Head bone is at real Rapier position, possibly upside-down and rotating.
-    this.target.copy(MOUTH);
-    if (tethered && goat?.interactions.tongueBody) {
-      const targetBody = goat.interactions.tongueBody;
-      const point = targetBody.translation();
-      this.tip.set(point.x, point.y, point.z);
-      this.tip.sub(head.position).applyQuaternion(head.quaternion.clone().invert())
-        .divideScalar(size);
+  private tickOverride(dt: number): void {
+    if (!this.override) return;
+    this.override.remaining -= dt;
+    if (this.override.remaining <= 0) this.override = null;
+  }
+
+  private requestLoad(): void {
+    // Headless tests and SSR retain the fully working legacy renderer. The
+    // browser initiates loading only once per variant, shared across goats.
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const generation = ++this.generation;
+    const variant = this.variantValue;
+    void loadTemplate(variant).then(gltf => {
+      if (this.disposed || generation !== this.generation || variant !== this.variantValue) return;
+      this.attachRig(gltf);
+    }).catch(error => {
+      if (this.disposed || generation !== this.generation) return;
+      console.warn('Could not load animated goat ' + variant + '; using legacy sculpt.', error);
+    });
+  }
+
+  private attachRig(gltf: GLTF): void {
+    // Every goat gets its own skeleton and its own AnimationMixer; neither is
+    // allowed to animate another goat or mutate a cached template.
+    const skeleton = cloneSkeleton(gltf.scene);
+    const model = new THREE.Group();
+    model.name = 'rigged goat | ' + this.variantValue;
+    model.add(skeleton);
+    const mixer = new THREE.AnimationMixer(skeleton);
+    const actions = {} as Record<GoatClip, THREE.AnimationAction>;
+    for (const name of GOAT_CLIPS) {
+      const clip = gltf.animations.find(entry => entry.name.toLowerCase() === name.toLowerCase());
+      if (!clip) throw new Error(this.variantValue + ' GLB is missing clip ' + name);
+      actions[name] = mixer.clipAction(clip);
+    }
+    skeleton.traverse(object => {
+      if (object instanceof THREE.Mesh) {
+        object.castShadow = true;
+        object.receiveShadow = true;
+      }
+    });
+    this.root.add(model);
+    try {
+      model.updateWorldMatrix(true, true);
+      for (const name of MOUNT_NAMES) {
+        const bone = findMountBone(skeleton, name, model);
+        if (!bone) throw new Error('No bones available for ' + name + ' mount');
+        const p = ANCHOR_POINTS[name];
+        const at = model.localToWorld(new THREE.Vector3(p[0], p[1], p[2]));
+        bone.add(this.mounts[name]);
+        bone.updateWorldMatrix(true, false);
+        this.mounts[name].position.copy(bone.worldToLocal(at));
+        this.mounts[name].quaternion.identity();
+        this.mounts[name].scale.setScalar(1);
+      }
+      this.rig = {
+        model, skeleton, mixer, actions, shot: null, previewing: !this.bound,
+        weights: { Idle: 1, Walk: 0, Run: 0 },
+      };
+      this.configureActions(this.rig);
+      for (const part of this.legacyParts) part.removeFromParent();
+      this.root.name = 'Gigga-Goat | rigged ' + this.variantValue;
+      if (this.override?.remaining && this.bound) {
+        const clip = clipForAction(this.override.action);
+        if (clip === 'Jump' || clip === 'Headbutt' || clip === 'Bleat') {
+          this.startShot(this.rig, clip, this.override.remaining);
+        }
+      }
+      this.update(0, this.bound?.world.alpha);
+    } catch (error) {
+      this.restoreMounts();
+      model.removeFromParent();
+      throw error;
+    }
+  }
+
+  private configureActions(rig: Rig): void {
+    rig.mixer.stopAllAction();
+    rig.shot = null;
+    rig.previewing = !this.bound;
+    for (const clip of GOAT_CLIPS) {
+      const action = rig.actions[clip];
+      action.reset();
+      action.setLoop(THREE.LoopRepeat, Infinity);
+      action.clampWhenFinished = false;
+      action.setEffectiveTimeScale(1);
+      action.setEffectiveWeight(0);
+      if (!this.bound ? clip === this.previewClip :
+        (LOCOMOTION as readonly string[]).includes(clip)) action.play();
+    }
+    if (this.bound) {
+      rig.weights = { Idle: 1, Walk: 0, Run: 0 };
+      rig.actions.Idle.setEffectiveWeight(1);
     } else {
-      const length = action === 'flop' ? .17 : 1.75;
-      this.tip.set(0, -.20, -.36 - length * motion.tongueOut);
+      rig.actions[this.previewClip].setEffectiveWeight(1);
     }
-    this.direction.subVectors(this.tip, this.target);
-    const length = Math.max(.001, this.direction.length());
-    this.mesh.tongue.position.copy(this.target).addScaledVector(this.direction, .5);
-    this.mesh.tongue.quaternion.setFromUnitVectors(UP, this.direction.normalize());
-    this.mesh.tongue.scale.set(1, length, 1);
-    this.mesh.tongueTip.position.copy(this.tip);
+  }
+
+  private startShot(rig: Rig, clip: GoatOneShot, duration: number): void {
+    if (duration <= 0) return;
+    if (rig.shot) rig.actions[rig.shot.clip].stop();
+    const action = rig.actions[clip];
+    action.stop();
+    action.reset();
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.setEffectiveWeight(0);
+    action.setEffectiveTimeScale(action.getClip().duration / duration);
+    action.play();
+    rig.shot = { clip, duration, elapsed: 0 };
+  }
+
+  private restoreMounts(): void {
+    for (const name of MOUNT_NAMES) {
+      const mount = this.mounts[name];
+      const home = this.homes[name];
+      home.parent.add(mount);
+      mount.position.copy(home.position);
+      mount.quaternion.copy(home.quaternion);
+      mount.scale.copy(home.scale);
+    }
+  }
+
+  private clearRig(): void {
+    if (!this.rig) return;
+    const rig = this.rig;
+    this.restoreMounts();
+    rig.mixer.stopAllAction();
+    rig.mixer.uncacheRoot(rig.skeleton);
+    rig.model.removeFromParent();
+    this.rig = null;
+    for (const part of this.legacyParts) {
+      this.root.add(part);
+      part.visible = true;
+    }
+    this.root.name = 'Gigga-Goat | seven-body sculpt';
   }
 
   dispose(): void {
     if (this.disposed) return;
-    this.unsubscribe?.();
-    this.unsubscribe = null;
-    this.bound = null;
     this.disposed = true;
-    this.mesh.dispose();
+    this.generation++;
+    this.clearRig();
+    // The GLB template owns shared textures/materials/geometries. Do not
+    // dispose them per instance; other SkeletonUtils clones may use them.
+    this.legacy.dispose();
+    this.bound = null;
   }
 }
 
-/** Convenient typed constructor for core integration without owning the ragdoll. */
-export function createGoatCharacter(goat: GoatRagdoll): GoatCharacter {
-  return new GoatCharacter(goat);
+export function createGoatCharacter(
+  goat?: GoatRagdoll, options: GoatCharacterOptions = {},
+): GoatCharacter {
+  return new GoatCharacter(goat, options);
 }
-export { type GoatTier, type CharacterAction, type MotionFrame, type GoatSize };
+
+export { type GoatTier, type CharacterAction, type MotionFrame };
+export type { GoatCharacterOptions, GoatVariant, GoatClip } from './rigged';
