@@ -301,7 +301,7 @@ function makeSeaCave(island: IslandData, cave: PropDescriptor): THREE.Group {
     new THREE.DodecahedronGeometry(1, 0),
     new THREE.MeshLambertMaterial({
       color: 0xa8a8b0, flatShading: true, side: THREE.DoubleSide,
-      emissive: 0x33353b, emissiveIntensity: 0.35,
+      emissive: 0x747882, emissiveIntensity: 0.53,
     }), 13);
   rocks.name = 'lighthouse-cave-sunlit-arch-boulders';
   const dummy = new THREE.Object3D();
@@ -389,7 +389,7 @@ function instantiateLibraryModel(root: THREE.Object3D, placements: readonly Plac
     const material = rock
       ? new THREE.MeshLambertMaterial({
         color: STONE, side: THREE.DoubleSide, flatShading: true,
-        emissive: 0x303238, emissiveIntensity: 0.33,
+        emissive: 0x777b85, emissiveIntensity: 0.55,
       }) : object.material;
     const instanced = new THREE.InstancedMesh(geometry, material, placements.length);
     instanced.name = name + '-instanced-part';
@@ -415,7 +415,7 @@ function makeFallbackRocks(placements: readonly Placement[]): THREE.InstancedMes
   geometry.computeVertexNormals();
   const mesh = new THREE.InstancedMesh(geometry, new THREE.MeshLambertMaterial({
     color: 0xadb0b4, side: THREE.DoubleSide, flatShading: true,
-    emissive: 0x36383b, emissiveIntensity: 0.4,
+    emissive: 0x838791, emissiveIntensity: 0.58,
   }), placements.length);
   mesh.name = 'lighthouse-fallback-grey-rocks';
   const dummy = new THREE.Object3D();
