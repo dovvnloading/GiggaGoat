@@ -33377,6 +33377,87 @@
   "url": ""
  },
  {
+  "path": "assets/library/custom/baaardwalk/boardwalk-pier.glb",
+  "name": "Baa-ardwalk boardwalk-pier",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/baaardwalk/pier-rail.glb",
+  "name": "Baa-ardwalk pier-rail",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/baaardwalk/timber-pile.glb",
+  "name": "Baa-ardwalk timber-pile",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/baaardwalk/kiosk.glb",
+  "name": "Baa-ardwalk kiosk",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/baaardwalk/striped-awning.glb",
+  "name": "Baa-ardwalk striped-awning",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/baaardwalk/signboard.glb",
+  "name": "Baa-ardwalk signboard",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/baaardwalk/ferris-wheel.glb",
+  "name": "Baa-ardwalk ferris-wheel",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/baaardwalk/trampoline.glb",
+  "name": "Baa-ardwalk trampoline",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/baaardwalk/beach-ball.glb",
+  "name": "Baa-ardwalk beach-ball",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
   "path": "assets/library/custom/mt-gigga/satellite-dish.glb",
   "name": "mt-gigga satellite-dish",
   "source": "custom",

@@ -152,8 +152,10 @@ describe('aspect-preserving library model fitting', () => {
     const loader = vi.spyOn(GLTFLoader.prototype, 'loadAsync')
       .mockResolvedValue({ scene: source } as Awaited<ReturnType<GLTFLoader['loadAsync']>>);
     vi.stubGlobal('document', {});
+    // Containers now use authored custom GLBs; a Kenney crate still exercises
+    // the uniform-fit path without changing the source physics descriptor.
     const prop: PropDescriptor = {
-      id: 'container-fit', kind: 'container',
+      id: 'crate-fit', kind: 'crate',
       transform: { position: { x: 4, y: 5, z: -3 }, rotationY: 0 },
       size: { x: 4, y: 1, z: 1 },
       body: { type: 'static' }, shape: 'cuboid', collidable: false,
@@ -161,7 +163,7 @@ describe('aspect-preserving library model fitting', () => {
     };
     const visuals = buildPropVisuals([prop]);
     try {
-      const original = visuals.group.getObjectByName('props-container') as THREE.InstancedMesh;
+      const original = visuals.group.getObjectByName('props-crate') as THREE.InstancedMesh;
       const saved = new THREE.Matrix4();
       original.getMatrixAt(0, saved);
       await vi.waitFor(() => expect(visuals.group.userData['libraryReady']).toBe(true));
@@ -171,7 +173,7 @@ describe('aspect-preserving library model fitting', () => {
       expect(after.elements).toEqual(saved.elements);
       const allVisible = { intersectsSphere: () => true } as unknown as THREE.Frustum;
       visuals.updateCulling(new THREE.Vector3(4, 5, 17), allVisible, 500, () => false);
-      const near = visuals.group.getObjectByName('render-near-container') as THREE.InstancedMesh;
+      const near = visuals.group.getObjectByName('render-near-crate') as THREE.InstancedMesh;
       expect(near).toBeInstanceOf(THREE.InstancedMesh);
       expect(near.count).toBe(1);
       near.getMatrixAt(0, after);
@@ -182,7 +184,7 @@ describe('aspect-preserving library model fitting', () => {
       expect(bounds.getCenter(new THREE.Vector3()).x).toBeCloseTo(4, 5);
       expect(bounds.getCenter(new THREE.Vector3()).z).toBeCloseTo(-3, 5);
       visuals.updateCulling(new THREE.Vector3(4, 5, 120), allVisible, 500, () => false);
-      const far = visuals.group.getObjectByName('render-far-container') as THREE.InstancedMesh;
+      const far = visuals.group.getObjectByName('render-far-crate') as THREE.InstancedMesh;
       expect(far).toBeInstanceOf(THREE.InstancedMesh);
       // The same transform is reused when the far LOD becomes visible.
       expect(far.count).toBe(1);

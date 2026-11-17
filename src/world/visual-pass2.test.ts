@@ -74,7 +74,7 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
 
   it('does not draw cliff/grass outlines or cast a shadow per tiny prop', () => {
     for (const kind of ['rock', 'ledge', 'fence', 'rope-rail', 'grass-tuft',
-      'flower', 'bunting', 'awning', 'signboard']) {
+      'flower', 'bunting', 'awning', 'site-banner', 'signboard']) {
       expect(view.group.getObjectByName('outline-' + kind)).toBeUndefined();
     }
     expect(view.chunks.every(chunk => !chunk.castShadow)).toBe(true);
