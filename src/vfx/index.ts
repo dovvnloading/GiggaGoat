@@ -1,4 +1,4 @@
-/** Self-contained, renderer-agnostic running contact dust (Three.js only). */
+/** Self-contained cosmetic ground-contact effects (Three.js only). */
 export {
   RunningDustPuffs, createRunningDustPuffs,
   type RunningDustOptions,
@@ -7,3 +7,12 @@ export {
   groundDirection, makeDustBurst, sampleDustParticle, seededRandom,
   type DustFrame, type DustKind, type DustParticle, type Vec3Like,
 } from './dustMath';
+
+export {
+  LandingImpactRing, createLandingImpactRing,
+  type LandingImpactRingOptions,
+} from './LandingImpactRing';
+export {
+  LANDING_DEBRIS_COUNT, makeLandingRingBurst, sampleLandingRing, sampleLandingDebris,
+  type LandingRingBurst, type LandingRingFrame, type LandingDebrisFrame,
+} from './landingRingMath';

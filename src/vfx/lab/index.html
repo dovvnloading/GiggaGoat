@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#78449a" />
-  <title>GIGGA-GOAT · Running Dust Puffs VFX Lab</title>
+  <title>GIGGA-GOAT · Dust &amp; Landing Ring VFX Lab</title>
   <style>
     :root { font: 14px/1.48 ui-rounded, system-ui, sans-serif; color: #463151;
       background: #fff6ef; accent-color: #8650a3; }
@@ -39,6 +39,8 @@
       background: #fff4e9; border: 1px solid #dcc8ce; }
     .crop img { display: block; max-width: none; width: 400%; height: auto;
       transform: translateY(-11.4%); }
+    .crop--landing img { transform: translate(-25%, -11.4%); }
+    .landing-reference { margin-top: 15px; }
     figcaption { color: #7c607d; font-size: 11px; padding-top: 8px; }
     figure { margin: 0; }
     label { font-size: 12px; font-weight: 780; display: block; margin: 14px 0 6px; }
@@ -72,35 +74,42 @@
 </head>
 <body>
   <header>
-    <h1><span>GIGGA-GOAT</span> · Running Dust Puffs</h1>
-    <p>01 / GAME VFX LAB · approved visual target · real Three.js, no added packages</p>
+    <h1><span>GIGGA-GOAT</span> · Dust + Landing Ring</h1>
+    <p>01–02 / GAME VFX LAB · approved visual targets · real Three.js, no added packages</p>
   </header>
   <main>
-    <section class="panel stage" aria-label="Live running goat and dust effect">
-      <h2>Live 3D dust preview · drag to orbit / scroll to zoom</h2>
-      <canvas id="stage" tabindex="0" aria-label="Three-dimensional running goat with animated dust puffs"></canvas>
+    <section class="panel stage" aria-label="Live running goat, dust puffs and landing ring effects">
+      <h2>Live 3D dust + landing ring · drag to orbit / scroll to zoom</h2>
+      <canvas id="stage" tabindex="0" aria-label="Three-dimensional goat with dust puffs and gold landing shockwave rings"></canvas>
       <div class="overlay">
-        <span id="state" role="status">Running / 0 visible puffs</span>
-        <span>Contact → motes → cream cloud → fade</span>
+        <span id="state" role="status">Running / 0 dust sprites / 0 landing rings</span>
+        <span>Impact → gold ellipse → jagged ring → fade</span>
       </div>
     </section>
     <aside aria-label="Controls and approved VFX comparison">
       <section class="panel">
-        <h2>Approved panel · top left only</h2>
+        <h2>Approved panels · top row</h2>
         <div class="content">
           <figure>
             <div class="crop">
               <img src="../../../docs/art/hifi/23_vfx_sheet.png"
                 alt="Approved Running Dust Puffs panel: running goat, peach-colored rounded dust cloud, scattered airborne flecks and four expanding stages." />
             </div>
-            <figcaption>Original sheet 23 · same cream/apricot palette, bobbled silhouettes and flecks.</figcaption>
+            <figcaption>01 · Running Dust Puffs: warm overlapping cream/apricot clouds.</figcaption>
+          </figure>
+          <figure class="landing-reference">
+            <div class="crop crop--landing">
+              <img src="../../../docs/art/hifi/23_vfx_sheet.png"
+                alt="Approved Landing Impact Ring panel: goat landing on a bright golden ring, rising sharp spikes, scattered rocks, and three expanding ellipse phases." />
+            </div>
+            <figcaption>02 · Landing Impact Ring: ivory outline → golden jagged shockwave.</figcaption>
           </figure>
         </div>
       </section>
       <section class="panel">
         <h2>Art direction / motion</h2>
         <div class="content">
-          <p>The actual in-game Three.js effect is used here. Each hoof contact emits an independent, pooled burst behind the travel vector.</p>
+          <p>Both reusable Three.js effects run here. Dust trails behind sprinting hooves; a golden impact ring pulses beneath the goat on landings or on demand.</p>
           <label for="direction">Run direction</label>
           <select id="direction">
             <option value="left" selected>← Left (reference)</option>
@@ -109,17 +118,21 @@
           <label for="rate">Footfall cadence · <output id="rate-value">8.0/s</output></label>
           <input id="rate" type="range" min="2" max="12" step="0.5" value="8" />
           <div class="mini"><span>Slow trot</span><span>Full sprint</span></div>
+          <label for="impact-strength">Landing impact strength · <output id="impact-strength-value">1.5</output></label>
+          <input id="impact-strength" type="range" min="0.25" max="4" step="0.25" value="1.5" />
+          <div class="mini"><span>Soft touchdown</span><span>Heavy landing</span></div>
           <div class="buttons">
             <button id="pause" class="primary" type="button" aria-pressed="false">Pause motion</button>
             <button id="burst" type="button">Single hoof puff</button>
           </div>
-          <button id="clear" class="full" type="button">Clear particles</button>
-          <div class="phases" aria-label="Approved animation phases">
-            <span>① Motes</span><b>›</b><span>② Cluster</span><b>›</b><span>③ Cloud</span><b>›</b><span>④ Fade</span>
+          <button id="landing" class="full primary" type="button">Trigger landing impact ring</button>
+          <button id="clear" class="full" type="button">Clear effects</button>
+          <div class="phases" aria-label="Landing impact ring progression">
+            <span>① Ivory ellipse</span><b>›</b><span>② Gold halo</span><b>›</b><span>③ Jagged shockwave</span><b>›</b><span>④ Fade</span>
           </div>
         </div>
       </section>
-      <div class="note">The dust is cosmetic only: no physics forces, no new runtime dependencies, and no main-game changes. The original sheet is bundled into this production lab by Vite.</div>
+      <div class="note">Both effects are cosmetic only: no physics forces, no new runtime dependencies or main-game changes. Auto-landings pulse every 1.65 seconds; pause and trigger a ring to inspect its shape. The approved sheet remains bundled by Vite.</div>
     </aside>
   </main>
   <footer>Production lab URL: /src/vfx/lab/index.html · This page is not development-gated.</footer>
