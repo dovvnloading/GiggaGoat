@@ -33114,5 +33114,14 @@
   "license": "CC0",
   "credit": "Gigga-Goat (original, built in Blender)",
   "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-props/daisies.glb",
+  "name": "Hoofington daisies",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
  }
 ]
