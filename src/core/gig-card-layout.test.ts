@@ -46,7 +46,16 @@ class ElementStub {
 }
 
 type Rect = { left: number; top: number; right: number; bottom: number; width: number; height: number };
+type Paint = {
+  opacity: string; filter: string; transform: string;
+  textShadow: string; color: string; fontFamily: string;
+};
 type Geometry = {
+  styles: {
+    card: Paint; detail: Paint; footer: Paint; wallet: Paint;
+    balance: Paint; mode: Paint; coin: Paint;
+    artworkFilter: string; coinWidth: string; coinHeight: string; coinFit: string;
+  };
   boxes: Record<'card' | 'header' | 'paper' | 'title' | 'task' | 'detail' | 'footer' | 'wallet' | 'mode' | 'checkbox', Rect>;
   paperFits: boolean;
   taskFits: boolean;
@@ -105,7 +114,22 @@ function measureHud(width: number, height: number, active: boolean, longCopy: bo
     const task = card.querySelector('.gg-gig-task');
     const detail = card.querySelector('.gg-gig-detail');
     const footer = card.querySelector('.gg-gig-footer');
-    const result = { boxes,
+    const paint = element => {
+      const style = getComputedStyle(element);
+      return { opacity: style.opacity, filter: style.filter, transform: style.transform,
+        textShadow: style.textShadow, color: style.color, fontFamily: style.fontFamily };
+    };
+    const coin = card.querySelector('.gg-coin');
+    const coinStyle = getComputedStyle(coin);
+    const styles = {
+      card: paint(card), detail: paint(detail), footer: paint(footer),
+      wallet: paint(card.querySelector('.gg-gig-wallet')),
+      balance: paint(card.querySelector('[data-wallet]')),
+      mode: paint(card.querySelector('[data-mode]')), coin: paint(coin),
+      artworkFilter: getComputedStyle(card, '::before').filter,
+      coinWidth: coinStyle.width, coinHeight: coinStyle.height, coinFit: coinStyle.objectFit
+    };
+    const result = { boxes, styles,
       paperFits: paper.scrollHeight <= paper.clientHeight + 1,
       taskFits: task.scrollHeight <= task.clientHeight + 1,
       detailFits: detail.scrollHeight <= detail.clientHeight + 1,
@@ -146,6 +170,30 @@ function inside(inner: Rect, outer: Rect, tolerance = 1): boolean {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('live gig card text box geometry (headless browser DOM)', () => {
+  it.each([[1280, 720], [1512, 797], [1920, 1080]])(
+    'paints the footer crisp, opaque and dark at %ix%i', (width, height) => {
+      const { styles } = measureHud(width, height, false, false);
+      for (const text of [styles.footer, styles.wallet, styles.balance, styles.mode]) {
+        expect(text.opacity).toBe('1');
+        expect(text.filter).toBe('none');
+        expect(text.transform).toBe('none');
+        expect(text.textShadow).toBe('none');
+        expect(text.color).toBe('rgb(78, 49, 43)');
+        expect(text.fontFamily).toBe(styles.detail.fontFamily);
+      }
+      // The panel PNG still casts its shadow, but no filtered ancestor
+      // can blur the footer text or downsample the original coin sprite.
+      expect(styles.card.filter).toBe('none');
+      expect(styles.card.transform).toBe('none');
+      expect(styles.artworkFilter).toContain('drop-shadow(');
+      expect(styles.coin.opacity).toBe('1');
+      expect(styles.coin.filter).toBe('none');
+      expect(styles.coin.transform).toBe('none');
+      expect(styles.coinWidth).toBe('18px');
+      expect(styles.coinHeight).toBe('18px');
+      expect(styles.coinFit).toBe('contain');
+    }, 20_000,
+  );
   it.each([[1280, 720], [1512, 797], [1920, 1080]])(
     'keeps YOUR NEXT GIG clear of the painted ribbon at %ix%i', (width, height) => {
       const g = measureHud(width, height, false, false);
