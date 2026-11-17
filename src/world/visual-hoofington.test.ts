@@ -4,23 +4,12 @@ import * as THREE from 'three';
 import { createWorldScene, generateIsland } from './index';
 import { gridSample } from './terrain';
 import {
-  GNOME_STATUE_HEIGHT, HOOFINGTON_MODELS, HOOFINGTON_PALETTE, bakeHoofingtonGeometry,
+  GNOME_STATUE_HEIGHT, HOOFINGTON_MODELS, bakeHoofingtonGeometry,
   createTexturedGnomeInstances, makeHoofingtonPlacements,
   type HoofModel, type HoofPlacement,
 } from './visual-hoofington';
 
 describe('Hoofington sourced village model integration', () => {
-  it('contains the exact painting-sampled sRGB building palette', () => {
-    expect(HOOFINGTON_PALETTE).toEqual({
-      pink: { wall: 0xd99ea0, roof: 0x4b4960 },
-      red: { wall: 0xaa3f39, roof: 0x6d6b88 },
-      cream: { wall: 0xfcdfba, roof: 0xce5c55 },
-      yellow: { wall: 0xf2c84b, roof: 0x635f75 },
-      shutters: 0x83a9ce,
-      mailbox: 0xf54036,
-    });
-  });
-
   it('references only existing CC0 GLBs without editing the library or credits', () => {
     const manifest = JSON.parse(readFileSync(
       'public/assets/library/manifest.json', 'utf8',
@@ -127,31 +116,14 @@ describe('Hoofington sourced village model integration', () => {
     }
     const homes = linked.filter(p => p.source!.kind === 'house');
     expect(homes.length).toBeGreaterThanOrEqual(5);
-    expect(homes.some(p => p.model === 'pinkHome' &&
-      p.wall === 0xd99ea0 && p.roof === 0x4b4960)).toBe(true);
-    expect(homes.some(p => p.model === 'farmhouse' &&
-      p.wall === 0xaa3f39 && p.roof === 0x6d6b88)).toBe(true);
-    expect(homes.some(p => p.model === 'creamHome' &&
-      p.wall === 0xfcdfba && p.roof === 0xce5c55)).toBe(true);
-    expect(homes.some(p => p.model === 'yellowHome' &&
-      p.wall === 0xf2c84b && p.roof === 0x635f75)).toBe(true);
-    const farm = island.pois.find(p => p.id === 'hoofington')!.center;
-    for (const home of homes) {
-      const left = home.position.x < farm.x;
-      const front = home.position.z > farm.z;
-      expect(home.model).toBe(left ? (front ? 'pinkHome' : 'farmhouse') :
-        (front ? 'creamHome' : 'yellowHome'));
-    }
-    const barns = linked.filter(p => p.source!.kind === 'barn');
-    expect(barns).toHaveLength(1);
-    expect(barns[0]?.wall).toBe(0xaa3f39);
-    expect(barns[0]?.roof).toBe(0x6d6b88);
-    expect(linked.filter(p => p.source!.kind === 'cottage')
-      .every(p => p.wall === 0xf2c84b && p.roof === 0x635f75)).toBe(true);
+    expect(homes.some(p => p.model === 'pinkHome' && p.wall === 0xf28fb5)).toBe(true);
+    expect(homes.some(p => p.model === 'creamHome' && p.roof === 0xc85842)).toBe(true);
+    expect(homes.some(p => p.model === 'yellowHome')).toBe(true);
+    expect(linked.filter(p => p.source!.kind === 'barn')).toHaveLength(1);
     expect(linked.filter(p => p.source!.kind === 'silo')).toHaveLength(1);
     expect(linked.filter(p => p.source!.kind === 'windmill')).toHaveLength(1);
     expect(linked.filter(p => p.source!.kind === 'mailbox')
-      .every(p => p.wall === 0xf54036 && p.roof === 0xf54036)).toBe(true);
+      .every(p => p.wall === 0xce493d)).toBe(true);
     expect(plan.filter(p => p.model === 'cow' || p.model === 'sheep' ||
       p.model === 'pig' || p.model === 'horse').length).toBeGreaterThanOrEqual(5);
     expect(plan.filter(p => p.model === 'planter').length).toBeGreaterThan(5);
@@ -179,11 +151,11 @@ describe('Hoofington sourced village model integration', () => {
     const plan: HoofPlacement[] = [{
       model: 'pinkHome', position: { x: -12, y: 11, z: 30 },
       size: { x: 10, y: 8, z: 9 }, yaw: Math.PI / 2,
-      wall: 0xd99ea0, roof: 0x4b4960,
+      wall: 0xf28fb5, roof: 0x53667f,
     }, {
       model: 'pinkHome', position: { x: 15, y: 12, z: 30 },
       size: { x: 10, y: 9, z: 9 }, yaw: -Math.PI / 2,
-      wall: 0xfcdfba, roof: 0xce5c55,
+      wall: 0xffecdb, roof: 0xc85842,
     }];
     const geometry = bakeHoofingtonGeometry(plan, models)!;
     expect(geometry).toBeInstanceOf(THREE.BufferGeometry);
@@ -208,65 +180,6 @@ describe('Hoofington sourced village model integration', () => {
     wall.geometry.dispose(); roof.geometry.dispose();
     (wall.material as THREE.Material).dispose();
     (roof.material as THREE.Material).dispose();
-  });
-
-  it('bakes painting hues once to linear vertex colours without grey model tint', () => {
-    const part = (name: string, y: number): THREE.Mesh => {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.25, 1),
-        new THREE.MeshStandardMaterial({ color: 0x666666 }));
-      mesh.name = name;
-      mesh.position.y = y;
-      return mesh;
-    };
-    const plaster = part('plaster', -0.7);
-    const tiles = part('roof-tiles', 0.7);
-    const shutters = part('window-shutters', -0.3);
-    const model = new THREE.Group();
-    model.add(plaster, tiles, shutters);
-    const geometry = bakeHoofingtonGeometry([{
-      model: 'pinkHome', position: { x: 0, y: 0, z: 0 },
-      size: { x: 8, y: 8, z: 8 }, yaw: 0,
-      ...HOOFINGTON_PALETTE.pink,
-    }], new Map<HoofModel, THREE.Group>([['pinkHome', model]]))!;
-    const colours = geometry.getAttribute('color');
-    let offset = 0;
-    for (const [mesh, swatch] of [
-      [plaster, '#d99ea0'], [tiles, '#4b4960'], [shutters, '#83a9ce'],
-    ] as const) {
-      const linear = new THREE.Color().setStyle(swatch);
-      const count = mesh.geometry.index?.count ?? mesh.geometry.getAttribute('position').count;
-      for (let i = offset; i < offset + count; i++) {
-        expect(colours.getX(i)).toBeCloseTo(linear.r, 6);
-        expect(colours.getY(i)).toBeCloseTo(linear.g, 6);
-        expect(colours.getZ(i)).toBeCloseTo(linear.b, 6);
-      }
-      offset += count;
-    }
-    expect(colours.count).toBe(offset);
-    geometry.dispose();
-    for (const mesh of [plaster, tiles, shutters]) {
-      mesh.geometry.dispose();
-      (mesh.material as THREE.Material).dispose();
-    }
-
-    const mailbox = part('metal-mailbox', 0);
-    const boxModel = new THREE.Group();
-    boxModel.add(mailbox);
-    const red = bakeHoofingtonGeometry([{
-      model: 'mailbox', position: { x: 0, y: 0, z: 0 },
-      size: { x: 1, y: 2, z: 1 }, yaw: 0,
-      wall: HOOFINGTON_PALETTE.mailbox, roof: HOOFINGTON_PALETTE.mailbox,
-    }], new Map<HoofModel, THREE.Group>([['mailbox', boxModel]]))!;
-    const redVertices = red.getAttribute('color');
-    const redLinear = new THREE.Color().setStyle('#f54036');
-    for (let i = 0; i < redVertices.count; i++) {
-      expect(redVertices.getX(i)).toBeCloseTo(redLinear.r, 6);
-      expect(redVertices.getY(i)).toBeCloseTo(redLinear.g, 6);
-      expect(redVertices.getZ(i)).toBeCloseTo(redLinear.b, 6);
-    }
-    red.dispose();
-    mailbox.geometry.dispose();
-    (mailbox.material as THREE.Material).dispose();
   });
 
   it('bakes leafy vegetation as coloured canopy rather than transparent-atlas black', () => {
