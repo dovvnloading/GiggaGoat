@@ -13,6 +13,7 @@ the model's own colours (no repaint).
 | windmill.glb | (native, fit to collider) | Quaternius CC0 windmill painted per part: white plaster tower #f3eee6, terracotta cap and balcony #d65a43, wood sails #c89a63 |
 | tree-round-a/b/c.glb | (native ~6 x 6 x 6 m, fit to collider) | painting-style round tree: brown trunk, puffy two-tone canopy of solid blobs, no alpha leaf cards (QA P5) |
 | bush-round-a/b.glb | (native ~1.8 x 1.8 x 1.1 m) | puffy solid bush, three greens |
+| daisies.glb | 0.65 x 0.72 x 0.65 m frame | low leafy clump with seven white daisies on stems; replaces the noisy grass-tuft cones (QA P6) |
 | mailbox.glb | 1.3 x 2.2 x 1.0 m | red US mailbox (#e4473a) on a 1 m wood post, yellow flag; door faces glTF +Z |
 
 The street lamp (`../../usdcraft/street-lamp-lantern.glb`) uses the same method: 4.2 m lantern lamp with an
