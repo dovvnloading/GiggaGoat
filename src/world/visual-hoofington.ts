@@ -19,19 +19,23 @@ export const HOOFINGTON_MODELS = {
   farmhouse: 'assets/library/custom/hoofington-houses/house-c-white.glb',
   cottage: 'assets/library/custom/hoofington-houses/house-r-sky.glb',
   barn: 'assets/library/polypizza/barn/barn_A6UkPq33aZ.glb',
-  silo: 'assets/library/quaternius/farm-buildings-bundle/silo_5GhLrv5Ce3.glb',
-  windmill: 'assets/library/quaternius/farm-buildings-bundle/tower-windmill_52yaPyaAAG.glb',
-  fence: 'assets/library/kenney/city-kit-suburban/fence-1x4.glb',
-  mailbox: 'assets/library/polypizza/mailbox/mailbox_2olZ0G8iur.glb',
+  silo: 'assets/library/custom/hoofington-props/silo.glb',
+  windmill: 'assets/library/custom/hoofington-props/windmill.glb',
+  fence: 'assets/library/custom/hoofington-props/picket-fence.glb',
+  mailbox: 'assets/library/custom/hoofington-props/mailbox.glb',
   bench: 'assets/library/quaternius/medieval-village-pack/bench_7uSlZo3n9Y.glb',
   gnome: 'assets/library/meshy/garden-gnome/garden-gnome.glb',
   playPad: 'assets/library/kenney/platformer-kit/spring.glb',
   lamp: 'assets/library/kenney/city-kit-roads/light-curved.glb',
-  banner: 'assets/library/kenney/fantasy-town-kit/banner-red.glb',
   planter: 'assets/library/kenney/city-kit-suburban/planter.glb',
-  flower: 'assets/library/kenney/nature-kit/flower_purpleA.glb',
-  bush: 'assets/library/quaternius/stylized-nature-megakit/bush-with-flowers_U1ymDy8tbY.glb',
-  oak: 'assets/library/quaternius/stylized-nature-megakit/tree_QVOop92WmG.glb',
+  flowerPink: 'assets/library/custom/hoofington-props/flowers-pink.glb',
+  flowerPurple: 'assets/library/custom/hoofington-props/flowers-purple.glb',
+  flowerSunny: 'assets/library/custom/hoofington-props/flowers-sunny.glb',
+  bushA: 'assets/library/custom/hoofington-props/bush-round-a.glb',
+  bushB: 'assets/library/custom/hoofington-props/bush-round-b.glb',
+  oakA: 'assets/library/custom/hoofington-props/tree-round-a.glb',
+  oakB: 'assets/library/custom/hoofington-props/tree-round-b.glb',
+  oakC: 'assets/library/custom/hoofington-props/tree-round-c.glb',
   pine: 'assets/library/kenney/nature-kit/tree_pineTallA.glb',
   hay: 'assets/library/quaternius/medieval-village-pack/hay_Yu8TOERkpw.glb',
   cow: 'assets/library/quaternius/farm-animal-pack/cow_5XSc2Fka3F.glb',
@@ -41,12 +45,23 @@ export const HOOFINGTON_MODELS = {
 } as const;
 export type HoofModel = keyof typeof HOOFINGTON_MODELS;
 
+const FLOWER_VARIANTS = ['flowerPink', 'flowerPurple', 'flowerSunny'] as const;
+const BUSH_VARIANTS = ['bushA', 'bushB'] as const;
+const OAK_VARIANTS = ['oakA', 'oakB', 'oakC'] as const;
+
+// Blender already authored these colours. Guard the generic baker against
+// accidental wall/roof overrides even if a caller supplies legacy paint.
+const UNPAINTED_HOOF_MODELS = new Set<string>([
+  'barn', 'silo', 'windmill', 'fence', 'mailbox',
+  ...FLOWER_VARIANTS, ...BUSH_VARIANTS, ...OAK_VARIANTS,
+]);
+
 export interface HoofPlacement<Model extends string = HoofModel> {
   model: Model;
   position: Vec3;
   size: Vec3;
   yaw: number;
-  /** Pastel plaster / contrasting tiled roof; baked into vertex colours. */
+  /** Optional legacy overrides; Blender-painted Hoofington props never use these. */
   wall?: number;
   roof?: number;
   /** Original descriptor/collider is retained; only its old art is hidden. */
@@ -62,26 +77,18 @@ export interface HoofingtonVisuals {
   dispose(): void;
 }
 
-const PALETTES = {
-  pink: { wall: 0xf28fb5, roof: 0x54647f },
-  cream: { wall: 0xffecdb, roof: 0xc85842 },
-  yellow: { wall: 0xf3d15d, roof: 0x526c82 },
-  blue: { wall: 0xaed9eb, roof: 0x57657a },
-  red: { wall: 0xde5343, roof: 0x596778 },
-};
-
 /** A deterministic village art plan that does not touch RNG or physics. */
 export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
   const farm = island.pois.find(p => p.id === 'hoofington')!.center;
   const scale = island.size / 600;
   const plan: HoofPlacement[] = [];
+  let flowerIndex = 0, bushIndex = 0, oakIndex = 0;
 
   for (const prop of island.props) {
     if (prop.poiId !== 'hoofington' || prop.kind === 'hay-bale') continue;
     const dx = (prop.transform.position.x - farm.x) / scale;
     const dz = (prop.transform.position.z - farm.z) / scale;
     let model: HoofModel | null = null;
-    let paint: { wall?: number; roof?: number } = {};
     switch (prop.kind) {
       // Houses are pre-painted per part (walls, roof, trim, glass, door,
       // shutters, window boxes) in their GLBs; never repaint them here.
@@ -92,60 +99,55 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
         else model = 'farmhouse';
         break;
       case 'cottage': model = 'cottage'; break;
-      case 'barn': model = 'barn'; paint = PALETTES.red; break;
-      case 'silo': model = 'silo'; paint = { wall: 0xf6ead8, roof: 0xce5648 }; break;
-      case 'windmill': model = 'windmill'; paint = { wall: 0xffeedc, roof: 0xc75c48 }; break;
-      case 'fence': model = 'fence'; paint = { wall: 0xfff8e9 }; break;
-      case 'mailbox': model = 'mailbox';
-        paint = { wall: 0xce493d, roof: 0xc84338 }; break;
+      case 'barn': model = 'barn'; break;
+      case 'silo': model = 'silo'; break;
+      case 'windmill': model = 'windmill'; break;
+      case 'fence': model = 'fence'; break;
+      case 'mailbox': model = 'mailbox'; break;
       case 'bench': model = 'bench'; break;
       case 'gnome': model = 'gnome'; break;
       case 'trampoline': model = 'playPad'; break;
       case 'lamp': model = 'lamp'; break;
       case 'planter': model = 'planter'; break;
-      case 'flower': model = 'flower'; break;
-      case 'bush': model = 'bush'; break;
-      case 'tree-oak': model = 'oak'; break;
+      case 'flower': model = FLOWER_VARIANTS[flowerIndex++ % FLOWER_VARIANTS.length]; break;
+      case 'bush': model = BUSH_VARIANTS[bushIndex++ % BUSH_VARIANTS.length]; break;
+      case 'tree-oak': model = OAK_VARIANTS[oakIndex++ % OAK_VARIANTS.length]; break;
       case 'tree-pine': model = 'pine'; break;
       default: break;
     }
     if (model) plan.push({
       model, source: prop, position: prop.transform.position,
-      size: prop.size, yaw: prop.transform.rotationY, ...paint,
+      size: prop.size, yaw: prop.transform.rotationY,
     });
   }
 
   function scatter(model: HoofModel, dx: number, dz: number,
     width: number, height: number, depth: number,
-    yaw = 0, paint: { wall?: number; roof?: number } = {}): void {
+    yaw = 0): void {
     const x = farm.x + dx * scale, z = farm.z + dz * scale;
     const h = height * scale;
     plan.push({
       model, position: { x, y: gridSample(island, x, z) + h / 2, z },
-      size: { x: width * scale, y: h, z: depth * scale }, yaw, ...paint,
+      size: { x: width * scale, y: h, z: depth * scale }, yaw,
     });
   }
 
   // The painting reads from +Z along the street toward the mountain:
   // large shady trees at the edges, flowers against front windows,
-  // livestock and hay behind the white fence, banners on the lamp posts.
-  scatter('oak', -52, 35, 12, 17, 12);
-  scatter('oak', 53, -10, 12, 18, 12);
-  scatter('oak', 49, 42, 11, 15, 11);
-  scatter('bush', -16, 30, 3, 2, 3);
-  scatter('bush', 17, 30, 3, 2, 3);
+  // livestock and hay behind the white fence.
+  scatter(OAK_VARIANTS[oakIndex++ % OAK_VARIANTS.length]!, -52, 35, 12, 17, 12);
+  scatter(OAK_VARIANTS[oakIndex++ % OAK_VARIANTS.length]!, 53, -10, 12, 18, 12);
+  scatter(OAK_VARIANTS[oakIndex++ % OAK_VARIANTS.length]!, 49, 42, 11, 15, 11);
+  scatter(BUSH_VARIANTS[bushIndex++ % BUSH_VARIANTS.length]!, -16, 30, 3, 2, 3);
+  scatter(BUSH_VARIANTS[bushIndex++ % BUSH_VARIANTS.length]!, 17, 30, 3, 2, 3);
   for (const side of [-1, 1]) {
     for (const dz of [10, 28]) {
       scatter('planter', side * 16, dz, 1.5, 0.85, 1.05,
         Math.PI / 2);
       for (const colorOffset of [-0.48, 0.48]) {
-        scatter('flower', side * 15.3 + colorOffset, dz,
+        scatter(FLOWER_VARIANTS[flowerIndex++ % FLOWER_VARIANTS.length]!, side * 15.3 + colorOffset, dz,
           0.65, 0.72, 0.65);
       }
-    }
-    for (const dz of [-30, 0, 30]) {
-      scatter('banner', side * 9.4, dz, 1.3, 2.2, 0.17,
-        side < 0 ? 0 : Math.PI);
     }
   }
   for (const [dx, dz, yaw] of [
@@ -216,14 +218,14 @@ export function bakeLibraryGeometry<Model extends string>(
     if (bounds.isEmpty()) continue;
     const span = bounds.getSize(new THREE.Vector3());
     if (Math.min(span.x, span.y, span.z) <= 0.00001) continue;
-    // Nature-kit leaves frequently use alpha-cutout atlases. Sampling only
-    // their triangle vertices hits transparent black texels (black hedges).
-    // These stylized foliage models are instead painted by part/height into
-    // solid green and blossom colours; they still occupy one merged draw.
-    const foliageModel = placement.model === 'oak' || placement.model === 'pine' ||
-      placement.model === 'bush' || placement.model === 'flower';
-    const wallColor = placement.wall === undefined ? null : body.setHex(placement.wall).clone();
-    const roofColor = placement.roof === undefined ? null : roof.setHex(placement.roof).clone();
+    // Only the legacy alpha-cutout pine needs height-based paint. The new
+    // round trees, bushes and flower clumps retain their authored materials.
+    const foliageModel = placement.model === 'pine';
+    const allowPaint = !UNPAINTED_HOOF_MODELS.has(placement.model);
+    const wallColor = !allowPaint || placement.wall === undefined
+      ? null : body.setHex(placement.wall).clone();
+    const roofColor = !allowPaint || placement.roof === undefined
+      ? null : roof.setHex(placement.roof).clone();
     quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), placement.yaw);
     root.traverse(object => {
       if (!(object instanceof THREE.Mesh)) return;
@@ -288,16 +290,8 @@ export function bakeLibraryGeometry<Model extends string>(
             }
           }
           const hint = (mesh.name + ' ' + material.name).toLowerCase();
-          if (placement.model === 'oak') {
-            tint.setHex(height > 0.28 ? 0x72b94d : 0x916947);
-          } else if (placement.model === 'pine') {
+          if (placement.model === 'pine') {
             tint.setHex(height > 0.23 ? 0x478f62 : 0x8d694b);
-          } else if (placement.model === 'bush') {
-            // Many bundled shrubs use 'flower' in the name for every leaf
-            // mesh. Keep the canopy green; separate flower GLBs add blossoms.
-            tint.setHex(0x6db85b);
-          } else if (placement.model === 'flower') {
-            tint.setHex(height > 0.38 ? 0xc68ee6 : 0x6ba955);
           } else if (placement.model === 'planter') {
             // Sourced planters use an alpha atlas with black padding at the
             // leaf tips; keep the pot terracotta and the leaves lively green.
