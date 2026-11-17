@@ -3,6 +3,7 @@ import {
   createWorldScene, type PropDescriptor, type WorldScene,
 } from '../world';
 import { V, type Vec3 } from '../physics';
+import { SKY_HORIZON_COLOR } from '../world/visual-sky';
 import { DEFAULT_SETTINGS, type GameSettings } from './Persistence';
 import { AdaptiveResolution } from './AdaptiveResolution';
 import { GRAPHICS_PRESETS, type GraphicsQuality } from './GraphicsQuality';
@@ -115,7 +116,7 @@ export class GameView {
     host.appendChild(this.renderer.domElement);
     this.camera.position.set(0, 5, 8);
     this.scene.background = new THREE.Color(0x87c5f0);
-    this.scene.fog = new THREE.FogExp2(0xb8deef, .0016);
+    this.scene.fog = new THREE.FogExp2(SKY_HORIZON_COLOR, .0016);
     this.world = createWorldScene(game.island, { chunkSegments: 24, cullingDistance: 340 });
     this.scene.add(this.world.group);
     this.world.sun.castShadow = true;
