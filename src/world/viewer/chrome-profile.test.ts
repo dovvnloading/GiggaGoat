@@ -336,7 +336,7 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
       console.log('WORLD_LOD_COMPARE ' + JSON.stringify(
         (['08', '11', '14'] as const).map(id => ({
           id, before: baseline[id],
-          after: report.bookmarks.find(mark => mark.id === id),
+          after: report!.bookmarks.find(mark => mark.id === id),
         }))));
 
     } finally {
