@@ -1,16 +1,15 @@
 import * as THREE from 'three';
-import type { RigidBody } from '@dimforge/rapier3d-compat';
 import {
   createWorldScene, type PropDescriptor, type WorldScene,
 } from '../world';
-import { V, type Vec3, type GoatRagdoll } from '../physics';
+import { V, type Vec3 } from '../physics';
 import type { GameSettings } from './Persistence';
 import { type BuildPiece, type PieceType } from '../gameplay';
 import { Game } from './Game';
+import { GameCharacters } from './GameCharacters';
 import { GameInput } from './GameInput';
 import { GameHud } from './GameHud';
 
-interface GoatVisual { part: THREE.Group; body: RigidBody }
 interface PropVisual { mesh: THREE.InstancedMesh; index: number; prop: PropDescriptor }
 const MATERIALS: Record<PieceType, number> = {
   floor: 0xf2c14f, wall: 0xe8aa57, ramp: 0xc9924f, 'launch-pad': 0xff891e,
@@ -27,15 +26,7 @@ export class GameView {
   readonly world: WorldScene;
   readonly input: GameInput;
   readonly hud: GameHud;
-  private readonly goatParts: GoatVisual[] = [];
-  private readonly botParts = new Map<string, GoatVisual[]>();
-  private readonly botMaterials = new Map<string, THREE.Material>();
-  private readonly botGeometry = new THREE.SphereGeometry(1, 10, 7);
-  private readonly botEyes = new THREE.SphereGeometry(1, 8, 6);
-  private readonly botHorns = new THREE.ConeGeometry(.5, 1, 7);
-  private readonly botEyeMaterial = new THREE.MeshToonMaterial({ color: 0x302b43 });
-  private readonly botHornMaterial = new THREE.MeshToonMaterial({ color: 0xffe9c4 });
-  private readonly botMuzzleMaterial = new THREE.MeshToonMaterial({ color: 0xfff5df });
+  readonly characters: GameCharacters;
   private readonly boardMarkers = new THREE.Group();
   private readonly gigMarkers = new THREE.Group();
   private readonly partyMarkers = new THREE.Group();
@@ -53,8 +44,6 @@ export class GameView {
   private readonly buildVisuals = new Map<number, THREE.Mesh>();
   private readonly debrisVisuals = new Map<number, THREE.Mesh>();
   private readonly markers = new THREE.Group();
-  private readonly goatMaterials: THREE.Material[] = [];
-  private readonly ownedGeometries: THREE.BufferGeometry[] = [];
   private readonly debrisGeometry = new THREE.BoxGeometry(1, 1, 1);
   private readonly debrisMaterial = new THREE.MeshToonMaterial({ color: 0xd6b36f });
   private readonly cameraTarget = new THREE.Vector3();
@@ -91,7 +80,7 @@ export class GameView {
     this.scene.add(this.world.sun.target);
     this.input = new GameInput(this.renderer.domElement, game.island.spawns[0]!.heading);
     this.hud = new GameHud(host);
-    this.createGoat();
+    this.characters = new GameCharacters(this.scene, game);
     this.bindWorldProps();
     this.createSurfaceMarkers();
     this.createBoardMarkers();
@@ -120,89 +109,6 @@ export class GameView {
     item.receiveShadow = true;
     parent.add(item);
     return item;
-  }
-
-  private blob(parent: THREE.Object3D, material: THREE.Material, pos: Vec3,
-    radius: Vec3, detail = 12): THREE.Mesh {
-    const geometry = new THREE.SphereGeometry(1, detail, 9);
-    this.ownedGeometries.push(geometry);
-    const item = this.mesh(parent, geometry, material, vec(pos));
-    item.scale.set(radius.x, radius.y, radius.z);
-    return item;
-  }
-
-  private createGoat(): void {
-    this.removeGoat();
-    const size = this.game.goat.size;
-    const cream = new THREE.MeshToonMaterial({ color: 0xf7ebd3 });
-    const ivory = new THREE.MeshToonMaterial({ color: 0xfff6e4 });
-    const tan = new THREE.MeshToonMaterial({ color: 0xb88459 });
-    const dark = new THREE.MeshToonMaterial({ color: 0x42372f });
-    const pink = new THREE.MeshToonMaterial({ color: 0xdd9d8b });
-    const scarf = new THREE.MeshToonMaterial({ color: 0xff891e });
-    const gold = new THREE.MeshToonMaterial({ color: 0xffd833 });
-    this.goatMaterials.push(cream, ivory, tan, dark, pink, scarf, gold);
-    for (const name of ['torso', 'neck', 'head',
-      'frontLeft', 'frontRight', 'backLeft', 'backRight'] as const) {
-      const group = new THREE.Group();
-      group.name = 'goat-' + name;
-      this.scene.add(group);
-      this.goatParts.push({ part: group, body: this.game.goat.getPart(name) });
-      if (name === 'torso') {
-        this.blob(group, cream, V(), V(.34 * size, .30 * size, .57 * size), 16);
-        this.blob(group, ivory, V(0, .21 * size, -.19 * size),
-          V(.26 * size, .11 * size, .34 * size));
-        this.blob(group, cream, V(0, .16 * size, .53 * size),
-          V(.13 * size, .16 * size, .17 * size));
-      } else if (name === 'neck') {
-        this.blob(group, cream, V(), V(.19 * size, .25 * size, .22 * size));
-        const ring = new THREE.TorusGeometry(.2 * size, .058 * size, 7, 18);
-        this.ownedGeometries.push(ring);
-        this.mesh(group, ring, scarf, new THREE.Vector3(0, .075 * size, 0))
-          .rotation.x = Math.PI / 2;
-        this.blob(group, scarf, V(.18 * size, -.13 * size, .08 * size),
-          V(.085 * size, .20 * size, .08 * size));
-        this.blob(group, gold, V(.21 * size, -.29 * size, .08 * size),
-          V(.07 * size, .06 * size, .08 * size));
-      } else if (name === 'head') {
-        this.blob(group, cream, V(), V(.255 * size, .23 * size, .265 * size), 16);
-        this.blob(group, ivory, V(0, -.065 * size, -.22 * size),
-          V(.20 * size, .145 * size, .17 * size), 16);
-        this.blob(group, pink, V(0, -.10 * size, -.358 * size),
-          V(.12 * size, .075 * size, .05 * size));
-        for (const side of [-1, 1]) {
-          this.blob(group, cream, V(side * .26 * size, .085 * size, .015 * size),
-            V(.17 * size, .075 * size, .11 * size));
-          this.blob(group, dark, V(side * .145 * size, .048 * size, -.195 * size),
-            V(.060 * size, .067 * size, .032 * size));
-          this.blob(group, ivory, V(side * .13 * size, .067 * size, -.224 * size),
-            V(.018 * size, .018 * size, .008 * size), 8);
-          const hornCurve = new THREE.CatmullRomCurve3([
-            new THREE.Vector3(side * .15 * size, .18 * size, .03 * size),
-            new THREE.Vector3(side * .18 * size, .33 * size, .06 * size),
-            new THREE.Vector3(side * .30 * size, .43 * size, .12 * size),
-            new THREE.Vector3(side * .35 * size, .38 * size, .19 * size),
-            new THREE.Vector3(side * .27 * size, .31 * size, .24 * size),
-          ]);
-          const horn = new THREE.TubeGeometry(hornCurve, 14, .063 * size, 6, false);
-          this.ownedGeometries.push(horn);
-          this.mesh(group, horn, tan);
-        }
-      } else {
-        this.blob(group, ivory, V(), V(.112 * size, .38 * size, .13 * size), 12);
-        this.blob(group, tan, V(0, -.31 * size, -.018 * size),
-          V(.128 * size, .11 * size, .145 * size), 10);
-      }
-    }
-  }
-
-  private removeGoat(): void {
-    for (const visual of this.goatParts) {
-      this.scene.remove(visual.part);
-    }
-    this.goatParts.length = 0;
-    for (const material of this.goatMaterials.splice(0)) material.dispose();
-    for (const geometry of this.ownedGeometries.splice(0)) geometry.dispose();
   }
 
   /** The world exports only a scene group, not individual dynamic prop mesh handles.
@@ -410,65 +316,6 @@ export class GameView {
 
   private updatePartyVisuals(alpha: number): void {
     const roster = this.game.party.bots;
-    for (const [id, parts] of this.botParts) {
-      if (roster.has(id)) continue;
-      for (const { part } of parts) part.removeFromParent();
-      this.botParts.delete(id);
-      this.botMaterials.get(id)?.dispose();
-      this.botMaterials.delete(id);
-    }
-    let index = 0;
-    for (const [id, bot] of roster) {
-      let parts = this.botParts.get(id);
-      if (!parts || parts[0]?.body.handle !== bot.goat.torso.handle) {
-        for (const { part } of parts ?? []) part.removeFromParent();
-        const palette = [0xfa94a2,0x79d7de,0xf8b85c,0xb1a4fb,0x8ed28b,0xe1aeeb,0xd3b785];
-        const material = new THREE.MeshToonMaterial({ color: palette[index % palette.length] });
-        this.botMaterials.get(id)?.dispose();
-        this.botMaterials.set(id, material);
-        parts = [];
-        const names = ['torso','neck','head','frontLeft','frontRight','backLeft','backRight'] as const;
-        const radii = [[.34,.30,.57],[.19,.25,.22],[.25,.23,.26],
-          [.12,.38,.13],[.12,.38,.13],[.12,.38,.13],[.12,.38,.13]];
-        for (let j=0;j<names.length;j++) {
-          const group = new THREE.Group();
-          const shape = new THREE.Mesh(this.botGeometry, material);
-          const size = bot.goat.size, rad = radii[j]!;
-          shape.scale.set(rad[0]!*size, rad[1]!*size, rad[2]!*size);
-          shape.castShadow = true;
-          group.add(shape);
-          // Head, eyes and horns all follow the real head rigid body. Opponents
-          // are recognizably goats even when several colorful bodies overlap.
-          if (names[j] === 'head') {
-            const muzzle = new THREE.Mesh(this.botGeometry, this.botMuzzleMaterial);
-            muzzle.position.set(0, -.08 * size, -.23 * size);
-            muzzle.scale.set(.19 * size, .13 * size, .17 * size);
-            group.add(muzzle);
-            for (const side of [-1, 1]) {
-              const eye = new THREE.Mesh(this.botEyes, this.botEyeMaterial);
-              eye.position.set(side * .14 * size, .065 * size, -.19 * size);
-              eye.scale.set(.055 * size, .063 * size, .035 * size);
-              group.add(eye);
-              const horn = new THREE.Mesh(this.botHorns, this.botHornMaterial);
-              horn.position.set(side * .17 * size, .29 * size, .075 * size);
-              horn.rotation.z = -side * .26;
-              horn.scale.set(.19 * size, .34 * size, .19 * size);
-              horn.castShadow = true;
-              group.add(horn);
-            }
-          }
-          this.scene.add(group);
-          parts.push({ part: group, body: bot.goat.getPart(names[j]!) });
-        }
-        this.botParts.set(id, parts);
-      }
-      for (const { part, body } of parts) {
-        const pose = this.game.physics.getInterpolatedTransform(body, alpha);
-        part.position.copy(vec(pose.translation));
-        part.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
-      }
-      index++;
-    }
     const match = this.game.party.match;
     const mode = match ? match.mode : null;
     if (this.displayedMode !== mode) {
@@ -612,15 +459,6 @@ export class GameView {
     }
   }
 
-  private updateGoat(alpha: number): void {
-    if (this.goatParts[0]?.body.handle !== this.game.goat.torso.handle) this.createGoat();
-    for (const { part, body } of this.goatParts) {
-      const pose = this.game.physics.getInterpolatedTransform(body, alpha);
-      part.position.copy(vec(pose.translation));
-      part.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
-    }
-  }
-
   private updateCamera(alpha: number, dt: number): void {
     const pose = this.game.physics.getInterpolatedTransform(this.game.goat.torso, alpha);
     const size = this.game.rules.style.scale;
@@ -683,7 +521,7 @@ export class GameView {
         this.simMs += ((performance.now() - start) - this.simMs) * lerpAlpha(5, dt);
       }
     }
-    this.updateGoat(alpha);
+    this.characters.update(dt, alpha);
     this.updatePartyVisuals(alpha);
     this.updateGigVisuals(alpha);
     this.updateProps(alpha);
@@ -707,14 +545,7 @@ export class GameView {
     window.removeEventListener('resize', this.onResize);
     this.input.dispose();
     this.hud.dispose();
-    this.removeGoat();
-    for (const parts of this.botParts.values()) for (const { part } of parts) part.removeFromParent();
-    this.botParts.clear();
-    for (const material of this.botMaterials.values()) material.dispose();
-    this.botMaterials.clear();
-    this.botGeometry.dispose(); this.botEyes.dispose(); this.botHorns.dispose();
-    this.botEyeMaterial.dispose(); this.botHornMaterial.dispose();
-    this.botMuzzleMaterial.dispose();
+    this.characters.dispose();
     this.clearGroup(this.boardMarkers);
     this.clearGroup(this.gigMarkers);
     this.clearGroup(this.partyMarkers);
