@@ -139,14 +139,17 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
   scatter(OAK_VARIANTS[oakIndex++ % OAK_VARIANTS.length]!, 53, -10, 12, 18, 12);
   scatter(OAK_VARIANTS[oakIndex++ % OAK_VARIANTS.length]!, 49, 42, 11, 15, 11);
   scatter(BUSH_VARIANTS[bushIndex++ % BUSH_VARIANTS.length]!, -16, 30, 3, 2, 3);
-  scatter(BUSH_VARIANTS[bushIndex++ % BUSH_VARIANTS.length]!, 17, 30, 3, 2, 3);
+  scatter(BUSH_VARIANTS[bushIndex++ % BUSH_VARIANTS.length]!, 15.45, 30, 3, 2, 3);
   for (const side of [-1, 1]) {
     for (const dz of [10, 28]) {
-      scatter('planter', side * 16, dz, 1.5, 0.85, 1.05,
-        Math.PI / 2);
+      scatter('planter', side * 16 + (side < 0 && dz === 10 ? 1.1 : 0),
+        dz, 1.5, 0.85, 1.05, Math.PI / 2);
       for (const colorOffset of [-0.48, 0.48]) {
+        // The west garden borders, not the pink house's collider, own this bed.
+        const flowerX = side * 15.3 + colorOffset +
+          (side < 0 && dz === 10 && colorOffset < 0 ? 0.7 : 0);
         scatter(FLOWER_VARIANTS[flowerIndex++ % FLOWER_VARIANTS.length]!,
-          side * 15.3 + colorOffset, dz, 0.65, 0.72, 0.65);
+          flowerX, dz, 0.65, 0.72, 0.65);
       }
     }
   }
