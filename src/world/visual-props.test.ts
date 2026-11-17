@@ -109,7 +109,14 @@ describe('library prop draw-call compaction', () => {
         source.getMatrixAt(sourceIndex, expected);
         if (adjustment) expected.multiply(adjustment);
         target.getMatrixAt(drawnIndex, actual);
-        expect(actual.elements).toEqual(expected.elements);
+        if (adjustment) {
+          // setMatrixAt stores float32 while the fit is computed in float64.
+          for (let i = 0; i < 16; i++) {
+            expect(actual.elements[i]!).toBeCloseTo(expected.elements[i]!, 5);
+          }
+        } else {
+          expect(actual.elements).toEqual(expected.elements);
+        }
         source.getColorAt(sourceIndex, expectedColor);
         target.getColorAt(drawnIndex, actualColor);
         expect(actualColor.getHex()).toBe(expectedColor.getHex());
