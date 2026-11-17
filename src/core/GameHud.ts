@@ -462,7 +462,7 @@ export class GameHud {
     this.gigTitle.textContent = state.gig.title;
     this.gigTask.textContent = state.gig.task;
     this.gigDetail.textContent = state.gig.detail;
-    this.gigCheckbox.hidden = run?.status !== 'running';
+    this.gigCheckbox.hidden = run?.status !== 'running' || !!game.party.match;
     this.updatePartyCard(game);
     // Refit only when copy or dimensions change, not every simulation frame.
     const gigLayoutKey = [this.gigTitle.textContent, this.gigTask.textContent,
