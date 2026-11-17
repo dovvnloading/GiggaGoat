@@ -53,7 +53,9 @@ const CSS = `
    that same cream sprite over it; only draw a live box for a running gig. */
 .gg-gig-checkbox-mask{position:absolute;left:8.3%;top:50.2%;width:10.7%;height:24%;background:var(--gg-gigCard) 27% 67%/935% 417% no-repeat;pointer-events:none}
 .gg-gig-checkbox{position:absolute;left:9.2%;top:52%;width:8.5%;height:18%;border:clamp(2px,.21vw,3px) solid #58331f;border-radius:5px;background:#fff2d34d;box-shadow:0 1px 1px #6a411744;pointer-events:none}
-.gg-gig-paper{position:absolute;left:20.5%;right:10%;top:41%;bottom:21%;display:flex;flex-direction:column;align-items:stretch;gap:2px;min-width:0;min-height:0;color:#4e312b;text-shadow:none}
+/* The sprite ribbon reaches below the CURRENT GIG text box (~43% of the art).
+   Start the live copy below that painted edge while keeping room above the footer. */
+.gg-gig-paper{position:absolute;left:20.5%;right:10%;top:47%;bottom:20%;display:flex;flex-direction:column;align-items:stretch;gap:1px;min-width:0;min-height:0;color:#4e312b;text-shadow:none}
 .gg-gig-title{flex:0 0 auto;font-size:clamp(9px,.77vw,13px);font-weight:1000;line-height:1.12;text-transform:uppercase;letter-spacing:.2px;color:#a55c30;margin:0;min-width:0;overflow-wrap:anywhere}
 .gg-gig-task{flex:0 1 auto;min-height:0;min-width:0;font-size:clamp(11px,.98vw,16px);line-height:1.13;font-weight:1000;margin:0;overflow-wrap:anywhere}
 .gg-gig-detail{flex:0 0 auto;min-width:0;font-size:clamp(8px,.66vw,11px);line-height:1.12;color:#93543e;overflow-wrap:anywhere;white-space:normal}
