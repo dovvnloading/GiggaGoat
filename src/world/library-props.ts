@@ -16,7 +16,7 @@ export const PROP_LIBRARY_MODELS = {
   'house': 'assets/library/custom/hoofington-houses/house-t-white.glb',
   'shop': 'assets/library/kenney/city-kit-commercial/building-a.glb',
   'tower': 'assets/library/kenney/pirate-kit/tower-watch.glb',
-  'windmill': 'assets/library/kenney/fantasy-town-kit/windmill.glb',
+  'windmill': 'assets/library/custom/hoofington-props/windmill.glb',
   'lighthouse': 'assets/library/kenney/pirate-kit/tower-complete-large.glb',
   'ferris-wheel': 'assets/library/polypizza/ferris-wheel/ferris-wheel_6CepsZjXBw.glb',
   'crane': 'assets/library/kenney/factory-kit/crane.glb',
@@ -29,12 +29,12 @@ export const PROP_LIBRARY_MODELS = {
   'booth': 'assets/library/kenney/fantasy-town-kit/stall-red.glb',
   'satellite-dish': 'assets/library/kenney/furniture-kit/televisionAntenna.glb',
   'dam-wall': 'assets/library/kenney/factory-kit/structure-wall.glb',
-  'fence': 'assets/library/kenney/city-kit-suburban/fence.glb',
+  'fence': 'assets/library/custom/hoofington-props/picket-fence.glb',
   'hay-bale': 'assets/library/polypizza/hay-bale/hay_Yu8TOERkpw.glb',
   'crate': 'assets/library/kenney/platformer-kit/crate.glb',
   'barrel': 'assets/library/kenney/survival-kit/barrel.glb',
   'tree-pine': 'assets/library/kenney/nature-kit/tree_pineTallA.glb',
-  'tree-oak': 'assets/library/kenney/nature-kit/tree_oak.glb',
+  'tree-oak': 'assets/library/custom/hoofington-props/tree-round-a.glb',
   'rock': 'assets/library/kenney/nature-kit/rock_largeB.glb',
   'log': 'assets/library/kenney/nature-kit/log.glb',
   'lamp': 'assets/library/kenney/city-kit-roads/light-curved.glb',
@@ -46,8 +46,8 @@ export const PROP_LIBRARY_MODELS = {
   'flag': 'assets/library/kenney/pirate-kit/flag-high.glb',
   'buoy': 'assets/library/kenney/watercraft-kit/buoy.glb',
   'platform': 'assets/library/kenney/platformer-kit/platform.glb',
-  'silo': 'assets/library/polypizza/silo/silo_5GhLrv5Ce3.glb',
-  'mailbox': 'assets/library/polypizza/mailbox/mailbox_2olZ0G8iur.glb',
+  'silo': 'assets/library/custom/hoofington-props/silo.glb',
+  'mailbox': 'assets/library/custom/hoofington-props/mailbox.glb',
   'gnome': 'assets/library/polypizza/garden-gnome/gnome_Yy3yuQ4l6r.glb',
   'trampoline': 'assets/library/kenney/platformer-kit/spring.glb',
   'bunting': 'assets/library/kenney/holiday-kit/lights-colored.glb',
@@ -66,8 +66,8 @@ export const PROP_LIBRARY_MODELS = {
   'cottage': 'assets/library/custom/hoofington-houses/house-f-white.glb',
   'shipwreck': 'assets/library/kenney/pirate-kit/ship-wreck.glb',
   'cave-mouth': 'assets/library/kenney/nature-kit/cliff_cave_rock.glb',
-  'bush': 'assets/library/kenney/nature-kit/plant_bushDetailed.glb',
-  'flower': 'assets/library/kenney/nature-kit/flower_purpleA.glb',
+  'bush': 'assets/library/custom/hoofington-props/bush-round-a.glb',
+  'flower': 'assets/library/custom/hoofington-props/flowers-pink.glb',
   'grass-tuft': 'assets/library/kenney/nature-kit/grass_large.glb',
   'rope-rail': 'assets/library/kenney/platformer-kit/fence-rope.glb',
   'stepping-stone': 'assets/library/kenney/nature-kit/rock_smallFlatA.glb',
@@ -139,7 +139,7 @@ export function bakeLibraryPropGeometry(
   const white = new THREE.Color(0xffffff);
   const imageCache = new Map<THREE.Texture, PixelMap | null>();
   const paintedFoliage = new Set<PropKind>([
-    'tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'planter',
+    'tree-pine', 'grass-tuft', 'planter',
   ]);
 
   root.traverse(object => {
@@ -178,8 +178,8 @@ export function bakeLibraryPropGeometry(
           colour.b *= vertexColours.getZ(index);
         }
         const map = (material as THREE.MeshStandardMaterial).map;
-        // Leaf atlases often have transparent black borders. Use solid painted
-        // canopies in that case, as the existing Hoofington GLB baker does.
+        // The legacy pine/grass/planter foliage needs painted colours in
+        // place of alpha-atlas padding. Blender props retain source paint.
         if (!paintedFoliage.has(kind) && map && textureCoords && textureCoords.itemSize >= 2) {
           const image = pixels(map, imageCache);
           if (image) {
@@ -202,10 +202,7 @@ export function bakeLibraryPropGeometry(
           }
         }
         if (kind === 'tree-pine') colour.setHex(height > 0.23 ? 0x478f62 : 0x856346);
-        else if (kind === 'tree-oak') colour.setHex(height > 0.31 ? 0x7ebd58 : 0x916c48);
-        else if (kind === 'bush') colour.setHex(0x74b65c);
         else if (kind === 'grass-tuft') colour.setHex(0x88c366);
-        else if (kind === 'flower') colour.setHex(height > 0.38 ? 0xe4a1d7 : 0x659d51);
         else if (kind === 'planter') colour.setHex(height > 0.57 ? 0x77b65f : 0xbb8967);
         colours.push(colour.r, colour.g, colour.b);
       }
