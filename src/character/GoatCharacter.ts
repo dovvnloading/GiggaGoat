@@ -269,6 +269,10 @@ export class GoatCharacter {
     if (this.override) selected = this.override.action;
     this.actionValue = selected;
     this.tickOverride(frameDt);
+    // The legacy cosmetic glider lives on the stable back mount, so the
+    // existing glide cue still has a visible result with a rigged goat.
+    const glider = this.mounts.back.getObjectByName('optional hang-glider cosmetic');
+    if (glider) glider.visible = selected === 'glide';
 
     let shotWeight = 0;
     if (rig.shot) {
