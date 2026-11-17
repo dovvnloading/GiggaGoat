@@ -48,10 +48,10 @@ const CSS = `
 .gg-gig-header{position:absolute;top:9%;left:27%;right:9%;height:19%;display:grid;place-items:center;color:#ffcc43;font-size:clamp(15px,1.4vw,23px);white-space:nowrap;letter-spacing:.3px;-webkit-text-stroke:.6px #623645;text-shadow:2px 3px #583147}
 .gg-gig-clipboard{position:absolute;left:-17%;top:-33%;width:clamp(45px,4vw,67px);height:clamp(48px,4.5vw,72px)}
 .gg-gig-clipboard img{width:100%;height:100%}
-.gg-gig-paper{position:absolute;left:19%;right:6%;top:39%;bottom:16%;display:flex;flex-direction:column;justify-content:center;overflow:hidden;color:#4e312b;text-shadow:none}
+.gg-gig-paper{position:absolute;left:19%;right:6%;top:35%;bottom:22%;display:flex;flex-direction:column;justify-content:center;overflow:hidden;color:#4e312b;text-shadow:none}
 .gg-gig-title{font-size:clamp(9px,.77vw,13px);font-weight:1000;line-height:1.15;text-transform:uppercase;letter-spacing:.4px;color:#a55c30;margin:0 0 3px}
-.gg-gig-task{font-size:clamp(12px,1.04vw,17px);line-height:1.15;font-weight:1000;margin:0;overflow-wrap:break-word;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
-.gg-gig-detail{font-size:clamp(8px,.68vw,11px);line-height:1.1;color:#93543e;margin-top:5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.gg-gig-task{font-size:clamp(11px,.98vw,16px);line-height:1.15;font-weight:1000;margin:0;overflow-wrap:break-word;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+.gg-gig-detail{font-size:clamp(8px,.66vw,11px);line-height:1.1;color:#93543e;margin-top:3px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .gg-gig-footer{position:absolute;left:20%;right:7%;bottom:11%;height:11%;display:flex;align-items:center;justify-content:space-between;gap:5px;color:#fff2ad;font-size:clamp(8px,.75vw,11px);white-space:nowrap;text-shadow:1px 2px #583147}
 .gg-gig-wallet{display:flex;gap:3px;align-items:center}
 .gg-coin{width:clamp(13px,1.25vw,19px);height:clamp(13px,1.25vw,19px)}
