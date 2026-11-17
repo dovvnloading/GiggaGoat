@@ -510,9 +510,15 @@ export async function createLanternLampInstances<Model extends string>(
         (distance > WORLD_LOD.detailedDistance ? far : near).push(i);
       }
       const nearChanged = !same(previousNear, near), farChanged = !same(previousFar, far);
+      // Near/far LOD swaps of the very same stationary lamps change only the
+      // view geometry, not the shadow-caster set. Avoid redrawing the entire
+      // static sun shadow map when a camera hovers near the detail threshold.
+      const previouslyVisible = [...previousNear, ...previousFar].sort((a, b) => a - b);
+      const visibleNow = [...near, ...far].sort((a, b) => a - b);
+      const castersChanged = !same(previouslyVisible, visibleNow);
       if (nearChanged) { compact(nearMeshes, near); previousNear = near; }
       if (farChanged) { compact(farMeshes, far); previousFar = far; }
-      return nearChanged || farChanged;
+      return castersChanged;
     },
     dispose(): void {
       if (disposed) return;
