@@ -552,7 +552,6 @@ const SHADOW_KINDS = new Set<PropKind>([
   'tower', 'crane', 'tree-pine', 'tree-oak', 'silo', 'water-tower',
   'satellite-dish', 'ferris-wheel',
   'concrete-slab', 'concrete-column', 'yard-scaffold', 'crane-jib',
-  'crane-cab', 'red-girder', 'container',
 ]);
 const OUTLINE_KINDS = new Set<PropKind>([
   'windmill', 'lighthouse', 'ferris-wheel', 'crane', 'satellite-dish',
