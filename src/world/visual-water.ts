@@ -219,34 +219,70 @@ function inlandMaterial(): { material: THREE.ShaderMaterial; time: { value: numb
   });
   return { material, time };
 }
+/**
+ * Interpolate the authored centreline at <=2 scaled metres per sample. The
+ * river data (including its gameplay levels) is unchanged; only the visible
+ * mesh uses these extra stations.
+ */
+function resampleRiver(points: readonly RiverPoint[], spacing: number): RiverPoint[] {
+  if (!points.length) return [];
+  const stations = [{ ...points[0]! }];
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1]!, b = points[i]!;
+    const run = Math.hypot(b.x - a.x, b.z - a.z);
+    const steps = Math.max(1, Math.ceil(run / spacing));
+    for (let j = 1; j <= steps; j++) {
+      const t = j / steps;
+      stations.push({
+        x: a.x + (b.x - a.x) * t,
+        z: a.z + (b.z - a.z) * t,
+        width: a.width + (b.width - a.width) * t,
+        level: a.level + (b.level - a.level) * t,
+      });
+    }
+  }
+  return stations;
+}
+
 function riverMesh(points: readonly RiverPoint[], material: THREE.Material,
-  damCenter?: { x: number; z: number }): THREE.Mesh {
+  island: IslandData, damCenter?: { x: number; z: number }): THREE.Mesh {
+  const scale = island.size / 600;
+  const stations = resampleRiver(points, 2 * scale);
   const vertices: number[] = [], uvs: number[] = [], indices: number[] = [];
   let accumulated = 0;
-  for (let i = 0; i < points.length; i++) {
-    const p = points[i]!, a = points[Math.max(0, i - 1)]!;
-    const b = points[Math.min(points.length - 1, i + 1)]!;
+  for (let i = 0; i < stations.length; i++) {
+    const p = stations[i]!, a = stations[Math.max(0, i - 1)]!;
+    const b = stations[Math.min(stations.length - 1, i + 1)]!;
     const dx = b.x - a.x, dz = b.z - a.z;
     const length = Math.hypot(dx, dz) || 1;
     const nx = -dz / length, nz = dx / length;
     if (i) {
-      const prev = points[i - 1]!;
+      const prev = stations[i - 1]!;
       accumulated += Math.hypot(p.x - prev.x, p.z - prev.z);
     }
-    const y = p.level + 0.12;
-    vertices.push(p.x - nx * p.width * 0.5, y, p.z - nz * p.width * 0.5,
-      p.x + nx * p.width * 0.5, y, p.z + nz * p.width * 0.5);
+    const leftX = p.x - nx * p.width * 0.5;
+    const leftZ = p.z - nz * p.width * 0.5;
+    const rightX = p.x + nx * p.width * 0.5;
+    const rightZ = p.z + nz * p.width * 0.5;
+    // Sample each bank independently: a shared centreline Y would still
+    // leave the wide outer bank floating above uneven ground.
+    vertices.push(leftX, gridSample(island, leftX, leftZ) + 0.15 * scale, leftZ,
+      rightX, gridSample(island, rightX, rightZ) + 0.15 * scale, rightZ);
     uvs.push(0, accumulated / 10, 1, accumulated / 10);
     if (i > 0) {
-      const prev = points[i - 1]!;
+      const prev = stations[i - 1]!;
       const horizontalRun = Math.hypot(p.x - prev.x, p.z - prev.z);
       const nearDam = damCenter !== undefined && Math.hypot(
         (prev.x + p.x) / 2 - damCenter.x,
         (prev.z + p.z) / 2 - damCenter.z,
       ) <= 70;
-      // The Dam landscape owns steep drops by its pool and spillway. Leave
-      // the vertices/UVs intact, but never emit their sloping river quads.
-      if (!nearDam || prev.level - p.level <= 0.25 * horizontalRun) {
+      const before = (vertices[(i * 2 - 2) * 3 + 1]! +
+        vertices[(i * 2 - 1) * 3 + 1]!) * 0.5;
+      const after = (vertices[(i * 2) * 3 + 1]! +
+        vertices[(i * 2 + 1) * 3 + 1]!) * 0.5;
+      // The Dam owns the steep plunge-pool slope. Keep every draped vertex
+      // and UV, but omit steep quads beside the bespoke spillway.
+      if (!nearDam || before - after <= 0.25 * horizontalRun) {
         const k = i * 2;
         indices.push(k - 2, k - 1, k, k - 1, k + 1, k);
       }
@@ -260,6 +296,40 @@ function riverMesh(points: readonly RiverPoint[], material: THREE.Material,
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'rippling-river';
   return mesh;
+}
+
+/** One cliff curtain only where a 4 m stretch of real riverbed drops 3 m. */
+function riverCliffDrop(island: IslandData, a: RiverPoint, b: RiverPoint,
+  damCenter?: { x: number; z: number }):
+  { top: THREE.Vector3; bottom: THREE.Vector3; width: number } | undefined {
+  const scale = island.size / 600;
+  const run = Math.hypot(b.x - a.x, b.z - a.z);
+  const window = 4 * scale;
+  if (run < window) return undefined;
+  // Evaluate every possible 4 m run at <=2 m intervals. Authored water
+  // levels cannot create a fall on a flat terrace.
+  const checks = Math.max(1, Math.ceil((run - window) / (2 * scale)));
+  let bestDrop = -Infinity;
+  let best: { top: THREE.Vector3; bottom: THREE.Vector3; width: number } | undefined;
+  for (let i = 0; i <= checks; i++) {
+    const t = (run - window) * i / checks / run;
+    const u = t + window / run;
+    const x0 = a.x + (b.x - a.x) * t, z0 = a.z + (b.z - a.z) * t;
+    if (damCenter && Math.hypot(x0 - damCenter.x, z0 - damCenter.z) <= 70) continue;
+    const x1 = a.x + (b.x - a.x) * u, z1 = a.z + (b.z - a.z) * u;
+    const upper = gridSample(island, x0, z0);
+    const lower = gridSample(island, x1, z1);
+    const drop = upper - lower;
+    if (drop >= 3 * scale && drop > bestDrop) {
+      bestDrop = drop;
+      best = {
+        top: new THREE.Vector3(x0, upper + 0.26 * scale, z0),
+        bottom: new THREE.Vector3(x1, lower + 0.18 * scale, z1),
+        width: (a.width + (b.width - a.width) * t) * 0.4,
+      };
+    }
+  }
+  return best;
 }
 function makeFalls(group: THREE.Group, material: THREE.Material,
   a: THREE.Vector3, b: THREE.Vector3, width: number, id: string): void {
@@ -446,10 +516,10 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
   // not draw the old thin river ribbon over it: its extra side vertices
   // make a bright diagonal sheet across the otherwise sculpted pool.
   const upstream = riverMesh(island.river.slice(0, 5), stream.material,
-    damPlot?.center);
+    island, damPlot?.center);
   upstream.name = 'rippling-river';
   const forestOutflow = riverMesh(island.river.slice(11), stream.material,
-    damPlot?.center);
+    island, damPlot?.center);
   forestOutflow.name = 'forest-river-after-dam';
   // Both reaches use the same animated shader. Merge their disconnected
   // index buffers into one draw so the new shoreline foam costs no extra
@@ -506,20 +576,16 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
   foam.position.set(lake.center.x, reservoirHeight + 0.05 * scale, lake.center.z);
   foam.scale.set(lake.radiusX, lake.radiusZ, 1);
   inland.add(reservoir, foam);
-  // Cascades wherever a river segment descends across a mountain terrace.
-  // Never overlay the bespoke Dam plot with a diagonal cyan sheet.
+  // River-cliff curtains require a real 3 m descent across a 4 m run.
+  // Never infer a cascade from the old authored water-level steps.
   const insideDamPlot = (x: number, z: number): boolean =>
     damPlot !== undefined && Math.hypot(x - damPlot.center.x,
       z - damPlot.center.z) <= damPlot.radius;
   for (let i = 0; i < island.river.length - 1; i++) {
-    const a = island.river[i]!, b = island.river[i + 1]!;
-    if (a.level - b.level < 3.4 * island.size / 600) continue;
-    const x = (a.x + b.x) * 0.5, z = (a.z + b.z) * 0.5;
-    if (insideDamPlot(x, z)) continue;
-    makeFalls(inland, stream.material,
-      new THREE.Vector3(x, a.level + 0.3, z),
-      new THREE.Vector3(x + (b.x - a.x) * 0.18, b.level + 0.2,
-        z + (b.z - a.z) * 0.18), (a.width + b.width) * 0.4,
+    const fall = riverCliffDrop(island, island.river[i]!, island.river[i + 1]!,
+      damPlot?.center);
+    if (!fall) continue;
+    makeFalls(inland, stream.material, fall.top, fall.bottom, fall.width,
       'mountain-waterfall-' + i);
   }
   // Visible terrace cascades on the southeast face. The northern stream's
