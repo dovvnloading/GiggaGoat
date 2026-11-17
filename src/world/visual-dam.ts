@@ -5,6 +5,7 @@ import type { IslandData } from './types';
 import { gridSample } from './terrain';
 import { getDamPlacement, makeDamColliderDescriptors } from './the-dam';
 import { publicAssetUrl } from './public-assets';
+import { buildDamLandscape } from './visual-dam-landscape';
 
 export interface DamVisuals {
   group: THREE.Group;
@@ -235,6 +236,10 @@ export function buildDamVisuals(island: IslandData): DamVisuals {
   let waterfallMaps: THREE.Texture[] = [];
   let shadowChange = false;
   let disposed = false;
+  // Scenery uses non-shadow-casting instances, so its asynchronous arrival
+  // must NOT hide the procedural reservoir before the hero GLB is ready.
+  const landscape = buildDamLandscape(island, () => {});
+  group.add(landscape.group);
 
   if (typeof document !== 'undefined') {
     const url = publicAssetUrl('assets/library/custom/the-dam/the-dam.glb');
@@ -271,7 +276,10 @@ export function buildDamVisuals(island: IslandData): DamVisuals {
 
   return {
     group,
-    update(seconds: number): void { scrollDamWaterfallUVs(waterfallMaps, seconds); },
+    update(seconds: number): void {
+      scrollDamWaterfallUVs(waterfallMaps, seconds);
+      landscape.update(seconds);
+    },
     consumeShadowChange(): boolean {
       const changed = shadowChange;
       shadowChange = false;
@@ -279,6 +287,7 @@ export function buildDamVisuals(island: IslandData): DamVisuals {
     },
     dispose(): void {
       disposed = true;
+      landscape.dispose();
       disposeMeshes(group);
       group.clear();
       group.removeFromParent();
