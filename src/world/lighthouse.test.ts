@@ -144,9 +144,9 @@ describe('Old Lighthouse painting rebuild', () => {
     expect(sides[0]!.length).toBe(sides[1]!.length);
     const spansBySide = sides.map(side => side.slice(1).flatMap((end, i) => {
       const start = side[i]!;
-      return Math.hypot(end.transform.position.x - start.transform.position.x,
-        end.transform.position.z - start.transform.position.z) < 6
-        ? [{ start, end }] : [];
+      const span = Math.hypot(end.transform.position.x - start.transform.position.x,
+        end.transform.position.z - start.transform.position.z);
+      return span < 12 ? [{ start, end, span }] : [];
     }));
     for (const spans of spansBySide) expect(spans.length).toBeGreaterThan(0);
     const spans = spansBySide.flat();
@@ -193,7 +193,7 @@ describe('Old Lighthouse painting rebuild', () => {
         }
         return center.multiplyScalar(1 / radialSegments);
       };
-      spans.forEach(({ start, end }, spanIndex) => {
+      spans.forEach(({ start, end, span }, spanIndex) => {
         for (const [tier, drop] of [0.25, 1.2].entries()) {
           const ropeIndex = spanIndex * 2 + tier;
           const a = ringCenter(ropeIndex, 0);
@@ -205,7 +205,7 @@ describe('Old Lighthouse painting rebuild', () => {
             b.z - end.transform.position.z)).toBeLessThan(0.05);
           expect(a.y).toBeCloseTo(start.transform.position.y + start.size.y / 2 - drop, 2);
           expect(b.y).toBeCloseTo(end.transform.position.y + end.size.y / 2 - drop, 2);
-          expect(Math.abs((a.y + b.y) / 2 - mid.y - 0.35)).toBeLessThan(0.02);
+          expect(Math.abs((a.y + b.y) / 2 - mid.y - 0.04 * span)).toBeLessThan(0.02);
         }
       });
     } finally {
