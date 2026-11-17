@@ -1,4 +1,4 @@
-# VFX lane · Approved effects 01–07 (dust, landing, headbutt, water, crate, trampoline, launch pad)
+# VFX lane · Approved effects 01–08 (dust, landing, headbutt, water, crate, trampoline, launch pad, combo text)
 
 The top-left **RUNNING DUST PUFFS** and adjacent **LANDING IMPACT RING** panels
 of the approved [`23_vfx_sheet.png`](../../docs/art/hifi/23_vfx_sheet.png)
@@ -262,6 +262,43 @@ allocation. The oldest burst is recycled when the pool is full.
 `launchPadBurst.test.ts` covers stages, validation, heading, strength,
 frame rate independence, recycling and headless Three.js lifecycle.
 
+## Combo pop text · call from gameplay (panel 08)
+
+```ts
+import { createComboPopText } from '../vfx';
+
+const combo = createComboPopText({ capacity: 10 });
+scene.add(combo.group);
+
+// World point above the goat / trick; count is the actual combo multiplier:
+combo.emit({ x: goatX, y: goatY + 1.7, z: goatZ }, comboCount);
+combo.update(dt); // seconds per render frame
+combo.clear();     // optional reset, pool and cached textures retained
+combo.dispose();   // frees owned sprites/materials/textures and detaches group
+```
+
+The input is a world-space position (+Y up), as a Three Vector3 or plain
+`{x,y,z}`. Counts must be non-negative safe integers; 0 and 1 are
+no-ops, 2 selects electric-blue COMBO and yellow x2 on a lemon burst, 3
+selects orange-red COMBO and golden x3 on a gold burst with five stars,
+and **4+** selects the yellow lettering on a spiky purple-magenta burst
+with eight extra gold stars. The **actual count** is written on the badge
+(e.g. x17!), even though the palette peaks at tier four. Coordinates and
+counts are validated before any slot is acquired.
+
+The animation is a fast non-uniform squash/stretch spring with visible
+overshoot, a short settled beat, then upward float and fade. It samples
+absolute elapsed age (~1.10–1.36s), so one long update yields the same pose
+as multiple short ones. No emitter frame, object, geometry or texture is
+allocated during `update(dt)`. The effect has **one camera-facing Three
+Sprite per slot** with a per-slot opacity material. It pre-renders the three
+reference counts to three shared 512px CanvasTextures, then creates any
+other count only on its first trigger. Its LRU cache retains 16 counts plus
+any still active, and never disposes active or base-tier textures.
+Full pools recycle the oldest popup; clear is allocation-free and disposal
+is idempotent. It does not own a renderer, camera, game loop, physics,
+listener or runtime dependency.
+
 ## Production art-review lab
 
 `/src/vfx/lab/index.html` works under `npm run dev` and in the **production
@@ -279,14 +316,14 @@ or the taller reference column to dictate its height. The pure
 `lab/viewport.ts` helper derives the drawing-buffer's logical dimensions from
 the wrapper width alone; a ResizeObserver, window resize handler and per-frame
 device-pixel-ratio check keep the camera projection and retina resolution in
-sync without a height feedback loop. The centered **07 launch pad burst** now loops by default: lit
+sync without a height feedback loop. The centered **08 COMBO POP TEXT** now loops x2 → x3 → x4! by default, with its supplied reference image displayed beside the 16:9 Three.js viewport. The **07 launch pad burst** is still selectable: lit
 chevrons, spiky gold fountain, an airborne in-repo goat and sweeping
 gold flight trails. Its reference is cropped from the **lower-right
 panel of the existing sheet**, with no new image asset required.
 The **06 trampoline preview** remains selectable with its red/cream
 mat, violet arcs, scale and rebound strength controls. The **01–05
 showcase** remains selectable with original triggers and cadence.
-Effect 07 has a launch-strength slider and retrigger button.
+Effect 07 retains its launch-strength slider and retrigger button. Effect 08 has replay/next-tier controls and can be paused at a developed squash/stretch pose.
 The viewport sizing helper still has headless Vitest coverage in
 `lab/viewport.test.ts`.
 
@@ -400,3 +437,24 @@ The viewport sizing helper still has headless Vitest coverage in
 - **Scope boundary:** visual-only, transient at each trigger. The
   game's collider, launch impulse and physical goat are untouched.
   All changes for 07 are in `src/vfx/`.
+
+
+### Combo Pop Text
+
+- **Matches:** chunky italic COMBO lettering with a near-black comic outline,
+  colored inner keyline, narrow ivory highlight and glossy gradient; a much
+  larger outlined x2, x3 or x4! beneath it; asymmetric long pointed
+  starburst rays; the step-up from cool-blue over lemon, to orange-red over
+  warm gold with floating gold stars, to brilliant yellow over magenta-purple
+  with **more** outlined gold stars.
+- **Motion:** each tier slams in on a visibly non-uniform squash/stretch,
+  overshoots its resting size, settles briefly, then lifts and fades.
+  The lab shows tiers sequentially at the center and preserves previews 01–07.
+- **Intentional approximation:** the panel is illustrated ink art; reused
+  camera-facing CanvasTexture billboards reproduce its color hierarchy,
+  silhouette, weight, glossy letter faces and comic timing rather than
+  individual brushstrokes. The included reference is a reduced-size WebP
+  copy of the supplied panel solely for side-by-side lab comparison.
+- **Scope boundary:** `emit(position, comboCount)` is cosmetic;
+  the existing gameplay owns combo timing/scoring and the rendered goat.
+  No production game or other lane files were changed.
