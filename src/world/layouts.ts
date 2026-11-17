@@ -179,7 +179,10 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   site(forest, 'platform', 19, -17, 8, 1.1, 7, { lift: 8.5 });
   site(forest, 'sign', -4, 8, 4, 3, 0.5);
 
-  // THE DAM: the custom GLB and its Rapier architecture are assembled in the\n  // world adapters. Do not generate overlapping primitive props here.\n\n  // OLD LIGHTHOUSE: a rocky cape with a climbable beacon and cliffside secrets.
+  // THE DAM: the custom GLB and its Rapier architecture are assembled in the
+  // world adapters. Do not generate overlapping primitive props here.
+
+  // OLD LIGHTHOUSE: a rocky cape with a climbable beacon and cliffside secrets.
   const cape: PoiId = 'old-lighthouse';
   site(cape, 'lighthouse', -2, 1, 9, 29, 9, { shape: 'cylinder', color: 0xf5f0db });
   site(cape, 'house', 15, -10, 9, 7, 9, { color: 0x9fd3d2 });
