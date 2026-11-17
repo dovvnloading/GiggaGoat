@@ -568,8 +568,11 @@ setDirection(directionControl.value);
 goat.update(0);
 // Start the centered seventh-panel loop mid-flight, with pad, spikes and
 // sweeping gold ribbons visible. The other six previews remain selectable.
-if (launchCue) {
-  launchClock = launchCue.lifetime * 0.60;
+const initialLaunch = makeLaunchPadBurstCue(
+  launchContact, launchDirection, Number(launchStrengthControl.value),
+);
+if (initialLaunch) {
+  launchClock = initialLaunch.lifetime * 0.60;
   launchPad.update(launchClock);
   poseLaunchGoat();
 }
