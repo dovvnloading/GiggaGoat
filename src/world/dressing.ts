@@ -196,7 +196,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     const a = i * Math.PI / 8;
     const x = surf.x + Math.sin(a) * 35 * scale;
     const z = surf.z + (61 + Math.cos(a) * 27) * scale;
-    place('buoy', x, z, 1.9, 2.1, 1.9, beach,
+    place('buoy', x, z, 1.0, 1.8, 1.0, beach,
       { y: 0.55 * scale, mass: 4, shape: 'cylinder', color: i % 2 ? 0xff891e : 0xf6f2e8 });
   }
 
