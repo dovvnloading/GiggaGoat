@@ -1,16 +1,12 @@
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync, type ChildProcess } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { extname, join, resolve, sep } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
-
-const chrome = [
-  process.env['CHROME_PATH'], '/usr/bin/google-chrome',
-  '/usr/bin/google-chrome-stable', '/usr/bin/chromium',
-].find(path => path && existsSync(path));
+import { launchChromeDevTools } from '../test-utils/chrome';
 
 const webglError = /GL_INVALID_|CONTEXT_LOST_WEBGL|WebGL.*(?:error|invalid|failed)|WebGLRenderer.*error/i;
 const mime: Record<string, string> = {
@@ -245,7 +241,6 @@ const initScript = [
 // World Lab and HUD layout Chrome tests overwhelms the shared runner.
 describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime smoke', () => {
   it('builds, loads, plays, opens menus, and runs every party mode without browser errors', async () => {
-    if (!chrome) throw new Error('Chrome must be installed on the CI runner');
     // Use the exact production Vite output, not Vite's forgiving development server.
     execFileSync(process.execPath, ['node_modules/vite/bin/vite.js', 'build'], {
       cwd: process.cwd(), stdio: 'pipe', timeout: 120000, maxBuffer: 16 * 1024 * 1024,
@@ -260,20 +255,13 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
     try {
       const served = await serveDist();
       server = served.server;
-      browser = spawn(chrome, [
-        '--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
-        '--enable-webgl', '--enable-unsafe-swiftshader', '--use-gl=angle',
-        '--use-angle=swiftshader', '--disable-background-timer-throttling',
-        '--disable-renderer-backgrounding', '--window-size=1280,720',
-        '--force-device-scale-factor=1', '--remote-debugging-port=0',
-        '--user-data-dir=' + directory, 'about:blank',
-      ], { stdio: 'ignore' });
-      const port = await until(async () => {
-        if (browser?.exitCode !== null) throw new Error('Chrome exited early');
-        const path = join(directory, 'DevToolsActivePort');
-        if (!existsSync(path)) return null;
-        return Number(readFileSync(path, 'utf8').split('\n')[0]) || null;
-      }, 30000, 'Chrome DevTools port');
+      const launched = await launchChromeDevTools('about:blank', directory, {
+        timeoutMs: 40000,
+        extraFlags: ['--force-device-scale-factor=1'],
+        softwareWebgl: true,
+      });
+      browser = launched.browser;
+      const port = launched.port;
       const target = await until(async () => {
         const response = await fetch('http://127.0.0.1:' + port + '/json/list');
         const tabs = await response.json() as Array<{
@@ -326,7 +314,7 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         { type: 'mouseReleased', x: 640, y: 360, button: 'left', clickCount: 1 });
       await page.tap('Escape');
       await page.waitFor('document.querySelector(".gg-shell h2")?.textContent === "PAUSED"',
-        'pause menu');
+        'pause menu', 20000);
       await page.click('[data-action="resume"]');
       await page.waitFor('document.querySelector(".gg-shell")?.hidden === true',
         'resume from pause');
@@ -405,5 +393,5 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
       (failure ? 'Scenario failed: ' + String(failure) + '\n' : '') +
       (faults.length ? faults.length + ' browser runtime error(s):\n' +
         faults.join('\n') : ''));
-  }, 240000);
+  }, 420000);
 });

@@ -1,17 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
+import { launchChromeDevTools } from '../../test-utils/chrome';
 import { ART_BOOKMARKS } from './bookmarks';
-
-const chrome = [
-  process.env['CHROME_PATH'],
-  '/usr/bin/google-chrome',
-  '/usr/bin/google-chrome-stable',
-  '/usr/bin/chromium',
-].find(path => path && existsSync(path));
 
 async function until<T>(read: () => Promise<T | null>, timeoutMs: number): Promise<T> {
   const start = Date.now();
@@ -51,7 +45,7 @@ interface Report {
 // not just a requestAnimationFrame clock or the Three.js triangle counter.
 // The budget guard for the specific bottleneck is in renderer-budget.test.ts;
 // this hardware-dependent measurement is reported, not an absolute FPS gate.
-describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame profiling', () => {
+describe.skipIf(!process.env['CI'])('world viewer real-Chrome frame profiling', () => {
   it('reports actual per-bookmark before/after frame costs', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'billy-isle-chrome-'));
     const port = 5189;
@@ -70,26 +64,16 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
         return response.ok ? true : null;
       }, 20000);
 
-      browser = spawn(chrome!, [
-        '--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
-        '--enable-webgl', '--enable-unsafe-swiftshader',
-        '--use-gl=angle', '--use-angle=swiftshader',
-        '--disable-background-timer-throttling',
-        '--disable-renderer-backgrounding',
-        '--force-device-scale-factor=1.5',
-        '--window-size=1280,720',
-        '--remote-debugging-port=0',
-        '--user-data-dir=' + directory,
+      const launched = await launchChromeDevTools(
         'http://127.0.0.1:' + port + '/src/world/viewer/index.html?profile=1',
-      ], { stdio: 'ignore' });
-      browser.on('error', error => { console.error('Chrome failed:', error); });
-
-      const debuggingPort = await until(async () => {
-        const path = join(directory, 'DevToolsActivePort');
-        if (!existsSync(path)) return null;
-        const value = Number(readFileSync(path, 'utf8').split('\n')[0]);
-        return value > 0 ? value : null;
-      }, 25000);
+        directory, {
+          timeoutMs: 40000,
+          extraFlags: ['--force-device-scale-factor=1.5'],
+          softwareWebgl: true,
+        },
+      );
+      browser = launched.browser;
+      const debuggingPort = launched.port;
       const target = await until(async () => {
         const response = await fetch('http://127.0.0.1:' + debuggingPort + '/json/list');
         const tabs = await response.json() as Array<{
@@ -220,7 +204,7 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
           ready: boolean; loaded: number; failed: number; pending: number;
         } | undefined;
         return state?.ready ? state : null;
-      }, 60000);
+      }, 120000);
       expect(library.pending).toBe(0);
       expect(library.loaded).toBeGreaterThan(50);
       expect(library.failed).toBe(0);
@@ -362,5 +346,5 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
         console.warn('Chrome profile cleanup deferred:', error);
       }
     }
-  }, 180000);
+  }, 420000);
 });
