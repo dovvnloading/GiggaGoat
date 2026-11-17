@@ -263,10 +263,13 @@ export function bakeLibraryGeometry<Model extends string>(
             if (data) {
               sampleUv.set(uvs.getX(idx), uvs.getY(idx));
               map.transformUv(sampleUv);
+              // Sample the nearest texel centre to avoid adjacent palette swatches.
               const x = Math.min(data.width - 1,
-                Math.max(0, Math.floor(sampleUv.x * (data.width - 1))));
+                Math.max(0, Math.floor(sampleUv.x * data.width)));
+              // GLTFLoader textures have flipY=false: transformed v is top-down.
+              const v = map.flipY ? 1 - sampleUv.y : sampleUv.y;
               const y = Math.min(data.height - 1,
-                Math.max(0, Math.floor((1 - sampleUv.y) * (data.height - 1))));
+                Math.max(0, Math.floor(v * data.height)));
               const index = (y * data.width + x) * 4;
               // Transparent atlas padding is black; it is not surface paint.
               if (data.data[index + 3]! > 24) {

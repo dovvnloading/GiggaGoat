@@ -184,9 +184,13 @@ export function bakeLibraryPropGeometry(
           if (image) {
             uv.set(textureCoords.getX(index), textureCoords.getY(index));
             map.transformUv(uv);
-            const x = Math.min(image.width - 1, Math.max(0, Math.floor(uv.x * (image.width - 1))));
+            // Quantize to the nearest texel centre, not a width-1/height-1
+            // interpolation that can pick the neighbouring palette swatch.
+            const x = Math.min(image.width - 1, Math.max(0, Math.floor(uv.x * image.width)));
+            // GLTFLoader textures have flipY=false: transformed v is top-down.
+            const v = map.flipY ? 1 - uv.y : uv.y;
             const y = Math.min(image.height - 1,
-              Math.max(0, Math.floor((1 - uv.y) * (image.height - 1))));
+              Math.max(0, Math.floor(v * image.height)));
             const pixel = (y * image.width + x) * 4;
             if (image.data[pixel + 3]! > 24) {
               texel.setRGB(image.data[pixel]! / 255,

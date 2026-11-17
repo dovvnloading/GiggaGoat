@@ -1,8 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import * as THREE from 'three';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PropDescriptor, PropKind } from './types';
 import { bakeLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
+import { bakeLibraryGeometry } from './visual-hoofington';
 import { buildPropVisuals } from './visual-props';
 import { publicAssetUrl } from './public-assets';
 
@@ -122,5 +123,70 @@ describe('library geometry batching', () => {
     visuals.dispose();
     mesh.geometry.dispose();
     (mesh.material as THREE.Material).dispose();
+  });
+});
+
+describe('palette atlas baking', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each([false, true])('samples all four 2x2 texels with flipY=%s', flipY => {
+    // Canvas ImageData is top-down: red/green on the first row, blue/yellow
+    // on the second. Both GLTFLoader (flipY=false) and regular textures
+    // (flipY=true) must bake those colours onto the matching UV corners.
+    const imageData = new Uint8ClampedArray([
+      255, 0, 0, 255,     0, 255, 0, 255,
+      0, 0, 255, 255,     255, 255, 0, 255,
+    ]);
+    vi.stubGlobal('document', {
+      createElement: () => ({
+        width: 0, height: 0,
+        getContext: () => ({
+          drawImage: () => {},
+          getImageData: () => ({ data: imageData }),
+        }),
+      }),
+    });
+
+    const map = new THREE.Texture();
+    map.image = { width: 2, height: 2 };
+    map.flipY = flipY;
+    const source = new THREE.BufferGeometry();
+    // A non-planar quad ensures the Hoofington baker has a 3D bounding box.
+    source.setAttribute('position', new THREE.Float32BufferAttribute([
+      0, 0, 0,  1, 0, 0,  0, 1, 1,  1, 0, 1,
+    ], 3));
+    // Each corner sits at a different texel centre.
+    source.setAttribute('uv', new THREE.Float32BufferAttribute([
+      0.25, 0.25,  0.75, 0.25,  0.25, 0.75,  0.75, 0.75,
+    ], 2));
+    const triangleCorners = [0, 1, 2, 1, 3, 2];
+    source.setIndex(triangleCorners);
+    const material = new THREE.MeshStandardMaterial({ color: 0xffffff, map });
+    const root = new THREE.Group();
+    root.add(new THREE.Mesh(source, material));
+
+    const geometries = [
+      bakeLibraryPropGeometry('crate', root),
+      bakeLibraryGeometry([{
+        model: 'palette', position: { x: 0, y: 0, z: 0 },
+        size: { x: 2, y: 2, z: 2 }, yaw: 0,
+      }], new Map([['palette', root]])),
+    ];
+    const corners = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00];
+    for (const geometry of geometries) {
+      expect(geometry).not.toBeNull();
+      const colours = geometry!.getAttribute('color');
+      expect(colours.count).toBe(triangleCorners.length);
+      for (let i = 0; i < triangleCorners.length; i++) {
+        const expected = new THREE.Color(corners[triangleCorners[i]!]!);
+        expect(colours.getX(i), 'vertex ' + i + ' red').toBeCloseTo(expected.r, 5);
+        expect(colours.getY(i), 'vertex ' + i + ' green').toBeCloseTo(expected.g, 5);
+        expect(colours.getZ(i), 'vertex ' + i + ' blue').toBeCloseTo(expected.b, 5);
+      }
+      geometry!.dispose();
+    }
+    source.dispose();
+    material.dispose();
+    map.dispose();
   });
 });
