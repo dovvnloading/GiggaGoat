@@ -480,24 +480,32 @@ export class GameView {
     }
   }
 
-  /** No global instanced foliage or huge landmark submissions in the shadow pass.
-   * Select a handful of nearby eligible meshes on a 10 Hz budget. */
+  /** Select only meshes whose world-space bounds overlap the shadow area.
+   * Keep the existing caster cap and 10 Hz refresh budget. */
   private refreshShadowCasters(): void {
     const preset = GRAPHICS_PRESETS[this.currentSettings.graphics];
     const candidates: Array<{ mesh: THREE.Mesh; dist: number }> = [];
+    const worldBounds = new THREE.Sphere();
     this.world.group.updateMatrixWorld(true);
     this.world.group.traverse(object => {
       if (!(object instanceof THREE.Mesh)) return;
       if (!this.shadowDefaults.has(object)) this.shadowDefaults.set(object, object.castShadow);
       const eligible = this.shadowDefaults.get(object);
       object.castShadow = false;
-      if (!eligible || object instanceof THREE.InstancedMesh || !object.visible ||
-          preset.maxShadowCasters === 0) return;
-      object.getWorldPosition(this.cameraDesired);
-      const dist = this.cameraDesired.distanceToSquared(this.cameraTarget);
-      if (dist < preset.shadowDistance * preset.shadowDistance) {
-        candidates.push({ mesh: object, dist });
+      if (!eligible || !object.visible || preset.maxShadowCasters === 0) return;
+      if (object instanceof THREE.InstancedMesh) {
+        if (object.count === 0) return;
+        // Culling can change the active instance matrices between shadow updates.
+        object.computeBoundingSphere();
+      } else if (!object.geometry.boundingSphere) {
+        object.geometry.computeBoundingSphere();
       }
+      const bounds = object instanceof THREE.InstancedMesh
+        ? object.boundingSphere : object.geometry.boundingSphere;
+      if (!bounds) return;
+      worldBounds.copy(bounds).applyMatrix4(object.matrixWorld);
+      const dist = worldBounds.center.distanceTo(this.cameraTarget) - worldBounds.radius;
+      if (dist <= preset.shadowDistance) candidates.push({ mesh: object, dist });
     });
     candidates.sort((a, b) => a.dist - b.dist);
     for (let i = 0; i < Math.min(candidates.length, preset.maxShadowCasters); i++) {
