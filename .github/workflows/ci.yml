@@ -19,6 +19,8 @@ jobs:
       - name: Test (unit)
         run: npm test
       - name: Test (headless Chrome, serial)
+        env:
+          BROWSER_SMOKE: '1'
         run: npm run test:chrome
       - name: Build
         run: npm run build
