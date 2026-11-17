@@ -32,8 +32,12 @@ describe('Crane Yard concept-art construction site', () => {
       .toBe(4);
     expect(Math.max(...columns.map(p => p.transform.position.y + p.size.y / 2)))
       .toBeGreaterThan(Math.max(...slabs.map(p => p.transform.position.y + p.size.y / 2)));
-    // No giant solid tower cuboid blocking the interiors of all four floors.
-    expect(props.filter(p => p.kind === 'tower')).toHaveLength(0);
+    // The pre-existing demolition gig still uses a tiny, invisible-to-camera
+    // kind='tower' marker. It must never create a solid tower-sized collider.
+    const compatTower = props.filter(p => p.kind === 'tower');
+    expect(compatTower).toHaveLength(1);
+    expect(compatTower[0]!.collidable).toBe(false);
+    expect(compatTower[0]!.size.x).toBeLessThan(island.size / 600 * 0.1);
     expect(props.filter(p => p.kind === 'yard-scaffold')).toHaveLength(2);
     const towerCentre = rel(island, slabs[0]!);
     expect(towerCentre.x).toBeCloseTo(CRANE_YARD_PLAN.tower.x);
