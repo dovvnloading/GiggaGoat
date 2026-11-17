@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { GoatCharacter } from './GoatCharacter';
 import { LegacyGoatCharacter } from './LegacyGoatCharacter';
@@ -95,5 +97,29 @@ describe('animation clip routing and compatible fallback', () => {
     expect(art.root.parent).toBeNull();
     expect(() => art.update(.02)).toThrow('disposed');
     expect(LegacyGoatCharacter).toBeDefined();
+  });
+});
+
+describe('checked-in GLB animation contract', () => {
+  it.each(GOAT_VARIANTS)('%s contains a skin and all six named baked clips', variant => {
+    // GLB 2.0 stores JSON in the first chunk. This checks the actual public
+    // assets without WebGL, a browser, or duplicating the binary in this lane.
+    const file = resolve(process.cwd(), 'public/assets/characters/goat',
+      GOAT_GLB_FILES[variant]);
+    const bytes = readFileSync(file);
+    expect(bytes.toString('ascii', 0, 4)).toBe('glTF');
+    expect(bytes.readUInt32LE(4)).toBe(2);
+    expect(bytes.readUInt32LE(8)).toBe(bytes.byteLength);
+    expect(bytes.toString('ascii', 16, 20)).toBe('JSON');
+    const length = bytes.readUInt32LE(12);
+    const gltf = JSON.parse(bytes.toString('utf8', 20, 20 + length)) as {
+      nodes?: unknown[];
+      skins?: { joints?: number[] }[];
+      animations?: { name?: string }[];
+    };
+    expect(gltf.nodes?.length).toBeGreaterThan(0);
+    expect(gltf.skins?.some(skin => (skin.joints?.length ?? 0) > 0)).toBe(true);
+    expect(new Set(gltf.animations?.map(animation => animation.name)))
+      .toEqual(new Set(GOAT_CLIPS));
   });
 });
