@@ -283,16 +283,16 @@ export class PropFactory {
     const red = kind === 'trampoline';
     this.box(root, s, red ? 'gold' : 'orange', 0, y + .09, 0);
     this.mount(root, root, LIBRARY_MODELS.spring,
-      { x: 1.35, y: .28, z: 1.35 }, new THREE.Vector3(0, y + .05, 0), 'spring');
-    this.cylinder(root, 1.67, 1.67, .13, red ? 'red' : 'gold', 0, y + .24, 0, 36);
+      { x: 1.20, y: .25, z: 1.20 }, new THREE.Vector3(0, y + .285, 0), 'spring');
+    this.cylinder(root, 1.67, 1.67, .11, red ? 'red' : 'gold', 0, y + .465, 0, 36);
     this.cylinder(root, 1.50, 1.50, .017, red ? 'redLight' : 'orange',
-      0, y + .315, 0, 36);
+      0, y + .525, 0, 36);
     const rim = this.addMesh(root, new THREE.TorusGeometry(1.67, .085, 7, 32),
-      'woodDark', 0, y + .26, 0);
+      'woodDark', 0, y + .47, 0);
     rim.rotation.x = Math.PI / 2;
     if (!red) {
       this.mount(root, root, LIBRARY_MODELS.arrow,
-        { x: 1.03, y: .02, z: 1.26 }, new THREE.Vector3(0, y + .332, 0), 'paper', 0, -Math.PI / 2);
+        { x: 1.03, y: .02, z: 1.26 }, new THREE.Vector3(0, y + .545, 0), 'paper', 0, -Math.PI / 2);
     }
     return root;
   }
@@ -363,11 +363,19 @@ export class PropFactory {
         this.box(top, { x: .12, y: .12, z: 2.45 }, 'woodDark', x, 0, 0);
       }
     } else {
-      this.box(root, s, 'wood');
+      // Keep the complete spring inside the original +/-0.23 Y collider.
+      // A thin base and open frame expose the coils beneath the red button.
+      this.box(root, { x: s.x, y: .16, z: s.z }, 'wood', 0, -.15, 0);
+      for (const z of [-.94, .94]) {
+        this.box(root, { x: 2, y: .12, z: .12 }, 'woodDark', 0, .10, z);
+      }
+      for (const x of [-.94, .94]) {
+        this.box(root, { x: .12, y: .12, z: 2 }, 'woodDark', x, .10, 0);
+      }
       this.mount(root, root, LIBRARY_MODELS.spring,
-        { x: 1.06, y: .22, z: 1.06 }, new THREE.Vector3(0, .04, 0), 'spring');
-      this.cylinder(root, .82, .82, .095, 'red', 0, .175, 0, 32);
-      this.cylinder(root, .70, .70, .018, 'redLight', 0, .223, 0, 32);
+        { x: .95, y: .20, z: .95 }, new THREE.Vector3(0, .015, 0), 'spring');
+      this.cylinder(root, .82, .82, .08, 'red', 0, .18, 0, 32);
+      this.cylinder(root, .70, .70, .012, 'redLight', 0, .224, 0, 32);
     }
     return root;
   }
