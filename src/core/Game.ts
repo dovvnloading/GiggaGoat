@@ -128,8 +128,13 @@ export class Game {
     // Registered BEFORE the ragdoll's own before-step hook. Commands therefore
     // reach locomotion and joint motors within the same fixed simulation tick.
     this.off.push(physics.onBeforeStep(dt => this.beforeTick(dt)));
+    // World spawn points include 1.25m of clearance for placement checks,
+    // whereas GoatRagdoll.position is a *ground-level* origin. Passing the
+    // elevated point makes KID fall and tumble before the first playable frame.
     this.goat = new GoatRagdoll(physics, {
-      position: spawn.position, yaw: spawn.heading, size: TUNING.size[this.rules.style.tier].scale,
+      position: V(spawn.position.x, heightAt(island, spawn.position.x, spawn.position.z),
+        spawn.position.z),
+      yaw: spawn.heading, size: TUNING.size[this.rules.style.tier].scale,
       id: 'player',
     });
     this.water.track(this.goat.torso, { buoyancyScale: 0.7, paddleSpeed: 2.6 });
@@ -680,7 +685,10 @@ export class Game {
   }
 
   respawn(): void {
-    this.teleport(this.island.spawns[0]!.position);
+    const spawn = this.island.spawns[0]!.position;
+    // A rescue is also a physical spawn; don't reapply the world lane's
+    // clearance height on top of the ragdoll's own standing torso offset.
+    this.teleport(V(spawn.x, heightAt(this.island, spawn.x, spawn.z), spawn.z));
     this.respawns++;
   }
 
