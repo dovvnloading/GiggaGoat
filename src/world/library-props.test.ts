@@ -36,6 +36,21 @@ describe('CC0 library prop catalog', () => {
     }
   });
 
+  it('maps all five crane-yard kinds to their authored CC0 manifest entries', () => {
+    const expected: Partial<Record<PropKind, string>> = {
+      crane: 'assets/library/custom/crane-yard/crane-mast.glb',
+      'crane-jib': 'assets/library/custom/crane-yard/crane-jib.glb',
+      'crane-cab': 'assets/library/custom/crane-yard/crane-cab.glb',
+      'crane-cable': 'assets/library/custom/crane-yard/crane-cable.glb',
+      'red-girder': 'assets/library/custom/crane-yard/red-girder.glb',
+    };
+    for (const [kind, path] of Object.entries(expected)) {
+      expect(PROP_LIBRARY_MODELS[kind as PropKind]).toBe(path);
+      expect(byPath.get(path)?.license, kind).toBe('CC0');
+      expect(existsSync(new URL('../../public/' + path, import.meta.url)), kind).toBe(true);
+    }
+  });
+
   it('prefers coherent, genuinely sourced models for the art-camera details', () => {
     const expected: Partial<Record<PropKind, string>> = {
       'tree-oak': 'custom/hoofington-props/tree-round-a.glb',
@@ -53,7 +68,11 @@ describe('CC0 library prop catalog', () => {
       barrel: 'survival-kit/barrel.glb',
       shop: 'city-kit-commercial/building-a.glb',
       'ferris-wheel': 'ferris-wheel_6CepsZjXBw.glb',
-      crane: 'factory-kit/crane.glb',
+      crane: 'custom/crane-yard/crane-mast.glb',
+      'crane-jib': 'custom/crane-yard/crane-jib.glb',
+      'crane-cab': 'custom/crane-yard/crane-cab.glb',
+      'crane-cable': 'custom/crane-yard/crane-cable.glb',
+      'red-girder': 'custom/crane-yard/red-girder.glb',
       container: 'city-kit-industrial/shipping-container-a.glb',
     };
     for (const [kind, suffix] of Object.entries(expected))
@@ -241,6 +260,80 @@ describe('authored daisy grass-tuft instances', () => {
       const mesh = visuals.group.getObjectByName('props-grass-tuft') as THREE.InstancedMesh;
       mesh.geometry.dispose();
       (mesh.material as THREE.Material).dispose();
+      visuals.dispose();
+      load.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('authored crane-yard instance colours', () => {
+  it('keeps all five GLB colours unchanged through near/far LOD', async () => {
+    const kinds = ['crane', 'crane-jib', 'crane-cab', 'crane-cable',
+      'red-girder'] as const;
+    const painted = new THREE.Color(0x5a96c3);
+    const load = vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockImplementation(async () => {
+      const scene = new THREE.Group();
+      scene.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1),
+        new THREE.MeshStandardMaterial({ color: 0x5a96c3 })));
+      return { scene } as Awaited<ReturnType<GLTFLoader['loadAsync']>>;
+    });
+    vi.stubGlobal('document', {});
+    const props: PropDescriptor[] = kinds.map((kind, i): PropDescriptor => ({
+      id: 'untinted-' + kind, kind,
+      transform: { position: { x: i - 2, y: 0.5, z: 0 }, rotationY: 0 },
+      size: { x: 1, y: 1, z: 1 },
+      body: { type: 'static' }, shape: 'cuboid',
+      collidable: false, breakable: false, lickable: false, climbable: false,
+      // Deliberately conflicting descriptor colour must not repaint the GLB.
+      color: 0xff0000,
+    }));
+    const visuals = buildPropVisuals(props);
+    const actual = new THREE.Color();
+    const expectWhite = (mesh: THREE.InstancedMesh, kind: string): void => {
+      expect(mesh, kind).toBeInstanceOf(THREE.InstancedMesh);
+      expect(mesh.count, kind).toBe(1);
+      mesh.getColorAt(0, actual);
+      expect(actual.getHex(), kind).toBe(0xffffff);
+    };
+    try {
+      for (const kind of kinds) {
+        expectWhite(visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh,
+          kind + ' fallback');
+      }
+      await vi.waitFor(() => expect(visuals.group.userData['libraryReady']).toBe(true));
+      expect(visuals.group.userData['libraryFailed']).toBe(0);
+      expect(load).toHaveBeenCalledTimes(kinds.length);
+      for (const kind of kinds) {
+        expect(load).toHaveBeenCalledWith(publicAssetUrl(PROP_LIBRARY_MODELS[kind]));
+        const mesh = visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
+        expectWhite(mesh, kind + ' loaded');
+        const paint = mesh.geometry.getAttribute('color');
+        expect(paint.getX(0), kind).toBeCloseTo(painted.r, 5);
+        expect(paint.getY(0), kind).toBeCloseTo(painted.g, 5);
+        expect(paint.getZ(0), kind).toBeCloseTo(painted.b, 5);
+      }
+      const camera = new THREE.PerspectiveCamera(80, 1, 0.1, 500);
+      const frustum = new THREE.Frustum();
+      for (const [distance, level] of [[20, 'near'], [90, 'far']] as const) {
+        camera.position.set(0, 1, distance);
+        camera.lookAt(0, 0, 0);
+        camera.updateMatrixWorld();
+        frustum.setFromProjectionMatrix(new THREE.Matrix4()
+          .multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+        visuals.updateCulling(camera.position, frustum, 500, () => false);
+        for (const kind of kinds) {
+          expectWhite(visuals.group.getObjectByName(
+            'render-' + level + '-' + kind) as THREE.InstancedMesh,
+          kind + ' ' + level);
+        }
+      }
+    } finally {
+      for (const kind of kinds) {
+        const mesh = visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
+        mesh.geometry.dispose();
+        (mesh.material as THREE.Material).dispose();
+      }
       visuals.dispose();
       load.mockRestore();
       vi.unstubAllGlobals();

@@ -114,21 +114,21 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
   // Main yellow tower crane: a tall solid-footprint lattice mast, horizontal
   // triangular truss, glazed operator cabin and a visibly *hanging* red beam.
   put('crane', crane.x, crane.z, 3.35, crane.height, 3.35,
-    { fixedToPad: true, color: 0xffc824 });
+    { fixedToPad: true, color: 0xffffff });
   put('crane-jib', 13, crane.z, crane.jibLength, 3.1, 3.25,
-    { bottom: 38.2, fixedToPad: true, color: 0xffcd2d });
+    { bottom: 38.2, fixedToPad: true, color: 0xffffff });
   put('crane-cab', 24.5, crane.z + 3.0, 5.2, 3.7, 4.1,
-    { bottom: 34.9, fixedToPad: true });
+    { bottom: 34.9, fixedToPad: true, color: 0xffffff });
   put('beam', -19, crane.z, 6.3, 3.5, 3.4,
     { bottom: 37.8, fixedToPad: true, color: 0x555964 });
   put('crane-cable', 43, crane.z, 0.17, 11.65, 0.17,
-    { bottom: 26.65, fixedToPad: true, collidable: false });
+    { bottom: 26.65, fixedToPad: true, color: 0xffffff, collidable: false });
   put('red-girder', 43, crane.z, 21.5, 1.5, 1.65,
-    { bottom: 25.15, fixedToPad: true, color: 0xee4a31 });
+    { bottom: 25.15, fixedToPad: true, color: 0xffffff });
   // Short V-shaped lifting slings, one on each end of the suspended girder.
   for (const x of [35.3, 50.7]) {
     put('crane-cable', x, crane.z, 0.12, 2.4, 0.12,
-      { bottom: 26.65, fixedToPad: true, collidable: false });
+      { bottom: 26.65, fixedToPad: true, color: 0xffffff, collidable: false });
   }
   put('concrete-slab', crane.x, crane.z, 5.8, 1.1, 5.8,
     { fixedToPad: true, color: 0x999da2 });
@@ -136,11 +136,11 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
   // A second, smaller tower crane behind the main building adds the art's
   // overlapping depth without a forest of unsupported scaffold poles.
   put('crane', -1.8, -30, 2.5, 29.5, 2.5,
-    { fixedToPad: true, color: 0xffd439 });
+    { fixedToPad: true, color: 0xffffff });
   put('crane-jib', -12, -30, 43, 2.2, 2.5,
-    { bottom: 27.4, fixedToPad: true, color: 0xffd438 });
+    { bottom: 27.4, fixedToPad: true, color: 0xffffff });
   put('crane-cable', -30, -30, 0.12, 7.1, 0.12,
-    { bottom: 20.3, fixedToPad: true, collidable: false });
+    { bottom: 20.3, fixedToPad: true, color: 0xffffff, collidable: false });
   put('crate', -30, -30, 3.1, 2.7, 3,
     { bottom: 17.6, fixedToPad: true, color: 0x9d744a });
 
