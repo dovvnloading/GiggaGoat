@@ -1,3 +1,4 @@
+import type { Object3D } from 'three';
 import type { CharacterAction } from './motion';
 
 /** Names shared by the three baked 30 fps GLBs; textures are embedded. */
@@ -13,6 +14,17 @@ export const GOAT_GLB_FILES: Readonly<Record<GoatVariant, string>> = {
 export const GOAT_CLIPS = ['Idle', 'Walk', 'Run', 'Jump', 'Headbutt', 'Bleat'] as const;
 export type GoatClip = (typeof GOAT_CLIPS)[number];
 export type GoatOneShot = Extract<GoatClip, 'Jump' | 'Headbutt' | 'Bleat'>;
+
+/**
+ * The authored GLB mesh points down local -Z, but every shipped variant has a
+ * -180° Y rotation on its exported `purebind_armature` scene root. That baked
+ * transform otherwise makes the visible nose point +Z even when the physics
+ * torso correctly faces forward(yaw). Cancel it on each cloned scene, outside
+ * the animated armature, leaving the shared GLB template and Rapier untouched.
+ */
+export function alignRiggedSceneForward(scene: Object3D): void {
+  scene.rotateY(Math.PI);
+}
 
 export interface GoatCharacterOptions {
   /** Force a look, otherwise the player is the hero and bots are stable by ID/seed. */
