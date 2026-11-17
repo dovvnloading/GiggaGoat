@@ -469,6 +469,18 @@ if (new URLSearchParams(window.location.search).has('profile')) {
           target: orbit.target.toArray(),
         };
       },
+      /** Targeted WebGL raycast for identifying stray geometry in art QA. */
+      debugPick(x: number, y: number): Array<{ name: string; distance: number }> {
+        const ray = new THREE.Raycaster();
+        ray.setFromCamera(new THREE.Vector2(
+          x / window.innerWidth * 2 - 1,
+          1 - y / window.innerHeight * 2,
+        ), camera);
+        return ray.intersectObjects(worldView.group.children, true)
+          .filter(hit => hit.object.visible)
+          .slice(0, 8)
+          .map(hit => ({ name: hit.object.name, distance: hit.distance }));
+      },
       /** Source-model QA at the painting's bookmark-11 camera. */
       downtownState(): { loaded: boolean; models: number; triangles: number;
         signs: number; awnings: boolean } {
