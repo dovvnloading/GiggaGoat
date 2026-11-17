@@ -2,6 +2,7 @@ import type { Game } from './Game';
 import { HUD_PIECES, deriveHudState, projectHudMap } from './GameHudState';
 import { buildArtwork, goatArtwork, renderHudMinimap } from './HudArtwork';
 import { planGoatSafeHud, type ScreenRect } from './HudOcclusion';
+import { HUD_SPRITES, hudSpriteImage, hudSpriteVariables } from './HudSprites';
 
 const CSS = `
 .gg-ui{position:absolute;inset:0;z-index:4;pointer-events:none;user-select:none;overflow:hidden;color:#fff9df;font-family:"Trebuchet MS","Arial Rounded MT Bold","Arial Black",system-ui,sans-serif;font-weight:900;text-shadow:1px 2px 1px #493049,0 3px 3px #38253b9a;-webkit-font-smoothing:antialiased}
@@ -156,23 +157,29 @@ export class GameHud {
   private readonly panels: Array<{ id: string; element: HTMLElement }>;
 
   constructor(host: HTMLElement) {
-    this.styles.textContent = CSS;
+    this.styles.textContent = CSS + '\n.gg-ui{' + hudSpriteVariables() + '}';
     document.head.appendChild(this.styles);
     this.root.className = 'gg-ui';
     this.root.setAttribute('role', 'group');
     this.root.setAttribute('aria-label', 'Gigga-Goat game HUD');
-    const goat = goatArtwork();
-    const stages = ['Kid', 'Billy', 'Big', 'GIGGA'];
+    const stages = ['Kid', 'Billy', 'Big', 'GIGGA'] as const;
     const stageHtml = stages.map(name =>
-      '<span class="gg-meter-stage" data-stage="' + name + '">' + goat + '</span>').join('');
+      '<span class="gg-meter-stage" data-stage="' + name + '">' +
+      goatArtwork(name) + '</span>').join('');
     const stageLabels = stages.map(name =>
       '<span data-stage-label="' + name + '">' + name.toUpperCase() + '</span>').join('');
+
     const hotbar = HUD_PIECES.map(piece =>
-      '<div class="gg-slot" data-slot="' + piece.type + '" title="' + piece.label + '">' +
-      '<span class="gg-slot-key">' + piece.key + '</span>' + buildArtwork(piece.type) +
-      '<span class="gg-slot-name">' + piece.label + '</span><span class="gg-slot-count" data-quantity>×0</span></div>').join('');
+      '<div class="gg-slot" data-sprite="' + HUD_SPRITES.hotbarSlot +
+      '" data-sprite-selected="' + HUD_SPRITES.hotbarSlotSelected +
+      '" data-slot="' + piece.type + '" title="' + piece.label + '">' +
+      '<span class="gg-slot-key" data-sprite="' + HUD_SPRITES.keyBadge + '">' +
+      piece.key + '</span>' + buildArtwork(piece.type) +
+      '<span class="gg-slot-name">' + piece.label + '</span>' +
+      '<span class="gg-slot-count" data-quantity>×0</span></div>').join('');
     this.root.innerHTML =
-      '<section class="gg-meter" aria-label="Gigga size meter">' +
+      '<section class="gg-meter" data-sprite="' + HUD_SPRITES.sizeMeterFrame +
+      '" aria-label="Gigga size meter">' +
       '<div class="gg-meter-label">GIGGA SIZE METER</div>' +
       '<div class="gg-meter-icons">' + stageHtml + '</div>' +
       '<div class="gg-meter-track"><div class="gg-meter-fill" data-fill></div>' +
@@ -180,35 +187,54 @@ export class GameHud {
       '<div class="gg-meter-stage-labels">' + stageLabels + '</div>' +
       '<div class="gg-meter-caption"><span>CHAOS MAKES YOU BIGGER</span>' +
       '<span><b data-tier>KID</b> · <b data-meter>0 / 100</b></span></div></section>' +
-      '<section class="gg-combo" aria-label="Chaos combo and score">' +
-      '<div class="gg-combo-burst"></div><div class="gg-combo-title" data-combo-title>GIGGA-GOAT!</div>' +
+      '<section class="gg-combo" data-sprite="' + HUD_SPRITES.scoreStarburst +
+      '" aria-label="Chaos combo and score">' +
+      '<div class="gg-combo-title" data-combo-title>GIGGA-GOAT!</div>' +
       '<div class="gg-combo-count" data-combo-count>START A COMBO!</div>' +
       '<div class="gg-score-ribbon"><strong class="gg-score" data-score>0</strong></div>' +
       '<div class="gg-score-caption" data-combo-info>STYLE SCORE</div></section>' +
-      '<section class="gg-map-panel" aria-label="Island minimap">' +
+      '<section class="gg-map-panel" data-sprite="' + HUD_SPRITES.minimapRing +
+      '" aria-label="Island minimap">' +
       '<div class="gg-map-frame"><svg data-map viewBox="0 0 280 280" aria-hidden="true"></svg></div>' +
-      '<div class="gg-map-north" aria-label="North">N</div>' +
+      '<div class="gg-map-skin" aria-hidden="true"></div>' +
+      '<div class="gg-map-north" aria-label="North">' +
+      hudSpriteImage(HUD_SPRITES.compassN, 'gg-compass') + '</div>' +
       '<div class="gg-map-location"><strong data-place>HOOFINGTON</strong></div></section>' +
-      '<section class="gg-gig-card" aria-label="Current gig">' +
-      '<div class="gg-gig-header"><span class="gg-gig-clipboard" aria-hidden="true">✎</span> CURRENT GIG</div>' +
+      '<section class="gg-gig-card" data-sprite="' + HUD_SPRITES.gigCard +
+      '" aria-label="Current gig">' +
+      '<div class="gg-gig-header"><span class="gg-gig-clipboard">' +
+      hudSpriteImage(HUD_SPRITES.gigClipboard, 'gg-clipboard-art') +
+      '</span>CURRENT GIG</div>' +
       '<div class="gg-gig-paper"><h2 class="gg-gig-title" data-gig-title>YOUR NEXT GIG</h2>' +
-      '<p class="gg-gig-task" data-gig-task></p><small class="gg-gig-detail" data-gig-detail></small></div>' +
-      '<div class="gg-gig-footer"><span class="gg-gig-wallet" data-wallet>0 CUD COINS</span>' +
-      '<span data-mode>FREE ROAM</span></div></section>' +
-      '<section class="gg-stamina" data-stamina aria-label="Stamina">' +
-      '<div class="gg-stamina-inner"><div class="gg-hoof" aria-hidden="true"></div>' +
-      '<strong class="gg-stamina-label">STAMINA</strong><span class="gg-stamina-value" data-stamina-number>100</span>' +
-      '</div></section>' +
-      '<section class="gg-hotbar" data-hotbar aria-label="Hay-Build hotbar">' +
-      '<div class="gg-hotbar-header">⚒ HAY-BUILD</div>' +
+      '<p class="gg-gig-task" data-gig-task></p>' +
+      '<small class="gg-gig-detail" data-gig-detail></small></div>' +
+      '<div class="gg-gig-footer"><span class="gg-gig-wallet">' +
+      hudSpriteImage(HUD_SPRITES.cudCoin, 'gg-coin') +
+      '<span data-wallet>0 CUD COINS</span></span><span data-mode>FREE ROAM</span></div></section>' +
+      '<section class="gg-stamina" data-sprite="' + HUD_SPRITES.staminaRing +
+      '" data-stamina aria-label="Stamina">' +
+      '<div class="gg-stamina-progress" aria-hidden="true"></div>' +
+      '<div class="gg-stamina-inner">' +
+      hudSpriteImage(HUD_SPRITES.staminaHooves, 'gg-hoof') +
+      '<strong class="gg-stamina-label">STAMINA</strong>' +
+      '<span class="gg-stamina-value" data-stamina-number>100</span></div></section>' +
+      '<section class="gg-hotbar" data-sprite="' + HUD_SPRITES.hotbarTray +
+      '" data-hotbar aria-label="Hay-Build hotbar">' +
+      '<div class="gg-hotbar-header">HAY-BUILD</div>' +
       '<div class="gg-hotbar-slots">' + hotbar +
-      '<div class="gg-slot gg-supply" title="Materials in your inventory">' +
-      '<span class="gg-slot-key">★</span>' + buildArtwork('supplies') +
+      '<div class="gg-slot gg-supply" data-sprite="' + HUD_SPRITES.hotbarSlot +
+      '" title="Materials in your inventory">' +
+      '<span class="gg-slot-key" data-sprite="' + HUD_SPRITES.keyBadge + '">5</span>' +
+      buildArtwork('supplies') +
       '<span class="gg-slot-name">SUPPLIES</span><span class="gg-slot-count" data-supply>×0</span></div></div>' +
       '<div class="gg-hotbar-foot"><span class="gg-build-tip" data-build-status>B TO BUILD · 1–4 SELECT</span>' +
       '<strong data-materials></strong></div><div class="gg-hotbar-charge"><div data-charge></div></div></section>' +
-      '<div class="gg-board-hint" data-board-hint hidden>PRESS E / GAMEPAD X · GOAT GIGS</div>' +
-      '<div class="gg-hint" data-hint>CLICK TO PLAY · MOUSE TO LOOK</div>' +
+      '<div class="gg-board-hint" data-sprite="' + HUD_SPRITES.promptPill +
+      '" data-board-hint hidden><span class="gg-prompt-key" data-sprite="' +
+      HUD_SPRITES.keyBadge + '">E</span>GOAT GIGS · GAMEPAD X</div>' +
+      '<div class="gg-hint" data-sprite="' + HUD_SPRITES.promptPill +
+      '" data-hint><span class="gg-prompt-key" data-sprite="' +
+      HUD_SPRITES.keyBadge + '">CLICK</span>TO PLAY · MOUSE TO LOOK</div>' +
       '<div class="gg-debug" data-debug hidden></div>';
     host.appendChild(this.root);
     const get = (name: string): HTMLElement => {
@@ -328,7 +354,7 @@ export class GameHud {
         right: initial.right, bottom: initial.bottom };
       // These labels/ornaments extend beyond the containing panel border.
       element.querySelectorAll<HTMLElement>(
-        '.gg-meter-label,.gg-combo-burst,.gg-map-north,.gg-map-location,.gg-hotbar-header'
+        '.gg-meter-label,.gg-meter-icons,.gg-map-north,.gg-map-location,.gg-gig-clipboard,.gg-hotbar-header'
       ).forEach(child => {
         const edge = child.getBoundingClientRect();
         result.left = Math.min(result.left, edge.left);
@@ -412,7 +438,8 @@ export class GameHud {
     this.materials.textContent = state.materials;
     for (let i = 0; i < state.slots.length; i++) {
       const slot = state.slots[i]!, element = this.slots[i]!;
-      element.classList.toggle('is-selected', state.buildMode && slot.selected);
+      element.classList.toggle('is-selected', slot.selected);
+      element.dataset.sprite = slot.selected ? HUD_SPRITES.hotbarSlotSelected : HUD_SPRITES.hotbarSlot;
       element.classList.toggle('is-empty', slot.available === 0);
       const count = element.querySelector<HTMLElement>('[data-quantity]');
       if (count) count.textContent = '×' + slot.available;
