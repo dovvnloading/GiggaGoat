@@ -98,10 +98,14 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       if (collider?.shape !== 'heightfield')
         expect(collider!.transform.position.y + collider!.size.y / 2).toBe(roof);
     }
-    for (const kind of ['lamp', 'bench', 'planter', 'flower', 'awning',
+    for (const kind of ['lamp', 'bench', 'planter', 'flower',
       'ac-unit', 'water-tower', 'fountain']) {
       expect(linked.some(p => p.source!.kind === kind), kind).toBe(true);
     }
+    // The collider descriptors remain, but baked storefront GLBs own the awnings.
+    expect(island.props.some(p => p.poiId === 'downtown-bleatsville' &&
+      p.kind === 'awning')).toBe(true);
+    expect(linked.some(p => p.source!.kind === 'awning')).toBe(false);
     expect(island.props.map(p => ({
       id: p.id, kind: p.kind, transform: p.transform, size: p.size,
     }))).toEqual(before);
@@ -153,8 +157,12 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     const skyline = plan.filter(p => p.model === 'skylineCrane');
     expect(skyline).toHaveLength(1);
     expect(skyline[0]!.wall).toBeUndefined();
-    expect(plan.filter(p => p.model === 'retroWindow').length).toBeGreaterThan(10);
-    expect(plan.filter(p => p.model.startsWith('flower')).length).toBeGreaterThan(30);
+    for (const model of ['retroWindow', 'retroBalcony', 'canopy', 'retroCanopy'])
+      expect(plan.filter(p => p.model === model), model).toHaveLength(0);
+    // Sidewalk planting remains, but no extra facade window-box flower overlays.
+    expect(plan.filter(p => p.model.startsWith('flower')).length).toBeGreaterThan(0);
+    expect(plan.filter(p => (p.model === 'planter' || p.model.startsWith('flower')) &&
+      !p.source)).toHaveLength(0);
     for (const model of ['table','chair','trash','cone','bread','produce','clothes','oakA'])
       expect(plan.some(p => p.model === model), model).toBe(true);
     const furniture = plan.filter(p => ['table','chair','trash','bread',

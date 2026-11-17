@@ -400,7 +400,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(waterVisuals.inland, waterVisuals.sea);
   const dam = buildDamVisuals(island);
   group.add(dam.group);
-  const lighthouse = buildLighthouseVisuals(island);
+  const lighthouse = buildLighthouseVisuals(island, props.group);
   group.add(lighthouse.group);
   const sky = buildSkyVisuals();
   group.add(sky.group);
@@ -474,7 +474,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
       if (chunk.mesh.geometry !== lod) chunk.mesh.geometry = lod;
     }
     if (props.updateCulling(pos, frustum, cullingDistance,
-      mesh => hoofington.isFallbackHidden(mesh) || downtown.isFallbackHidden(mesh)))
+      mesh => hoofington.isFallbackHidden(mesh) || downtown.isFallbackHidden(mesh) ||
+        lighthouse.isFallbackHidden(mesh)))
       shadowCastersChanged = true;
     if (hoofington.updateCulling(pos, frustum)) shadowCastersChanged = true;
     if (downtown.updateCulling(pos, frustum)) shadowCastersChanged = true;

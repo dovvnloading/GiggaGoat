@@ -122,25 +122,12 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
   const scale = island.size / 600;
   const plan: DowntownPlacement[] = [];
   let flowerIndex = 0, bushIndex = 0, oakIndex = 0;
-  const buildings = island.props.filter(p => p.poiId === 'downtown-bleatsville' &&
-    (p.kind === 'shop' || p.kind === 'house'));
-  const nearestBuilding = (p: PropDescriptor): PropDescriptor | undefined =>
-    buildings.reduce<PropDescriptor | undefined>((best, candidate) => {
-      const distance = Math.hypot(p.transform.position.x - candidate.transform.position.x,
-        p.transform.position.z - candidate.transform.position.z);
-      const bestDistance = best ? Math.hypot(
-        p.transform.position.x - best.transform.position.x,
-        p.transform.position.z - best.transform.position.z) : Infinity;
-      return distance < bestDistance ? candidate : best;
-    }, undefined);
-
   for (const source of island.props) {
     if (source.poiId !== 'downtown-bleatsville' || source.body.type === 'dynamic') continue;
     const { position, rotationY: yaw } = source.transform;
     const dz = (position.z - centre.z) / scale;
     const side = position.x < centre.x ? 0 : 1;
     let model: DowntownModel | undefined;
-    let place = position;
     switch (source.kind) {
       case 'shop': {
         const row = Math.max(0, Math.min(4, Math.round(dz / 19 + 2)));
@@ -153,16 +140,6 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
         break;
       case 'tower':
         model = 'highrise'; break;
-      case 'awning': {
-        const front = nearestBuilding(source);
-        if (!front) break;
-        model = side ? 'canopy' : 'retroCanopy';
-        // The old awning colliders are deliberately unchanged. Only the art
-        // is lowered to the ground-floor shopfront shown in the painting.
-        place = { ...position, y: front.transform.position.y -
-          front.size.y / 2 + 3.35 * scale };
-        break;
-      }
       case 'lamp': model = 'lamp'; break;
       case 'bench': model = 'bench'; break;
       case 'planter': model = 'planter'; break;
@@ -173,7 +150,7 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
       default: break;
     }
     if (model) plan.push({
-      model, source, position: place, size: source.size, yaw,
+      model, source, position, size: source.size, yaw,
     });
   }
 
@@ -187,36 +164,6 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
       size: { x: sx * scale, y: h, z: sz * scale },
       yaw, ...(wall === undefined ? {} : { wall }),
     });
-  }
-
-  // Window-box flowers, imported retro glazing and balconies on the upper
-  // floors. They sit beyond the facade so roofs remain clear for parkour.
-  for (const shop of buildings.filter(p => p.kind === 'shop')) {
-    const { position, rotationY: yaw } = shop.transform;
-    const frontX = Math.sin(yaw), frontZ = Math.cos(yaw);
-    const base = position.y - shop.size.y / 2;
-    const face = shop.size.z / 2 + 0.12 * scale;
-    for (const level of [0.56, 0.77]) {
-      const y = base + level * shop.size.y;
-      const x = position.x + frontX * face, z = position.z + frontZ * face;
-      plan.push({ model: 'retroWindow', position: { x, y, z },
-        size: { x: 2.25 * scale, y: 2.25 * scale, z: 0.19 * scale }, yaw });
-      if (level > 0.7 && (position.z > centre.z)) {
-        plan.push({ model: 'retroBalcony',
-          position: { x, y: y - 1.0 * scale, z },
-          size: { x: 2.5 * scale, y: 0.7 * scale, z: 1.1 * scale }, yaw });
-      }
-      for (const offset of [-2.2, 2.2]) {
-        const lateralX = Math.cos(yaw) * offset * scale;
-        const lateralZ = -Math.sin(yaw) * offset * scale;
-        plan.push({ model: 'planter',
-          position: { x: x + lateralX, y: y - 0.85 * scale, z: z + lateralZ },
-          size: { x: 1.45 * scale, y: 0.48 * scale, z: 0.65 * scale }, yaw });
-        plan.push({ model: FLOWER_VARIANTS[flowerIndex++ % FLOWER_VARIANTS.length]!,
-          position: { x: x + lateralX, y: y - 0.48 * scale, z: z + lateralZ },
-          size: { x: 0.9 * scale, y: 0.65 * scale, z: 0.62 * scale }, yaw });
-      }
-    }
   }
 
   // The central road is kept open. Furniture sits on the pavements, and the
@@ -367,14 +314,21 @@ function suppressOldArt(island: IslandData, oldProps: THREE.Group,
     ids.add(p.id); byKind.set(p.kind, ids);
   }
   for (const p of replacements) if (p.source && loaded.has(p.model)) hide(p.source);
-  for (const signboard of island.props.filter(p =>
-    p.poiId === 'downtown-bleatsville' && p.kind === 'signboard')) {
-    // Keep the legacy signboard if its corresponding shop model failed.
-    const matchingShop = island.props.find(p => p.kind === 'shop' &&
+  const loadedFacades = new Set(replacements.flatMap(p =>
+    p.source && (p.source.kind === 'shop' || p.source.kind === 'house') &&
+      loaded.has(p.model) ? [p.source.id] : []));
+  for (const overlay of island.props.filter(p =>
+    p.poiId === 'downtown-bleatsville' &&
+    (p.kind === 'awning' || p.kind === 'signboard'))) {
+    // Preserve the legacy overlay only when its corresponding GLB failed.
+    // Shops and houses both have authored awnings; only shops use sign atlases.
+    const building = island.props.find(p =>
       p.poiId === 'downtown-bleatsville' &&
-      Math.hypot(signboard.transform.position.x - p.transform.position.x,
-        signboard.transform.position.z - p.transform.position.z) < 8 * island.size / 600);
-    if (matchingShop && signedShops.has(matchingShop.id)) hide(signboard);
+      (p.kind === 'shop' || (overlay.kind === 'awning' && p.kind === 'house')) &&
+      Math.hypot(overlay.transform.position.x - p.transform.position.x,
+        overlay.transform.position.z - p.transform.position.z) < 8 * island.size / 600);
+    if (building && (overlay.kind === 'awning'
+      ? loadedFacades.has(building.id) : signedShops.has(building.id))) hide(overlay);
   }
   const zero = new THREE.Matrix4().makeScale(0, 0, 0);
   for (const [kind, ids] of byKind) {
@@ -384,15 +338,19 @@ function suppressOldArt(island: IslandData, oldProps: THREE.Group,
     const mesh = oldProps.getObjectByName('props-' + kind) as THREE.InstancedMesh | undefined;
     const details = oldProps.getObjectByName('architecture-details-' + kind) as
       THREE.InstancedMesh | undefined;
+    const outline = oldProps.getObjectByName('outline-' + kind) as
+      THREE.InstancedMesh | undefined;
     if (!mesh) continue;
     entries.forEach((p, i) => {
       if (!ids.has(p.id)) return;
       mesh.setMatrixAt(i, zero);
       details?.setMatrixAt(i, zero);
+      outline?.setMatrixAt(i, zero);
     });
-    mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere();
-    if (details) {
-      details.instanceMatrix.needsUpdate = true; details.computeBoundingSphere();
+    for (const batch of [mesh, details, outline]) {
+      if (!batch) continue;
+      batch.instanceMatrix.needsUpdate = true;
+      batch.computeBoundingSphere();
     }
   }
 }
