@@ -142,7 +142,8 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
         const profile = window.__worldProfile;
         const menu = document.getElementById('bookmark');
         if (!profile || !menu || !menu.options.length) throw new Error('Viewer failed to start');
-        profile.pixelRatio(1.5);
+        // Production default after the fill-rate fix; the previous run used 1.5.
+        profile.pixelRatio(1);
         profile.water(true);
         profile.sky(true);
         profile.shadows(true);
@@ -175,8 +176,9 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
         profile.sky(false);
         crane.noSky = measure('10');
         profile.sky(true);
+        profile.pixelRatio(1.5);
+        crane.pixelRatio1point5 = measure('10');
         profile.pixelRatio(1);
-        crane.pixelRatio1 = measure('10');
         return { bookmarks, crane, dpr: window.devicePixelRatio,
           userAgent: navigator.userAgent };
       })()`;
@@ -193,6 +195,7 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
       for (const mark of report!.bookmarks) {
         expect(mark.frames).toBe(12);
         expect(mark.p50Ms).toBeGreaterThan(0);
+        expect(mark.p50Ms).toBeLessThan(1000 / 60);
         expect(mark.width).toBeGreaterThan(1000);
         expect(mark.height).toBeGreaterThan(600);
       }
