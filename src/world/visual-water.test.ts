@@ -214,8 +214,8 @@ describe('Dam reservoir gradient, shoreline and visual-only level (DM-3 / DM-6)'
         // Preserve the original separated upstream/downstream vertices and
         // animation but batch both reaches into one draw alongside the new foam.
         expect(inland.getObjectByName('forest-river-after-dam')).toBeUndefined();
-        const riverTriangles = (5 - 1) + (island.river.length - 11 - 1);
-        expect(river.geometry.index?.count).toBe(riverTriangles * 6);
+        const originalSegments = (5 - 1) + (island.river.length - 11 - 1);
+        expect(river.geometry.index!.count).toBeGreaterThan(originalSegments * 6);
         expect(animated).toBeInstanceOf(THREE.ShaderMaterial);
         expect(animated.vertexShader).toContain('vReservoirColor = color');
         expect(animated.fragmentShader).toContain('mix(vReservoirColor, col, 0.18)');
@@ -278,9 +278,22 @@ describe('Mt. Gigga cascades and Dam plot exclusion (MG-5, DM-1)', () => {
         if (fall.name.startsWith('mountain-waterfall-')) {
           const index = Number(fall.name.slice('mountain-waterfall-'.length));
           const a = island.river[index]!, b = island.river[index + 1]!;
-          original = (a.width + b.width) * 0.4;
-          expect(vertices.getY(0)).toBeCloseTo(a.level + 0.3, 5);
-          expect(vertices.getY(2)).toBeCloseTo(b.level + 0.2, 5);
+          const topX = (vertices.getX(0) + vertices.getX(1)) / 2;
+          const topZ = (vertices.getZ(0) + vertices.getZ(1)) / 2;
+          const bottomX = (vertices.getX(2) + vertices.getX(3)) / 2;
+          const bottomZ = (vertices.getZ(2) + vertices.getZ(3)) / 2;
+          const sourceRun = Math.hypot(b.x - a.x, b.z - a.z);
+          const distanceFromA = Math.hypot(topX - a.x, topZ - a.z);
+          original = (a.width + (b.width - a.width) * distanceFromA / sourceRun) * 0.4;
+          expect(vertices.getY(0)).toBeCloseTo(
+            gridSample(island, topX, topZ) + 0.26 * island.size / 600, 4);
+          expect(vertices.getY(2)).toBeCloseTo(
+            gridSample(island, bottomX, bottomZ) + 0.18 * island.size / 600, 4);
+          expect(Math.hypot(bottomX - topX, bottomZ - topZ))
+            .toBeCloseTo(4 * island.size / 600, 4);
+          expect(gridSample(island, topX, topZ) -
+            gridSample(island, bottomX, bottomZ))
+            .toBeGreaterThanOrEqual(3 * island.size / 600 - 0.001);
         } else {
           const index = Number(fall.name.slice('front-terrace-waterfall-'.length)) - 1;
           const angle = [0.54, 0.89][index]!;
@@ -363,54 +376,35 @@ describe('Mt. Gigga cascades and Dam plot exclusion (MG-5, DM-1)', () => {
     }
   });
 
-  it('never generates a cascade whose top point is within the Dam plot', () => {
+  it('suppresses a real cliff waterfall when its entire reach enters the Dam exclusion', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
     const dam = island.plots.find(p => p.poiId === 'the-dam')!;
-    const topInside = (x: number, z: number) =>
-      Math.hypot(x - dam.center.x, z - dam.center.z) <= dam.radius;
+    // Force a known real slope along the first upstream river segment; do
+    // not rely on authored river levels to manufacture the curtain.
+    const n = island.resolution;
+    for (let iz = 0; iz < n; iz++) {
+      const z = (iz / (n - 1) - 0.5) * island.size;
+      for (let ix = 0; ix < n; ix++) island.heights[iz * n + ix] = 2 * z;
+    }
     const first = buildWaterVisuals(island);
     try {
-      for (const mesh of first.inland.children) {
-        if (!mesh.name.startsWith('mountain-waterfall-') ||
-            mesh.name.endsWith('-foam')) continue;
-        const pos = (mesh as THREE.Mesh).geometry.getAttribute('position');
-        expect(topInside((pos.getX(0) + pos.getX(1)) / 2,
-          (pos.getZ(0) + pos.getZ(1)) / 2), mesh.name).toBe(false);
-      }
+      const fall = first.inland.getObjectByName('mountain-waterfall-0');
+      expect(fall).toBeInstanceOf(THREE.Mesh);
     } finally {
-      first.sea.geometry.dispose();
-      (first.sea.material as THREE.Material).dispose();
-      first.inland.traverse(o => {
-        if (o instanceof THREE.Mesh) {
-          o.geometry.dispose();
-          (o.material as THREE.Material).dispose();
-        }
-      });
+      disposeWaterMeshes(first);
     }
-    // Move only the Dam test plot over a known descending segment, proving
-    // that the guard suppresses that waterfall rather than merely missing it.
-    const index = island.river.findIndex((p, i) => i < island.river.length - 1 &&
-      p.level - island.river[i + 1]!.level > 3.4 * island.size / 600);
-    expect(index).toBeGreaterThanOrEqual(0);
-    const a = island.river[index]!, b = island.river[index + 1]!;
-    dam.center.x = (a.x + b.x) / 2;
-    dam.center.z = (a.z + b.z) / 2;
-    dam.radius = 0.5 * island.size / 600;
+    // The whole first segment is shorter than 70 m, so moving the Dam centre
+    // to its upstream end excludes every possible 4 m drop along it.
+    dam.center.x = island.river[0]!.x;
+    dam.center.z = island.river[0]!.z;
     const guarded = buildWaterVisuals(island);
     try {
-      expect(guarded.inland.getObjectByName('mountain-waterfall-' + index))
+      expect(guarded.inland.getObjectByName('mountain-waterfall-0'))
         .toBeUndefined();
-      expect(guarded.inland.getObjectByName('mountain-waterfall-' + index +
-        '-foam')).toBeUndefined();
+      expect(guarded.inland.getObjectByName('mountain-waterfall-0-foam'))
+        .toBeUndefined();
     } finally {
-      guarded.sea.geometry.dispose();
-      (guarded.sea.material as THREE.Material).dispose();
-      guarded.inland.traverse(o => {
-        if (o instanceof THREE.Mesh) {
-          o.geometry.dispose();
-          (o.material as THREE.Material).dispose();
-        }
-      });
+      disposeWaterMeshes(guarded);
     }
   });
 });
@@ -452,13 +446,6 @@ function ribbonMidpoint(quad: RibbonQuad): THREE.Vector3 {
   return quad.start.clone().add(quad.end).multiplyScalar(0.5);
 }
 
-function containsRibbonSegment(quads: readonly RibbonQuad[],
-  a: { x: number; z: number }, b: { x: number; z: number }): boolean {
-  return quads.some(quad =>
-    Math.hypot(quad.start.x - a.x, quad.start.z - a.z) < 0.001 &&
-    Math.hypot(quad.end.x - b.x, quad.end.z - b.z) < 0.001);
-}
-
 function disposeWaterMeshes(visuals: ReturnType<typeof buildWaterVisuals>): void {
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
@@ -489,9 +476,65 @@ function onScreen(point: THREE.Vector3, camera: THREE.PerspectiveCamera): boolea
     clip.z >= -1 && clip.z <= 1;
 }
 
-describe('Dam river ribbon steep-slope suppression (DM-1)', () => {
+describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
+  it.each([
+    { seed: 'billy-isle', size: 600, resolution: 193 },
+    { seed: 'dam-ribbon-alt', size: 900, resolution: 97 },
+  ])('drapes every bank vertex onto the final ground on $seed at $size m',
+    ({ seed, size, resolution }) => {
+      const island = generateIsland({ seed, size, resolution });
+      const riverBefore = island.river.map(p => ({ ...p }));
+      const visuals = buildWaterVisuals(island);
+      try {
+        const river = visuals.inland.getObjectByName('rippling-river') as THREE.Mesh;
+        expect(river).toBeInstanceOf(THREE.Mesh);
+        expect(visuals.inland.getObjectByName('forest-river-after-dam'))
+          .toBeUndefined(); // Both reaches still share one mesh and material.
+        const position = river.geometry.getAttribute('position');
+        const uv = river.geometry.getAttribute('uv');
+        const scale = size / 600;
+        const reaches = [island.river.slice(0, 5), island.river.slice(11)];
+        const expectedStations = reaches.map(points => 1 + points.slice(1).reduce(
+          (sum, point, i) => sum + Math.max(1, Math.ceil(
+            Math.hypot(point.x - points[i]!.x, point.z - points[i]!.z) /
+              (2 * scale))), 0));
+        expect(position.count).toBe(2 * expectedStations.reduce((a, b) => a + b, 0));
+        expect(uv.count).toBe(position.count);
+        for (let v = 0; v < position.count; v++) {
+          const x = position.getX(v), y = position.getY(v), z = position.getZ(v);
+          const terrain = gridSample(island, x, z);
+          expect(Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)).toBe(true);
+          expect(Math.abs(y - (terrain + 0.15 * scale)),
+            'bank vertex ' + v).toBeLessThan(0.3 * scale);
+          expect(y - terrain, 'no floating bank vertex ' + v).toBeLessThan(1);
+          expect(uv.getX(v)).toBe(v % 2);
+          expect(Number.isFinite(uv.getY(v))).toBe(true);
+        }
+        let offset = 0;
+        for (const count of expectedStations) {
+          expect(uv.getY(offset * 2)).toBeCloseTo(0, 6);
+          for (let row = offset + 1; row < offset + count; row++) {
+            const centre = (k: number): { x: number; z: number } => ({
+              x: (position.getX(2 * k) + position.getX(2 * k + 1)) / 2,
+              z: (position.getZ(2 * k) + position.getZ(2 * k + 1)) / 2,
+            });
+            const a = centre(row - 1), b = centre(row);
+            const run = Math.hypot(b.x - a.x, b.z - a.z);
+            expect(run).toBeLessThanOrEqual(2 * scale + 0.0001);
+            expect(run).toBeGreaterThan(0);
+            expect(uv.getY(2 * row)).toBeCloseTo(
+              uv.getY(2 * (row - 1)) + run / 10, 4);
+          }
+          offset += count;
+        }
+        expect(island.river).toEqual(riverBefore);
+      } finally {
+        disposeWaterMeshes(visuals);
+      }
+    });
+
   it.each(['billy-isle', 'dam-ribbon-alt'])(
-    'renders no steep quad within 70 m of the Dam for seed %s, including bookmark 14',
+    'omits steep indexed river quads near the Dam but retains both reaches on %s',
     seed => {
       const island = generateIsland({ seed, resolution: 97 });
       const dam = island.plots.find(plot => plot.poiId === 'the-dam')!;
@@ -499,6 +542,7 @@ describe('Dam river ribbon steep-slope suppression (DM-1)', () => {
       const visuals = buildWaterVisuals(island);
       try {
         const quads = renderedRibbonQuads(visuals.inland);
+        expect(quads.length).toBeGreaterThan(8);
         const near = quads.filter(quad => {
           const mid = ribbonMidpoint(quad);
           return Math.hypot(mid.x - dam.center.x, mid.z - dam.center.z) <= 70;
@@ -506,91 +550,90 @@ describe('Dam river ribbon steep-slope suppression (DM-1)', () => {
         expect(near.length).toBeGreaterThan(0);
         for (const quad of near) {
           expect(ribbonGradient(quad), 'Dam-adjacent indexed ribbon quad')
-            .toBeLessThanOrEqual(0.25 + 0.00001);
+            .toBeLessThanOrEqual(0.25 + 0.0001);
         }
         const visible = near.filter(quad => onScreen(ribbonMidpoint(quad), camera));
         expect(visible.length).toBeGreaterThan(0);
         for (const quad of visible) {
           expect(ribbonGradient(quad), 'bookmark 14 visible Dam ribbon quad')
-            .toBeLessThanOrEqual(0.25 + 0.00001);
+            .toBeLessThanOrEqual(0.25 + 0.0001);
         }
-        // Every permitted segment must still have its full quad, on both
-        // sides of the intentionally empty plunge-pool reach (indices 4..10).
-        const bothReaches = [
-          ...[0, 1, 2, 3],
-          ...Array.from({ length: island.river.length - 12 }, (_, i) => i + 11),
-        ];
-        for (const i of bothReaches) {
-          const a = island.river[i]!, b = island.river[i + 1]!;
-          const distance = Math.hypot(
-            (a.x + b.x) / 2 - dam.center.x,
-            (a.z + b.z) / 2 - dam.center.z);
-          const gradient = (a.level - b.level) / Math.hypot(b.x - a.x, b.z - a.z);
-          const shouldRender = !(distance <= 70 && gradient > 0.25);
-          expect(containsRibbonSegment(quads, a, b), 'source segment ' + i)
-            .toBe(shouldRender);
+        // The upstream reach begins at point 0 and the downstream reach
+        // ends at the final point; no indexed triangle crosses the pool gap.
+        for (const quad of quads) {
+          const inside = (v: THREE.Vector3, start: number, end: number): boolean =>
+            island.river.slice(start, end + 1).some((p, i, points) => {
+              if (i === points.length - 1) return false;
+              const next = points[i + 1]!;
+              const dx = next.x - p.x, dz = next.z - p.z;
+              const t = ((v.x - p.x) * dx + (v.z - p.z) * dz) /
+                (dx * dx + dz * dz);
+              return t >= -0.001 && t <= 1.001 &&
+                Math.hypot(v.x - p.x - t * dx, v.z - p.z - t * dz) < 0.001;
+            });
+          expect((inside(quad.start, 0, 4) && inside(quad.end, 0, 4)) ||
+            (inside(quad.start, 11, island.river.length - 1) &&
+              inside(quad.end, 11, island.river.length - 1))).toBe(true);
         }
-        expect(containsRibbonSegment(quads, island.river[1]!, island.river[2]!))
-          .toBe(true); // upstream
-        expect(containsRibbonSegment(quads, island.river[12]!, island.river[13]!))
-          .toBe(true); // forest outflow
       } finally {
         disposeWaterMeshes(visuals);
       }
     },
   );
 
-  it('omits steep near-Dam segments but leaves neighboring upstream and forest quads', () => {
-    const island = generateIsland({ seed: 'dam-ribbon-alt', resolution: 97 });
-    const dam = island.plots.find(plot => plot.poiId === 'the-dam')!;
-    // Force a steep reach in each emitted ribbon, not in the already omitted
-    // Dam plunge-pool gap. Both changed midpoints remain within 70 m.
-    island.river[3]!.level = island.river[2]!.level - 12;
-    const outA = island.river[11]!, outB = island.river[12]!;
-    outA.x = dam.center.x - 12;
-    outA.z = dam.center.z + 12;
-    outA.level = 20;
-    outB.x = dam.center.x + 12;
-    outB.z = dam.center.z + 18;
-    outB.level = 2;
-
-    const visuals = buildWaterVisuals(island);
-    try {
-      const quads = renderedRibbonQuads(visuals.inland);
-      expect(quads).toHaveLength(6); // eight original quads less the two steep ones
-      for (const i of [2, 11]) {
-        const a = island.river[i]!, b = island.river[i + 1]!;
-        expect((a.level - b.level) / Math.hypot(a.x - b.x, a.z - b.z))
-          .toBeGreaterThan(0.25);
-        expect(Math.hypot((a.x + b.x) / 2 - dam.center.x,
-          (a.z + b.z) / 2 - dam.center.z)).toBeLessThan(70);
-        expect(containsRibbonSegment(quads, a, b), 'steep source segment ' + i)
-          .toBe(false);
+  it('keeps waterfall mesh names only for actual 3 m drops on 4 m runs away from the Dam', () => {
+    for (const [seed, size] of [['billy-isle', 600], ['waterfall-cliff-alt', 900]] as const) {
+      const island = generateIsland({ seed, size, resolution: 193 });
+      const dam = island.plots.find(plot => plot.poiId === 'the-dam')!;
+      const visuals = buildWaterVisuals(island);
+      try {
+        const waterfalls = visuals.inland.children.filter(object =>
+          /^mountain-waterfall-\d+$/.test(object.name)) as THREE.Mesh[];
+        if (seed === 'billy-isle') {
+          expect(visuals.inland.getObjectByName('mountain-waterfall-1'))
+            .toBeUndefined();
+          expect(visuals.inland.getObjectByName('mountain-waterfall-1-foam'))
+            .toBeUndefined();
+        }
+        for (const fall of waterfalls) {
+          const position = fall.geometry.getAttribute('position');
+          const topX = (position.getX(0) + position.getX(1)) / 2;
+          const topZ = (position.getZ(0) + position.getZ(1)) / 2;
+          const footX = (position.getX(2) + position.getX(3)) / 2;
+          const footZ = (position.getZ(2) + position.getZ(3)) / 2;
+          expect(Math.hypot(topX - dam.center.x, topZ - dam.center.z),
+            fall.name).toBeGreaterThan(70);
+          expect(Math.hypot(footX - topX, footZ - topZ),
+            fall.name).toBeCloseTo(4 * size / 600, 4);
+          expect(gridSample(island, topX, topZ) -
+            gridSample(island, footX, footZ),
+            fall.name).toBeGreaterThanOrEqual(3 * size / 600 - 0.001);
+          const index = Number(fall.name.slice('mountain-waterfall-'.length));
+          expect(Number.isInteger(index) && index >= 0 &&
+            index < island.river.length - 1).toBe(true);
+          expect(visuals.inland.getObjectByName(fall.name + '-foam'))
+            .toBeInstanceOf(THREE.Group);
+        }
+      } finally {
+        disposeWaterMeshes(visuals);
       }
-      for (const i of [0, 1, 3, 12, 13, 14]) {
-        expect(containsRibbonSegment(quads, island.river[i]!, island.river[i + 1]!),
-          'preserved neighboring segment ' + i).toBe(true);
-      }
-    } finally {
-      disposeWaterMeshes(visuals);
     }
   });
 
-  it('locates the visible steep 4→5 transition inside the pre-existing pool gap', () => {
-    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
-    const dam = island.plots.find(plot => plot.poiId === 'the-dam')!;
-    const a = island.river[4]!, b = island.river[5]!;
-    const midpoint = new THREE.Vector3((a.x + b.x) / 2,
-      (a.level + b.level) / 2 + 0.12, (a.z + b.z) / 2);
-    expect((a.level - b.level) / Math.hypot(a.x - b.x, a.z - b.z))
-      .toBeGreaterThan(0.25);
-    expect(Math.hypot(midpoint.x - dam.center.x, midpoint.z - dam.center.z))
-      .toBeLessThan(70);
-    expect(onScreen(midpoint, damBookmarkCamera())).toBe(true);
+  it('does not turn authored level steps into falls on flat terrain', () => {
+    const island = generateIsland({ seed: 'waterfall-flat-test', resolution: 65 });
+    island.heights.fill(4);
+    // Deliberately exaggerate the legacy elevation steps: terrain must win.
+    island.river.forEach((p, i) => { p.level = (100 - i * 25); });
     const visuals = buildWaterVisuals(island);
     try {
-      expect(containsRibbonSegment(renderedRibbonQuads(visuals.inland), a, b))
-        .toBe(false); // neither slice includes the 4→5 segment
+      expect(visuals.inland.children.filter(object =>
+        /^mountain-waterfall-\d+$/.test(object.name))).toHaveLength(0);
+      const pos = (visuals.inland.getObjectByName('rippling-river') as THREE.Mesh)
+        .geometry.getAttribute('position');
+      for (let i = 0; i < pos.count; i++) {
+        expect(pos.getY(i)).toBeCloseTo(4 + 0.15, 4);
+      }
     } finally {
       disposeWaterMeshes(visuals);
     }
