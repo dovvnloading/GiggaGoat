@@ -433,7 +433,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
       shadowCastersChanged = true;
     if (hoofington.updateCulling(pos, frustum)) shadowCastersChanged = true;
     if (downtown.updateCulling(pos, frustum)) shadowCastersChanged = true;
-    if (environmentLod.updateCulling(pos, frustum)) shadowCastersChanged = true;
+    if (environmentLod.updateCulling(camera, pos, frustum)) shadowCastersChanged = true;
     // The GLB supplies its own reservoir surface. Hide the procedural one
     // on success, but retain it in the graph for disposal; it remains visible
     // if the model fails and the procedural fallback is needed.
