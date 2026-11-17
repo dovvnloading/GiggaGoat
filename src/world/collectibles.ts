@@ -66,12 +66,23 @@ export function makeRelics(island: IslandData, rng: SeededRandom): RelicSpot[] {
         }
       }
       else if (id === 'baa-ardwalk' && i < 2 && pier) {
-        // Under the walking deck, above the sea, between the support piles.
-        const z = pier.transform.position.z + (i === 0 ? 13 : -13) * scale;
+        // The extended pier now begins on dry beach. Search its seaward half:
+        // the old offsets near the centre landed inside the taller sand bank.
         const x = pier.transform.position.x + (i === 0 ? -2.2 : 2.2) * scale;
-        position = { x, z, y: Math.max(1.3 * scale, gridSample(island, x, z) + 0.8 * scale) };
-        category = 'under-pier';
-        hint = 'Below the boardwalk planks';
+        const underside = pier.transform.position.y - pier.size.y / 2;
+        for (const fraction of [0.39, 0.44, 0.35, 0.29]) {
+          const z = pier.transform.position.z + fraction * pier.size.z;
+          const candidate = {
+            x, z, y: Math.max(1.3 * scale, gridSample(island, x, z) + 0.8 * scale),
+          };
+          if (candidate.y + 0.25 * scale >= underside || !clearPosition(island, candidate)) {
+            continue;
+          }
+          position = candidate;
+          category = 'under-pier';
+          hint = 'Below the boardwalk planks';
+          break;
+        }
       } else if (id === 'mt-gigga' && ledges.length) {
         const target = ledges[(i * 3) % ledges.length]!;
         const c = target.transform.position;

@@ -107,20 +107,9 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   at(farm, 'bench', -14, 34, 3.6, 1.55, 1.3,
     { yaw: Math.PI / 2, color: 0x9d6f57 });
 
-  // Baa-ardwalk: colourful shops, fluttering pennants, pier furniture and sea buoys.
+  // Floating buoys outline the pier and the surf. The kiosks, pennants and
+  // benches are built by buildBaaardwalk at deck height, never on sand.
   const beach: PoiId = 'baa-ardwalk';
-  for (let i = 0; i < 5; i++) {
-    at(beach, 'booth', -28 + i * 14, -22, 7.5, 6.5, 6.2,
-      { color: [0xe66e9e, 0xffbd62, 0x8dd6d3, 0xabc2f5, 0xf27e70][i] });
-    at(beach, 'awning', -28 + i * 14, -17.8, 8, 1, 3.2,
-      { lift: 5.2, color: i % 2 ? 0xffd833 : 0xff6889 });
-    at(beach, 'signboard', -28 + i * 14, -26.2, 5, 2.6, 0.35,
-      { lift: 3, color: 0xf7db99 });
-  }
-  for (let i = 0; i < 20; i++) {
-    at(beach, 'bunting', -34 + i * 3.7, -8 + Math.sin(i * 0.7) * 1.5,
-      2.6, 1.3, 0.28, { lift: 9.5, color: [0xff688a, 0xffd833, 0x5ed1cb][i % 3] });
-  }
   const surf = sites.get(beach)!;
   for (let i = 0; i < 16; i++) {
     const a = i * Math.PI / 8;
@@ -128,10 +117,6 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     const z = surf.z + (61 + Math.cos(a) * 27) * scale;
     place('buoy', x, z, 1.9, 2.1, 1.9, beach,
       { y: 0.55 * scale, mass: 4, shape: 'cylinder', color: i % 2 ? 0xff891e : 0xf6f2e8 });
-  }
-  for (let i = 0; i < 9; i++) {
-    at(beach, 'bench', rand(-32, 32), rand(1, 17), 3.6, 1.5, 1.2,
-      { yaw: turn(), color: 0xc28b58 });
   }
 
   // Crane Yard: stacked shipping containers, safety cones, decks and climbable steel.

@@ -7,6 +7,7 @@ import {
   type ColliderDescriptor, type IslandData, type WorldScene,
 } from '../index';
 import { ART_BOOKMARKS, findBookmark } from './bookmarks';
+import { paintingAssetUrl } from './reference-art';
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -251,7 +252,7 @@ function applyBookmark(id: string): void {
   presetInput.value = mark.day < 0.1 ? 'night' : mark.day < 0.35 ? 'golden-hour' : 'day';
   tideInput.value = String(mark.tide);
   worldView.setTideLevel(mark.tide);
-  referenceImage.src = '/docs/art/hifi/' + mark.image;
+  referenceImage.src = paintingAssetUrl(mark.image);
   referenceImage.alt = mark.label + ' environment concept art';
   referenceCaption.textContent = mark.label + ' · live view / original painting';
   reference.hidden = !compareToggle.checked;
@@ -305,7 +306,7 @@ async function captureAllBookmarks(): Promise<void> {
       // Copy immediately after render, before WebGL clears its backbuffer.
       ctx.drawImage(renderer.domElement, 0, y, width, height);
       const painting = new Image();
-      painting.src = '/docs/art/hifi/' + mark.image;
+      painting.src = paintingAssetUrl(mark.image);
       await painting.decode();
       const factor = Math.min(width / painting.naturalWidth, height / painting.naturalHeight);
       const w = painting.naturalWidth * factor, h = painting.naturalHeight * factor;

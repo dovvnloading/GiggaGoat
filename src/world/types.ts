@@ -18,7 +18,7 @@ export type Biome = (typeof BIOMES)[number];
 
 export type PropKind =
   | 'barn' | 'house' | 'shop' | 'tower' | 'windmill' | 'lighthouse'
-  | 'ferris-wheel' | 'crane' | 'scaffold' | 'beam' | 'pier' | 'deck'
+  | 'ferris-wheel' | 'crane' | 'scaffold' | 'beam' | 'pier' | 'deck' | 'pier-rail'
   | 'bumper' | 'booth' | 'satellite-dish' | 'dam-wall'
   | 'fence' | 'hay-bale' | 'crate' | 'barrel' | 'tree-pine' | 'tree-oak'
   | 'rock' | 'log' | 'lamp' | 'ramp' | 'ledge' | 'bridge'

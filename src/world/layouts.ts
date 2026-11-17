@@ -1,6 +1,7 @@
 import type { IslandData, PoiId, PropDescriptor, PropKind, Vec2, Vec3 } from './types';
 import { SeededRandom } from './random';
 import { gridSample, riverAt } from './terrain';
+import { buildBaaardwalk } from './boardwalk';
 
 interface AddOptions {
   yaw?: number;
@@ -83,37 +84,8 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   site(farm, 'ramp', -35, 6, 6, 2, 11, { yaw: 0.35 });
   site(farm, 'sign', 7.5, 39, 5, 3, 0.5, { breakable: true });
 
-  // BAA-ARDWALK: a real walkable pier beyond the coastline and an open-frame wheel.
-  const beach: PoiId = 'baa-ardwalk';
-  site(beach, 'booth', -18, -10, 8, 6, 7, { color: 0xff888a });
-  site(beach, 'booth', 17, -9, 8, 7, 8, { color: 0xffdc6d });
-  site(beach, 'ferris-wheel', -23, 10, 23, 23, 3, { collidable: false, lickable: false });
-  site(beach, 'scaffold', -30, 9, 2, 15, 2);
-  site(beach, 'scaffold', -16, 9, 2, 15, 2);
-  site(beach, 'platform', -23, 9, 17, 1.1, 5, { lift: 7.5 });
-  // The start is inland; the end projects past the shoreline into the sea.
-  const pierStart = at(beach, 0, 19), pierEnd = at(beach, 0, 87);
-  const pierLevel = 5.0 * scale;
-  add(beach, 'pier', (pierStart.x + pierEnd.x) / 2, (pierStart.z + pierEnd.z) / 2,
-    { x: 13 * scale, y: 1 * scale, z: 68 * scale }, { absoluteY: pierLevel, color: 0xc68b54 });
-  for (let i = 0; i < 9; i++) {
-    const z = pierStart.z + (6 + i * 7.3) * scale;
-    for (const side of [-1, 1]) {
-      add(beach, 'scaffold', pierStart.x + side * 5.6 * scale, z,
-        { x: 0.8 * scale, y: 9 * scale, z: 0.8 * scale },
-        { absoluteY: pierLevel - 4 * scale });
-    }
-  }
-  site(beach, 'ramp', 0, 13, 12, 2, 15);
-  for (let i = 0; i < 7; i++) {
-    site(beach, 'bumper', -18 + (i % 4) * 8, 30 + Math.floor(i / 4) * 8,
-      4, 2.6, 4, { dynamicMass: 35, shape: 'cylinder', color: 0x9d7de7 });
-  }
-  for (let i = 0; i < 10; i++) {
-    site(beach, 'bench', rng.range(-27, 26), rng.range(-21, 5), 3.5, 1.4, 1.1,
-      { breakable: true, yaw: rng.range(0, 6.28) });
-  }
-  site(beach, 'flag', 0, 82, 0.6, 9, 0.6, { absoluteY: pierLevel + 4.5 * scale });
+  // BAA-ARDWALK: one cohesive shore-connected, walkable pier scene.
+  props.push(...buildBaaardwalk(island));
 
   // CRANE YARD: climbable framing, diagonally stacked cargo and movable barrels.
   const yard: PoiId = 'crane-yard';
