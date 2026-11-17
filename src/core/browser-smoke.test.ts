@@ -104,11 +104,11 @@ class ChromePage {
         }> ?? []).map(arg => arg.value === undefined ?
           (arg.description ?? arg.type ?? '') : String(arg.value)).join(' ');
         if (params.type === 'error' || webglError.test(message)) {
-          this.faults.push('console.' + String(params.type) + ': ' + message);
+          this.record('console.' + String(params.type) + ': ' + message);
         }
       } else if (packet.method === 'Runtime.exceptionThrown') {
         const details = params.exceptionDetails ?? {};
-        this.faults.push('uncaught exception: ' + String(details.text ?? '') + ' ' +
+        this.record('uncaught exception: ' + String(details.text ?? '') + ' ' +
           String(details.exception?.description ?? '') + ' ' +
           JSON.stringify(details.stackTrace?.callFrames ?? []));
       } else if (packet.method === 'Log.entryAdded') {
@@ -116,15 +116,15 @@ class ChromePage {
         const message = String(entry.text ?? '');
         if ((entry.source === 'rendering' && entry.level === 'error') ||
           webglError.test(message)) {
-          this.faults.push('WebGL/' + String(entry.source) + ': ' + message);
+          this.record('WebGL/' + String(entry.source) + ': ' + message);
         }
       } else if (packet.method === 'Network.responseReceived') {
         const response = params.response ?? {};
         if (typeof response.status === 'number' && response.status >= 400) {
-          this.faults.push('HTTP ' + response.status + ': ' + String(response.url));
+          this.record('HTTP ' + response.status + ': ' + String(response.url));
         }
       } else if (packet.method === 'Network.loadingFailed' && !params.canceled) {
-        this.faults.push('network failure: ' + String(params.errorText) +
+        this.record('network failure: ' + String(params.errorText) +
           ' (' + String(params.requestId) + ')');
       }
     });
@@ -132,6 +132,10 @@ class ChromePage {
       for (const request of this.pending.values()) request.reject(new Error('DevTools disconnected'));
       this.pending.clear();
     });
+  }
+
+  private record(message: string): void {
+    this.faults.push('[' + this.phase + '] ' + message);
   }
 
   send(method: string, params: Record<string, unknown> = {}): Promise<Record<string, any>> {
@@ -151,8 +155,20 @@ class ChromePage {
   }
 
   async waitFor(expression: string, what: string, timeoutMs = 10000): Promise<void> {
-    await until(async () => (await this.evaluate<boolean>(expression)) ? true : null,
-      timeoutMs, what);
+    try {
+      await until(async () => (await this.evaluate<boolean>(expression)) ? true : null,
+        timeoutMs, what);
+    } catch (error) {
+      let state = 'unavailable';
+      try {
+        state = await this.evaluate<string>('JSON.stringify({' +
+          'menu: document.querySelector(".gg-shell-panel")?.textContent?.slice(0, 200),' +
+          'hidden: document.querySelector(".gg-shell")?.hidden,' +
+          'locked: !!document.pointerLockElement, url: location.href})');
+      } catch { /* A browser crash may also remove the execution context. */ }
+      throw new Error('Waiting for ' + what + ' failed: ' + String(error) +
+        ' (browser state ' + state + ')');
+    }
   }
 
   async click(selector: string): Promise<void> {
@@ -198,7 +214,7 @@ class ChromePage {
       'const code = gl.getError(); if (code === gl.NO_ERROR) break;' +
       'errors.push("context " + i + " error 0x" + code.toString(16));' +
       '} return errors; }))()');
-    for (const error of errors) this.faults.push('WebGL gl.getError(): ' + error);
+    for (const error of errors) this.record('WebGL gl.getError(): ' + error);
   }
 }
 
@@ -225,7 +241,9 @@ const initScript = [
   '})();',
 ].join('\n');
 
-describe.skipIf(!process.env['CI'] && !process.env['BROWSER_SMOKE'])('production game Chrome runtime smoke', () => {
+// CI calls this file in a separate step. Running another Chrome alongside the
+// World Lab and HUD layout Chrome tests overwhelms the shared runner.
+describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime smoke', () => {
   it('builds, loads, plays, opens menus, and runs every party mode without browser errors', async () => {
     if (!chrome) throw new Error('Chrome must be installed on the CI runner');
     // Use the exact production Vite output, not Vite's forgiving development server.
@@ -360,7 +378,7 @@ describe.skipIf(!process.env['CI'] && !process.env['BROWSER_SMOKE'])('production
           faults.push('Browser error inspection: ' + String(error));
         }
         const inspectedPage = page;
-        faults.push(...inspectedPage.faults.map(message => '[' + inspectedPage.phase + '] ' + message));
+        faults.push(...inspectedPage.faults);
         page.socket.close();
       }
       browser?.kill();
