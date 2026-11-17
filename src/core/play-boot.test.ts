@@ -103,7 +103,12 @@ describe('production title-screen PLAY boot', () => {
       // and send its intent to Game.advance on each elapsed render frame.
       for (let frame = 1; frame <= 480; frame++) {
         const dt = 1 / 60;
-        game.advance(dt, view.input.sample(dt, game.buildMode));
+        try {
+          game.advance(dt, view.input.sample(dt, game.buildMode));
+        } catch (error) {
+          throw new Error('Live PLAY game.advance failed at frame ' + frame +
+            ' / step ' + game.physics.stepCount, { cause: error });
+        }
         if (frame % 60 === 0) {
           const torso = game.goat.torso;
           const q = torso.rotation();
@@ -126,8 +131,12 @@ describe('production title-screen PLAY boot', () => {
         expect(state.ragdoll, JSON.stringify(state)).toBe(false);
         expect(state.headY, JSON.stringify(state)).toBeGreaterThan(state.legY);
       }
-    } finally {
-      app.dispose();
+    } catch (error) {
+      // Preserve the actual gameplay/DOM failure if teardown also hits a
+      // poisoned Rapier world; never let cleanup mask the reproduction.
+      try { app.dispose(); } catch (cleanup) { console.error('cleanup after failure:', cleanup); }
+      throw error;
     }
+    app.dispose();
   });
 });
