@@ -50,11 +50,13 @@ export class GameCharacters {
     for (const character of this.bots.values()) {
       let visible = true;
       if (camera) {
-        const position = character.physics.torso.translation();
-        this.testPoint.set(position.x, position.y, position.z);
-        const distanceSq = camera.position.distanceToSquared(this.testPoint);
-        visible = distanceSq < drawDistance * drawDistance &&
-          (distanceSq < 25 * 25 || this.frustum.containsPoint(this.testPoint));
+        const position = character.physics?.torso.translation();
+        if (position) {
+          this.testPoint.set(position.x, position.y, position.z);
+          const distanceSq = camera.position.distanceToSquared(this.testPoint);
+          visible = distanceSq < drawDistance * drawDistance &&
+            (distanceSq < 25 * 25 || this.frustum.containsPoint(this.testPoint));
+        } else visible = false;
       }
       character.root.visible = visible;
       if (visible) character.update(dt, alpha);
