@@ -58,6 +58,9 @@ const COLORS = {
   submerged: new THREE.Color('#4D9C9F'),
 } as const;
 
+const CAPE_GRASS = new THREE.Color('#7FBF56');
+const CAPE_STONE = new THREE.Color('#A8A9B1');
+
 interface RoadSample { x: number; z: number; width: number; type: 'road' | 'trail' }
 function roadGrid(island: IslandData, cell: number): Map<string, RoadSample[]> {
   const cells = new Map<string, RoadSample[]>();
@@ -101,6 +104,8 @@ function terrainGeometry(
   const positions: number[] = [], normals: number[] = [], colors: number[] = [];
   const indices: number[] = [];
   const color = new THREE.Color();
+  const lighthouse = island.pois.find(p => p.id === 'old-lighthouse')!.center;
+  const scale = island.size / 600;
   const sample = (x: number, z: number): number =>
     island.heights[gridIndex(n, Math.max(0, Math.min(n - 1, x)),
       Math.max(0, Math.min(n - 1, z)))]!;
@@ -154,6 +159,15 @@ function terrainGeometry(
         0.025 * Math.sin(radius * 0.33));
       color.copy(grassy).lerp(stone, rockFace);
       color.lerp(base, 1 - mountain);
+    }
+    // Cap the beacon's headland in grass, but keep the steep sea-facing
+    // walls visibly pale grey rather than the generic low sand/beach palette.
+    const capeRadius = Math.hypot(x - lighthouse.x, z - lighthouse.z) / scale;
+    if (capeRadius < 36 && h > 0.2 * scale) {
+      const face = Math.max(smoothstep(16.5, 27.5, capeRadius),
+        smoothstep(0.65, 1.7, slope) * 0.85);
+      color.copy(CAPE_GRASS).lerp(CAPE_STONE,
+        face * (1 - smoothstep(33, 37, capeRadius)));
     }
     const trail = roadMix(roads, x, z, 22);
     color.lerp(COLORS.dirt, trail * (1 - cliff) * (1 - mountain * 0.42) * 0.86);
