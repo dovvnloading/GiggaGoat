@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { IslandData } from './types';
+import type { IslandData, RoadDescriptor } from './types';
 import { gridSample } from './terrain';
 import { makeLocalStreets } from './roads';
 import { TOON_RAMP } from './visual-props';
@@ -7,6 +7,62 @@ import { TOON_RAMP } from './visual-props';
 interface StreetPiece {
   x: number; y: number; z: number;
   width: number; height: number; length: number; yaw: number;
+}
+
+/**
+ * Paint the far Hoofington zebra directly above the graded road slabs.
+ * Seven 0.5 m-wide bars separated by 0.5 m gaps share one BufferGeometry
+ * and one draw call (unlike seven individual boxes/instances).
+ */
+function buildHoofingtonZebraCrossing(
+  road: RoadDescriptor, centre: { x: number; z: number }, scale: number,
+): THREE.Mesh {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const stripeWidth = 0.5 * scale;
+  const stripePitch = 1.0 * scale;
+  const crossingZ = centre.z - 18 * scale;
+  const left = centre.x - road.width / 2;
+  const right = centre.x + road.width / 2;
+
+  // The asphalt in buildRoads sits 0.20 m above the graded centreline;
+  // 0.02 m clearance and polygon offset avoid coplanar flicker.
+  function surfaceY(z: number): number {
+    for (let i = 1; i < road.points.length; i++) {
+      const a = road.points[i - 1]!, b = road.points[i]!;
+      if (z <= b.z || i === road.points.length - 1) {
+        const t = THREE.MathUtils.clamp((z - a.z) / (b.z - a.z), 0, 1);
+        return THREE.MathUtils.lerp(a.y, b.y, t) + 0.22;
+      }
+    }
+    return road.points[road.points.length - 1]!.y + 0.22;
+  }
+
+  for (let i = 0; i < 7; i++) {
+    const z = crossingZ + (i - 3) * stripePitch;
+    const near = z - stripeWidth / 2, far = z + stripeWidth / 2;
+    const base = positions.length / 3;
+    positions.push(
+      left, surfaceY(near), near,
+      right, surfaceY(near), near,
+      left, surfaceY(far), far,
+      right, surfaceY(far), far,
+    );
+    indices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeBoundingSphere();
+  const material = new THREE.MeshBasicMaterial({
+    color: 0xffffff, side: THREE.DoubleSide,
+    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = 'hoofington-zebra-crossing';
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  return mesh;
 }
 
 /**
@@ -60,7 +116,7 @@ export function buildStreetDetails(island: IslandData): THREE.Group {
     }
 
     // Painted, climb-free crossings are separated from the house-front lawns.
-    const crossingOffsets = road.from === 'hoofington' ? [-18, 17] : [-27, 7, 29];
+    const crossingOffsets = road.from === 'hoofington' ? [17] : [-27, 7, 29];
     for (const offset of crossingOffsets) {
       const z = centre.z + offset * scale;
       for (let lane = -3; lane <= 3; lane++) {
@@ -71,6 +127,9 @@ export function buildStreetDetails(island: IslandData): THREE.Group {
           length: 0.47 * scale, yaw: 0,
         });
       }
+    }
+    if (road.from === 'hoofington') {
+      group.add(buildHoofingtonZebraCrossing(road, centre, scale));
     }
   }
 
