@@ -5,6 +5,7 @@ import { clamp, smoothstep } from './random';
 import { gridCoordinate, gridIndex } from './terrain';
 import { makeLocalStreets } from './roads';
 import { buildPropVisuals, TOON_RAMP } from './visual-props';
+import { createEnvironmentLod } from './environment-lod';
 import { buildGroundDetails } from './visual-ground';
 import { buildStreetDetails } from './visual-streets';
 import { buildMeadowScatter } from './visual-meadow';
@@ -385,6 +386,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(new THREE.AmbientLight(0xb5d4eb, 0.15));
   const frustum = new THREE.Frustum(), matrix = new THREE.Matrix4();
   const cullingDistance = options.cullingDistance ?? island.size * 1.4;
+  const environmentLod = createEnvironmentLod(group);
   let tide = island.seaLevel;
   let elapsed = 0;
 
@@ -431,6 +433,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
       shadowCastersChanged = true;
     if (hoofington.updateCulling(pos, frustum)) shadowCastersChanged = true;
     if (downtown.updateCulling(pos, frustum)) shadowCastersChanged = true;
+    if (environmentLod.updateCulling(pos, frustum)) shadowCastersChanged = true;
     // The GLB supplies its own reservoir surface. Hide the procedural one
     // on success, but retain it in the graph for disposal; it remains visible
     // if the model fails and the procedural fallback is needed.
@@ -445,6 +448,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     return shadowCastersChanged;
   }
   function dispose(): void {
+    environmentLod.dispose();
     props.dispose();
     hoofington.dispose();
     downtown.dispose();
