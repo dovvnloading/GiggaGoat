@@ -62,7 +62,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   at(farm, 'silo', -32, -20, 7.5, 21, 7.5,
     { shape: 'cylinder', color: 0xe5d7ac });
   at(farm, 'house', 22, 29, 10, 8, 10,
-    { yaw: -Math.PI / 2, color: 0xf8e3c5 });
+    { yaw: -Math.PI / 2, color: 0xffecdb });
   at(farm, 'cottage', 29, -2, 9, 8, 8,
     { yaw: -Math.PI / 2, color: 0xc0d8ef });
   at(farm, 'trampoline', 36, 34, 8, 1.1, 7, { color: 0x7960d9 });
