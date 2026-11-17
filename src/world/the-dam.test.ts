@@ -4,7 +4,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { generateIsland } from './island';
 import { buildRapierColliders } from './colliders';
 import { DAM_DECK_HEIGHT, getDamPlacement } from './the-dam';
-import { prepareDamModel, scrollDamWaterfallUVs } from './visual-dam';
+import { buildDamVisuals, prepareDamModel, scrollDamWaterfallUVs } from './visual-dam';
 import type { PropColliderDescriptor } from './types';
 
 describe('The Dam hero POI', () => {
@@ -78,5 +78,22 @@ describe('The Dam hero POI', () => {
     scrollDamWaterfallUVs(prepared.waterfallMaps, 1.5);
     expect(prepared.waterfallMaps[0]!.offset.y).toBeLessThan(-0.5);
     expect(texture.offset.y).toBe(0);
+  });
+
+  it('keeps a recognizable, collider-aligned Dam visible without the GLB', () => {
+    const island = generateIsland({ seed: 'dam-fallback', resolution: 65 });
+    const visuals = buildDamVisuals(island);
+    try {
+      const fallback = visuals.group.getObjectByName('the-dam-procedural-fallback');
+      expect(fallback).toBeInstanceOf(THREE.Group);
+      expect(fallback?.getObjectByName('the-dam-wall-fallback'))
+        .toBeInstanceOf(THREE.Mesh);
+      expect(fallback?.getObjectByName('the-dam-control-house-fallback'))
+        .toBeInstanceOf(THREE.Mesh);
+      expect(fallback?.children.filter(child => child.name === 'dam-fallback-waterfall'))
+        .toHaveLength(4);
+    } finally {
+      visuals.dispose();
+    }
   });
 });

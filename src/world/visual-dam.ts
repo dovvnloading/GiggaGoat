@@ -3,7 +3,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData } from './types';
 import { gridSample } from './terrain';
-import { getDamPlacement } from './the-dam';
+import { getDamPlacement, makeDamColliderDescriptors } from './the-dam';
+import { publicAssetUrl } from './public-assets';
 
 export interface DamVisuals {
   group: THREE.Group;
@@ -146,6 +147,44 @@ export function scrollDamWaterfallUVs(maps: readonly THREE.Texture[], seconds: n
   for (const texture of maps) texture.offset.y = offset;
 }
 
+/** A light, collider-aligned Dam until the authored model arrives (or if it fails). */
+function buildProceduralDamFallback(island: IslandData): THREE.Group {
+  const fallback = new THREE.Group();
+  fallback.name = 'the-dam-procedural-fallback';
+  const { position, scale } = getDamPlacement(island);
+  const stone = new THREE.MeshToonMaterial({ color: 0xb9c3c7 });
+  const deck = new THREE.MeshToonMaterial({ color: 0xd6d6c9 });
+  const house = new THREE.MeshToonMaterial({ color: 0xf3eee0 });
+  for (const collider of makeDamColliderDescriptors(island)) {
+    const material = collider.id === 'the-dam-control-house' ? house :
+      collider.id === 'the-dam-deck' ? deck : stone;
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(
+      collider.size.x / scale, collider.size.y / scale, collider.size.z / scale,
+    ), material);
+    mesh.name = collider.id + '-fallback';
+    mesh.position.set(
+      (collider.transform.position.x - position.x) / scale,
+      (collider.transform.position.y - position.y) / scale,
+      (collider.transform.position.z - position.z) / scale,
+    );
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    fallback.add(mesh);
+  }
+  const water = new THREE.MeshToonMaterial({
+    color: 0x40c9e6, transparent: true, opacity: 0.88,
+    side: THREE.DoubleSide, depthWrite: false,
+  });
+  for (const x of [-7, 3, 13, 23]) {
+    const fall = new THREE.Mesh(new THREE.PlaneGeometry(7, 16), water);
+    fall.name = 'dam-fallback-waterfall';
+    fall.position.set(x, 9.5, 4.2);
+    fall.rotation.x = -0.16;
+    fallback.add(fall);
+  }
+  return fallback;
+}
+
 function disposeMeshes(object: THREE.Object3D): void {
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
@@ -173,24 +212,43 @@ export function buildDamVisuals(island: IslandData): DamVisuals {
   const placement = getDamPlacement(island);
   group.position.set(placement.position.x, placement.position.y, placement.position.z);
   group.scale.setScalar(placement.scale);
+  const fallback = buildProceduralDamFallback(island);
+  group.add(fallback);
   let waterfallMaps: THREE.Texture[] = [];
   let shadowChange = false;
   let disposed = false;
 
   if (typeof document !== 'undefined') {
-    const url = import.meta.env.BASE_URL + 'assets/library/custom/the-dam/the-dam.glb';
-    new GLTFLoader().load(url, gltf => {
-      if (disposed) {
-        disposeMeshes(gltf.scene);
-        return;
+    const url = publicAssetUrl('assets/library/custom/the-dam/the-dam.glb');
+    const fail = (error: unknown): void => {
+      if (!disposed) {
+        console.error('Failed to load The Dam hero model from ' + url +
+          '; keeping procedural fallback visible:', error);
       }
-      const prepared = prepareDamModel(gltf.scene, island);
-      waterfallMaps = prepared.waterfallMaps;
-      group.add(prepared.group);
-      shadowChange = true;
-    }, undefined, error => {
-      if (!disposed) console.error('Could not load The Dam hero model:', error);
-    });
+    };
+    try {
+      new GLTFLoader().load(url, gltf => {
+        if (disposed) {
+          disposeMeshes(gltf.scene);
+          return;
+        }
+        try {
+          const prepared = prepareDamModel(gltf.scene, island);
+          if (prepared.group.children.length === 0) {
+            throw new Error('Dam GLB contains no renderable meshes');
+          }
+          waterfallMaps = prepared.waterfallMaps;
+          group.add(prepared.group);
+          group.remove(fallback);
+          disposeMeshes(fallback);
+          shadowChange = true;
+        } catch (error) {
+          fail(error);
+        }
+      }, undefined, fail);
+    } catch (error) {
+      fail(error);
+    }
   }
 
   return {
