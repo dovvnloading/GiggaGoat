@@ -35,15 +35,16 @@ interface YardOptions {
 export function buildCraneYard(island: IslandData): PropDescriptor[] {
   const poi = island.pois.find(p => p.id === 'crane-yard');
   if (!poi) throw new Error('Crane Yard POI is required');
+  const centre = poi.center;
   const scale = island.size / 600;
-  const padY = gridSample(island, poi.center.x, poi.center.z);
+  const padY = gridSample(island, centre.x, centre.z);
   const props: PropDescriptor[] = [];
   let serial = 0;
 
   function put(kind: PropKind, dx: number, dz: number,
     width: number, height: number, depth: number, options: YardOptions = {}): PropDescriptor {
-    const x = poi.center.x + dx * scale;
-    const z = poi.center.z + dz * scale;
+    const x = centre.x + dx * scale;
+    const z = centre.z + dz * scale;
     const size = { x: width * scale, y: height * scale, z: depth * scale };
     const ground = options.fixedToPad ? padY : gridSample(island, x, z);
     const prop: PropDescriptor = {
