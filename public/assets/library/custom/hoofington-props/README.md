@@ -18,3 +18,10 @@ the model's own colours (no repaint).
 
 The street lamp (`../../usdcraft/street-lamp-lantern.glb`) uses the same method: 4.2 m lantern lamp with an
 orange hoof-mark pennant (#f28a2e) inside a 0.72 x 7.8 x 0.72 m frame.
+
+## Farm props
+
+| File | Built at | For |
+|---|---|---|
+| hay-bale.glb | 2.2 x 1.5 x 2.2 | kind `hay-bale` and Hoofington `hay` (upright golden round bale, twine bands; QA HF-3) |
+| wooden-ramp.glb | 6 x 2 x 11 | kind `ramp` (plank ramp rising toward -Z like the Kenney ramp; QA HF-5) |

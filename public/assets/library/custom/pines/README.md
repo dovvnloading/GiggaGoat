@@ -9,3 +9,7 @@ Matched to painting 13 and island QA WP-1, WP-3, WP-5 and DM-2. Built at the gam
 | pine.glb | 4.2 x 12 x 4.2 | kind `tree-pine` and the Dam pines (one solid five-tier pine, no alpha cards) |
 
 Own colours, no tint. CC0.
+
+| File | Built at (m) | For |
+|---|---|---|
+| log-bridge.glb | 3 x 2.6 x 16 | new Whispering Pines log bridge over the river (length along Z, flattened walking top, rope handrail on +X; QA WP-4) |
