@@ -592,3 +592,106 @@ describe('Dam river ribbon steep-slope suppression (DM-1)', () => {
     }
   });
 });
+
+describe('Hoofington backdrop waterfall (HF-10)', () => {
+  const fallName = 'hoofington-backdrop-waterfall';
+
+  it('places exactly one 6 m cascade on a visible steep Mt. Gigga face for the default island', () => {
+    const island = generateIsland();
+    const visuals = buildWaterVisuals(island);
+    try {
+      const falls = visuals.inland.children.filter(object => object.name === fallName);
+      expect(falls).toHaveLength(1);
+      const fall = falls[0] as THREE.Mesh;
+      const foamObjects = visuals.inland.children.filter(object =>
+        object.name === fallName + '-foam');
+      expect(foamObjects).toHaveLength(1);
+      const foam = foamObjects[0] as THREE.InstancedMesh;
+      expect(foam).toBeInstanceOf(THREE.InstancedMesh);
+      expect(foam.count).toBe(5);
+      expect(foam.geometry).toBeInstanceOf(THREE.IcosahedronGeometry);
+      const river = visuals.inland.getObjectByName('rippling-river') as THREE.Mesh;
+      expect(fall.material).toBe(river.material);
+
+      const positions = fall.geometry.getAttribute('position');
+      const top = new THREE.Vector3(
+        (positions.getX(0) + positions.getX(1)) / 2,
+        positions.getY(0),
+        (positions.getZ(0) + positions.getZ(1)) / 2);
+      const foot = new THREE.Vector3(
+        (positions.getX(2) + positions.getX(3)) / 2,
+        positions.getY(2),
+        (positions.getZ(2) + positions.getZ(3)) / 2);
+      const bookmark = findBookmark('08')!;
+      const camera = new THREE.PerspectiveCamera(bookmark.fov, 16 / 9, 0.1, 2000);
+      camera.position.set(bookmark.camera.x, bookmark.camera.y, bookmark.camera.z);
+      camera.lookAt(bookmark.target.x, bookmark.target.y, bookmark.target.z);
+      camera.updateMatrixWorld();
+      const clip = top.clone().project(camera);
+      expect(Math.abs(clip.x)).toBeLessThan(0.7);
+      expect(Math.abs(clip.y)).toBeLessThan(0.8);
+      expect(clip.z).toBeGreaterThanOrEqual(-1);
+      expect(clip.z).toBeLessThan(1);
+
+      const drop = gridSample(island, top.x, top.z) -
+        gridSample(island, foot.x, foot.z);
+      expect(drop).toBeGreaterThanOrEqual(6 - 0.0001);
+      expect(Math.hypot(foot.x - top.x, foot.z - top.z)).toBeCloseTo(10, 3);
+      const width = Math.hypot(positions.getX(1) - positions.getX(0),
+        positions.getZ(1) - positions.getZ(0));
+      expect(width).toBeCloseTo(6 * 2.6, 4);
+      for (const road of island.roads) for (const point of road.points) {
+        expect(Math.hypot(top.x - point.x, top.z - point.z))
+          .toBeGreaterThanOrEqual(6 - 0.001);
+      }
+      for (const prop of island.props) {
+        const point = prop.transform.position;
+        expect(Math.hypot(top.x - point.x, top.z - point.z))
+          .toBeGreaterThanOrEqual(6 - 0.001);
+      }
+    } finally {
+      disposeWaterMeshes(visuals);
+    }
+  });
+
+  it('is deterministic and optionally absent without errors on a different seed and size', () => {
+    const island = generateIsland({ seed: 'hoofington-waterfall-alt', size: 900, resolution: 97 });
+    const first = buildWaterVisuals(island);
+    const second = buildWaterVisuals(island);
+    try {
+      const candidates = [first, second].map(visuals =>
+        visuals.inland.children.filter(object => object.name === fallName));
+      expect(candidates[0]!.length).toBeLessThanOrEqual(1);
+      expect(candidates[0]!.length).toBe(candidates[1]!.length);
+      if (candidates[0]!.length === 1) {
+        const firstFall = candidates[0]![0] as THREE.Mesh;
+        const secondFall = candidates[1]![0] as THREE.Mesh;
+        expect(Array.from(firstFall.geometry.getAttribute('position').array))
+          .toEqual(Array.from(secondFall.geometry.getAttribute('position').array));
+        for (const visuals of [first, second]) {
+          const foam = visuals.inland.getObjectByName(fallName + '-foam');
+          expect(foam).toBeInstanceOf(THREE.InstancedMesh);
+          expect((foam as THREE.InstancedMesh).count).toBe(5);
+        }
+      } else {
+        expect(first.inland.getObjectByName(fallName + '-foam')).toBeUndefined();
+        expect(second.inland.getObjectByName(fallName + '-foam')).toBeUndefined();
+      }
+    } finally {
+      disposeWaterMeshes(first);
+      disposeWaterMeshes(second);
+    }
+  });
+
+  it('does not throw or leave foam if the mountain is unavailable', () => {
+    const island = generateIsland({ seed: 'hoofington-no-mountain', resolution: 65 });
+    island.pois = island.pois.filter(poi => poi.id !== 'mt-gigga');
+    const visuals = buildWaterVisuals(island);
+    try {
+      expect(visuals.inland.getObjectByName(fallName)).toBeUndefined();
+      expect(visuals.inland.getObjectByName(fallName + '-foam')).toBeUndefined();
+    } finally {
+      disposeWaterMeshes(visuals);
+    }
+  });
+});
