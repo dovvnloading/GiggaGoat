@@ -13,7 +13,8 @@ import { WORLD_LOD, simplifiedWorldGeometry } from './lod';
  * simplified at most once, off the frame update path.
  */
 export function createEnvironmentLod(group: THREE.Group): {
-  updateCulling(camera: THREE.Vector3, frustum: THREE.Frustum): boolean;
+  updateCulling(camera: THREE.Camera, position: THREE.Vector3,
+    frustum: THREE.Frustum): boolean;
   dispose(): void;
 } {
   interface Entry {
@@ -31,6 +32,8 @@ export function createEnvironmentLod(group: THREE.Group): {
   const registered = new Set<THREE.InstancedMesh>();
   const lowGeometries = new Set<THREE.BufferGeometry>();
   let disposed = false;
+  let lastPose: number[] | undefined;
+  let shadowDirty = false;
 
   function eligible(name: string): boolean {
     return name.startsWith('meadow-') ||
@@ -79,6 +82,7 @@ export function createEnvironmentLod(group: THREE.Group): {
       entry.low = low;
       far.geometry = low;
       if (low !== source.geometry) lowGeometries.add(low);
+      if (far.castShadow) shadowDirty = true;
     });
   }
 
@@ -102,23 +106,33 @@ export function createEnvironmentLod(group: THREE.Group): {
   }
 
   return {
-    updateCulling(camera, frustum): boolean {
+    updateCulling(camera, position, frustum): boolean {
       if (disposed) return false;
-      // The landmark GLBs can arrive asynchronously; discover their batches
-      // after they join the scene without missing the first visible frame.
-      group.updateMatrixWorld(true);
+      // Asset arrivals can add new batches even at an unmoving camera.
+      // Otherwise do not reclassify thousands of static instances every frame;
+      // an unchanged camera/projection produces exactly the same visibility.
       const candidates: THREE.InstancedMesh[] = [];
       group.traverse(object => {
         if (object instanceof THREE.InstancedMesh &&
             eligible(object.name) && !registered.has(object))
           candidates.push(object);
       });
+      const pose = [...camera.matrixWorld.elements, ...camera.projectionMatrix.elements];
+      if (candidates.length === 0 && lastPose &&
+          pose.every((value, i) => value === lastPose![i])) {
+        const changed = shadowDirty;
+        shadowDirty = false;
+        return changed;
+      }
+      lastPose = pose;
+      group.updateMatrixWorld(true);
       for (const candidate of candidates) register(candidate);
 
       const localMatrix = new THREE.Matrix4();
       const centre = new THREE.Vector3();
       const bounds = new THREE.Sphere();
-      let changed = false;
+      let changed = shadowDirty;
+      shadowDirty = false;
       for (const entry of entries) {
         const high = entry.source.geometry;
         if (!high.boundingSphere) high.computeBoundingSphere();
