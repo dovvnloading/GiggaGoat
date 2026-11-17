@@ -1,10 +1,11 @@
-import { Game } from './Game';
+import { Game, type GameOptions } from './Game';
 import { GameView } from './GameView';
 import { GameMenu } from './GameMenu';
 import { loadSave, DEFAULT_SETTINGS } from './Persistence';
 
 /** Browser entry; Game itself remains usable headlessly without this module. */
-export async function bootGame(host: HTMLElement): Promise<{
+export async function bootGame(host: HTMLElement,
+  islandOptions: Pick<GameOptions, 'seed' | 'resolution'> = {}): Promise<{
   game: Game; view: GameView; menu: GameMenu; dispose: () => void;
 }> {
   const loading = document.createElement('div');
@@ -15,7 +16,7 @@ export async function bootGame(host: HTMLElement): Promise<{
   host.appendChild(loading);
   try {
     const save = loadSave();
-    const game = await Game.create({ progress: save?.progress });
+    const game = await Game.create({ ...islandOptions, progress: save?.progress });
     loading.remove();
     try {
       const view = new GameView(host, game);
