@@ -6,7 +6,7 @@ import { Game } from './Game';
 import { GameCharacters } from './GameCharacters';
 import {
   CAMERA_TARGET_HEIGHT, SPAWN_CAMERA_PITCH, SPAWN_CAMERA_YAW_OFFSET,
-  goatCameraOffset,
+  goatCameraLookAhead, goatCameraOffset,
 } from './GoatCamera';
 
 const create = (): Promise<Game> => Game.create({ seed: 'billy-isle', resolution: 97 });
@@ -53,6 +53,37 @@ describe('Player spawn pose and approved goat silhouette', () => {
     }
   });
 
+
+  it('opens at street-eye height with the goat in the lower third at every size tier', () => {
+    const yaw = .35;
+    let previousDistance = 0;
+    for (const size of [.6, 1, 1.6, 3]) {
+      const pivot = new THREE.Vector3(0, CAMERA_TARGET_HEIGHT * size, 0);
+      const offset = goatCameraOffset(size, yaw, SPAWN_CAMERA_PITCH);
+      const lead = goatCameraLookAhead(size, yaw);
+      const camera = new THREE.PerspectiveCamera(67, 16 / 9, .07, 2200);
+      camera.position.copy(pivot).add(new THREE.Vector3(offset.x, offset.y, offset.z));
+      camera.lookAt(pivot.clone().add(new THREE.Vector3(lead.x, lead.y, lead.z)));
+      camera.updateMatrixWorld(true);
+
+      const torso = new THREE.Vector3(0, 0, 0).project(camera);
+      // NDC -1 is the bottom of the frame: leave the goat in the lower third,
+      // while the flat, eye-level horizon stays near the frame's midpoint.
+      expect(torso.y, 'goat too high in frame at size ' + size).toBeLessThan(-.3);
+      expect(torso.y, 'goat clipped at size ' + size).toBeGreaterThan(-.75);
+      const horizon = camera.position.clone().add(new THREE.Vector3(
+        Math.sin(yaw) * 1000, 0, -Math.cos(yaw) * 1000)).project(camera);
+      expect(Math.abs(horizon.y), 'horizon at size ' + size).toBeLessThan(.12);
+
+      const distance = Math.hypot(offset.x, offset.z);
+      expect(distance).toBeGreaterThan(previousDistance);
+      previousDistance = distance;
+    }
+    // Collision may shorten the orbit: the fallback must re-center the goat.
+    const blockedAim = goatCameraLookAhead(.6, yaw, 0);
+    expect(Math.hypot(blockedAim.x, blockedAim.y, blockedAim.z)).toBe(0);
+  });
+
   it('frames the real horn, face, scarf and hooves from an opening three-quarter camera', async () => {
     const game = await create();
     const characters = new GameCharacters(new THREE.Scene(), game);
@@ -66,7 +97,9 @@ describe('Player spawn pose and approved goat silhouette', () => {
       const offset = goatCameraOffset(size, yaw, SPAWN_CAMERA_PITCH);
       const camera = new THREE.PerspectiveCamera(67, 16 / 9, .07, 2200);
       camera.position.copy(target).add(new THREE.Vector3(offset.x, offset.y, offset.z));
-      camera.lookAt(target);
+      const lookAhead = goatCameraLookAhead(size, yaw);
+      camera.lookAt(target.clone().add(new THREE.Vector3(
+        lookAhead.x, lookAhead.y, lookAhead.z)));
       camera.updateMatrixWorld(true);
       root.updateWorldMatrix(true, true);
 
