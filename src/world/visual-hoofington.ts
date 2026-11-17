@@ -509,15 +509,20 @@ export async function createLanternLampInstances<Model extends string>(
           !frustum.intersectsSphere(sphere)) continue;
         (distance > WORLD_LOD.detailedDistance ? far : near).push(i);
       }
-      const nearChanged = !same(previousNear, near), farChanged = !same(previousFar, far);
-      // Near/far LOD swaps of the very same stationary lamps change only the
-      // view geometry, not the shadow-caster set. Avoid redrawing the entire
-      // static sun shadow map when a camera hovers near the detail threshold.
+      // Keep a single active native-material LOD for the currently visible
+      // lamp cluster. Nearby lamps select high detail; if all are distant use
+      // the simplified geometry. This avoids drawing two material sets while
+      // retaining the source meshes, all materials and per-lamp frustum tests.
+      const visible = [...near, ...far];
+      const activeNear = near.length ? visible : [];
+      const activeFar = near.length ? [] : visible;
+      const nearChanged = !same(previousNear, activeNear);
+      const farChanged = !same(previousFar, activeFar);
       const previouslyVisible = [...previousNear, ...previousFar].sort((a, b) => a - b);
-      const visibleNow = [...near, ...far].sort((a, b) => a - b);
+      const visibleNow = [...visible].sort((a, b) => a - b);
       const castersChanged = !same(previouslyVisible, visibleNow);
-      if (nearChanged) { compact(nearMeshes, near); previousNear = near; }
-      if (farChanged) { compact(farMeshes, far); previousFar = far; }
+      if (nearChanged) { compact(nearMeshes, activeNear); previousNear = activeNear; }
+      if (farChanged) { compact(farMeshes, activeFar); previousFar = activeFar; }
       return castersChanged;
     },
     dispose(): void {
