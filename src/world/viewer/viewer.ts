@@ -481,8 +481,10 @@ if (new URLSearchParams(window.location.search).has('profile')) {
         return {
           loaded: root?.userData['ready'] === true && batch instanceof THREE.Mesh,
           models: Number(root?.userData['loadedModels'] ?? 0),
-          triangles: batch instanceof THREE.Mesh
-            ? batch.geometry.getAttribute('position').count / 3 : 0,
+          triangles: root?.children.reduce((count, node) =>
+            node instanceof THREE.Mesh && node.name.startsWith('downtown-library-batched')
+              ? count + (node.geometry.index?.count ??
+                node.geometry.getAttribute('position').count) / 3 : count, 0) ?? 0,
           signs: Number(root?.userData['signCount'] ?? 0),
           awnings: Boolean(root?.getObjectByName('downtown-striped-awnings')),
         };
@@ -504,8 +506,10 @@ if (new URLSearchParams(window.location.search).has('profile')) {
         return {
           loaded: root?.userData['ready'] === true && batch instanceof THREE.Mesh,
           models: Number(root?.userData['loadedModels'] ?? 0),
-          triangles: batch instanceof THREE.Mesh
-            ? batch.geometry.getAttribute('position').count / 3 : 0,
+          triangles: root?.children.reduce((count, node) =>
+            node instanceof THREE.Mesh && node.name.startsWith('hoofington-library-batched')
+              ? count + (node.geometry.index?.count ??
+                node.geometry.getAttribute('position').count) / 3 : count, 0) ?? 0,
         };
       },
       measure(frames = 16): {
