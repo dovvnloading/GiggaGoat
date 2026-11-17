@@ -1,5 +1,5 @@
 import { GameSimulation } from '../gameplay';
-import { GoatRagdoll, V, forward, type PhysicsContact, type Vec3 } from '../physics';
+import { GoatRagdoll, forward, type PhysicsContact, type Vec3 } from '../physics';
 import { heightAt, landAreaAtTideLevel } from '../world';
 import {
   PartyMatch, BotBrain, arenaFromBillyIsle,

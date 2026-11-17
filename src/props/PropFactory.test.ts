@@ -22,7 +22,7 @@ function boundingSize(object: THREE.Object3D): THREE.Vector3 {
   return new THREE.Box3().setFromObject(object).getSize(new THREE.Vector3());
 }
 
-describe('legacy GameView size mapping', () => {
+describe('current library prop size mapping', () => {
   it('keeps each HAY-BUILD size and ramp orientation in physics units', () => {
     expect(BUILD_PIECE_SIZES).toEqual({
       floor: { x: 2, y: .46, z: 2 },

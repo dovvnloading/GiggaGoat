@@ -55,7 +55,7 @@ export function createSurfaceLibraryProp(factory: PropFactory,
     : factory.createLaunchPad(marker.halfExtents);
 }
 
-/** The four GigPropSpawn roles are box-shaped supplies until dedicated role art exists. */
+/** All four spawn roles share a sized library crate until dedicated role art exists. */
 export function createSpawnLibraryProp(factory: PropFactory,
   spawn: Pick<GigPropSpawn, 'role' | 'size'>): THREE.Group {
   const root = factory.createGigProp(DEFAULT_CRATE_SIZE, 'crate');
@@ -72,7 +72,7 @@ export function createBuildLibraryProp(factory: PropFactory,
   return factory.createBuildPiece(type);
 }
 
-/** Keep the legacy radius from BoxGeometry(1) + scale, without unique meshes per chunk. */
+/** Scale the shared debris root to the physics-derived radius, avoiding per-chunk meshes. */
 export function createDebrisLibraryProp(factory: PropFactory, radius: number): THREE.Group {
   return fitRoot(factory.createCrateDebris(), { x: radius, y: radius, z: radius },
     { x: .35, y: .35, z: .35 });
