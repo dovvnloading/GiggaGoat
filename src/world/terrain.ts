@@ -132,7 +132,7 @@ export function preserveLighthouseChannel(
   const scale = island.size / 600;
   visitDisc(island, center.x, center.z, 41 * scale, (h, x, z) => {
     const radius = Math.hypot(x - center.x, z - center.z) / scale;
-    const channel = smoothstep(26.0, 28.6, radius) *
+    const channel = smoothstep(23.7, 26.3, radius) *
       (1 - smoothstep(36.0, 39.5, radius));
     return lerp(h, Math.min(h, -2.6 * scale), channel);
   });
