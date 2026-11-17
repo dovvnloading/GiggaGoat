@@ -7,7 +7,8 @@ const CSS = `
 .gg-ui{position:absolute;inset:0;z-index:4;pointer-events:none;user-select:none;overflow:hidden;color:#fff9df;font-family:"Trebuchet MS","Arial Rounded MT Bold","Arial Black",system-ui,sans-serif;font-weight:900;text-shadow:0 2px 1px #422b3d,0 3px 3px #412a4999}
 .gg-ui *{box-sizing:border-box}
 .gg-ui [hidden]{display:none!important}
-.gg-meter,.gg-combo,.gg-map-panel,.gg-gig-card,.gg-stamina,.gg-hotbar{filter:drop-shadow(0 7px 0 #2e204d90)}
+/* A filter on the whole combo would draw a ghosted second STYLE SCORE below the pill. */
+.gg-meter,.gg-map-panel,.gg-gig-card,.gg-stamina,.gg-hotbar{filter:drop-shadow(0 7px 0 #2e204d90)}
 .gg-meter{position:absolute;top:21px;left:21px;width:clamp(310px,31vw,516px);padding:19px 16px 10px;border-radius:40px;background:linear-gradient(175deg,#444575 2%,#29294f 57%,#393566 100%);border:5px solid #9fc7fa;box-shadow:inset 0 0 0 3px #62548e,inset 0 7px 11px #a8cfff65,0 1px 0 3px #352b65}
 .gg-meter:before{content:"";position:absolute;inset:6px;border:1px solid #a0c4ff44;border-radius:32px;pointer-events:none}
 .gg-meter-label{position:absolute;top:-17px;left:11%;padding:0 15px 2px;background:linear-gradient(#4f5083,#2d2b58);border:4px solid #a3b9eb;border-radius:22px;font-size:clamp(17px,1.6vw,26px);line-height:1.3;letter-spacing:.5px;color:#ffd63b;text-shadow:2px 3px #7c304a,-1px -1px #712d4e;white-space:nowrap;box-shadow:0 4px 0 #232449}
