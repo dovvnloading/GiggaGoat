@@ -81,3 +81,12 @@ export {
   makeGrowthAuraFrame, sampleGrowthBurst, sampleGiggaHold,
   type GrowthTier, type GrowthAuraFrame,
 } from './growthAuraMath';
+
+export {
+  CoinPickupSparkle, createCoinPickupSparkle, type CoinPickupSparkleOptions,
+} from './CoinPickupSparkle';
+export {
+  COIN_PICKUP_SECONDS, COIN_SPARKLE_COUNT, makeCoinPickupCue,
+  makeCoinPickupFrame, sampleCoinPickup,
+  type CoinPickupCue, type CoinPickupFrame,
+} from './coinPickupMath';
