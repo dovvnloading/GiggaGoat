@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData, RiverPoint } from './types';
 import { gridSample } from './terrain';
+import { findBookmark } from './viewer/bookmarks';
 
 /**
  * Retain the former 96×96 sea grid around the island, then fan its square
@@ -303,6 +304,117 @@ function makeFalls(group: THREE.Group, material: THREE.Material,
   foam.computeBoundingSphere();
   group.add(foam);
 }
+/**
+ * One InstancedMesh renders all cascade foam (five blobs per waterfall).
+ * Keep named, mesh-free markers with the corresponding instance ranges so
+ * waterfall-specific tests and debug inspection still locate their flecks.
+ * This offsets the new HF-10 cascade's draw call without changing budgets.
+ */
+function batchWaterfallFoam(group: THREE.Group): void {
+  const foams = group.children.filter((object): object is THREE.InstancedMesh =>
+    object instanceof THREE.InstancedMesh && object.name.endsWith('-waterfall-foam') ||
+    object instanceof THREE.InstancedMesh && object.name.includes('-waterfall-') &&
+      object.name.endsWith('-foam'));
+  if (!foams.length) return;
+  const first = foams[0]!;
+  const total = foams.reduce((sum, foam) => sum + foam.count, 0);
+  const combined = new THREE.InstancedMesh(first.geometry, first.material, total);
+  combined.name = 'waterfall-foam-batch';
+  const transform = new THREE.Matrix4();
+  let offset = 0;
+  for (const foam of foams) {
+    const marker = new THREE.Group();
+    marker.name = foam.name;
+    marker.userData['instanceOffset'] = offset;
+    marker.userData['instanceCount'] = foam.count;
+    for (let i = 0; i < foam.count; i++) {
+      foam.getMatrixAt(i, transform);
+      combined.setMatrixAt(offset + i, transform);
+    }
+    offset += foam.count;
+    group.remove(foam);
+    group.add(marker);
+    if (foam !== first) {
+      foam.geometry.dispose();
+      (foam.material as THREE.Material).dispose();
+    }
+  }
+  combined.instanceMatrix.needsUpdate = true;
+  combined.computeBoundingSphere();
+  group.add(combined);
+}
+
+/**
+ * Find one descending Mt. Gigga face in Hoofington's painted composition.
+ * Polar rings are spaced 2 m apart with <=2 m arc steps; no RNG or fixed
+ * waterfall coordinates, so other island seeds/sizes can safely return none.
+ */
+function hoofingtonBackdropWaterfall(island: IslandData):
+  { top: THREE.Vector3; bottom: THREE.Vector3 } | undefined {
+  const peak = island.pois.find(poi => poi.id === 'mt-gigga');
+  const bookmark = findBookmark('08');
+  if (!peak || !bookmark) return undefined;
+  const scale = island.size / 600;
+  const cx = peak.center.x, cz = peak.center.z;
+  const camera = new THREE.PerspectiveCamera(bookmark.fov, 16 / 9, 0.1, 2000);
+  camera.position.set(bookmark.camera.x, bookmark.camera.y, bookmark.camera.z);
+  camera.lookAt(bookmark.target.x, bookmark.target.y, bookmark.target.z);
+  camera.updateMatrixWorld();
+
+  // Only nearby road/trail points and prop centres can violate the 6 m
+  // exclusion. Pre-filtering avoids scanning the whole island for each ring.
+  const obstacles: Array<{ x: number; z: number }> = [];
+  const reach = 106 * scale;
+  for (const road of island.roads) for (const point of road.points) {
+    if (Math.hypot(point.x - cx, point.z - cz) <= reach) obstacles.push(point);
+  }
+  for (const prop of island.props) {
+    const point = prop.transform.position;
+    if (Math.hypot(point.x - cx, point.z - cz) <= reach) obstacles.push(point);
+  }
+  const minDistanceSq = (6 * scale) ** 2;
+  const projected = new THREE.Vector3();
+  let bestDrop = -Infinity;
+  let best: { top: THREE.Vector3; bottom: THREE.Vector3 } | undefined;
+  for (let ring = 40; ring <= 100; ring += 2) {
+    const radius = ring * scale;
+    const samples = Math.ceil(Math.PI * 2 * radius / (2 * scale));
+    for (let i = 0; i < samples; i++) {
+      const angle = i * 2 * Math.PI / samples;
+      const radialX = Math.cos(angle), radialZ = Math.sin(angle);
+      const x = cx + radialX * radius, z = cz + radialZ * radius;
+      const upper = gridSample(island, x, z);
+      if (!Number.isFinite(upper)) continue;
+      projected.set(x, upper + 0.26 * scale, z).project(camera);
+      if (Math.abs(projected.x) >= 0.7 || Math.abs(projected.y) >= 0.8 ||
+          projected.z < -1 || projected.z >= 1) continue;
+      if (obstacles.some(point =>
+        (point.x - x) ** 2 + (point.z - z) ** 2 <= minDistanceSq)) continue;
+
+      // The negative central-difference gradient points down the actual
+      // sampled slope; on a perfectly flat patch, fall back to outward radial.
+      const step = 2 * scale;
+      const gx = gridSample(island, x + step, z) - gridSample(island, x - step, z);
+      const gz = gridSample(island, x, z + step) - gridSample(island, x, z - step);
+      const length = Math.hypot(gx, gz);
+      const downX = length > 1e-8 ? -gx / length : radialX;
+      const downZ = length > 1e-8 ? -gz / length : radialZ;
+      const bottomX = x + 10 * scale * downX;
+      const bottomZ = z + 10 * scale * downZ;
+      const lower = gridSample(island, bottomX, bottomZ);
+      const drop = upper - lower;
+      if (drop >= 6 * scale && drop > bestDrop) {
+        bestDrop = drop;
+        best = {
+          top: new THREE.Vector3(x, upper + 0.26 * scale, z),
+          bottom: new THREE.Vector3(bottomX, lower + 0.18 * scale, bottomZ),
+        };
+      }
+    }
+  }
+  return best;
+}
+
 /** Reusable animated sea, river, reservoir and waterfall visual effects. */
 export function buildWaterVisuals(island: IslandData): WaterVisuals {
   const seaMat = seaMaterial(island);
@@ -430,6 +542,14 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
         'front-terrace-waterfall-' + (i + 1));
     }
   }
+  // HF-10: one hillside curtain in bookmark 08, using the same widened
+  // animated cascade and five foam instances as the other Mt. Gigga falls.
+  const hoofingtonFall = hoofingtonBackdropWaterfall(island);
+  if (hoofingtonFall) {
+    makeFalls(inland, stream.material, hoofingtonFall.top, hoofingtonFall.bottom,
+      6 * scale, 'hoofington-backdrop-waterfall');
+  }
+  batchWaterfallFoam(inland);
   // The four spillway sheets and their foam now come from the custom Dam GLB.
   // Keep the mountain and river cascades, but do not draw duplicate dam falls.
   return {
