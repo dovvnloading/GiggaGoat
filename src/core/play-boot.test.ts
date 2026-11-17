@@ -85,14 +85,12 @@ describe('production title-screen PLAY boot', () => {
     vi.stubGlobal('navigator', { getGamepads: () => [] });
 
     const host = new ElementStub();
-    // Rapier's full 193-cell terrain traps on the first headless Node tick.
-    // Keep bootGame, the title click and real input/physics, with the proven
-    // 97-cell physics fixture until the terrain-WASM issue is solved.
-    const app = await bootGame(host as unknown as HTMLElement, { resolution: 97 });
+    // This is the actual production browser entry, with its 193-cell island.
+    const app = await bootGame(host as unknown as HTMLElement);
     try {
       const { game, menu, view } = app;
       expect(game.island.seed).toBe('billy-isle');
-      expect(game.island.resolution).toBe(97);
+      expect(game.island.resolution).toBe(193);
       expect(game.physics.stepCount).toBe(0);
       expect(view.paused).toBe(true);
       (menu.root as unknown as ElementStub).clickAction('play');
@@ -141,7 +139,9 @@ describe('production title-screen PLAY boot', () => {
       for (const state of observations.filter(state => state.second >= 2)) {
         expect(state.up, JSON.stringify({ headingAlignment, observations })).toBeGreaterThan(.75);
         expect(state.ragdoll, JSON.stringify(state)).toBe(false);
-        expect(state.headY, JSON.stringify(state)).toBeGreaterThan(state.legY);
+        expect(state.headY, JSON.stringify({ headingAlignment, observations }))
+          .toBeGreaterThan(state.torsoY + .05 * game.goat.size);
+        expect(state.legY, JSON.stringify(state)).toBeLessThan(state.torsoY - .15 * game.goat.size);
       }
     } catch (error) {
       // Restore the actual click-handler's fake browser host for cleanup,
