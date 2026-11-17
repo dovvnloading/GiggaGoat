@@ -9,7 +9,7 @@ import { Game } from './Game';
 import { GameCharacters } from './GameCharacters';
 import { GameInput } from './GameInput';
 import { CAMERA_TARGET_HEIGHT, SPAWN_CAMERA_PITCH, SPAWN_CAMERA_YAW_OFFSET,
-  goatCameraOffset } from './GoatCamera';
+  goatCameraLookAhead, goatCameraOffset } from './GoatCamera';
 import { GameHud } from './GameHud';
 
 interface PropVisual { mesh: THREE.InstancedMesh; index: number; prop: PropDescriptor }
@@ -100,7 +100,8 @@ export class GameView {
     this.cameraPosition.copy(this.cameraTarget).add(vec(
       goatCameraOffset(size, this.input.yaw, this.input.pitch)));
     this.camera.position.copy(this.cameraPosition);
-    this.camera.lookAt(this.cameraTarget);
+    this.camera.lookAt(this.cameraTarget.clone().add(vec(
+      goatCameraLookAhead(size, this.input.yaw))));
     this.onResize = () => {
       const width = Math.max(1, host.clientWidth), height = Math.max(1, host.clientHeight);
       this.camera.aspect = width / height;
@@ -503,7 +504,13 @@ export class GameView {
     this.camera.fov += (fov - this.camera.fov) * lerpAlpha(5, dt);
     this.camera.updateProjectionMatrix();
     this.camera.position.copy(this.cameraPosition);
-    this.camera.lookAt(this.cameraTarget);
+    // Aim ahead at eye level when clear; near walls, fall back to the goat so
+    // the retained collision avoidance does not push it out of the frame.
+    const clearance = Math.max(0, Math.min(1,
+      (this.cameraPosition.distanceTo(this.cameraTarget) - 1.1 * size) /
+      Math.max(.01, desiredDistance - 1.1 * size)));
+    this.camera.lookAt(this.cameraTarget.clone().add(vec(
+      goatCameraLookAhead(size, this.input.yaw, clearance))));
     this.world.sun.position.copy(this.cameraTarget).add(new THREE.Vector3(70, 125, -65));
     this.world.sun.target.position.copy(this.cameraTarget);
     this.world.sun.target.updateMatrixWorld();
