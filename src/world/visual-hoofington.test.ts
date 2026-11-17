@@ -130,7 +130,7 @@ describe('Hoofington sourced village model integration', () => {
     ];
     const batch = (await createLanternLampInstances(placements, source, 600))!;
     batch.updateCulling(new THREE.Vector3(10, 12, 3),
-      { intersectsSphere: () => true } as THREE.Frustum);
+      { intersectsSphere: () => true } as unknown as THREE.Frustum);
     const instances = batch.group.children.filter(mesh =>
       mesh.name === 'usdcraft-lantern-near') as THREE.InstancedMesh[];
     expect(instances).toHaveLength(4);
