@@ -276,10 +276,39 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   const additional = Array.from({ length: 8 }, (_, i) => 56 + i * 2);
   const lookoutDx = requested.find(clearOfRiver) ?? additional.find(clearOfRiver);
   if (lookoutDx === undefined) throw new Error('No dry Whispering Pines lookout site');
-  at(forest, 'lookout', lookoutDx, -19, 9, 24, 9, { color: 0x8c6648 });
+  const lookout = at(forest, 'lookout', lookoutDx, -19, 9, 24, 9,
+    { color: 0x8c6648 });
   // Top of the 1.1 m deck is 17.5 m above the local ground.
   at(forest, 'platform', lookoutDx, -19, 11, 1.1, 11,
     { lift: 16.4, color: 0xad835d });
+
+  // Bridge the closest river waypoint clear of the lookout by 15 metres.
+  // Local +Z is perpendicular to the flow and spans the two banks.
+  const riverCrossing = island.river
+    .map((point, index) => ({ point, index }))
+    .filter(({ point }) => Math.hypot(
+      point.x - lookout.transform.position.x,
+      point.z - lookout.transform.position.z) >= 15 * scale)
+    .sort((a, b) => Math.hypot(a.point.x - woods.x, a.point.z - woods.z) -
+      Math.hypot(b.point.x - woods.x, b.point.z - woods.z))[0]!;
+  const { point: crossing, index: crossingIndex } = riverCrossing;
+  const upstream = island.river[Math.max(0, crossingIndex - 1)]!;
+  const downstream = island.river[Math.min(island.river.length - 1, crossingIndex + 1)]!;
+  const directionX = downstream.x - upstream.x;
+  const directionZ = downstream.z - upstream.z;
+  const length = Math.hypot(directionX, directionZ);
+  const acrossX = -directionZ / length, acrossZ = directionX / length;
+  const bankOffset = crossing.width / 2 + 2 * scale;
+  const bankA = gridSample(island, crossing.x + acrossX * bankOffset,
+    crossing.z + acrossZ * bankOffset);
+  const bankB = gridSample(island, crossing.x - acrossX * bankOffset,
+    crossing.z - acrossZ * bankOffset);
+  const bridgeHeight = 2.6 * scale;
+  place('log-bridge', crossing.x, crossing.z,
+    3, 2.6, crossing.width / scale + 6, forest, {
+      yaw: Math.atan2(acrossX, acrossZ), shape: 'cuboid',
+      y: Math.min(bankA, bankB) - 0.3 * scale + bridgeHeight / 2,
+    });
   for (let i = 0; i < 16; i++) {
     const t = i / 15;
     const x = (-111 - t * 46 + (i % 2 ? 3 : -3)) * scale;
