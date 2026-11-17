@@ -9,7 +9,6 @@ interface StreetPiece {
   width: number; height: number; length: number; yaw: number;
 }
 
-
 /**
  * Paint the far Hoofington zebra directly above the graded road slabs.
  * Seven 0.5 m-wide bars separated by 0.5 m gaps share one BufferGeometry
