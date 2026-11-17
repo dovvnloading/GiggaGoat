@@ -120,6 +120,24 @@ export function sculptLighthouseSeaCave(
   });
 }
 
+/**
+ * Building footprint feathering reaches the ring of water on the cape's
+ * east flank. Reopen this narrow sea channel *after* all pad grading while
+ * leaving the lighthouse and keeper house foundations solid.
+ */
+export function preserveLighthouseChannel(
+  island: Pick<IslandData, 'heights' | 'resolution' | 'size'>,
+  center: Vec2,
+): void {
+  const scale = island.size / 600;
+  visitDisc(island, center.x, center.z, 41 * scale, (h, x, z) => {
+    const radius = Math.hypot(x - center.x, z - center.z) / scale;
+    const channel = smoothstep(26.0, 28.6, radius) *
+      (1 - smoothstep(36.0, 39.5, radius));
+    return lerp(h, Math.min(h, -2.6 * scale), channel);
+  });
+}
+
 /** Gentle cut-and-fill pad for buildings; final flatness independent of grid resolution. */
 export function stampPlot(
   island: Pick<IslandData, 'heights' | 'resolution' | 'size'>,
