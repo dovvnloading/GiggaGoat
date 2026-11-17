@@ -165,8 +165,15 @@ describe('Billy Isle hi-fi environment map', () => {
         .map(c => [c.id, c]));
       expect(new Set(details.map(p => p.id)).size).toBe(details.length);
       for (const prop of details) {
-        expect(prop.collidable, prop.id).toBe(true);
+        const gladeDecoration = prop.kind === 'fern' || prop.kind === 'lily-pads';
+        expect(prop.collidable, prop.id).toBe(!gladeDecoration);
         const collider = byId.get(prop.id);
+        if (gladeDecoration) {
+          expect(collider, prop.id + ' must not have a Rapier collider').toBeUndefined();
+          expect(prop.lickable).toBe(false);
+          expect(prop.climbable).toBe(false);
+          continue;
+        }
         expect(collider, prop.id).toBeDefined();
         if (!collider) continue;
         expect(collider.shape).toBe(prop.shape === 'convex' ? 'convex' : prop.shape);

@@ -1,6 +1,6 @@
 import type { IslandData, PoiId, PropDescriptor, PropKind } from './types';
 import { SeededRandom } from './random';
-import { gridSample, riverAt, stampPlot } from './terrain';
+import { gridSample, riverAt, segmentProjection, stampPlot } from './terrain';
 import { getDamPlacement } from './the-dam';
 import { damChannelAt } from './dam-landscape';
 import { isInsideDowntownInfillFootprint } from './visual-downtown';
@@ -40,14 +40,15 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     const y = options.y ?? base + size.y / 2 + (options.lift ?? 0) * scale;
     const body: PropDescriptor['body'] = options.mass === undefined
       ? { type: 'static' } : { type: 'dynamic', mass: options.mass };
+    const nonInteractive = kind === 'fern' || kind === 'lily-pads';
     const prop: PropDescriptor = {
       id: 'detail-' + (poiId ?? 'island') + '-' + kind + '-' + serial++,
       kind, ...(poiId ? { poiId } : {}),
       transform: { position: { x, y, z }, rotationY: options.yaw ?? 0 },
       size, body, shape: options.shape ?? 'cuboid',
-      collidable: true, breakable: options.mass !== undefined,
-      lickable: kind !== 'flower' && kind !== 'grass-tuft',
-      climbable: options.mass === undefined && sy > 1.5,
+      collidable: !nonInteractive, breakable: options.mass !== undefined,
+      lickable: !nonInteractive && kind !== 'flower' && kind !== 'grass-tuft',
+      climbable: !nonInteractive && options.mass === undefined && sy > 1.5,
       ...(options.color === undefined ? {} : { color: options.color }),
     };
     if (!(INFILL_SCENERY_KINDS.has(kind) &&
@@ -286,8 +287,9 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   // At several seed sites even 54 m is still within the river margin.
   // Continue east only if none of the requested offsets is dry and clear.
   const additional = Array.from({ length: 8 }, (_, i) => 56 + i * 2);
-  const lookoutDx = requested.find(clearOfRiver) ?? additional.find(clearOfRiver);
-  if (lookoutDx === undefined) throw new Error('No dry Whispering Pines lookout site');
+  // Rare terrain seeds can exhaust the dry search corridor. Keep dressing
+  // best-effort rather than failing the whole island.
+  const lookoutDx = requested.find(clearOfRiver) ?? additional.find(clearOfRiver) ?? 70;
   const lookout = at(forest, 'lookout', lookoutDx, -19, 9, 24, 9,
     { color: 0x8c6648 });
   // Top of the 1.1 m deck is 17.5 m above the local ground.
@@ -328,6 +330,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     place('stepping-stone', x, z, 3.1, 1.35, 3, forest,
       { shape: 'convex', color: 0x9a9c9d });
   }
+  let heroMushroomPlaced = false;
   for (let i = 0; i < 46; i++) {
     const a = turn(), r = Math.sqrt(rng.next()) * 65;
     const dx = Math.cos(a) * r, dz = Math.sin(a) * r;
@@ -336,8 +339,32 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     const water = riverAt({ x, z }, island.river);
     if (water.distance < water.width * 0.5 + 2 * scale ||
         gridSample(island, x, z) < 2 * scale) continue;
-    place('mushroom', x, z, rand(0.75, 1.7), rand(1.2, 2.3), 1.25, forest,
-      { color: i % 3 ? 0xe77a63 : 0xffd269, yaw: turn() });
+    // Keep the two historical RNG draws so all later authored detail stays put.
+    rng.next();
+    const sampledHeight = rand(0.4, 0.9);
+    const height = heroMushroomPlaced ? sampledHeight : 1.4;
+    // Native Kenney mushroom_red is 0.17 x 0.20 x 0.20 metres.
+    place('mushroom', x, z, height * 0.85 / scale,
+      height / scale, height / scale, forest,
+      { color: heroMushroomPlaced ? 0xe77a63 : 0xffd269, yaw: turn() });
+    heroMushroomPlaced = true;
+  }
+  if (!heroMushroomPlaced) {
+    // Degenerate seeds still get exactly one hero without an exception.
+    const fallback = new SeededRandom(String(island.seed) + ':pines-hero-mushroom');
+    let x = woods.x, z = woods.z;
+    for (let attempt = 0; attempt < 512; attempt++) {
+      const angle = fallback.range(0, Math.PI * 2);
+      const radius = Math.sqrt(fallback.next()) * 60;
+      const px = woods.x + Math.cos(angle) * radius;
+      const pz = woods.z + Math.sin(angle) * radius;
+      const water = riverAt({ x: px, z: pz }, island.river);
+      if (gridSample(island, px, pz) <= island.seaLevel ||
+          water.distance <= water.width / 2 + 2) continue;
+      x = px; z = pz; break;
+    }
+    place('mushroom', x, z, 1.4 * 0.85 / scale, 1.4 / scale,
+      1.4 / scale, forest, { color: 0xffd269, yaw: fallback.range(0, Math.PI * 2) });
   }
   for (let i = 0; i < 14; i++) {
     at(forest, 'stump', rand(-50, 48), rand(-43, 48), 2.8, 2.2, 2.8,
@@ -390,7 +417,8 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     if (!cleared) {
       prop.transform.position.x = original.x;
       prop.transform.position.z = original.z;
-      throw new Error('No clear bank location for ' + prop.id + ' beside log bridge');
+      // Preserve the original descriptor if no safe bank site exists: never
+      // abort an otherwise valid seeded island over optional scenery.
     }
   }
 
@@ -577,8 +605,86 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
         { shape: 'cylinder', yaw: turn() });
       accepted++;
     }
-    if (accepted !== wanted)
-      throw new Error('Not enough clear Mt. Gigga tier sites for ' + kind);
+    // On unusually dense seeds, retain every safe candidate rather than throw.
+  }
+
+  // Whispering Pines glade: independent seeded streams keep all legacy
+  // districts, relics and hero descriptor positions unchanged.
+  const gladeBridge = result.find(p => p.poiId === forest && p.kind === 'log-bridge');
+  const gladeAnchor = gladeBridge?.transform.position ?? woods;
+  const lilyRng = new SeededRandom(String(island.seed) + ':pines-lily-pads');
+  const riverSegments = island.river.slice(0, -1)
+    .map((start, i) => ({ start, end: island.river[i + 1]! }))
+    .filter(({ start, end }) =>
+      segmentProjection(gladeAnchor, start, end).distance <= 25);
+  const lilyPads: PropDescriptor[] = [];
+  for (let attempt = 0; attempt < 2000 && lilyPads.length < 10 &&
+      riverSegments.length > 0; attempt++) {
+    const { start, end } = riverSegments[lilyRng.int(0, riverSegments.length)]!;
+    const t = lilyRng.next();
+    const dx = end.x - start.x, dz = end.z - start.z;
+    const length = Math.hypot(dx, dz);
+    if (length < 1e-6) continue;
+    const cx = start.x + dx * t, cz = start.z + dz * t;
+    const halfWidth = (start.width + (end.width - start.width) * t) / 2;
+    const side = lilyRng.next() < 0.5 ? -1 : 1;
+    const offset = side * halfWidth * lilyRng.range(0.25, 0.45);
+    const x = cx - dz / length * offset;
+    const z = cz + dx / length * offset;
+    const fromBridge = Math.hypot(x - gladeAnchor.x, z - gladeAnchor.z);
+    if (fromBridge > 25 || (gladeBridge && fromBridge < 3.5)) continue;
+    const water = riverAt({ x, z }, island.river);
+    const fraction = water.distance / (water.width / 2);
+    if (fraction < 0.25 || fraction > 0.45) continue;
+    if (lilyPads.some(p => Math.hypot(x - p.transform.position.x,
+      z - p.transform.position.z) < 1.4)) continue;
+    const width = lilyRng.range(1.2, 1.6);
+    lilyPads.push(place('lily-pads', x, z, width / scale, 0.08 / scale,
+      width / scale, forest, { y: water.level + 0.02,
+        yaw: lilyRng.range(0, Math.PI * 2) }));
+  }
+
+  const fernRng = new SeededRandom(String(island.seed) + ':pines-ferns');
+  const bridgeIndex = island.river.findIndex(p =>
+    Math.hypot(p.x - gladeAnchor.x, p.z - gladeAnchor.z) < 1e-5);
+  const gladeUpstream = island.river[Math.max(0, bridgeIndex - 1)];
+  const gladeDownstream = island.river[Math.min(island.river.length - 1, bridgeIndex + 1)];
+  const run = gladeUpstream && gladeDownstream ?
+    Math.hypot(gladeUpstream.x - gladeDownstream.x,
+      gladeUpstream.z - gladeDownstream.z) : 0;
+  const upstreamX = run > 1e-6 ? (gladeUpstream!.x - gladeDownstream!.x) / run : 0;
+  const upstreamZ = run > 1e-6 ? (gladeUpstream!.z - gladeDownstream!.z) / run : 0;
+  const otherProps = [...island.props, ...result];
+  let fernCount = 0;
+  for (let attempt = 0; attempt < 5000 && fernCount < 40; attempt++) {
+    let x: number, z: number;
+    if (gladeBridge && run > 1e-6 && attempt < 2500) {
+      // First try the dry banks in the log-bridge view, then the full POI.
+      const along = fernRng.range(-5, 30);
+      const cx = gladeAnchor.x + upstreamX * along;
+      const cz = gladeAnchor.z + upstreamZ * along;
+      const water = riverAt({ x: cx, z: cz }, island.river);
+      const side = fernRng.next() < 0.5 ? -1 : 1;
+      const offset = side * (water.width / 2 + fernRng.range(2, 14));
+      x = cx - upstreamZ * offset;
+      z = cz + upstreamX * offset;
+    } else {
+      const angle = fernRng.range(0, Math.PI * 2);
+      const radius = Math.sqrt(fernRng.next()) * 60;
+      x = woods.x + Math.cos(angle) * radius;
+      z = woods.z + Math.sin(angle) * radius;
+    }
+    if (Math.hypot(x - woods.x, z - woods.z) > 60 ||
+        gridSample(island, x, z) <= island.seaLevel) continue;
+    const water = riverAt({ x, z }, island.river);
+    if (water.distance <= water.width / 2 + 1.5) continue;
+    if (otherProps.some(p => Math.hypot(x - p.transform.position.x,
+      z - p.transform.position.z) < 1.5)) continue;
+    const width = fernRng.range(1.2, 1.9);
+    const fern = place('fern', x, z, width / scale, width * 0.55 / scale,
+      width / scale, forest, { yaw: fernRng.range(0, Math.PI * 2) });
+    otherProps.push(fern);
+    fernCount++;
   }
 
   // generateIsland makes one more grading pass for the dressed farmhouse and

@@ -33,7 +33,7 @@ export type PropKind =
   | 'chain-fence' | 'crane-jib' | 'crane-cab' | 'crane-cable'
   | 'red-girder' | 'pipe-stack' | 'site-barrier' | 'site-banner'
   | 'palm-tree' | 'floodlight' | 'life-ring' | 'cable-spool'
-  | 'pallet-stack' | 'log-bridge';
+  | 'pallet-stack' | 'log-bridge' | 'fern' | 'lily-pads';
 
 export type BodyDescriptor =
   | { type: 'static' }

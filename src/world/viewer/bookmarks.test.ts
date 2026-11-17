@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { generateIsland, heightAt } from '../index';
+import { riverAt } from '../terrain';
 import type { PropDescriptor, Vec3 } from '../types';
 import { findBookmark } from './bookmarks';
 
@@ -94,6 +95,51 @@ describe('painting bookmark recompositions (default billy-isle)', () => {
         z: landEnd,
       },
     });
+  });
+
+  it('13 frames the log bridge, at least five bank ferns and the lookout upstream', () => {
+    const bookmark = findBookmark('13')!;
+    const bridge = props('whispering-pines', 'log-bridge')[0]!;
+    const lookout = props('whispering-pines', 'lookout')[0]!;
+    expect(bridge).toBeDefined();
+    expect(lookout).toBeDefined();
+    const at = bridge.transform.position;
+    const index = island.river.findIndex(point =>
+      Math.hypot(point.x - at.x, point.z - at.z) < 1e-5);
+    expect(index).toBeGreaterThan(0);
+    const before = island.river[index - 1]!;
+    const after = island.river[index + 1]!;
+    const upstream = new THREE.Vector2(before.x - after.x, before.z - after.z).normalize();
+    // River-left is defined looking downstream: right of the upstream vector.
+    const riverLeft = new THREE.Vector2(upstream.y, -upstream.x);
+    const waterLevel = riverAt(at, island.river).level;
+    expect(bookmark.camera).toEqual(rounded({
+      x: at.x - upstream.x * 22 + riverLeft.x * 3,
+      y: waterLevel + 3.5,
+      z: at.z - upstream.y * 22 + riverLeft.y * 3,
+    }));
+    expect(bookmark.target).toEqual(rounded({
+      x: at.x + upstream.x * 18, y: waterLevel + 6,
+      z: at.z + upstream.y * 18,
+    }));
+    expect(bookmark.camera).toEqual({ x: -130, y: 6.5, z: -175.5 });
+    expect(bookmark.target).toEqual({ x: -98, y: 9, z: -151 });
+    expect(bookmark.fov).toBe(60);
+    expect(bookmark.day).toBe(0.49);
+    projectBookmark('13', { logBridge: at, lookout: lookout.transform.position });
+    const camera = new THREE.PerspectiveCamera(bookmark.fov, 16 / 9, 0.25, 4000);
+    camera.position.set(bookmark.camera.x, bookmark.camera.y, bookmark.camera.z);
+    camera.lookAt(bookmark.target.x, bookmark.target.y, bookmark.target.z);
+    camera.updateMatrixWorld();
+    const visible = props('whispering-pines', 'fern').filter(fern => {
+      const p = fern.transform.position;
+      const ndc = new THREE.Vector3(p.x, p.y, p.z).project(camera);
+      return Math.abs(ndc.x) < 0.94 && Math.abs(ndc.y) < 0.94 &&
+        ndc.z > -1 && ndc.z < 1;
+    });
+    expect(visible.length, 'ferns visible in bookmark 13').toBeGreaterThanOrEqual(5);
+    projectBookmark('13', Object.fromEntries(
+      visible.slice(0, 5).map((fern, i) => ['fern' + i, fern.transform.position])));
   });
 
   it('10 frames high column, main crane mast, and front chain-link fence', () => {

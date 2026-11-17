@@ -72,11 +72,12 @@ const COLORS: Partial<Record<PropKind, number>> = {
   'stepping-stone': 0x9ca2a8, signboard: 0xf5d793,
   'palm-tree': 0x6d9b56, floodlight: 0xdfe4df, 'life-ring': 0xf5e1d4,
   'cable-spool': 0x9c7655, 'pallet-stack': 0xba8f62, 'log-bridge': 0x906742,
+  fern: 0x548e57, 'lily-pads': 0x5d9a65,
 };
 /** Authored painted hero dressing keeps its GLB vertex colours and full far LOD. */
 export const AUTHORED_HERO_DRESSING_KINDS: ReadonlySet<PropKind> = new Set([
   'palm-tree', 'floodlight', 'life-ring', 'cable-spool',
-  'pallet-stack', 'log-bridge',
+  'pallet-stack', 'log-bridge', 'lily-pads',
 ]);
 const authoredCraneYardKinds = new Set<PropKind>([
   'crane', 'crane-jib', 'crane-cab', 'crane-cable', 'red-girder',
@@ -88,7 +89,7 @@ const authoredCraneYardKinds = new Set<PropKind>([
   'lighthouse',
 ]);
 const foliage = new Set<PropKind>([
-  'tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'mushroom',
+  'tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'mushroom', 'fern',
   'gnome', 'ferris-wheel', 'lighthouse', 'bunting',
   'crane', 'concrete-slab', 'concrete-column', 'yard-scaffold', 'safety-rail',
   'chain-fence', 'crane-jib', 'crane-cab', 'crane-cable', 'red-girder',
@@ -400,6 +401,9 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
         0.56, 0.9, 0.56, i % 2 ? 0x7cba4e : 0xa4d278,
         Math.cos(a) * 0.2, Math.sin(a) * 0.2);
     }
+  } else if (kind === 'fern') {
+    // Simple visible placeholder until its authored, swaying glade GLB loads.
+    box(0, 0, 0, 0.98, 0.98, 0.98, COLORS[kind]);
   } else if (kind === 'mushroom') {
     cyl(0, -0.15, 0, 0.26, 0.72, 0.26, 0xf7e5b6, 6);
     blob(0, 0.24, 0, 1.08, 0.40, 1.08, 0xd96165);
@@ -649,7 +653,7 @@ const OUTLINE_KINDS = new Set<PropKind>([
   'windmill', 'ferris-wheel', 'crane', 'satellite-dish',
 ]);
 function sways(kind: PropKind): boolean {
-  return ['tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'bunting', 'flag'].includes(kind);
+  return ['tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'fern', 'bunting', 'flag'].includes(kind);
 }
 
 /** Spatially batched instancing; LOD/culling works without per-object draw calls. */

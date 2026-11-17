@@ -35,6 +35,7 @@ export const PROP_LIBRARY_MODELS = {
   'crate': 'assets/library/kenney/platformer-kit/crate.glb',
   'barrel': 'assets/library/kenney/survival-kit/barrel.glb',
   'tree-pine': 'assets/library/custom/pines/pine.glb',
+  'fern': 'assets/library/custom/pines/fern.glb',
   'tree-oak': 'assets/library/custom/hoofington-props/tree-round-a.glb',
   'rock': 'assets/library/kenney/nature-kit/rock_largeB.glb',
   'log': 'assets/library/kenney/nature-kit/log.glb',
@@ -92,6 +93,7 @@ export const PROP_LIBRARY_MODELS = {
   'cable-spool': 'assets/library/custom/props/cable-spool.glb',
   'pallet-stack': 'assets/library/custom/props/pallet-stack.glb',
   'log-bridge': 'assets/library/custom/pines/log-bridge.glb',
+  'lily-pads': 'assets/library/custom/pines/lily-pads.glb',
 } as const satisfies Record<PropKind, string>;
 
 type PixelMap = { data: Uint8ClampedArray; width: number; height: number };

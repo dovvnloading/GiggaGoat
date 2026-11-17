@@ -9,9 +9,10 @@ import { PROP_LIBRARY_MODELS } from './library-props';
 
 const HERO_KINDS = [
   'palm-tree', 'floodlight', 'life-ring', 'cable-spool',
-  'pallet-stack', 'log-bridge',
+  'pallet-stack', 'log-bridge', 'lily-pads',
 ] as const satisfies readonly PropKind[];
-const HERO_SET = new Set<PropKind>(HERO_KINDS);
+// Lily pads are decorative water detail, not collidable hero obstacles.
+const HERO_SET = new Set<PropKind>(HERO_KINDS.filter(kind => kind !== 'lily-pads'));
 const dressings = [
   ['floodlight', [[-37, 14, 0.9], [6, 29.5, -2.6]], [1.6, 7, 1.6]],
   ['cable-spool', [[27, -16, 0.3], [-6, 22, 1.2]], [2, 1.6, 1.6]],
@@ -41,8 +42,8 @@ const ground = (island: IslandData, p: { x: number; z: number }): number =>
   gridSample(island, p.x, p.z);
 
 describe('authored painting-dressing GLB mapping and fallback', () => {
-  it('preserves all six CC0 GLB paths and authored colours at both distances', () => {
-    expect(AUTHORED_HERO_DRESSING_KINDS.size).toBe(6);
+  it('preserves seven CC0 authored GLB paths and colours at both distances', () => {
+    expect(AUTHORED_HERO_DRESSING_KINDS.size).toBe(7);
     for (const kind of HERO_KINDS) {
       expect(AUTHORED_HERO_DRESSING_KINDS.has(kind)).toBe(true);
       expect(PROP_LIBRARY_MODELS[kind]).toMatch(/^assets\/library\/custom\//);
@@ -89,7 +90,7 @@ describe('authored painting-dressing GLB mapping and fallback', () => {
     try {
       await vi.waitFor(() => expect(visuals.group.userData['libraryReady']).toBe(true));
       expect(visuals.group.userData['libraryFailed']).toBe(0);
-      expect(load).toHaveBeenCalledTimes(6);
+      expect(load).toHaveBeenCalledTimes(7);
       for (const kind of HERO_KINDS) {
         const original = visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
         const near = visuals.group.getObjectByName('render-near-' + kind) as THREE.InstancedMesh;
