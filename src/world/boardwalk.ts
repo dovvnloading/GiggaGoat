@@ -67,7 +67,7 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
     { floor: headY - thickness * scale, color: 0xc18c60 });
 
   // Rows of timber piles genuinely reach into the water beneath the deck.
-  for (let z = -29; z <= 68; z += 11) {
+  for (let z = -29; z <= 70; z += 11) {
     for (const side of [-1, 1]) {
       const isHead = z > 44;
       const x = side * (isHead ? 17 : 11.8);
