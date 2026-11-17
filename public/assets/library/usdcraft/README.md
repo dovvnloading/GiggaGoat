@@ -9,6 +9,6 @@ reduced, metres at game scale, base at y=0, centred on X/Z, flat named materials
 
 | File | Source | Size (W x D x H m) | Tris | Use |
 |---|---|---|---|---|
-| street-lamp-lantern.glb | ds_R500_03 | 0.45 x 0.45 x 3.5 | 3k | every street/park lamp in Hoofington, Downtown and the Baa-ardwalk; black cast iron with warm glowing lantern glass (emissive), matching the paintings |
+| street-lamp-lantern.glb | ds_R500_03 | visible 4.2 m lamp + orange hoof pennant inside an invisible 0.72 x 7.8 x 0.72 m collider frame (anchor triangles) | 3k | every street/park lamp in Hoofington, Downtown and the Baa-ardwalk; black cast iron with warm glowing lantern glass (emissive), matching the paintings |
 
 Render with the GLB's own materials through InstancedMesh (one draw call for all lamps). Do not bake to vertex colours or tint.
