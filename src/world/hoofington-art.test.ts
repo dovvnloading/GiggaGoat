@@ -74,8 +74,7 @@ describe('Hoofington art / building slicing regressions', () => {
       const props = island.props.filter(p => p.kind === kind);
       expect(props.length, kind).toBeGreaterThan(0);
       const mesh = view.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
-      const ornament = view.group.getObjectByName('architecture-details-' + kind)
-        as THREE.InstancedMesh;
+      const ornament = view.group.getObjectByName('architecture-details-' + kind) as THREE.InstancedMesh;
       expect(mesh).toBeInstanceOf(THREE.InstancedMesh);
       expect(ornament).toBeInstanceOf(THREE.InstancedMesh);
       expect(mesh.count, kind).toBe(props.length);
@@ -111,8 +110,7 @@ describe('Hoofington art / building slicing regressions', () => {
       expect(mesh, name).toBeInstanceOf(THREE.InstancedMesh);
     }
     const walks = view.group.getObjectByName('paved-village-sidewalks') as THREE.InstancedMesh;
-    const crossings = view.group.getObjectByName('hoofington-and-city-crosswalks')
-      as THREE.InstancedMesh;
+    const crossings = view.group.getObjectByName('hoofington-and-city-crosswalks') as THREE.InstancedMesh;
     expect(walks.count).toBe(88);
     expect(crossings.count).toBe(35);
     view.dispose();
