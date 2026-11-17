@@ -350,7 +350,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(buildStreetDetails(island));
   group.add(buildGroundDetails(island));
   group.add(buildMeadowScatter(island));
-  const props = buildPropVisuals(island.props, options.propChunkSize ?? 96);
+  const props = buildPropVisuals(island.props, options.propChunkSize ?? 96, island);
   group.add(props.group);
   const hoofington = buildHoofingtonVisuals(island, props.group);
   group.add(hoofington.group);
@@ -426,17 +426,11 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
       const lod = dist > island.size * 0.45 ? chunk.low : chunk.high;
       if (chunk.mesh.geometry !== lod) chunk.mesh.geometry = lod;
     }
-    for (const batch of props.batches) {
-      const distance = batch.sphere.center.distanceTo(pos);
-      const visible = distance < (batch.nearOnly ? island.size * 0.32 : cullingDistance) +
-        batch.sphere.radius && frustum.intersectsSphere(batch.sphere);
-      for (const mesh of batch.meshes) {
-        const show = visible && !hoofington.isFallbackHidden(mesh) &&
-          !downtown.isFallbackHidden(mesh);
-        if (mesh.castShadow && mesh.visible !== show) shadowCastersChanged = true;
-        mesh.visible = show;
-      }
-    }
+    if (props.updateCulling(pos, frustum, cullingDistance,
+      mesh => hoofington.isFallbackHidden(mesh) || downtown.isFallbackHidden(mesh)))
+      shadowCastersChanged = true;
+    if (hoofington.updateCulling(pos, frustum)) shadowCastersChanged = true;
+    if (downtown.updateCulling(pos, frustum)) shadowCastersChanged = true;
     // The GLB supplies its own reservoir surface. Hide the procedural one
     // on success, but retain it in the graph for disposal; it remains visible
     // if the model fails and the procedural fallback is needed.
