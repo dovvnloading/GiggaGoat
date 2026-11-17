@@ -18,6 +18,7 @@ export interface GoatMesh {
   readonly eyelids: readonly [THREE.Mesh, THREE.Mesh];
   readonly horns: readonly [THREE.Group, THREE.Group];
   readonly jaw: THREE.Group;
+  readonly mouthOpening: THREE.Mesh;
   readonly tongue: THREE.Mesh;
   readonly tongueTip: THREE.Mesh;
   readonly scarf: readonly [Ribbon, Ribbon];
@@ -216,8 +217,8 @@ export function sculptGoat(): GoatMesh {
   }
 
   const jaw = group(headFur, 'hinged smile and bleating jaw', [0, -.186, -.23]);
-  blob(jaw, 'open dark mouth', mouthDark, [0, -.036, -.127],
-    [.137, .065, .07]);
+  const mouthOpening = blob(jaw, 'open dark mouth', mouthDark, [0, -.036, -.127],
+    [.137, .020, .07]);
   blob(jaw, 'inner tongue', tonguePink, [0, -.068, -.175],
     [.084, .02, .024]);
   blob(jaw, 'lower jaw and chin', milk, [0, -.102, -.07],
@@ -281,10 +282,10 @@ export function sculptGoat(): GoatMesh {
     const pivot = group(headFur, side < 0 ? 'left curled ram horn' : 'right curled ram horn',
       [side * .17, .148, .067]);
     const pts = [
-      [0, .015, -.04], [side * .065, .17, -.065],
-      [side * .126, .330, .002], [side * .155, .358, .164],
-      [side * .159, .245, .317], [side * .142, .09, .30],
-      [side * .117, .045, .18], [side * .086, .150, .102],
+      [0, .015, -.04], [side * .115, .17, -.065],
+      [side * .20, .330, .002], [side * .255, .358, .164],
+      [side * .27, .245, .317], [side * .24, .09, .30],
+      [side * .19, .045, .18], [side * .13, .150, .102],
     ] as Point[];
     const curve = new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p)),
       false, 'catmullrom', .42);
@@ -348,9 +349,10 @@ export function sculptGoat(): GoatMesh {
     }
     for (let i = 0; i <= count; i++) {
       const u = i / count;
-      const stripe = u > .73 && Math.floor(u * 20) % 4 < 2;
-      const color = new THREE.Color(stripe ? 0xffd52a : 0xf36a05);
       for (let edge = 0; edge < 2; edge++) {
+        // Offset by edge to make a bold diagonal chevron, not flat gold stripes.
+        const stripe = u > .70 && u < .97 && Math.floor((u + edge * .045) * 22) % 6 < 3;
+        const color = new THREE.Color(stripe ? 0xffd52a : 0xf36a05);
         const j = (i * 2 + edge) * 3;
         colors[j] = color.r; colors[j + 1] = color.g; colors[j + 2] = color.b;
       }
@@ -441,7 +443,7 @@ export function sculptGoat(): GoatMesh {
   // Fill initially so no one sees an uninitialized ribbon before update().
   for (const ribbon of ribbons) animateRibbon(ribbon, 0);
   return {
-    root, parts, torsoFur, headFur, ears, eyebrows, eyelids, horns, jaw,
+    root, parts, torsoFur, headFur, ears, eyebrows, eyelids, horns, jaw, mouthOpening,
     tongue, tongueTip, scarf: [ribbons[0]!, ribbons[1]!],
     tail, glider, aura: [auraBody, auraHead], purpleLight,
     mounts, dispose,
