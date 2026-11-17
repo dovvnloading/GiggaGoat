@@ -145,12 +145,6 @@ export class Game {
       yaw: spawn.heading, size: TUNING.size[this.rules.style.tier].scale,
       id: 'player',
     });
-    // The small KID needs firmer physical neck/hip motors to carry the
-    // oversized illustrated head while landing. Use the physics lane's public
-    // motor tuning; do not manipulate visual part poses or joint handles.
-    this.goat.motors.stiffness = 270;
-    this.goat.motors.damping = 27;
-    this.goat.motors.maxTorque = 425;
     this.water.track(this.goat.torso, { buoyancyScale: 0.7, paddleSpeed: 2.6 });
     this.lastY = this.goat.torso.translation().y;
     this.off.push(physics.onAfterStep(dt => this.afterTick(dt)));
