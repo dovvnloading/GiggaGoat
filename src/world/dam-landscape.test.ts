@@ -1,0 +1,104 @@
+import { describe, expect, it } from 'vitest';
+import * as THREE from 'three';
+import { generateIsland, heightAt } from './index';
+import { damChannelAt, DAM_CHANNEL } from './dam-landscape';
+import { getDamPlacement } from './the-dam';
+import { buildDamVisuals } from './visual-dam';
+import { instanceDamAsset } from './visual-dam-landscape';
+
+describe('The Dam downstream scenery', () => {
+  it('cuts a continuous pool below the four falls and drains toward bookmark 14', () => {
+    for (const size of [400, 600, 900]) {
+      const island = generateIsland({ seed: 'billy-isle', resolution: 193, size });
+      const { position, scale } = getDamPlacement(island);
+      expect(DAM_CHANNEL[0]!.halfWidth * 2).toBeGreaterThan(38);
+      expect(DAM_CHANNEL[1]!.halfWidth).toBeGreaterThan(DAM_CHANNEL[5]!.halfWidth);
+      for (const z of [20, 36, 60]) {
+        const channel = damChannelAt(z);
+        const core = heightAt(island, position.x + channel.x * scale,
+          position.z + z * scale);
+        const water = position.y + channel.level * scale;
+        const bank = heightAt(island,
+          position.x + (channel.x + channel.halfWidth + 8) * scale,
+          position.z + z * scale);
+        expect(core, 'dry plunge pool at z=' + z).toBeLessThan(water - 0.5 * scale);
+        expect(bank, 'unraised right bank at z=' + z).toBeGreaterThan(core + 0.7 * scale);
+      }
+      // Its centreline travels toward camera (+Z) before bending into pines.
+      expect(island.river[5]!.z).toBeGreaterThan(island.river[4]!.z);
+      expect(island.river[6]!.z).toBeGreaterThan(island.river[5]!.z);
+      expect(island.river[7]!.z).toBeGreaterThan(island.river[6]!.z);
+      expect(island.river[5]!.width).toBeGreaterThan(island.river[9]!.width);
+      const details = island.props.filter(prop => prop.poiId === 'the-dam');
+      expect(details.length).toBeGreaterThanOrEqual(45);
+      expect(details.filter(prop => prop.kind === 'rock').length).toBeGreaterThan(5);
+      expect(details.filter(prop => prop.kind === 'flower').length).toBeGreaterThan(15);
+    }
+  });
+
+  it('shows the headless pool, four foam outlets and the complete foreground', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    const dam = buildDamVisuals(island);
+    try {
+      const landscape = dam.group.getObjectByName(
+        'dam-plunge-pool-rocky-banks-and-foreground') as THREE.Group;
+      expect(landscape).toBeInstanceOf(THREE.Group);
+      for (const part of [
+        'dam-plunge-pool-and-downstream-river',
+        'dam-four-falls-white-foam',
+        'dam-plunge-spray-patches',
+        'dam-foreground-winding-dirt-path',
+        'dam-rocky-bank-underpainting',
+        'dam-riverside-reeds',
+        'dam-cattail-heads',
+        'dam-two-orange-buoys-fallback',
+      ]) expect(landscape.getObjectByName(part), part).toBeDefined();
+      const foam = landscape.getObjectByName(
+        'dam-four-falls-white-foam') as THREE.InstancedMesh;
+      const reeds = landscape.getObjectByName(
+        'dam-riverside-reeds') as THREE.InstancedMesh;
+      const buoys = landscape.getObjectByName(
+        'dam-two-orange-buoys-fallback') as THREE.InstancedMesh;
+      expect(foam.count).toBe(36);
+      expect(reeds.count).toBe(38);
+      expect(buoys.count).toBe(2);
+      expect(landscape.children.filter(c => c instanceof THREE.Mesh).length)
+        .toBeLessThan(20);
+      dam.update(3.5);
+      const pool = landscape.getObjectByName(
+        'dam-plunge-pool-and-downstream-river') as THREE.Mesh;
+      const material = pool.material as THREE.ShaderMaterial;
+      expect(material.uniforms['uTime']!.value).toBe(3.5);
+    } finally {
+      dam.dispose();
+    }
+  });
+
+  it('loads repeated library parts as batched upright GLB instances', () => {
+    const root = new THREE.Group();
+    const material = new THREE.MeshStandardMaterial({ color: 0x829b6e });
+    for (const x of [-1, 1]) {
+      const part = new THREE.Mesh(new THREE.BoxGeometry(1, 3, 1), material);
+      part.position.x = x;
+      part.name = 'pine-part';
+      root.add(part);
+    }
+    const batch = instanceDamAsset(root, {
+      name: 'dam-asset-test',
+      path: 'kenney/nature-kit/tree_pineTallA.glb',
+      placements: [
+        { x: 2, y: 4, z: 6, width: 5, height: 11, depth: 5, yaw: 0.1 },
+        { x: 14, y: 5, z: 26, width: 6, height: 14, depth: 6, yaw: 0.5 },
+      ],
+    });
+    expect(batch.children).toHaveLength(1);
+    const mesh = batch.children[0] as THREE.InstancedMesh;
+    expect(mesh).toBeInstanceOf(THREE.InstancedMesh);
+    expect(mesh.count).toBe(2);
+    expect(mesh.castShadow).toBe(false);
+    const transform = new THREE.Matrix4();
+    mesh.getMatrixAt(1, transform);
+    expect(new THREE.Vector3().setFromMatrixPosition(transform).toArray())
+      .toEqual([14, 5, 26]);
+  });
+});
