@@ -158,11 +158,11 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
     [-41, -16, 0.2], [-39, -14, 1.1], [-42, -13, -0.3],
     [-39, -10, 0.5], [-37, -14, 1.3],
   ] as const) scatter('hay', dx, dz, 2.15, 1.45, 2.2, yaw);
-  scatter('cow', -43, 12, 4, 2.8, 2, -0.8);
-  scatter('sheep', -40, 26, 2.5, 1.9, 1.65, 0.9);
-  scatter('sheep', 43, -20, 2.4, 1.9, 1.6, -1.2);
-  scatter('pig', -43, 31, 2, 1.6, 1.5, -0.2);
-  scatter('horse', 45, -35, 4, 3.5, 1.85, -0.3);
+  scatter('cow', -43, 12, 2, 2.8, 4, -0.8);
+  scatter('sheep', -40, 26, 1.65, 1.9, 2.5, 0.9);
+  scatter('sheep', 43, -20, 1.6, 1.9, 2.4, -1.2);
+  scatter('pig', -43, 31, 1.5, 1.6, 2, -0.2);
+  scatter('horse', 45, -35, 1.85, 3.5, 4, -0.3);
   return plan;
 }
 

@@ -190,6 +190,35 @@ describe('Hoofington sourced village model integration', () => {
     });
   });
 
+  it('places each farm animal lengthwise on Z without moving its ground anchor', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    const farm = island.pois.find(p => p.id === 'hoofington')!.center;
+    const scale = island.size / 600;
+    const expected = [
+      { model: 'cow', dx: -43, dz: 12, size: [2, 2.8, 4], yaw: -0.8 },
+      { model: 'sheep', dx: -40, dz: 26, size: [1.65, 1.9, 2.5], yaw: 0.9 },
+      { model: 'sheep', dx: 43, dz: -20, size: [1.6, 1.9, 2.4], yaw: -1.2 },
+      { model: 'pig', dx: -43, dz: 31, size: [1.5, 1.6, 2], yaw: -0.2 },
+      { model: 'horse', dx: 45, dz: -35, size: [1.85, 3.5, 4], yaw: -0.3 },
+    ] as const;
+    const livestock = makeHoofingtonPlacements(island).filter(p =>
+      ['cow', 'sheep', 'pig', 'horse'].includes(p.model));
+    expect(livestock).toHaveLength(expected.length);
+    for (const [index, target] of expected.entries()) {
+      const animal = livestock[index]!;
+      expect(animal.model).toBe(target.model);
+      expect(animal.source).toBeUndefined();
+      expect(animal.position.x).toBeCloseTo(farm.x + target.dx * scale, 6);
+      expect(animal.position.z).toBeCloseTo(farm.z + target.dz * scale, 6);
+      expect(animal.size.x).toBeCloseTo(target.size[0] * scale, 6);
+      expect(animal.size.y).toBeCloseTo(target.size[1] * scale, 6);
+      expect(animal.size.z).toBeCloseTo(target.size[2] * scale, 6);
+      expect(animal.yaw).toBeCloseTo(target.yaw, 6);
+      expect(animal.position.y - animal.size.y / 2).toBeCloseTo(
+        gridSample(island, animal.position.x, animal.position.z), 6);
+    }
+  });
+
   it('maps the painting\'s foreground colours and rear landmarks to the same colliders', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
     const plan = makeHoofingtonPlacements(island);
