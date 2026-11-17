@@ -75,6 +75,8 @@ const authoredCraneYardKinds = new Set<PropKind>([
   'crane', 'crane-jib', 'crane-cab', 'crane-cable', 'red-girder',
   'concrete-slab', 'concrete-column', 'yard-scaffold', 'safety-rail',
   'chain-fence', 'pipe-stack', 'site-barrier', 'site-banner', 'bunting',
+  'satellite-dish', 'ledge', 'cave-mouth', 'flag', 'lookout',
+  'platform', 'sign', 'rope-rail', 'bridge',
   // Painted custom landmark (QA LH-1): keeps its own red/white bands.
   'lighthouse',
 ]);
@@ -816,7 +818,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
         }
         try {
           const libraryGeometry = await pending;
-          // Authored Crane Yard lattice and painted container detail must remain
+          // Authored lattice, landmarks and painted container detail must remain
           // intact beyond the detailed-distance threshold.
           const distantGeometry = authoredCraneYardKinds.has(job.kind) ||
             authoredBaaardwalkKinds.has(job.kind) || job.kind === 'container'
@@ -851,7 +853,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
           for (let i = 0; i < job.entries.length; i++) {
             const color = job.entries[i]!.color;
             job.mesh.setColorAt(i,
-              job.kind === 'grass-tuft' || authoredCraneYardKinds.has(job.kind) ||
+              job.kind === 'grass-tuft' || job.kind === 'tree-pine' ||
+                authoredCraneYardKinds.has(job.kind) ||
                 authoredBaaardwalkPaintedKinds.has(job.kind) || color === undefined
                 ? white : job.kind === 'container' || job.kind === 'booth'
                   ? tint.setHex(color) : tint.setHex(color).lerp(white, 0.82));

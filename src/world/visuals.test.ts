@@ -5,7 +5,7 @@ import {
   hashIsland, heightAt,
 } from './index';
 import { ART_BOOKMARKS } from './viewer/bookmarks';
-import { makeTerrain, gridSample } from './terrain';
+import { makeTerrain, gridSample, riverAt } from './terrain';
 
 describe('Billy Isle hi-fi environment map', () => {
   it('matches all eight map regions for several seeds and scaled islands', () => {
@@ -58,6 +58,84 @@ describe('Billy Isle hi-fi environment map', () => {
     const independent = Array.from({ length: 11 }, (_, i) =>
       heightAt(island, 25 + i * 1.1, -5));
     expect(new Set(independent.map(v => v.toFixed(3))).size).toBeGreaterThan(7);
+  });
+
+  it('keeps the pennant poles at their old anchors with 2.8 x 9 x 0.4 boxes', () => {
+    for (const size of [600, 900]) {
+      const island = generateIsland({ seed: 'billy-isle', size, resolution: 97 });
+      const scale = size / 600;
+      const flags = island.props.filter(p => p.kind === 'flag');
+      expect(flags).toHaveLength(2);
+      for (const [poiId, dx, dz, poleX] of [
+        ['mt-gigga', -5.75, 4, -7],
+        ['old-lighthouse', 27.25, 11, 26],
+      ] as const) {
+        const centre = island.pois.find(p => p.id === poiId)!.center;
+        const flag = flags.find(p => p.poiId === poiId)!;
+        expect(flag).toBeDefined();
+        expect(flag.size.x / scale).toBeCloseTo(2.8, 6);
+        expect(flag.size.y / scale).toBeCloseTo(9, 6);
+        expect(flag.size.z / scale).toBeCloseTo(0.4, 6);
+        expect((flag.transform.position.x - centre.x) / scale).toBeCloseTo(dx, 6);
+        expect((flag.transform.position.z - centre.z) / scale).toBeCloseTo(dz, 6);
+        expect(flag.transform.rotationY).toBe(0);
+        // The model's pole is 1.25 m left of the fitted bounding-box centre.
+        expect((flag.transform.position.x - centre.x) / scale - 1.25)
+          .toBeCloseTo(poleX, 6);
+      }
+    }
+  });
+
+  it('places the Whispering Pines lookout and its 17.5 m deck at the first dry clearing', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const forest = island.pois.find(p => p.id === 'whispering-pines')!.center;
+    const scale = island.size / 600;
+    const tower = island.props.find(p => p.kind === 'lookout' &&
+      p.poiId === 'whispering-pines')!;
+    const deck = island.props.find(p => p.kind === 'platform' &&
+      p.poiId === 'whispering-pines' && p.id.startsWith('detail-'))!;
+    expect(tower).toBeDefined();
+    expect(deck).toBeDefined();
+    const x = tower.transform.position.x, z = tower.transform.position.z;
+    const offsetX = (x - forest.x) / scale;
+    const eligible = Array.from({ length: 24 }, (_, i) => 24 + i * 2).find(dx => {
+      const atX = forest.x + dx * scale, atZ = forest.z - 19 * scale;
+      const river = riverAt({ x: atX, z: atZ }, island.river);
+      return river.distance > river.width / 2 + 8 * scale &&
+        gridSample(island, atX, atZ) > island.seaLevel;
+    });
+    expect(eligible).toBeDefined();
+    expect(offsetX).toBeCloseTo(eligible!, 6);
+    expect((z - forest.z) / scale).toBeCloseTo(-19, 6);
+    const water = riverAt({ x, z }, island.river);
+    expect(water.distance).toBeGreaterThan(water.width / 2 + 8 * scale);
+    expect(gridSample(island, x, z)).toBeGreaterThan(island.seaLevel);
+    expect(deck.transform.position.x).toBeCloseTo(x, 6);
+    expect(deck.transform.position.z).toBeCloseTo(z, 6);
+    expect(deck.size.x / scale).toBeCloseTo(11, 6);
+    expect(deck.size.y / scale).toBeCloseTo(1.1, 6);
+    expect(deck.size.z / scale).toBeCloseTo(11, 6);
+    const ground = gridSample(island, x, z);
+    expect(deck.transform.position.y - deck.size.y / 2 - ground)
+      .toBeCloseTo(16.4 * scale, 6);
+    expect(deck.transform.position.y + deck.size.y / 2 - ground)
+      .toBeCloseTo(17.5 * scale, 6);
+  });
+
+  it('sizes authored forest pines at 35% height and oak canopies at 72%', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    for (const [kind, ratio] of [
+      ['tree-pine', 0.35], ['tree-oak', 0.72],
+    ] as const) {
+      const trees = island.props.filter(p =>
+        p.poiId === 'whispering-pines' && p.kind === kind &&
+        p.id.startsWith('whispering-pines-' + kind + '-'));
+      expect(trees.length, kind).toBeGreaterThan(5);
+      for (const tree of trees) {
+        expect(tree.size.x, tree.id).toBeCloseTo(tree.size.y * ratio, 6);
+        expect(tree.size.z, tree.id).toBeCloseTo(tree.size.x, 6);
+      }
+    }
   });
 
   it('has substantial playground detail in every named district', () => {

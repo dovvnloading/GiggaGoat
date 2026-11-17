@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { generateIsland, heightAt } from './index';
 import { damChannelAt, DAM_CHANNEL } from './dam-landscape';
 import { getDamPlacement } from './the-dam';
 import { buildDamVisuals } from './visual-dam';
-import { instanceDamAsset } from './visual-dam-landscape';
+import { buildDamLandscape, instanceDamAsset } from './visual-dam-landscape';
+import { publicAssetUrl } from './public-assets';
 
 describe('The Dam downstream scenery', () => {
   it('cuts a continuous pool below the four falls and drains toward bookmark 14', () => {
@@ -71,6 +73,48 @@ describe('The Dam downstream scenery', () => {
       expect(material.uniforms['uTime']!.value).toBe(3.5);
     } finally {
       dam.dispose();
+    }
+  });
+
+  it('loads both Dam pine rows from one Blender family at 0.35 width/height', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    const pinePath = publicAssetUrl('assets/library/custom/pines/pine.glb');
+    const root = new THREE.Group();
+    const modelGeometry = new THREE.BoxGeometry(0.35, 1, 0.35);
+    const modelMaterial = new THREE.MeshStandardMaterial({ color: 0x5a9868 });
+    root.add(new THREE.Mesh(modelGeometry, modelMaterial));
+    const load = vi.spyOn(GLTFLoader.prototype, 'load').mockImplementation((url, onLoad) => {
+      if (url === pinePath) {
+        onLoad({ scene: root } as Awaited<ReturnType<GLTFLoader['loadAsync']>>);
+      }
+    });
+    // Avoid drawing a canvas label; this checks loader URLs and instance matrices only.
+    vi.stubGlobal('document', { createElement: () => ({ getContext: () => null }) });
+    let visuals: ReturnType<typeof buildDamLandscape> | undefined;
+    try {
+      visuals = buildDamLandscape(island, () => {});
+      expect(load.mock.calls.filter(([url]) => url === pinePath)).toHaveLength(2);
+      const matrix = new THREE.Matrix4();
+      const dimensions = new THREE.Vector3();
+      for (const name of ['dam-quaternius-pines', 'dam-full-canopy-kenney-pines']) {
+        const group = visuals.group.getObjectByName(name) as THREE.Group;
+        expect(group, name).toBeInstanceOf(THREE.Group);
+        const mesh = group.children[0] as THREE.InstancedMesh;
+        expect(mesh, name).toBeInstanceOf(THREE.InstancedMesh);
+        expect(mesh.count, name).toBeGreaterThan(10);
+        for (let i = 0; i < mesh.count; i++) {
+          mesh.getMatrixAt(i, matrix);
+          dimensions.setFromMatrixScale(matrix);
+          expect(dimensions.x / dimensions.y, name + ':' + i).toBeCloseTo(0.35, 5);
+          expect(dimensions.z / dimensions.y, name + ':' + i).toBeCloseTo(0.35, 5);
+        }
+      }
+    } finally {
+      visuals?.dispose();
+      load.mockRestore();
+      vi.unstubAllGlobals();
+      modelGeometry.dispose();
+      modelMaterial.dispose();
     }
   });
 

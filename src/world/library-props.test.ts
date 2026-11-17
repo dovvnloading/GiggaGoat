@@ -85,10 +85,31 @@ describe('library prop catalog', () => {
     }
   });
 
+  it('maps all ten Mt Gigga, Pines and shared models to their authored CC0 GLBs', () => {
+    const expected: Partial<Record<PropKind, string>> = {
+      'satellite-dish': 'assets/library/custom/mt-gigga/satellite-dish.glb',
+      ledge: 'assets/library/custom/mt-gigga/ledge.glb',
+      'cave-mouth': 'assets/library/custom/mt-gigga/cave-arch.glb',
+      flag: 'assets/library/custom/mt-gigga/pennant-pole.glb',
+      lookout: 'assets/library/custom/pines/lookout.glb',
+      platform: 'assets/library/custom/pines/timber-deck.glb',
+      'tree-pine': 'assets/library/custom/pines/pine.glb',
+      sign: 'assets/library/custom/props/signpost.glb',
+      'rope-rail': 'assets/library/custom/props/rope-post.glb',
+      bridge: 'assets/library/custom/props/bridge-deck.glb',
+    };
+    expect(Object.keys(expected)).toHaveLength(10);
+    for (const [kind, path] of Object.entries(expected)) {
+      expect(PROP_LIBRARY_MODELS[kind as PropKind], kind).toBe(path);
+      expect(byPath.get(path)?.license, kind).toBe('CC0');
+      expect(existsSync(new URL('../../public/' + path, import.meta.url)), kind).toBe(true);
+    }
+  });
+
   it('prefers coherent, genuinely sourced models for the art-camera details', () => {
     const expected: Partial<Record<PropKind, string>> = {
       'tree-oak': 'custom/hoofington-props/tree-round-a.glb',
-      'tree-pine': 'nature-kit/tree_pineTallA.glb',
+      'tree-pine': 'custom/pines/pine.glb',
       bush: 'custom/hoofington-props/bush-round-a.glb',
       flower: 'custom/hoofington-props/flowers-pink.glb',
       'grass-tuft': 'custom/hoofington-props/daisies.glb',
@@ -170,7 +191,7 @@ describe('USDCraft lantern model consistency', () => {
 });
 
 describe('library geometry batching', () => {
-  it.each(['tree-oak', 'bush', 'flower', 'grass-tuft', 'fence', 'mailbox',
+  it.each(['tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'fence', 'mailbox',
     'silo', 'windmill'] as const)(
     'preserves authored material and vertex colours for %s', kind => {
       const geometry = new THREE.BoxGeometry(1, 1, 1);
@@ -194,7 +215,6 @@ describe('library geometry batching', () => {
     });
 
   it.each([
-    ['tree-pine', 0x478f62],
     ['planter', 0x77b65f],
   ] as const)('keeps the existing %s foliage paint', (kind, hex) => {
     const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
@@ -204,7 +224,7 @@ describe('library geometry batching', () => {
     const baked = bakeLibraryPropGeometry(kind, source)!;
     const colours = baked.getAttribute('color');
     const expected = new THREE.Color(hex);
-    // The upper vertices use each legacy foliage override.
+    // The upper vertices still use the planter's legacy foliage override.
     for (let i = 0; i < colours.count; i++) {
       const y = baked.getAttribute('position').getY(i);
       if (y <= 0) continue;
@@ -438,6 +458,72 @@ describe('authored crane-yard instance colours', () => {
         const mesh = visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
         mesh.geometry.dispose();
         (mesh.material as THREE.Material).dispose();
+      }
+      visuals.dispose();
+      load.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('authored Mt Gigga, Pines and shared model LOD', () => {
+  it('keeps nine painted models intact at distance but simplifies Blender pines', async () => {
+    const authored = [
+      'satellite-dish', 'ledge', 'cave-mouth', 'flag', 'lookout',
+      'platform', 'sign', 'rope-rail', 'bridge',
+    ] as const;
+    const kinds = [...authored, 'tree-pine'] as const;
+    const sourcePaint = new THREE.Color(0x5a96c3);
+    const load = vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockImplementation(async () => {
+      const scene = new THREE.Group();
+      scene.add(new THREE.Mesh(new THREE.SphereGeometry(0.5, 36, 24),
+        new THREE.MeshStandardMaterial({ color: sourcePaint })));
+      return { scene } as Awaited<ReturnType<GLTFLoader['loadAsync']>>;
+    });
+    vi.stubGlobal('document', {});
+    const props: PropDescriptor[] = kinds.map((kind, i): PropDescriptor => ({
+      id: 'authored-' + kind, kind,
+      transform: { position: { x: i - 4.5, y: 0.5, z: 0 }, rotationY: 0 },
+      size: { x: 1, y: 1, z: 1 },
+      body: { type: 'static' }, shape: 'cuboid',
+      collidable: false, breakable: false, lickable: false, climbable: false,
+      color: 0xff0000, // Authored GLB paint must override this descriptor hint.
+    }));
+    const visuals = buildPropVisuals(props);
+    const colour = new THREE.Color();
+    try {
+      await vi.waitFor(() => expect(visuals.group.userData['libraryReady']).toBe(true),
+        { timeout: 15000 });
+      expect(visuals.group.userData['libraryFailed']).toBe(0);
+      expect(load).toHaveBeenCalledTimes(kinds.length);
+      for (const kind of kinds) {
+        expect(load).toHaveBeenCalledWith(publicAssetUrl(PROP_LIBRARY_MODELS[kind]));
+        const original = visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
+        const near = visuals.group.getObjectByName('render-near-' + kind) as THREE.InstancedMesh;
+        const far = visuals.group.getObjectByName('render-far-' + kind) as THREE.InstancedMesh;
+        expect(near.geometry, kind + ' near').toBe(original.geometry);
+        original.getColorAt(0, colour);
+        expect(colour.getHex(), kind + ' source tint').toBe(0xffffff);
+        const painted = original.geometry.getAttribute('color');
+        expect(painted.getX(0), kind).toBeCloseTo(sourcePaint.r, 5);
+        expect(painted.getY(0), kind).toBeCloseTo(sourcePaint.g, 5);
+        expect(painted.getZ(0), kind).toBeCloseTo(sourcePaint.b, 5);
+        if (kind === 'tree-pine') {
+          // Hundreds of pines retain the regular simplified distant LOD.
+          expect(far.geometry).not.toBe(original.geometry);
+          expect(far.geometry.getAttribute('position').count, kind)
+            .toBeLessThan(original.geometry.getAttribute('position').count);
+        } else {
+          expect(far.geometry, kind + ' full-detail far').toBe(original.geometry);
+        }
+      }
+    } finally {
+      for (const kind of kinds) {
+        const original = visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
+        const far = visuals.group.getObjectByName('render-far-' + kind) as THREE.InstancedMesh;
+        if (far?.geometry !== original.geometry) far?.geometry.dispose();
+        original.geometry.dispose();
+        (original.material as THREE.Material).dispose();
       }
       visuals.dispose();
       load.mockRestore();

@@ -259,8 +259,25 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
 
   // Whispering Pines: logs and stones straddle the river; fungi guide the lookout.
   const forest: PoiId = 'whispering-pines';
-  at(forest, 'lookout', 24, -19, 9, 24, 9, { color: 0x8c6648 });
-  at(forest, 'platform', 24, -19, 11, 1.1, 11, { lift: 23, color: 0xad835d });
+  const woods = sites.get(forest)!;
+  const lookoutZ = woods.z - 19 * scale;
+  const clearOfRiver = (dx: number): boolean => {
+    const x = woods.x + dx * scale;
+    const river = riverAt({ x, z: lookoutZ }, island.river);
+    return river.distance > river.width / 2 + 8 * scale &&
+      gridSample(island, x, lookoutZ) > island.seaLevel;
+  };
+  // First search the requested 24..54 m corridor, at 2 m intervals.
+  const requested = Array.from({ length: 16 }, (_, i) => 24 + i * 2);
+  // At several seed sites even 54 m is still within the river margin.
+  // Continue east only if none of the requested offsets is dry and clear.
+  const additional = Array.from({ length: 8 }, (_, i) => 56 + i * 2);
+  const lookoutDx = requested.find(clearOfRiver) ?? additional.find(clearOfRiver);
+  if (lookoutDx === undefined) throw new Error('No dry Whispering Pines lookout site');
+  at(forest, 'lookout', lookoutDx, -19, 9, 24, 9, { color: 0x8c6648 });
+  // Top of the 1.1 m deck is 17.5 m above the local ground.
+  at(forest, 'platform', lookoutDx, -19, 11, 1.1, 11,
+    { lift: 16.4, color: 0xad835d });
   for (let i = 0; i < 16; i++) {
     const t = i / 15;
     const x = (-111 - t * 46 + (i % 2 ? 3 : -3)) * scale;
@@ -412,7 +429,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       : kind === 'bush' ? rand(1.8, 4)
       : kind === 'flower' ? rand(0.8, 1.5) : rand(0.7, 1.35);
     const width = kind === 'tree-oak' ? height * 0.72
-      : kind === 'tree-pine' ? height * 0.25
+      : kind === 'tree-pine' ? height * 0.35
       : kind === 'bush' ? height * 1.25
       : kind === 'flower' ? height * 0.9 : height * 0.55;
     const yaw = turn();
