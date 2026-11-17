@@ -72,6 +72,8 @@ const COLORS: Partial<Record<PropKind, number>> = {
 };
 const authoredCraneYardKinds = new Set<PropKind>([
   'crane', 'crane-jib', 'crane-cab', 'crane-cable', 'red-girder',
+  // Painted custom landmark (QA LH-1): keeps its own red/white bands.
+  'lighthouse',
 ]);
 const foliage = new Set<PropKind>([
   'tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'mushroom',
