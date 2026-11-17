@@ -251,14 +251,27 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       { shape: 'convex', color: 0x8c919e });
   }
 
-  // Old Lighthouse: lonely keeper's cottage, stranded ship, cave and rope crossing.
+  // Old Lighthouse: a beached hull in the left foreground, a cut-back
+  // sea-cave entrance, and a walkable timber jetty reaching out on the right.
   const light: PoiId = 'old-lighthouse';
-  at(light, 'cottage', 17, 10, 10, 8, 9, { color: 0xf5c8a5 });
-  at(light, 'shipwreck', -12, -23, 21, 5.5, 7, { yaw: 0.5, color: 0x84634d });
-  at(light, 'cave-mouth', -19, 13, 9, 5.5, 5, { color: 0x474956 });
+  at(light, 'shipwreck', -36, 7, 22, 8, 8.5,
+    { yaw: 0.28, color: 0x936943 });
+  at(light, 'cave-mouth', -19, 13, 9, 5.5, 5, { color: 0x8e9299 });
+  for (const [dx, dz] of [[19, 24], [25, 29], [31, 34]]) {
+    // Descriptors are the real planked deck collision surfaces; custom meshes
+    // and a library GLB provide the visible boards, piles and lanterns.
+    at(light, 'dock', dx, dz, 8, 1.2, 8,
+      { y: 2.1 * scale, color: 0xa17654 });
+  }
+  at(light, 'crate', 33, 33, 1.8, 1.8, 1.8,
+    { y: 3.6 * scale, color: 0xb88b58 });
+  at(light, 'barrel', 27, 29, 1.6, 2, 1.6,
+    { y: 3.7 * scale, color: 0xc08a55 });
   for (let i = 0; i < 13; i++) {
     const a = turn(), r = rand(12, 30);
-    at(light, 'rock', Math.cos(a) * r, Math.sin(a) * r,
+    const dx = Math.cos(a) * r, dz = Math.sin(a) * r;
+    if (Math.hypot(dx + 19, dz - 13) < 8) continue;
+    at(light, 'rock', dx, dz,
       rand(1.8, 4.4), rand(1.5, 4), rand(2, 4.6), { yaw: a, shape: 'convex' });
   }
   const bridge = island.roads.find(r => r.to === light || r.from === light);
