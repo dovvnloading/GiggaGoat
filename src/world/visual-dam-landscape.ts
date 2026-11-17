@@ -18,6 +18,7 @@ interface AssetSet {
   placements: Placement[];
   longAxisX?: boolean;
   orange?: boolean;
+  stone?: boolean;
   onReady?: () => void;
 }
 export interface DamLandscapeVisuals {
@@ -69,15 +70,15 @@ function channelWater(): { mesh: THREE.Mesh; time: { value: number } } {
       'uniform float uTime;',
       'varying vec2 vUv;',
       'void main() {',
-      ' float flow = sin(vUv.y * 13.0 - uTime * 4.8 + vUv.x * 13.0);',
-      ' float wash = sin(vUv.y * 26.0 - uTime * 6.2 - vUv.x * 9.0);',
+      ' float flow = sin(vUv.y * 6.4 - uTime * 3.0 + sin(vUv.x * 16.0 + vUv.y * 1.3) * 1.7);',
+      ' float wash = sin(vUv.y * 16.0 - uTime * 4.1 - vUv.x * 8.0);',
       ' float edge = smoothstep(0.70, 0.99, abs(vUv.x * 2.0 - 1.0));',
       ' float head = 1.0 - smoothstep(0.9, 3.4, vUv.y);',
       ' float flash = smoothstep(0.35, 0.92, flow * 0.68 + wash * 0.32);',
       ' float foam = clamp(edge * 0.57 + head * (0.35 + flash * 0.38)',
       '   + flash * 0.12, 0.0, 0.90);',
       ' vec3 turquoise = mix(vec3(0.01, 0.50, 0.61), vec3(0.13, 0.79, 0.86),',
-      '   0.52 + 0.18 * flow);',
+      '   0.52 + 0.085 * flow + 0.035 * wash);',
       ' vec3 color = mix(turquoise, vec3(0.91, 0.99, 0.98), foam);',
       ' gl_FragColor = vec4(color, 0.98);',
       '}',
@@ -136,8 +137,8 @@ function foamAtFalls(group: THREE.Group): void {
 }
 
 const PATH: readonly [number, number][] = [
-  [-42, 111], [-45, 98], [-47, 83], [-44, 68],
-  [-38, 53], [-34, 40], [-32, 30],
+  [-31, 111], [-29, 98], [-27, 83], [-24, 68],
+  [-23, 53], [-24, 40], [-25, 30],
 ];
 
 function pathAndFence(
@@ -342,7 +343,9 @@ export function instanceDamAsset(
     }
     for (const [part, geo] of geometries.entries()) {
       const material = set.orange
-        ? new THREE.MeshToonMaterial({ color: 0xff861f }) : bucket.material;
+        ? new THREE.MeshToonMaterial({ color: 0xff861f }) :
+        set.stone ? new THREE.MeshToonMaterial({ color: 0xa9b1b3 }) :
+          bucket.material;
       const mesh = new THREE.InstancedMesh(geo, material, set.placements.length);
       mesh.name = set.name + '-batch-' + index + '-' + part;
       mesh.castShadow = false;
@@ -416,7 +419,7 @@ export function buildDamLandscape(
   cliffUnderpainting(island, group, origin, scale);
   reeds(group);
   const fence = pathAndFence(island, group, origin, scale);
-  const sign = { x: -43, z: 70, yaw: 1.1 };
+  const sign = { x: -20, z: 68, yaw: 1.1 };
   signLabel(group, sign.x, height(sign.x, sign.z), sign.z, sign.yaw);
 
   const cliffs: Placement[] = [];
@@ -424,15 +427,15 @@ export function buildDamLandscape(
   const riverRocks: Placement[] = [];
   const flowers: Placement[] = [];
   const yellowFlowers: Placement[] = [];
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 28; i++) {
     const side = i % 2 ? -1 : 1;
-    const z = 10 + Math.floor(i / 2) * 5.6 + rng.range(-1, 1);
+    const z = 10 + Math.floor(i / 2) * 6.0 + rng.range(-1, 1);
     const section = damChannelAt(z);
     const x = section.x + side * (section.halfWidth + rng.range(3.4, 8.8));
     cliffs.push({
-      x, z, y: height(x, z) - rng.range(1.3, 3.3),
-      width: rng.range(7, 11), height: rng.range(6.5, 11),
-      depth: rng.range(5, 8), yaw: rng.range(0, Math.PI * 2),
+      x, z, y: height(x, z) - rng.range(1.5, 2.8),
+      width: rng.range(4.5, 7.6), height: rng.range(3.4, 6.8),
+      depth: rng.range(4.2, 6.6), yaw: rng.range(0, Math.PI * 2),
     });
     const tx = section.x + side * (section.halfWidth + rng.range(11, 20));
     const tz = z + rng.range(-2.5, 2.5);
@@ -440,6 +443,18 @@ export function buildDamLandscape(
       x: tx, z: tz, y: height(tx, tz) - 0.3,
       width: rng.range(3.9, 6.2), height: rng.range(9, 17),
       depth: rng.range(3.9, 6.2), yaw: rng.range(0, 6.28),
+    });
+  }
+  // Additional pines form a thicker tree line along the cliff-top ridges.
+  for (let i = 0; i < 22; i++) {
+    const side = i % 2 ? -1 : 1;
+    const z = 5 + Math.floor(i / 2) * 6.5 + rng.range(-2, 2);
+    const section = damChannelAt(z);
+    const x = section.x + side * (section.halfWidth + rng.range(14, 24));
+    pines.push({
+      x, z, y: height(x, z) - 0.3,
+      width: rng.range(3.5, 5.3), height: rng.range(10, 16),
+      depth: rng.range(3.5, 5.3), yaw: rng.range(0, 6.28),
     });
   }
   for (let i = 0; i < 25; i++) {
@@ -455,15 +470,15 @@ export function buildDamLandscape(
       depth: rng.range(2.2, 5.3), yaw: rng.range(0, 6.28),
     });
   }
-  for (let i = 0; i < 48; i++) {
+  for (let i = 0; i < 80; i++) {
     const z = rng.range(10, 104);
     const section = damChannelAt(z);
     const side = i % 2 ? -1 : 1;
-    const x = section.x + side * (section.halfWidth + rng.range(10, 22));
+    const x = section.x + side * (section.halfWidth + rng.range(7.5, 19));
     const sample = {
       x, z, y: height(x, z),
-      width: rng.range(0.65, 1.05), height: rng.range(0.8, 1.55),
-      depth: rng.range(0.65, 1.05), yaw: rng.range(0, 6.28),
+      width: rng.range(0.75, 1.2), height: rng.range(1.2, 2.25),
+      depth: rng.range(0.75, 1.2), yaw: rng.range(0, 6.28),
     };
     (i % 2 ? flowers : yellowFlowers).push(sample);
   }
@@ -490,10 +505,10 @@ export function buildDamLandscape(
 
   const sets: AssetSet[] = [
     { name: 'dam-kenney-cliff-faces',
-      path: 'kenney/nature-kit/cliff_rock.glb', placements: cliffs },
+      path: 'kenney/nature-kit/rock_largeA.glb', placements: cliffs, stone: true },
     { name: 'dam-quaternius-rock-boulders',
       path: 'quaternius/stylized-nature-megakit/rock-medium_JQxF95498B.glb',
-      placements: riverRocks },
+      placements: riverRocks, stone: true },
     { name: 'dam-quaternius-pines',
       path: 'quaternius/stylized-nature-megakit/pine_699sFuLCN2.glb',
       placements: pines },
