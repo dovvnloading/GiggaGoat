@@ -2,7 +2,7 @@
 
 The top-left **RUNNING DUST PUFFS** and adjacent **LANDING IMPACT RING** panels
 of the approved [`23_vfx_sheet.png`](../../docs/art/hifi/23_vfx_sheet.png)
-are the two effects implemented here. Dust uses soft, overlapping warm apricot /
+are the first two effects implemented here. Dust uses soft, overlapping warm apricot /
 cream lobes and trailing chips. Landing creates a cream-to-gold expanding
 ground ellipse, jagged golden impact spikes, and small airborne sandstone
 chips. The third **HEADBUTT IMPACT STARS** panel is implemented as a bright collision flash that expands into a sharp golden burst, then three orange-rimmed yellow stars and tiny trailing glints. All three effects stay inside this VFX lane and never drive physics or the main game loop.
@@ -93,7 +93,7 @@ negative/non-finite `power` are rejected; `power=0` does nothing; positive
 power is capped at 4 to protect readability. Stronger impacts enlarge the
 burst, widen the star scatter and slightly extend the lifetime (~0.48–0.61s).
 
-The no-allocation-per-frame Three.js effect reuses a bounded sprite pool
+The no-per-frame-GPU-allocation Three.js effect reuses a bounded sprite pool
 (oldest burst recycled when full), shares two procedurally generated
 `DataTexture` images, and owns no WebGL renderer, canvas, downloaded art,
 physics or global listeners. `headbuttMath.ts` provides deterministic,
