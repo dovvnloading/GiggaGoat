@@ -1,5 +1,6 @@
 import type { Game } from './Game';
 import type { GameView } from './GameView';
+import type { GameAudio } from './GameAudio';
 import { saveGame, type GameSettings } from './Persistence';
 import type { ModeId, Difficulty as BotDifficulty } from '../modes';
 import type { PoiId } from '../world';
@@ -74,7 +75,8 @@ export class GameMenu {
   private readonly pageHide: () => void;
 
   constructor(private readonly host: HTMLElement, private readonly game: Game,
-    private readonly view: GameView, public settings: GameSettings) {
+    private readonly view: GameView, public settings: GameSettings,
+    private readonly audio?: GameAudio) {
     this.style.textContent = CSS;
     document.head.appendChild(this.style);
     this.root.className = 'gg-shell';
@@ -100,6 +102,7 @@ export class GameMenu {
     this.view.onFrame = () => this.frame();
     this.view.onInteract = () => this.interact();
     this.view.applySettings(settings);
+    this.audio?.setVolumes(settings);
     this.setScreen('title');
   }
 
@@ -107,6 +110,7 @@ export class GameMenu {
   private setScreen(next: Screen): void {
     this.screen = next;
     this.view.paused = next !== 'playing';
+    this.audio?.setPaused(this.view.paused || !!document.hidden);
     if (next !== 'playing') this.view.input.reset();
     this.view.hud.setVisible(next === 'playing');
     if (next !== 'playing' && document.pointerLockElement === this.view.renderer.domElement) {
@@ -121,6 +125,7 @@ export class GameMenu {
     void this.view.renderer.domElement.requestPointerLock?.();
   }
   private action(key: string): void {
+    if (key !== 'back') this.audio?.queueCue({ sound: key === 'pause' ? 'ui-back' : 'ui-confirm' });
     if (key === 'play' || key === 'resume') this.resume();
     else if (key === 'pause') this.setScreen('pause');
     else if (key === 'title') {
@@ -164,6 +169,7 @@ export class GameMenu {
   }
   private back(): void {
     if (this.screen === 'title') return;
+    this.audio?.queueCue({ sound: 'ui-back' });
     if (this.screen === 'party') this.setScreen(this.partyReturn);
     else if (this.screen === 'settings') this.setScreen(this.settingsReturn);
     else if (this.screen === 'board') this.resume();
@@ -226,12 +232,17 @@ export class GameMenu {
     if (key === 'mouseSensitivity') this.settings.mouseSensitivity = Number(element.value);
     else if (key === 'fov') this.settings.fov = Number(element.value);
     else if (key === 'volume') this.settings.volume = Number(element.value);
+    else if (key === 'musicVolume') this.settings.musicVolume = Number(element.value);
+    else if (key === 'effectsVolume') this.settings.effectsVolume = Number(element.value);
     else if (key === 'invertY') this.settings.invertY = element.value === 'yes';
     else if (key === 'graphics') this.settings.graphics = element.value as GameSettings['graphics'];
+    const isVolume = key === 'volume' || key === 'musicVolume' || key === 'effectsVolume';
     const output = element.parentElement?.querySelector<HTMLOutputElement>('output');
-    if (output) output.textContent = key === 'volume' ? Math.round(this.settings.volume * 100) + '%' :
+    if (output) output.textContent = isVolume ? Math.round(Number(element.value) * 100) + '%' :
       key === 'fov' ? this.settings.fov + '°' : this.settings.mouseSensitivity.toFixed(2) + '×';
     this.view.applySettings(this.settings);
+    if (isVolume) this.audio?.setVolumes(this.settings);
+    this.audio?.queueCue({ sound: 'ui-click' });
     this.save();
   }
   private interact(): boolean {
@@ -338,9 +349,11 @@ export class GameMenu {
       <label>GRAPHICS QUALITY<select id="gg-setting-graphics">
         ${(['low','medium','high'] as const).map(q => `<option value="${q}" ${s.graphics===q?'selected':''}>${nice(q)}</option>`).join('')}
       </select></label>
-      ${slider('volume','VOLUME · AUDIO CONNECTOR COMING LATER',0,1,.05,s.volume,Math.round(s.volume*100)+'%')}
+      ${slider('volume','MASTER VOLUME',0,1,.05,s.volume,Math.round(s.volume*100)+'%')}
+      ${slider('musicVolume','MUSIC VOLUME',0,1,.05,s.musicVolume,Math.round(s.musicVolume*100)+'%')}
+      ${slider('effectsVolume','EFFECTS VOLUME',0,1,.05,s.effectsVolume,Math.round(s.effectsVolume*100)+'%')}
       ${menuButton('back','← BACK',true)}</div>
-      <footer>Settings save automatically. Volume is remembered for the upcoming audio integration.</footer>`;
+      <footer>Audio levels apply immediately and save with your game.</footer>`;
   }
   private boardBody(): string {
     const poi = this.boardPoi;
