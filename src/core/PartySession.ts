@@ -151,6 +151,16 @@ export class PartySession {
 
   returnToFreeRoam(): void {
     if (!this.match) return;
+    // Rapier's removal path may reborrow the joint set when rigid bodies still
+    // have active impulse joints; remove joint constraints before body teardown.
+    // Also release any player tether aimed at a soon-to-disappear bot.
+    this.game.goat.interactions.detachTongue('replaced');
+    for (const bot of this.bots.values()) {
+      bot.goat.interactions.detachTongue('replaced');
+      for (const joint of bot.goat.joints) {
+        this.game.physics.raw.removeImpulseJoint(joint, true);
+      }
+    }
     for (const bot of this.bots.values()) {
       this.game.water.untrack(bot.goat.torso);
       bot.goat.dispose();
