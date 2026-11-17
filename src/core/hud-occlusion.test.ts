@@ -100,4 +100,54 @@ describe('goat-safe HUD in free roam', () => {
       new THREE.Vector3(1, 1, 1));
     expect(projectGoatScreenBox(box, camera, viewport)).toEqual(viewport);
   });
+  it('keeps both single-line prompts clear of the real spawn goat at desktop sizes', async () => {
+    const game = await Game.create({ seed: 'billy-isle', resolution: 97 });
+    const characters = new GameCharacters(new THREE.Scene(), game);
+    try {
+      characters.update(0, game.physics.alpha);
+      const scale = game.rules.style.scale;
+      const pose = game.goat.torso.translation();
+      const target = new THREE.Vector3(pose.x, pose.y + CAMERA_TARGET_HEIGHT * scale, pose.z);
+      const yaw = -game.island.spawns[0]!.heading + SPAWN_CAMERA_YAW_OFFSET;
+      const offset = goatCameraOffset(scale, yaw, SPAWN_CAMERA_PITCH);
+      const ahead = goatCameraLookAhead(scale, yaw);
+      const bounds = visibleGoatBounds(characters.player.root);
+
+      for (const [width, height] of [[1280, 720], [1600, 900], [1920, 1080]] as const) {
+        const viewport = rect(0, 0, width, height);
+        const camera = new THREE.PerspectiveCamera(67, width / height, .07, 2200);
+        camera.position.copy(target).add(new THREE.Vector3(offset.x, offset.y, offset.z));
+        camera.lookAt(target.clone().add(new THREE.Vector3(ahead.x, ahead.y, ahead.z)));
+        const unframed = projectGoatScreenBox(bounds, camera, viewport, false);
+        expect(unframed, width + 'x' + height).not.toBeNull();
+        camera.setViewOffset(width, height, 0,
+          goatCameraVerticalOffset(unframed!, viewport), width, height);
+        const goat = projectGoatScreenBox(bounds, camera, viewport);
+        expect(goat, width + 'x' + height).not.toBeNull();
+
+        const comboWidth = Math.max(377, Math.min(545, width * .323));
+        const comboHeight = Math.max(155, Math.min(217, width * .127));
+        const layout = planGoatSafeHud(goat!, viewport, [
+          { id: 'combo', rect: rect((width - comboWidth) / 2, 8, comboWidth, comboHeight) },
+        ], [
+          { id: 'board', width: 320, height: 43 },
+          { id: 'hint', width: 450, height: 43 },
+        ]);
+        expect(layout.prompts.size, width + 'x' + height).toBe(2);
+        const board = layout.prompts.get('board')!;
+        const hint = layout.prompts.get('hint')!;
+        expect(rectsIntersect(board, hint)).toBe(false);
+        for (const prompt of [board, hint]) {
+          expect(rectsIntersect(goat!, prompt), width + 'x' + height).toBe(false);
+          expect(prompt.bottom, width + 'x' + height).toBeLessThan(goat!.top);
+          expect(prompt.left).toBeGreaterThanOrEqual(0);
+          expect(prompt.right).toBeLessThanOrEqual(width);
+        }
+      }
+    } finally {
+      characters.dispose();
+      game.dispose();
+    }
+  });
+
 });
