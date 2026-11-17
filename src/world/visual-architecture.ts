@@ -180,7 +180,7 @@ export function buildArchitecture(kind: ArchitecturalKind): ArchitectureGeometri
   }
   // Side windows and their sills break up the long blank facade from street angles.
   for (const side of [-1, 1]) {
-    const x = side * 0.452;
+    const x = side * 0.444;
     for (const z of [-0.18, 0.19]) {
       box(details, x, -0.105, z, 0.018, 0.235, 0.175, white);
       box(details, x + side * 0.013, -0.105, z, 0.015, 0.194, 0.139, blue);
