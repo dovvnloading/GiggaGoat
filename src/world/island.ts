@@ -4,7 +4,8 @@ import type {
 import { BIOMES, POI_IDS } from './types';
 import { hashString, SeededRandom } from './random';
 import {
-  assignBiomes, carveWater, gridCoordinate, gridIndex, gridSample, makeTerrain, stampPlot,
+  assignBiomes, carveWater, gridCoordinate, gridIndex, gridSample, makeTerrain,
+  sculptLighthouseSeaCave, stampPlot,
 } from './terrain';
 import { makeRoads, makeBridgeDecks } from './roads';
 import { populateProps } from './layouts';
@@ -133,6 +134,11 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
     stampPlot(island, plot);
     poi.center.y = gridSample(island, x, z);
   }
+  const lighthouse = island.pois.find(p => p.id === 'old-lighthouse')!;
+  sculptLighthouseSeaCave(island, {
+    x: lighthouse.center.x - 19 * scale,
+    z: lighthouse.center.z + 13 * scale,
+  });
   island.roads = makeRoads(island, rng);
   island.props = populateProps(island, rng);
   // Grade authored foundations first so nearby street furniture is placed
