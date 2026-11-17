@@ -192,6 +192,8 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
       const report = answer.result?.value as Report | undefined;
       expect(report?.bookmarks).toHaveLength(ART_BOOKMARKS.length);
       expect(report?.dpr).toBe(1.5);
+      expect(report!.crane.noOutlines!.drawCalls)
+        .toBeLessThan(report!.crane.normal!.drawCalls);
       for (const mark of report!.bookmarks) {
         expect(mark.frames).toBe(12);
         expect(mark.p50Ms).toBeGreaterThan(0);
@@ -205,7 +207,20 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
       socket?.close();
       browser?.kill();
       vite?.kill();
-      rmSync(directory, { recursive: true, force: true });
+      // Chrome persists profile state briefly after SIGTERM. Do not convert
+      // a successful WebGL benchmark into a failed test over cleanup races.
+      if (browser && browser.exitCode === null) {
+        await Promise.race([
+          new Promise<void>(resolve => browser!.once('exit', () => resolve())),
+          sleep(2500),
+        ]);
+      }
+      try {
+        rmSync(directory, { recursive: true, force: true,
+          maxRetries: 12, retryDelay: 150 });
+      } catch (error) {
+        console.warn('Chrome profile cleanup deferred:', error);
+      }
     }
   }, 180000);
 });
