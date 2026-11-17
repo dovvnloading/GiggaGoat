@@ -6,7 +6,7 @@ import {
   createWorldScene, generateIsland, hashIsland, heightAt, landAreaAtTideLevel,
   type ColliderDescriptor, type IslandData, type WorldScene,
 } from '../index';
-import { ART_BOOKMARKS, findBookmark } from './bookmarks';
+import { applyBookmarkCamera, ART_BOOKMARKS, findBookmark } from './bookmarks';
 import { paintingAssetUrl } from './reference-art';
 import { createStaticShadowCache } from './shadow-cache';
 import { createAdaptiveViewerResolution } from './adaptive-resolution';
@@ -256,15 +256,10 @@ function applyBookmark(id: string): void {
     streetGoat.position.set(goatX, heightAt(island, goatX, goatZ), goatZ);
     streetGoat.scale.setScalar(scale * (id === '11' ? 0.78 : 1));
   }
-  camera.position.set(mark.camera.x, mark.camera.y, mark.camera.z);
-  camera.fov = mark.fov;
-  camera.updateProjectionMatrix();
-  orbit.target.set(mark.target.x, mark.target.y, mark.target.z);
-  camera.lookAt(orbit.target);
   orbit.enabled = true;
   fly.enabled = false;
   cameraInput.value = 'orbit';
-  orbit.update();
+  applyBookmarkCamera(camera, orbit, mark);
   dayInput.value = String(mark.day);
   worldView.setDayNight(mark.day);
   shadowCache.invalidate();
