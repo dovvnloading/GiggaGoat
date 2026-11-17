@@ -14,6 +14,10 @@ const GARDEN = new THREE.Color('#6F8549');
 const STONE = new THREE.Color('#D8C7A7');
 const TILE = new THREE.Color('#C2B6A2');
 const GRAVEL = new THREE.Color('#E1C18B');
+const YARD_CONCRETE = new THREE.Color('#A7A3A0');
+const YARD_WARM = new THREE.Color('#999493');
+const YARD_JOINT = new THREE.Color('#858789');
+const YARD_MARKING = new THREE.Color('#EDC350');
 
 /**
  * Static decals are tessellated against the ACTUAL stamped terrain and merged
@@ -76,6 +80,40 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Gr
       bucket.indices.push(mid, rim[(i + 1) % sides]!, rim[i]!);
     }
   }
+  // Crane Yard: tessellated paved apron following the real stamped heightfield.
+  // Small concrete slabs prevent a giant flat quad from cutting into the coast
+  // or floating over terrain. The road remains visible above this paving.
+  const yard = site('crane-yard');
+  for (let ix = -40; ix < 40; ix += 4) {
+    for (let iz = -36; iz < 36; iz += 4) {
+      const x = yard.x + (ix + 2) * scale;
+      const z = yard.z + (iz + 2) * scale;
+      const variant = (Math.floor((ix + 40) / 4) * 7 + Math.floor((iz + 36) / 4)) % 11;
+      quad(x, z, 3.96 * scale, 3.96 * scale,
+        variant < 3 ? YARD_WARM : variant === 8 ? YARD_JOINT : YARD_CONCRETE);
+    }
+  }
+  // Loading-bay striping, crane clearance and worn yellow pedestrian marks.
+  for (let i = 0; i < 13; i++) {
+    quad(yard.x + (-28 + i * 4.3) * scale, yard.z + 18.5 * scale,
+      2.2 * scale, 0.23 * scale, YARD_MARKING);
+  }
+  for (const x of [-36, 36]) {
+    for (let i = 0; i < 8; i++) {
+      quad(yard.x + x * scale, yard.z + (-28 + i * 7.5) * scale,
+        0.23 * scale, 3.1 * scale, YARD_MARKING);
+    }
+  }
+  for (const z of [-2.5, 2.5]) {
+    quad(yard.x + 21 * scale, yard.z + (-12 + z) * scale,
+      8.4 * scale, 0.34 * scale, YARD_MARKING);
+  }
+  // Diagonal caution stripes near the fenced south entrance and crate pile.
+  for (let i = 0; i < 6; i++) {
+    quad(yard.x + (12 + i * 2.2) * scale, yard.z + 29 * scale,
+      1.2 * scale, 0.28 * scale, YARD_MARKING, -0.62);
+  }
+
   // Farm path, picket-fenced flower beds and little dirt approaches to doors.
   const farm = site('hoofington');
   for (const side of [-1, 1]) {
