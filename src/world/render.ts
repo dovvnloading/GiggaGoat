@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Biome, IslandData } from './types';
 import { BIOMES } from './types';
 import { clamp, smoothstep } from './random';
-import { gridCoordinate, gridIndex } from './terrain';
+import { gridCoordinate, gridIndex, gridSample } from './terrain';
 import { makeLocalStreets } from './roads';
 import { buildPropVisuals, TOON_RAMP } from './visual-props';
 import { createEnvironmentLod } from './environment-lod';
@@ -64,6 +64,7 @@ const COLORS = {
 
 const CAPE_GRASS = new THREE.Color('#7FBF56');
 const CAPE_STONE = new THREE.Color('#A8A9B1');
+const MT_GIGGA_STONE = new THREE.Color(0xa39a96);
 
 interface RoadSample { x: number; z: number; width: number; type: 'road' | 'trail' }
 function roadGrid(island: IslandData, cell: number): Map<string, RoadSample[]> {
@@ -158,9 +159,20 @@ function terrainGeometry(
         rockFace = Math.max(rockFace, band);
       }
       rockFace = Math.max(rockFace, smoothstep(1.05, 2.5, slope) * 0.76);
+      // The flat tops of the tiers are grass, even inside a radial stone band.
+      rockFace *= smoothstep(0.55, 1.15, slope);
+      // Cap each steep riser with a grassy lip where the ground falls away
+      // at least 2 m across 3 m in the outward radial direction.
+      const outward = Math.hypot(x, z);
+      if (outward > 0.001 && slope < 0.7) {
+        const drop = h - gridSample(island,
+          x + x / outward * 3 * scale, z + z / outward * 3 * scale);
+        if (drop >= 2 * scale) rockFace = 0;
+      }
       const grassy = COLORS.grass.clone().lerp(COLORS.pine, 0.12);
-      const stone = COLORS.rock.clone().multiplyScalar(0.96 +
-        0.025 * Math.sin(radius * 0.33));
+      // Height-indexed warm grey strata, with metres normalized for island size.
+      const stone = MT_GIGGA_STONE.clone().multiplyScalar(
+        0.93 + 0.07 * Math.sin(h / scale * 0.85));
       color.copy(grassy).lerp(stone, rockFace);
       color.lerp(base, 1 - mountain);
     }

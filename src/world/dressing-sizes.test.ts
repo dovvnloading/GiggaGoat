@@ -8,7 +8,10 @@ describe('island scenery size descriptors', () => {
     // The seeded scenery is appended after the authored district detail props.
     const details = island.props.filter(p => p.id.startsWith('detail-'));
     const vegetationCount = Math.max(160, Math.round(440 * scale));
-    const scenery = details.slice(-vegetationCount);
+    // The tier pines and bushes are appended after the seeded scenery; keep
+    // testing the original island-wide scatter separately from the new tier set.
+    const scenery = details.filter(p => p.poiId !== 'mt-gigga' ||
+      (p.kind !== 'tree-pine' && p.kind !== 'bush')).slice(-vegetationCount);
     expect(scenery).toHaveLength(vegetationCount);
     for (const [kind, ratio] of [
       ['tree-oak', 0.72],

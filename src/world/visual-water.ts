@@ -251,9 +251,10 @@ function riverMesh(points: readonly RiverPoint[], material: THREE.Material): THR
 function makeFalls(group: THREE.Group, material: THREE.Material,
   a: THREE.Vector3, b: THREE.Vector3, width: number, id: string): void {
   const direction = new THREE.Vector3().subVectors(b, a);
+  const newWidth = width * 2.6;
   const side = new THREE.Vector3(direction.z, 0, -direction.x).normalize()
-    .multiplyScalar(width / 2);
-  if (side.lengthSq() < 0.001) side.set(width / 2, 0, 0);
+    .multiplyScalar(newWidth / 2);
+  if (side.lengthSq() < 0.001) side.set(newWidth / 2, 0, 0);
   const vertices = [
     ...a.clone().sub(side).toArray(), ...a.clone().add(side).toArray(),
     ...b.clone().sub(side).toArray(), ...b.clone().add(side).toArray(),
@@ -266,13 +267,18 @@ function makeFalls(group: THREE.Group, material: THREE.Material,
   const fall = new THREE.Mesh(g, material);
   fall.name = id;
   group.add(fall);
-  const foam = new THREE.Mesh(new THREE.TorusGeometry(width * 0.44, 0.27, 5, 24),
-    new THREE.MeshBasicMaterial({
-      color: 0xe5ffff, transparent: true, opacity: 0.75, depthWrite: false,
-    }));
-  foam.position.copy(b);
-  foam.rotation.x = -Math.PI / 2;
-  group.add(foam);
+  const foamGeometry = new THREE.IcosahedronGeometry(1, 1);
+  const foamMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false,
+  });
+  const sideways = side.clone().normalize();
+  for (const [index, offset] of [-0.28, 0, 0.28].entries()) {
+    const foam = new THREE.Mesh(foamGeometry, foamMaterial);
+    foam.name = id + '-foam-' + (index + 1);
+    foam.position.copy(b).addScaledVector(sideways, offset * newWidth);
+    foam.scale.set(newWidth * 0.45, newWidth * 0.3, newWidth * 0.45);
+    group.add(foam);
+  }
 }
 /** Reusable animated sea, river, reservoir and waterfall visual effects. */
 export function buildWaterVisuals(island: IslandData): WaterVisuals {
@@ -316,10 +322,16 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
   reservoir.scale.set(lake.radiusX, lake.radiusZ, 1);
   inland.add(reservoir);
   // Cascades wherever a river segment descends across a mountain terrace.
+  // Never overlay the bespoke Dam plot with a diagonal cyan sheet.
+  const damPlot = island.plots.find(plot => plot.poiId === 'the-dam');
+  const insideDamPlot = (x: number, z: number): boolean =>
+    damPlot !== undefined && Math.hypot(x - damPlot.center.x,
+      z - damPlot.center.z) <= damPlot.radius;
   for (let i = 0; i < island.river.length - 1; i++) {
     const a = island.river[i]!, b = island.river[i + 1]!;
     if (a.level - b.level < 3.4 * island.size / 600) continue;
     const x = (a.x + b.x) * 0.5, z = (a.z + b.z) * 0.5;
+    if (insideDamPlot(x, z)) continue;
     makeFalls(inland, stream.material,
       new THREE.Vector3(x, a.level + 0.3, z),
       new THREE.Vector3(x + (b.x - a.x) * 0.18, b.level + 0.2,
@@ -336,6 +348,7 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
     const lowerRadius = (i === 0 ? 46 : 83) * scale;
     const x0 = Math.cos(angle) * upperRadius, z0 = Math.sin(angle) * upperRadius;
     const x1 = Math.cos(angle) * lowerRadius, z1 = Math.sin(angle) * lowerRadius;
+    if (insideDamPlot(x0, z0)) continue;
     const upper = gridSample(island, x0, z0);
     const lower = gridSample(island, x1, z1);
     if (upper - lower > 3 * scale) {
