@@ -492,9 +492,15 @@ export class GameMenu {
     return `<div class="gg-shell-eyebrow">BILLY ISLE · AN OPEN WORLD OF BAD IDEAS</div>
       <h1>GIGGA<br>GOAT!</h1>
       <p>Cause chaos. Grow huge. Pick up paid gigs. Or challenge seven other goats while the tide climbs.</p>
-      <div class="gg-stats"><div class="gg-stat"><strong>${this.game.rules.wallet.coins}</strong>CUD COINS</div>
-      <div class="gg-stat"><strong>${this.game.gigs.director.ownedCosmetics.length}</strong>GIG GEAR</div>
-      <div class="gg-stat"><strong>3</strong>PARTY MODES</div></div>
+      <div class="gg-stats">
+        <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}>
+          <div class="gg-stat-line">${hudSpriteImage(HUD_SPRITES.cudCoin, 'gg-stat-coin')}<strong>${this.game.rules.wallet.coins}</strong></div>
+          <span>CUD COINS</span></div>
+        <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}>
+          <strong>${this.game.gigs.director.ownedCosmetics.length}</strong><span>GIG GEAR</span></div>
+        <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}>
+          <strong>3</strong><span>PARTY MODES</span></div>
+      </div>
       <div class="gg-options">${menuButton('play','▶ PLAY · FREE ROAM',true)}
       ${menuButton('party','⚡ PARTY MODES')}
       ${menuButton('settings','⚙ SETTINGS')}</div>
@@ -504,15 +510,15 @@ export class GameMenu {
     return `<div class="gg-shell-eyebrow">SOLO VS PHYSICS-DRIVEN BOTS</div><h2>START A PARTY</h2>
       <p>Everyone gets the same moves. Outsmart the bots, stay above the tide and claim the top spot.</p>
       <div class="gg-grid">
-      <label>ROUND<select id="gg-mode">
+      <label>ROUND<select id="gg-mode" ${menuSkin(MENU_SPRITES.stat)}>
         <option value="rising-tide" ${this.mode==='rising-tide'?'selected':''}>Rising Tide · survive</option>
         <option value="king-of-the-peak" ${this.mode==='king-of-the-peak'?'selected':''}>King of the Peak · capture</option>
         <option value="hay-heist" ${this.mode==='hay-heist'?'selected':''}>Hay Heist · steal hay</option>
       </select></label>
-      <label>BOT GOATS<select id="gg-bots">
+      <label>BOT GOATS<select id="gg-bots" ${menuSkin(MENU_SPRITES.stat)}>
         ${[3,4,5,6,7].map(n=>`<option value="${n}" ${n===this.botCount?'selected':''}>${n} bots</option>`).join('')}
       </select></label>
-      <label>BOT SKILL<select id="gg-difficulty">
+      <label>BOT SKILL<select id="gg-difficulty" ${menuSkin(MENU_SPRITES.stat)}>
         <option value="easy" ${this.difficulty==='easy'?'selected':''}>Easy · chill</option>
         <option value="normal" ${this.difficulty==='normal'?'selected':''}>Normal · lively</option>
         <option value="hard" ${this.difficulty==='hard'?'selected':''}>Hard · ruthless</option>
@@ -523,24 +529,56 @@ export class GameMenu {
   private settingsBody(): string {
     const s = this.settings;
     const slider = (key: string, label: string, min: number, max: number, step: number,
-      value: number, output: string) => `<label>${label}<div class="gg-range">
-      <input id="gg-setting-${key}" type="range" min="${min}" max="${max}" step="${step}" value="${value}">
-      <output>${output}</output></div></label>`;
-    return `<div class="gg-shell-eyebrow">TUNE YOUR GOAT</div><h2>SETTINGS</h2>
-      <div class="gg-options">
-      ${slider('mouseSensitivity','MOUSE SENSITIVITY',.25,3,.05,s.mouseSensitivity,s.mouseSensitivity.toFixed(2)+'×')}
-      <label>INVERT CAMERA Y<select id="gg-setting-invertY">
-        <option value="no" ${!s.invertY?'selected':''}>Off</option>
-        <option value="yes" ${s.invertY?'selected':''}>On</option></select></label>
-      ${slider('fov','FIELD OF VIEW',55,95,1,s.fov,s.fov+'°')}
-      <label>GRAPHICS QUALITY<select id="gg-setting-graphics">
-        ${(['low','medium','high'] as const).map(q => `<option value="${q}" ${s.graphics===q?'selected':''}>${nice(q)}</option>`).join('')}
-      </select></label>
-      ${slider('volume','MASTER VOLUME',0,1,.05,s.volume,Math.round(s.volume*100)+'%')}
-      ${slider('musicVolume','MUSIC VOLUME',0,1,.05,s.musicVolume,Math.round(s.musicVolume*100)+'%')}
-      ${slider('effectsVolume','EFFECTS VOLUME',0,1,.05,s.effectsVolume,Math.round(s.effectsVolume*100)+'%')}
-      ${menuButton('back','← BACK',true)}</div>
-      <footer>Audio levels apply immediately and save with your game.</footer>`;
+      value: number, output: string): string => {
+      const pct = ((value - min) / (max - min) * 100).toFixed(2);
+      return `<label class="gg-setting">${label}<div class="gg-range">` +
+        `<input class="gg-slider" id="gg-setting-${key}" type="range" min="${min}" max="${max}"` +
+        ` step="${step}" value="${value}" ${menuSkin(MENU_SPRITES.slider, '--gg-pct:' + pct + '%;')}>` +
+        `<output for="gg-setting-${key}">${output}</output></div></label>`;
+    };
+    const tabs = SETTINGS_TABS.map((tab, index) => {
+      const selected = tab === this.settingsTab;
+      const normal = selected ? MENU_SPRITES.tabGold :
+        index === 0 ? MENU_SPRITES.tabBrown : MENU_SPRITES.tabPurple;
+      return `<button type="button" role="tab" id="gg-tab-${tab}" data-tab="${tab}"` +
+        ` aria-selected="${selected}" aria-controls="gg-settings-panel" class="gg-tab"` +
+        ` ${menuSkin(normal)} data-sprite-normal="${normal}"` +
+        ` data-sprite-hover="${MENU_SPRITES.tabGold}" data-sprite-pressed="${MENU_SPRITES.tabGold}">` +
+        `${nice(tab)}</button>`;
+    }).join('');
+    const controls = slider('mouseSensitivity', 'MOUSE SENSITIVITY', .25, 3, .05,
+      s.mouseSensitivity, s.mouseSensitivity.toFixed(2) + '×') +
+      `<div class="gg-setting-row"><span id="gg-invert-label">INVERT CAMERA Y</span>` +
+      `<button type="button" class="gg-switch" role="switch" aria-labelledby="gg-invert-label"` +
+      ` aria-checked="${s.invertY}" data-setting-toggle="invertY"` +
+      ` ${menuSkin(s.invertY ? MENU_SPRITES.toggleOn : MENU_SPRITES.toggleOff)}>` +
+      `<span class="gg-visually-hidden">${s.invertY ? 'On' : 'Off'}</span></button></div>`;
+    const video = slider('fov', 'FIELD OF VIEW', 55, 95, 1, s.fov, s.fov + '°') +
+      `<label class="gg-setting">GRAPHICS QUALITY<select id="gg-setting-graphics"` +
+      ` ${menuSkin(MENU_SPRITES.stat)}>` +
+      (['low', 'medium', 'high'] as const).map(q =>
+        `<option value="${q}" ${s.graphics === q ? 'selected' : ''}>${nice(q)}</option>`).join('') +
+      `</select></label>` +
+      `<div class="gg-setting-row"><span id="gg-fullscreen-label">FULLSCREEN</span>` +
+      `<button type="button" class="gg-check" role="checkbox" data-fullscreen` +
+      ` aria-labelledby="gg-fullscreen-label" aria-checked="${!!document.fullscreenElement}"` +
+      ` ${menuSkin(document.fullscreenElement ? MENU_SPRITES.checkboxChecked : MENU_SPRITES.checkboxEmpty)}>` +
+      `<span class="gg-visually-hidden">Toggle fullscreen</span></button></div>`;
+    const audio = slider('volume', 'MASTER VOLUME', 0, 1, .05, s.volume,
+      Math.round(s.volume * 100) + '%') +
+      slider('musicVolume', 'MUSIC VOLUME', 0, 1, .05, s.musicVolume,
+        Math.round(s.musicVolume * 100) + '%') +
+      slider('effectsVolume', 'EFFECTS VOLUME', 0, 1, .05, s.effectsVolume,
+        Math.round(s.effectsVolume * 100) + '%');
+    const content = this.settingsTab === 'controls' ? controls :
+      this.settingsTab === 'video' ? video : audio;
+    return `<div class="gg-settings-head"><div><div class="gg-shell-eyebrow">TUNE YOUR GOAT</div>` +
+      `<h2>SETTINGS</h2></div>${iconButton(MENU_SPRITES.close, 'Close settings')}</div>` +
+      `<nav class="gg-settings-tabs" role="tablist" aria-label="Settings sections">${tabs}</nav>` +
+      `<div class="gg-settings-content" role="tabpanel" id="gg-settings-panel"` +
+      ` aria-labelledby="gg-tab-${this.settingsTab}">${content}</div>` +
+      `<div class="gg-settings-bottom">${iconButton(MENU_SPRITES.back, 'Back')}` +
+      `<span>Changes apply immediately and save with your game.</span></div>`;
   }
   private boardBody(): string {
     const poi = this.boardPoi;
@@ -568,9 +606,9 @@ export class GameMenu {
       <p>${esc(success?'That was a solid run. Now go cause more trouble.':
         run.failReason ?? 'Try a different route and go again.')}</p>
       <div class="gg-stats">
-        <div class="gg-stat"><strong>${esc(nice(run.rating ?? 'no medal'))}</strong>RATING</div>
-        <div class="gg-stat"><strong>+${run.payout ?? 0}</strong>CUD COINS</div>
-        <div class="gg-stat"><strong>${(run.elapsedTicks/60).toFixed(1)}s</strong>TIME</div>
+        <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}><strong>${esc(nice(run.rating ?? 'no medal'))}</strong>RATING</div>
+        <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}><strong>+${run.payout ?? 0}</strong>CUD COINS</div>
+        <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}><strong>${(run.elapsedTicks/60).toFixed(1)}s</strong>TIME</div>
       </div>
       <p>${best ? 'PERSONAL BEST: '+nice(best.rating)+' · '+(best.ticks/60).toFixed(1)+'s' : 'PERSONAL BEST: not yet'}</p>
       <div class="gg-options">${menuButton('play','▶ BACK TO FREE ROAM',true)}
