@@ -86,7 +86,9 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   for (const side of [-1, 1]) for (let i = 0; i < 8; i++) {
     // The outer west fence runs behind both barn and silo foundations.
     const x = side === -1 && i < 2 ? -36.8
-      : side === -1 && i === 2 ? -36.0 : side * 34.5;
+      : side === -1 && i === 2 ? -36.0
+      // Clear the custom windmill's wider 12.5 m cuboid footprint.
+      : side === 1 && i === 0 ? 37.5 : side * 34.5;
     at(farm, 'fence', x, -36 + i * 10,
       9, 1.85, 0.34, { yaw: Math.PI / 2, color: 0xeac995 });
   }

@@ -54,7 +54,7 @@ const OAK_VARIANTS = ['oakA', 'oakB', 'oakC'] as const;
 // accidental wall/roof overrides even if a caller supplies legacy paint.
 const UNPAINTED_HOOF_MODELS = new Set<string>([
   'barn', 'silo', 'windmill', 'fence', 'mailbox',
-  'bench', 'gnome', 'planter', 'playPad', 'hay',
+  'bench', 'gnome', 'planter', 'playPad', 'hay', 'lights',
   ...FLOWER_VARIANTS, ...BUSH_VARIANTS, ...OAK_VARIANTS,
 ]);
 

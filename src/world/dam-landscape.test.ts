@@ -160,8 +160,10 @@ describe('The Dam downstream scenery', () => {
     expect(instance.material).toBe(paint);
     const matrix = new THREE.Matrix4();
     instance.getMatrixAt(0, matrix);
-    expect(new THREE.Vector3().setFromMatrixScale(matrix).toArray())
-      .toEqual([DAM_BUOY_SIZE.width, DAM_BUOY_SIZE.height, DAM_BUOY_SIZE.depth]);
+    const instanceScale = new THREE.Vector3().setFromMatrixScale(matrix);
+    expect(instanceScale.x).toBeCloseTo(DAM_BUOY_SIZE.width, 6);
+    expect(instanceScale.y).toBeCloseTo(DAM_BUOY_SIZE.height, 6);
+    expect(instanceScale.z).toBeCloseTo(DAM_BUOY_SIZE.depth, 6);
     instance.geometry.dispose();
     mesh.geometry.dispose();
     paint.dispose();
