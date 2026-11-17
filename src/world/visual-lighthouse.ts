@@ -480,6 +480,48 @@ function makeFlowers(island: IslandData, center: { x: number; z: number }): THRE
   return group;
 }
 
+/** One world-space toon draw for the two sagging hand-rails on each bridge side. */
+function makeRopeBridgeRopes(island: IslandData): THREE.Mesh | undefined {
+  // Dressing places -1 then +1 at each bridge point, so parity identifies
+  // the same side of the bridge without assuming straight road segments.
+  const posts = island.props.filter(prop =>
+    prop.poiId === 'old-lighthouse' && prop.kind === 'rope-rail');
+  const sides: PropDescriptor[][] = [[], []];
+  posts.forEach((post, index) => sides[index % 2]!.push(post));
+
+  const pieces: THREE.BufferGeometry[] = [];
+  for (const side of sides) {
+    for (let i = 1; i < side.length; i++) {
+      const a = side[i - 1]!, b = side[i]!;
+      const start = a.transform.position, end = b.transform.position;
+      // Never span gaps between separate bridge sections.
+      if (Math.hypot(end.x - start.x, end.z - start.z) >= 6) continue;
+      for (const drop of [0.25, 1.2]) {
+        const from = new THREE.Vector3(start.x, start.y + a.size.y / 2 - drop, start.z);
+        const to = new THREE.Vector3(end.x, end.y + b.size.y / 2 - drop, end.z);
+        const control = from.clone().add(to).multiplyScalar(0.5);
+        // A quadratic Bezier is half-way to its control at t=0.5:
+        // lowering the control 0.7 m makes the middle sag exactly 0.35 m.
+        control.y -= 0.7;
+        pieces.push(new THREE.TubeGeometry(
+          new THREE.QuadraticBezierCurve3(from, control, to), 8, 0.04, 5, false));
+      }
+    }
+  }
+  if (!pieces.length) return undefined;
+
+  const geometry = mergeGeometries(pieces, false);
+  pieces.forEach(piece => piece.dispose());
+  if (!geometry) throw new Error('Cannot batch lighthouse rope bridge ropes');
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshToonMaterial({
+    color: 0xd9c49a, gradientMap: TOON_RAMP,
+  }));
+  mesh.name = 'lighthouse-rope-bridge-ropes';
+  mesh.castShadow = false;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
 /**
  * Hide the generic instanced silhouettes already replaced by the lighthouse
  * composition. Instance order must stay intact for physics bindings, and
@@ -742,6 +784,10 @@ export function buildLighthouseVisuals(island: IslandData,
     mesh => mesh !== rockFallback &&
       mesh.name !== 'lighthouse-glowing-lantern-room' &&
       mesh !== fallbackPaint && !isModelFallback(mesh));
+  // Add after the hero batch so this stays one named Mesh and one draw call.
+  const bridgeRopes = makeRopeBridgeRopes(island);
+  if (bridgeRopes) group.add(bridgeRopes);
+
   // The cave retains separate logical arch and hidden-relic anchors after
   // its surfaces have been merged into the one static GPU draw.
   const caveAnchor = group.getObjectByName('lighthouse-recessed-sea-cave');
