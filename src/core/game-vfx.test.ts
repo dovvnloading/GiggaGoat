@@ -51,7 +51,7 @@ function fixture() {
   const hoof = { translation: () => ({ x: 3, y: .2, z: -2 }) };
   const goat = {
     id: 'player', phase: 0, pose: 'gallop', size: .6, mass: 6,
-    getPart: vi.fn(() => hoof), ownsBody: (handle: number) => handle === 10,
+    getPart: vi.fn(() => hoof), ownsBody: (handle: number) => handle === 10 || handle === 11,
     torso: {
       translation: () => ({ x: 3, y: 1.2, z: -2 }),
       linvel: () => ({ x: 6, y: -1, z: -1 }),
@@ -127,8 +127,10 @@ describe('GameVfx gameplay integration', () => {
       expect(f.effects.crate.emit).toHaveBeenCalledExactlyOnceWith(
         { x: 9, y: 0, z: 2 }, { x: 1, y: 0, z: 0 }, 1.3);
 
-      f.surfaceEvents.emit({ type: 'bounce', surfaceId: 'spring', bodyHandle: 10, speed: 13 });
-      f.surfaceEvents.emit({ type: 'launch', surfaceId: 'pad', bodyHandle: 10, speed: 15 });
+      f.surfaceEvents.emit({ type: 'bounce', surfaceId: 'spring', bodyHandle: 10, speed: 13, time: 5 });
+      f.surfaceEvents.emit({ type: 'bounce', surfaceId: 'spring', bodyHandle: 11, speed: 13, time: 5.02 });
+      f.surfaceEvents.emit({ type: 'launch', surfaceId: 'pad', bodyHandle: 10, speed: 15, time: 6 });
+      f.surfaceEvents.emit({ type: 'launch', surfaceId: 'pad', bodyHandle: 11, speed: 15, time: 6.01 });
       expect(f.effects.trampoline.emit).toHaveBeenCalledExactlyOnceWith(
         { x: 6, y: 1.77, z: 7 }, 1, 13 / 8);
       expect(f.effects.launch.emit).toHaveBeenCalledExactlyOnceWith(
@@ -171,11 +173,16 @@ describe('GameVfx gameplay integration', () => {
 
       f.goatEvents.emit({ type: 'landed', airtime: .12, verticalSpeed: 2 });
       expect(f.effects.landing.emit).not.toHaveBeenCalled();
-      f.surfaceEvents.emit({ type: 'bounce', surfaceId: 'spring', bodyHandle: 42, speed: 13 });
+      f.surfaceEvents.emit({ type: 'bounce', surfaceId: 'spring', bodyHandle: 42, speed: 13, time: 1 });
       expect(f.effects.trampoline.emit).not.toHaveBeenCalled(); // not the goat
-      f.surfaceEvents.emit({ type: 'launch', surfaceId: 'hay-7', bodyHandle: 10, speed: 13 });
+      f.surfaceEvents.emit({ type: 'launch', surfaceId: 'hay-7', bodyHandle: 10, speed: 13, time: 2 });
       expect(f.effects.launch.emit).toHaveBeenCalledExactlyOnceWith(
         { x: 5, y: 4.14, z: -1 }, { x: 0, y: 0, z: -1 }, 1.3);
+      f.surfaceEvents.emit({ type: 'bounce', surfaceId: 'spring', bodyHandle: 10, speed: 13, time: 3 });
+      f.surfaceEvents.emit({ type: 'bounce', surfaceId: 'spring', bodyHandle: 11, speed: 13, time: 3.02 });
+      expect(f.effects.trampoline.emit).toHaveBeenCalledTimes(1);
+      f.surfaceEvents.emit({ type: 'bounce', surfaceId: 'spring', bodyHandle: 11, speed: 13, time: 3.6 });
+      expect(f.effects.trampoline.emit).toHaveBeenCalledTimes(2);
 
       score(f.rulesEvents, 2);
       score(f.rulesEvents, 2);
