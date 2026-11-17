@@ -73,7 +73,9 @@ describe('free-roam camera / compact HUD reference framing', () => {
               expect(rectsIntersect(tray, prompt)).toBe(false);
             }
             if (size === .6) {
-              expect(layout.prompts.size).toBe(2);
+              // When both prompts cannot fit, the nearby-gig action takes priority;
+              // the pointer-lock hint is optional and must never cover the goat.
+              expect(layout.prompts.has('board')).toBe(true);
               expect([...layout.prompts.values()].every(p => p.bottom < box.top)).toBe(true);
             }
           }
