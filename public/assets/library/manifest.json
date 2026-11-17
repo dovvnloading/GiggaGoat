@@ -33753,5 +33753,50 @@
   "license": "CC0",
   "credit": "Gigga-Goat (original, built in Blender)",
   "url": ""
+ },
+ {
+  "path": "assets/library/custom/props/cascade.glb",
+  "name": "props cascade",
+  "source": "custom",
+  "pack": "props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/pines/deck-stilts.glb",
+  "name": "pines deck-stilts",
+  "source": "custom",
+  "pack": "pines",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/sky/cloud-a.glb",
+  "name": "sky cloud-a",
+  "source": "custom",
+  "pack": "sky",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/sky/cloud-b.glb",
+  "name": "sky cloud-b",
+  "source": "custom",
+  "pack": "sky",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/sky/cloud-c.glb",
+  "name": "sky cloud-c",
+  "source": "custom",
+  "pack": "sky",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
  }
 ]
