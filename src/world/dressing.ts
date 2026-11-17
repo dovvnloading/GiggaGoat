@@ -489,8 +489,10 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     const a = turn(), r = rand(12, 30);
     const dx = Math.cos(a) * r, dz = Math.sin(a) * r;
     if (Math.hypot(dx - 2, dz - 23) < 8) continue;
-    at(light, 'rock', dx, dz,
-      rand(1.8, 4.4), rand(1.5, 4), rand(2, 4.6), { yaw: a, shape: 'convex' });
+    // Keep every size draw, including odd slots that no longer place a rock.
+    const sx = rand(1.8, 4.4), sy = rand(1.5, 4), sz = rand(2, 4.6);
+    if (i % 2 === 0) at(light, 'rock', dx, dz,
+      sx * 0.6, sy * 0.6, sz * 0.6, { yaw: a, shape: 'convex' });
   }
   const bridge = island.roads.find(r => r.to === light || r.from === light);
   if (bridge) {
