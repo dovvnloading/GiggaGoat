@@ -11,6 +11,7 @@ import { buildMeadowScatter } from './visual-meadow';
 import { buildWaterVisuals } from './visual-water';
 import { buildDamVisuals } from './visual-dam';
 import { buildLighthouseVisuals } from './visual-lighthouse';
+import { buildHoofingtonVisuals } from './visual-hoofington';
 import { buildSkyVisuals, type LightingPreset } from './visual-sky';
 
 export interface WorldSceneOptions {
@@ -325,6 +326,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(buildMeadowScatter(island));
   const props = buildPropVisuals(island.props, options.propChunkSize ?? 96);
   group.add(props.group);
+  const hoofington = buildHoofingtonVisuals(island, props.group);
+  group.add(hoofington.group);
   const waterVisuals = buildWaterVisuals(island);
   group.add(waterVisuals.inland, waterVisuals.sea);
   const dam = buildDamVisuals(island);
@@ -400,13 +403,15 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
       const visible = distance < (batch.nearOnly ? island.size * 0.32 : cullingDistance) +
         batch.sphere.radius && frustum.intersectsSphere(batch.sphere);
       for (const mesh of batch.meshes) {
-        if (mesh.castShadow && mesh.visible !== visible) shadowCastersChanged = true;
-        mesh.visible = visible;
+        const show = visible && !hoofington.isFallbackHidden(mesh);
+        if (mesh.castShadow && mesh.visible !== show) shadowCastersChanged = true;
+        mesh.visible = show;
       }
     }
     // The GLB supplies its own reservoir surface. Hide the procedural one
     // on success, but retain it in the graph for disposal; it remains visible
     // if the model fails and the procedural fallback is needed.
+    if (hoofington.consumeShadowChange()) shadowCastersChanged = true;
     if (dam.consumeShadowChange()) {
       const reservoir = waterVisuals.inland.getObjectByName('dam-reservoir');
       if (reservoir) reservoir.visible = false;
@@ -415,6 +420,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     return shadowCastersChanged;
   }
   function dispose(): void {
+    hoofington.dispose();
     dam.dispose();
     lighthouse.dispose();
     const geometries = new Set<THREE.BufferGeometry>();
