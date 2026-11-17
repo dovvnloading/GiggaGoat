@@ -1,9 +1,10 @@
 import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { describe, expect, it } from 'vitest';
 import { generateIsland, heightAt } from '../index';
 import { gridSample, riverAt } from '../terrain';
 import type { PropDescriptor, Vec3 } from '../types';
-import { findBookmark } from './bookmarks';
+import { applyBookmarkCamera, ART_BOOKMARKS, findBookmark } from './bookmarks';
 
 const roundHalf = (value: number): number => Math.round(value * 2) / 2;
 const rounded = (v: Vec3): Vec3 => ({
@@ -34,31 +35,75 @@ function projectBookmark(id: string, points: Record<string, Vec3>): void {
   }
 }
 
-function containsXZ(prop: PropDescriptor, x: number, z: number): boolean {
-  const dx = x - prop.transform.position.x, dz = z - prop.transform.position.z;
-  const c = Math.cos(prop.transform.rotationY), s = Math.sin(prop.transform.rotationY);
-  return Math.abs(c * dx - s * dz) <= prop.size.x / 2 &&
-    Math.abs(s * dx + c * dz) <= prop.size.z / 2;
+const BUILDINGS = new Set<PropDescriptor['kind']>([
+  'barn', 'house', 'cottage', 'silo', 'windmill', 'shop',
+]);
+const OBSTACLES = new Set<PropDescriptor['kind']>([
+  ...BUILDINGS, 'tree-oak', 'tree-pine',
+]);
+
+/** Test the complete segment against each yaw-rotated 3D descriptor box. */
+function intersectsBuilding(start: Vec3, end: Vec3, prop: PropDescriptor): boolean {
+  const center = prop.transform.position;
+  const rotation = new THREE.Matrix4().makeRotationY(-prop.transform.rotationY);
+  const local = (point: Vec3): THREE.Vector3 =>
+    new THREE.Vector3(point.x - center.x, point.y - center.y, point.z - center.z)
+      .applyMatrix4(rotation);
+  const a = local(start), b = local(end);
+  const delta = b.clone().sub(a);
+  const distance = delta.length();
+  const half = prop.size;
+  const bounds = new THREE.Box3(
+    new THREE.Vector3(-half.x / 2, -half.y / 2, -half.z / 2),
+    new THREE.Vector3(half.x / 2, half.y / 2, half.z / 2),
+  );
+  if (bounds.containsPoint(a)) return true;
+  if (distance === 0) return false;
+  const hit = new THREE.Ray(a, delta.divideScalar(distance))
+    .intersectBox(bounds, new THREE.Vector3());
+  return hit !== null && a.distanceTo(hit) <= distance;
+}
+
+function isClear07(camera: Vec3, target: Vec3): boolean {
+  return island.props.every(prop => !OBSTACLES.has(prop.kind) ||
+    Math.hypot(camera.x - prop.transform.position.x,
+      camera.z - prop.transform.position.z) >= 8) &&
+    island.props.every(prop => !BUILDINGS.has(prop.kind) ||
+      !intersectsBuilding(camera, target, prop));
 }
 
 describe('painting bookmark recompositions (default billy-isle)', () => {
   it('07 frames windmill and Mt Gigga summit from clear ground-level farm approach', () => {
     const bookmark = findBookmark('07')!;
-    const blockedBy = island.props.filter(p => [
-      'house', 'barn', 'shop', 'cottage', 'control-house', 'silo',
-      'windmill', 'tower', 'tree-oak', 'tree-pine',
-    ].includes(p.kind));
-    const direction = new THREE.Vector2(190, -110).normalize().multiplyScalar(2);
-    let x = -190, z = 110;
-    for (let i = 0; i < 30 &&
-      blockedBy.some(prop => containsXZ(prop, x, z)); i++) {
-      x += direction.x; z += direction.y;
+    // Walk from the original barn-wall camera toward the island centre in
+    // 2 m increments, keeping the eye 3 m above the generated terrain.
+    const start = new THREE.Vector2(-190, 110);
+    const distance = start.length();
+    const direction = start.clone().negate().normalize();
+    let firstClear: Vec3 | undefined;
+    for (let metres = 0; metres <= distance; metres += 2) {
+      const x = start.x + direction.x * metres;
+      const z = start.y + direction.y * metres;
+      const candidate = { x, y: heightAt(island, x, z) + 3, z };
+      if (isClear07(candidate, bookmark.target)) {
+        firstClear = candidate;
+        break;
+      }
     }
-    expect(blockedBy.some(p => containsXZ(p, x, z))).toBe(false);
-    expect(bookmark.camera).toEqual(rounded({
-      x, y: heightAt(island, x, z) + 3, z,
-    }));
-    expect(bookmark.camera).toEqual({ x: -190, y: 9, z: 110 });
+    expect(firstClear, 'first clear 2 m sample').toBeDefined();
+    expect(bookmark.camera).toEqual(rounded(firstClear!));
+    expect(bookmark.camera).toEqual({ x: -167.5, y: 9, z: 97 });
+    expect(isClear07(bookmark.camera, bookmark.target),
+      'rounded bookmark 07 must stay clear').toBe(true);
+    for (const prop of island.props.filter(p => OBSTACLES.has(p.kind))) {
+      expect(Math.hypot(bookmark.camera.x - prop.transform.position.x,
+        bookmark.camera.z - prop.transform.position.z),
+      `07 clearance from ${prop.id}`).toBeGreaterThanOrEqual(8);
+    }
+    for (const prop of island.props.filter(p => BUILDINGS.has(p.kind))) {
+      expect(intersectsBuilding(bookmark.camera, bookmark.target, prop),
+        `07 sight line vs ${prop.id}`).toBe(false);
+    }
     expect(bookmark.target).toEqual({ x: 0, y: 40, z: 0 });
     expect(bookmark.fov).toBe(55);
     const windmill = props('hoofington', 'windmill')[0]!;
@@ -200,5 +245,79 @@ describe('painting bookmark recompositions (default billy-isle)', () => {
       craneMastTop: { ...mast.transform.position, y: highest(mast) },
       frontFencePanel: fence.transform.position,
     });
+  });
+});
+
+describe('World Lab bookmark camera constraints', () => {
+  function makeOrbit(camera: THREE.PerspectiveCamera): OrbitControls {
+    // OrbitControls only needs event registration for construction in Vitest.
+    const events = { addEventListener: () => {}, removeEventListener: () => {} };
+    const element = {
+      ...events,
+      ownerDocument: events,
+      getRootNode: () => events,
+      style: {},
+    } as unknown as HTMLElement;
+    const orbit = new OrbitControls(camera, element);
+    orbit.target.set(0, 28, 0);
+    orbit.enableDamping = true;
+    orbit.minDistance = 10;
+    orbit.maxDistance = 950;
+    orbit.maxPolarAngle = Math.PI * 0.49;
+    return orbit;
+  }
+
+  it.each(ART_BOOKMARKS)('preserves saved position and target for $id', bookmark => {
+    const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.25, 4000);
+    camera.position.set(310, 220, 390);
+    const orbit = makeOrbit(camera);
+    applyBookmarkCamera(camera, orbit, bookmark);
+    const expectedPosition = new THREE.Vector3(
+      bookmark.camera.x, bookmark.camera.y, bookmark.camera.z);
+    const expectedTarget = new THREE.Vector3(
+      bookmark.target.x, bookmark.target.y, bookmark.target.z);
+    const offset = expectedPosition.clone().sub(expectedTarget);
+    const distance = offset.length();
+    const polar = Math.acos(THREE.MathUtils.clamp(offset.y / distance, -1, 1));
+
+    expect(orbit.maxPolarAngle).toBeCloseTo(Math.max(Math.PI * 0.49, polar + 0.02));
+    expect(orbit.minDistance).toBeLessThanOrEqual(distance);
+    expect(orbit.maxDistance).toBeGreaterThanOrEqual(distance);
+    expect(camera.fov).toBe(bookmark.fov);
+    expect(orbit.enableDamping).toBe(true);
+    expect(camera.position.distanceTo(expectedPosition)).toBeLessThan(0.01);
+    expect(orbit.target.distanceTo(expectedTarget)).toBeLessThan(0.01);
+    // The regular animation-loop update must not lift or shift a saved pose.
+    orbit.update();
+    expect(camera.position.distanceTo(expectedPosition)).toBeLessThan(0.01);
+    expect(orbit.target.distanceTo(expectedTarget)).toBeLessThan(0.01);
+    orbit.dispose();
+  });
+
+  it('widens either distance bound without disabling subsequent orbit updates', () => {
+    const bookmark = findBookmark('07')!;
+    const position = new THREE.Vector3(
+      bookmark.camera.x, bookmark.camera.y, bookmark.camera.z);
+    const distance = position.distanceTo(new THREE.Vector3(
+      bookmark.target.x, bookmark.target.y, bookmark.target.z));
+    const camera = new THREE.PerspectiveCamera(55, 16 / 9, 0.25, 4000);
+    camera.position.set(310, 220, 390);
+    const orbit = makeOrbit(camera);
+
+    orbit.minDistance = distance + 10;
+    orbit.maxDistance = distance + 20;
+    applyBookmarkCamera(camera, orbit, bookmark);
+    expect(orbit.minDistance).toBeLessThanOrEqual(distance);
+    expect(camera.position.distanceTo(position)).toBeLessThan(0.01);
+
+    orbit.minDistance = 1;
+    orbit.maxDistance = distance - 10;
+    applyBookmarkCamera(camera, orbit, bookmark);
+    expect(orbit.maxDistance).toBeGreaterThanOrEqual(distance);
+    orbit.update();
+    expect(camera.position.distanceTo(position)).toBeLessThan(0.01);
+    expect(orbit.enabled).toBe(true);
+    expect(orbit.enableDamping).toBe(true);
+    orbit.dispose();
   });
 });
