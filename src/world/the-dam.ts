@@ -54,18 +54,18 @@ export function makeDamColliderDescriptors(island: IslandData): PropColliderDesc
     makeBox('wall', 0, 9, -1.6, 58, 18, 2.4),
     makeBox('deck', 0, 18.35, 0, 60, 0.9, 7.4),
     // Four openings and five masonry piers as visible in the hero art.
-    ...[-28, -14, 0, 14, 28].map((x, i) =>
+    ...[-12, -2, 8, 18, 28].map((x, i) =>
       makeBox('pier-' + i, x, 8.7, 1.8, 2.6, 17.4, 4.8)),
     // House sits on the right-hand end of the deck; its roof is solid.
     makeBox('control-house', 23.5, 23.4, -0.7, 12.5, 9.2, 9),
     // Narrow vertical ladder rails and separate footholds, rather than
     // an impassable full-height ladder collision box.
-    makeBox('ladder-left', -28.4, 9.4, 3.15, 0.18, 17.8, 0.25),
-    makeBox('ladder-right', -26.7, 9.4, 3.15, 0.18, 17.8, 0.25),
+    makeBox('ladder-left', -17.3, 9.4, 3.15, 0.18, 17.8, 0.25),
+    makeBox('ladder-right', -15.6, 9.4, 3.15, 0.18, 17.8, 0.25),
   ];
   for (let i = 0; i < 14; i++) {
     colliders.push(makeBox('ladder-rung-' + i,
-      -27.55, 1.15 + i * 1.25, 3.28, 1.8, 0.19, 0.4));
+      -16.45, 1.15 + i * 1.25, 3.28, 1.8, 0.19, 0.4));
   }
   return colliders;
 }
