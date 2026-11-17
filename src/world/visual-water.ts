@@ -217,7 +217,9 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
         'front-terrace-waterfall-' + (i + 1));
     }
   }
-  // The four spillway sheets and their foam now come from the custom Dam GLB.\n  // Keep the mountain and river cascades, but do not draw duplicate dam falls.\n  return {
+  // The four spillway sheets and their foam now come from the custom Dam GLB.
+  // Keep the mountain and river cascades, but do not draw duplicate dam falls.
+  return {
     sea, inland,
     update(time: number, tide: number): void {
       seaMat.uniforms.uTime.value = time;
