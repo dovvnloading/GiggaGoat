@@ -102,9 +102,11 @@ export function prepareDamModel(root: THREE.Object3D, island: IslandData): DamMe
       return;
     }
     const material = isFall ? waterfallMaterial(object.material) : object.material;
-    const signature = Object.entries(geometry.attributes)
-      .map(([name, attr]) => name + ':' + attr.itemSize + ':' +
-        attr.normalized + ':' + attr.array.constructor.name).sort().join(',');
+    const signature = Object.keys(geometry.attributes).sort()
+      .map(name => {
+        const attr = geometry.getAttribute(name);
+        return name + ':' + attr.itemSize + ':' + attr.normalized;
+      }).join(',');
     const key = material.uuid + ':' + (shadow ? 'S' : 's') + ':' + signature;
     let bucket = buckets.get(key);
     if (!bucket) {
