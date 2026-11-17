@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { createWorldScene, generateIsland, heightAt, isSafeCollectiblePosition } from './index';
 import { findBookmark } from './viewer/bookmarks';
+import { instantiateLibraryModel } from './visual-lighthouse';
+import { BUILDING_RAMP } from './visual-props';
+import { gridSample } from './terrain';
 
 describe('Old Lighthouse painting rebuild', () => {
   it('keeps a tall physically collidable cape, cut-back cave and safe secret relic', () => {
@@ -153,4 +156,128 @@ describe('Old Lighthouse painting rebuild', () => {
       expect(projected.z).toBeLessThan(1);
     }
   });
+  it('keeps each sourced rock primitive colour in a non-emissive toon batch', () => {
+    const root = new THREE.Group();
+    const sources = [
+      new THREE.MeshStandardMaterial({ color: 0x838b92 }),
+      new THREE.MeshStandardMaterial({ color: 0x6faa59 }),
+    ];
+    for (const [i, source] of sources.entries()) {
+      const primitive = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), source);
+      primitive.position.set(i, i * 0.4, 0);
+      root.add(primitive);
+    }
+    const instance = instantiateLibraryModel(root, [
+      { x: 5, y: 7, z: -6, width: 4, height: 4, depth: 4 },
+      { x: -3, y: 8, z: 2, width: 3, height: 3, depth: 3 },
+    ], 'lighthouse-rock-paint-test', true,
+    'assets/library/kenney/nature-kit/rock_largeA.glb');
+    try {
+      // One draw/material per original GLB primitive, not a split per instance.
+      expect(instance.children).toHaveLength(sources.length);
+      const materials = instance.children.map((part, i) => {
+        expect(part).toBeInstanceOf(THREE.InstancedMesh);
+        const batch = part as THREE.InstancedMesh;
+        expect(batch.count).toBe(2);
+        const material = batch.material as THREE.MeshToonMaterial;
+        expect(material).toBeInstanceOf(THREE.MeshToonMaterial);
+        expect(material.color.equals(sources[i]!.color)).toBe(true);
+        expect(material.gradientMap).toBe(BUILDING_RAMP);
+        expect(material.side).toBe(THREE.DoubleSide);
+        expect(material.flatShading).toBe(true);
+        expect(material.emissive.getHex()).toBe(0x000000);
+        expect(material.emissive.r + material.emissive.g + material.emissive.b).toBe(0);
+        expect(batch.castShadow).toBe(false);
+        return material;
+      });
+      expect(materials[0]).not.toBe(materials[1]);
+      expect(materials[0]!.color.equals(materials[1]!.color)).toBe(false);
+    } finally {
+      instance.traverse(object => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+          (object.material as THREE.Material).dispose();
+        }
+      });
+      root.traverse(object => {
+        if (object instanceof THREE.Mesh) object.geometry.dispose();
+      });
+      sources.forEach(material => material.dispose());
+    }
+  });
+
+  it('halves shore/shoulder boulder attempts and embeds every rock 35% into the ground', () => {
+    for (const seed of ['billy-isle', 'lighthouse-cape']) {
+      const island = generateIsland({ seed, resolution: 97 });
+      const view = createWorldScene(island);
+      try {
+        const rockFallback = view.group.getObjectByName(
+          'lighthouse-fallback-grey-rocks') as THREE.InstancedMesh;
+        expect(rockFallback).toBeInstanceOf(THREE.InstancedMesh);
+        const fallbackMaterial = rockFallback.material as THREE.MeshToonMaterial;
+        expect(fallbackMaterial).toBeInstanceOf(THREE.MeshToonMaterial);
+        expect(fallbackMaterial.emissive.getHex()).toBe(0);
+        expect(fallbackMaterial.gradientMap).toBe(BUILDING_RAMP);
+
+        const centre = island.pois.find(p => p.id === 'old-lighthouse')!.center;
+        const scale = island.size / 600;
+        const expected: Array<{ x: number; y: number; z: number; height: number }> =
+          island.props.filter(p => p.poiId === 'old-lighthouse' && p.kind === 'rock')
+            .map(p => ({
+              x: p.transform.position.x, z: p.transform.position.z,
+              y: p.transform.position.y - p.size.y / 2, height: p.size.y,
+            }));
+        const descriptorCount = expected.length;
+        let shoreCount = 0, shoulderCount = 0;
+        // Source loops now visit only even slots, 8 rather than 16 and
+        // 44 rather than 88; conditional cliff/cave skips stay unchanged.
+        for (let i = 0; i < 16; i += 2) {
+          const angle = i * 2.399963 + 0.65;
+          const r = (28 + (i % 4) * 2.5) * scale;
+          const x = centre.x + Math.cos(angle) * r;
+          const z = centre.z + Math.sin(angle) * r;
+          if (Math.hypot(x - (centre.x + 2 * scale),
+            z - (centre.z + 23 * scale)) < 8 * scale) continue;
+          const size = (3.2 + (i % 3) * 1.15) * scale;
+          expected.push({ x, z, y: Math.max(-1.8 * scale,
+            gridSample(island, x, z) - size * 0.12), height: size });
+          shoreCount++;
+        }
+        for (let i = 0; i < 88; i += 2) {
+          const angle = i * 2.399963 + 0.8;
+          const radius = (19 + (i % 9) * 1.05) * scale;
+          const x = centre.x + Math.cos(angle) * radius;
+          const z = centre.z + Math.sin(angle) * radius;
+          const surface = gridSample(island, x, z);
+          if (surface < 1.5 * scale || surface > 16 * scale ||
+              Math.hypot(x - (centre.x + 2 * scale),
+                z - (centre.z + 23 * scale)) < 8.5 * scale) continue;
+          const extent = (3.1 + (i % 4) * 0.8) * scale;
+          expected.push({ x, z, y: surface - extent * 0.37,
+            height: extent * 0.96 });
+          shoulderCount++;
+        }
+        expect(shoreCount).toBeGreaterThan(0);
+        expect(shoreCount).toBeLessThanOrEqual(8);
+        expect(shoulderCount).toBeGreaterThan(0);
+        expect(shoulderCount).toBeLessThanOrEqual(44);
+        expect(rockFallback.count).toBe(descriptorCount + shoreCount + shoulderCount);
+        const matrix = new THREE.Matrix4();
+        const position = new THREE.Vector3();
+        for (const [i, rock] of expected.entries()) {
+          rockFallback.getMatrixAt(i, matrix);
+          position.setFromMatrixPosition(matrix);
+          expect(position.x, seed + ': rock ' + i).toBeCloseTo(rock.x, 4);
+          expect(position.z, seed + ': rock ' + i).toBeCloseTo(rock.z, 4);
+          // Before sinking the fallback centre was baseY + 0.5 * height.
+          // Subtracting 0.35 * height leaves baseY + 0.15 * height.
+          expect(position.y, seed + ': rock ' + i)
+            .toBeCloseTo(rock.y + 0.15 * rock.height, 4);
+        }
+      } finally {
+        view.dispose();
+      }
+    }
+  });
+
 });
