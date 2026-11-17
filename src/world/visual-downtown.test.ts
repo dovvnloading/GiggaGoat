@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { createWorldScene, generateIsland } from './index';
 import {
   DOWNTOWN_MODELS, DOWNTOWN_SIGN_ANCHORS, DOWNTOWN_BUILDING_SIZES,
-  SHOP_FRONTS, downtownRearHouseModel, downtownSignGeometry,
+  DOWNTOWN_INFILL, SHOP_FRONTS, downtownRearHouseModel, downtownSignGeometry,
   makeDowntownPlacements, makeDowntownSigns,
   type DowntownModel, type DowntownPlacement,
 } from './visual-downtown';
@@ -77,7 +77,7 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     }
   });
 
-  it('replaces ten storefronts, six parkour houses and the tower without moving colliders', () => {
+  it('replaces ten storefronts, six rear houses, infills and tower without moving colliders', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
     const before = island.props.map(p => ({
       id: p.id, kind: p.kind, transform: structuredClone(p.transform),
@@ -93,7 +93,7 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     const shops = linked.filter(p => p.source!.kind === 'shop');
     const houses = linked.filter(p => p.source!.kind === 'house');
     expect(shops).toHaveLength(10);
-    expect(houses).toHaveLength(6);
+    expect(houses).toHaveLength(6 + DOWNTOWN_INFILL.length);
     const towers = linked.filter(p => p.source!.kind === 'tower');
     expect(towers).toHaveLength(1);
     // Blender-authored building colours must pass through the baker unchanged.
@@ -155,9 +155,13 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       const centre = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
       const plan = makeDowntownPlacements(island);
       const shops = plan.filter(p => p.source?.kind === 'shop');
-      const houses = plan.filter(p => p.source?.kind === 'house');
+      const houses = plan.filter(p => p.source?.kind === 'house' &&
+        Math.abs(p.position.x - centre.x) >= 30 * scale);
+      const infills = plan.filter(p => p.source?.kind === 'house' &&
+        Math.abs(p.position.x - centre.x) < 30 * scale);
       expect(shops).toHaveLength(10);
       expect(houses).toHaveLength(6);
+      expect(infills).toHaveLength(DOWNTOWN_INFILL.length);
       const assertBox = (placement: DowntownPlacement, model: keyof typeof exact,
         oldCentre: number, oldDepth: number, side: number, dz: number): void => {
         expect(placement.model).toBe(model);
@@ -189,10 +193,17 @@ describe('Downtown Bleatsville sourced streetscape', () => {
         expect(placement, 'rear house at ' + dz + ', ' + side).toBeDefined();
         assertBox(placement!, downtownRearHouseModel(dz), 36, 11.5, side, dz);
       }
+      for (const { side, z, model } of DOWNTOWN_INFILL) {
+        const placement = infills.find(p =>
+          (p.position.x - centre.x) * side > 0 &&
+          Math.abs(p.position.z - centre.z - z * scale) < 0.001);
+        expect(placement, 'infill at ' + side + '/' + z).toBeDefined();
+        assertBox(placement!, model, 20, 11.4, side, z);
+      }
       const towers = plan.filter(p => p.source?.kind === 'tower');
       expect(towers).toHaveLength(1);
       expect(towers[0]!.size).toEqual({ x: 8 * scale, y: 27 * scale, z: 8 * scale });
-      const buildings = [...shops, ...houses, ...towers];
+      const buildings = [...shops, ...houses, ...infills, ...towers];
       const footprint = (p: DowntownPlacement): { x: number; z: number } => ({
         x: (Math.abs(Math.cos(p.yaw)) * p.size.x +
           Math.abs(Math.sin(p.yaw)) * p.size.z) / 2,
@@ -216,8 +227,10 @@ describe('Downtown Bleatsville sourced streetscape', () => {
   it('derives facade ornaments and rooftop equipment from each resized roof', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
     const scale = island.size / 600;
+    const centre = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
     const buildings = island.props.filter(p => p.poiId === 'downtown-bleatsville' &&
-      (p.kind === 'shop' || p.kind === 'house'));
+      (p.kind === 'shop' || (p.kind === 'house' &&
+        Math.abs(p.transform.position.x - centre.x) >= 30 * scale)));
     const details = island.props.filter(p => p.poiId === 'downtown-bleatsville' &&
       p.id.startsWith('detail-'));
     expect(buildings).toHaveLength(16);
@@ -260,7 +273,9 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       const island = generateIsland({ seed: 'billy-isle', resolution: 97, size });
       const scale = size / 600;
       const props = island.props.filter(p => p.poiId === 'downtown-bleatsville');
-      const buildings = props.filter(p => p.kind === 'shop' || p.kind === 'house');
+      const centre = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
+      const buildings = props.filter(p => p.kind === 'shop' ||
+        (p.kind === 'house' && Math.abs(p.transform.position.x - centre.x) >= 30 * scale));
       const acUnits = props.filter(p => p.kind === 'ac-unit');
       expect(acUnits.length).toBe(buildings.length);
       for (const ac of acUnits) {
