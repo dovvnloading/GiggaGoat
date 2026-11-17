@@ -1,10 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { generateIsland, heightAt } from './index';
 import { damChannelAt, DAM_CHANNEL } from './dam-landscape';
 import { getDamPlacement } from './the-dam';
 import { buildDamVisuals } from './visual-dam';
-import { instanceDamAsset } from './visual-dam-landscape';
+import { DAM_BUOY_MODEL, DAM_BUOY_SIZE, instanceDamAsset } from './visual-dam-landscape';
 
 describe('The Dam downstream scenery', () => {
   it('cuts a continuous pool below the four falls and drains toward bookmark 14', () => {
@@ -72,6 +73,53 @@ describe('The Dam downstream scenery', () => {
     } finally {
       dam.dispose();
     }
+  });
+
+  it('uses the painted custom buoy at its 1.0 x 1.8 x 1.0 metre scale', () => {
+    expect(DAM_BUOY_MODEL).toBe('custom/props/buoy.glb');
+    expect(DAM_BUOY_SIZE).toEqual({ width: 1, height: 1.8, depth: 1 });
+    const manifest = JSON.parse(readFileSync('public/assets/library/manifest.json', 'utf8'))
+      as Array<{ path: string; license: string }>;
+    const path = 'assets/library/' + DAM_BUOY_MODEL;
+    expect(manifest.find(asset => asset.path === path)?.license).toBe('CC0');
+    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    const dam = buildDamVisuals(island);
+    try {
+      const fallback = dam.group.getObjectByName(
+        'dam-two-orange-buoys-fallback') as THREE.InstancedMesh;
+      expect(fallback.count).toBe(2);
+      const geo = fallback.geometry as THREE.CylinderGeometry;
+      expect(geo.parameters.radiusTop).toBe(0.5);
+      expect(geo.parameters.radiusBottom).toBe(0.5);
+      expect(geo.parameters.height).toBe(1.8);
+      const matrix = new THREE.Matrix4();
+      for (const [i, z] of [35, 48].entries()) {
+        fallback.getMatrixAt(i, matrix);
+        const centre = new THREE.Vector3().setFromMatrixPosition(matrix);
+        expect(centre.y - DAM_BUOY_SIZE.height / 2)
+          .toBeCloseTo(damChannelAt(z).level - 0.5, 6);
+      }
+    } finally {
+      dam.dispose();
+    }
+    const paint = new THREE.MeshStandardMaterial({ color: 0x4b8ab5 });
+    const model = new THREE.Group();
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1.8), paint);
+    model.add(mesh);
+    const batch = instanceDamAsset(model, {
+      name: 'dam-buoys-test', path: DAM_BUOY_MODEL,
+      placements: [{ x: 8, y: 3, z: 35, ...DAM_BUOY_SIZE, yaw: 0 }],
+    });
+    const instance = batch.children[0] as THREE.InstancedMesh;
+    expect(instance).toBeInstanceOf(THREE.InstancedMesh);
+    expect(instance.material).toBe(paint);
+    const matrix = new THREE.Matrix4();
+    instance.getMatrixAt(0, matrix);
+    expect(new THREE.Vector3().setFromMatrixScale(matrix).toArray())
+      .toEqual([DAM_BUOY_SIZE.width, DAM_BUOY_SIZE.height, DAM_BUOY_SIZE.depth]);
+    instance.geometry.dispose();
+    mesh.geometry.dispose();
+    paint.dispose();
   });
 
   it('loads repeated library parts as batched upright GLB instances', () => {
