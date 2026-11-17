@@ -290,7 +290,9 @@ function frame(now: number): void {
       const heading = circleSeconds * .75;
       const radius = 1.6 * size;
       art.root.position.set(-radius * Math.cos(heading), 0, -radius * Math.sin(heading));
-      art.root.rotation.y = heading;
+      // Three.js rotates -Z toward -X for positive Y angles; physical
+      // forward(heading) rotates it toward +X, so negate the preview yaw.
+      art.root.rotation.y = -heading;
     }
     for (const character of characters) character.update(paused ? 0 : dt);
   }
