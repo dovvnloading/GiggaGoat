@@ -4,6 +4,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { loadLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
 import type { PropDescriptor, PropKind } from './types';
 import { buildArchitecture, isArchitecturalKind } from './visual-architecture';
+import type { IslandData } from './types';
+import { WORLD_LOD, completelyOccluded, isSmallWorldModel,
+  simplifiedWorldGeometry } from './lod';
 
 export interface PropBatch {
   sphere: THREE.Sphere;
@@ -14,6 +17,9 @@ export interface PropVisuals {
   group: THREE.Group;
   batches: PropBatch[];
   update(time: number): void;
+  /** Compact real visible instances into cached near/far library geometry. */
+  updateCulling(position: THREE.Vector3, frustum: THREE.Frustum, maxDistance: number,
+    hidden: (mesh: THREE.InstancedMesh) => boolean): boolean;
   /** Async asset swaps can change the static shadow caster silhouette. */
   consumeShadowChange(): boolean;
   dispose(): void;
@@ -596,7 +602,8 @@ function sways(kind: PropKind): boolean {
 }
 
 /** Spatially batched instancing; LOD/culling works without per-object draw calls. */
-export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 96): PropVisuals {
+export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 96,
+  island?: IslandData): PropVisuals {
   const group = new THREE.Group();
   group.name = 'handcrafted-props';
   const batches: PropBatch[] = [];
@@ -617,8 +624,19 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
   const materials = new Map<PropKind, THREE.MeshToonMaterial>();
   const outlineMat = new THREE.MeshBasicMaterial({ color: 0x34424b, side: THREE.BackSide });
   const windUniforms: Array<{ value: number }> = [];
-  const jobs: Array<{ kind: PropKind; entries: PropDescriptor[];
-    mesh: THREE.InstancedMesh; batch: PropBatch }> = [];
+  interface Job {
+    kind: PropKind;
+    entries: PropDescriptor[];
+    mesh: THREE.InstancedMesh; // stable original descriptor index for physics
+    batch: PropBatch;
+    near?: THREE.InstancedMesh;
+    far?: THREE.InstancedMesh;
+    nearIndices: number[];
+    farIndices: number[];
+    originalVersion: number;
+    occluded: boolean[];
+  }
+  const jobs: Job[] = [];
   const dummy = new THREE.Object3D();
   for (const [kind, entries] of buckets) {
     const architecture = isArchitecturalKind(kind) ? buildArchitecture(kind) : null;
@@ -719,7 +737,11 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       nearOnly: false,
     };
     batches.push(batch);
-    jobs.push({ kind, entries, mesh, batch });
+    jobs.push({ kind, entries, mesh, batch, nearIndices: [], farIndices: [],
+      originalVersion: -1,
+      occluded: entries.map(entry => Boolean(island && entry.body.type !== 'dynamic' &&
+        completelyOccluded(island, entry.transform.position, entry.size, entry))),
+    });
   }
 
   // The procedural silhouettes are synchronous placeholders and genuine
@@ -758,7 +780,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
         }
         try {
           const libraryGeometry = await pending;
-          if (disposed) { libraryGeometry.dispose(); return; }
+          const distantGeometry = await simplifiedWorldGeometry(libraryGeometry);
+          if (disposed) return;
           const original = job.mesh.geometry;
           job.mesh.geometry = libraryGeometry;
           // Retain mild per-descriptor colour variation without tinting the
@@ -783,6 +806,26 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
             if (extra.geometry !== original) extra.geometry.dispose();
           }
           job.batch.meshes.splice(1);
+          // Keep props-<kind> and all descriptor indices intact for the game's
+          // physics binding. Camera-visible copies are tightly packed instead:
+          // no zero-scale or out-of-frustum instance reaches the GPU.
+          const near = new THREE.InstancedMesh(libraryGeometry, job.mesh.material,
+            job.entries.length);
+          const far = new THREE.InstancedMesh(distantGeometry, job.mesh.material,
+            job.entries.length);
+          for (const [copy, name] of [[near, 'near'], [far, 'far']] as const) {
+            copy.name = 'render-' + name + '-' + job.kind;
+            copy.count = 0;
+            copy.castShadow = job.mesh.castShadow;
+            copy.receiveShadow = job.mesh.receiveShadow;
+            copy.frustumCulled = false; // each instance is clipped below
+            copy.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            group.add(copy);
+          }
+          job.near = near;
+          job.far = far;
+          job.batch.meshes.splice(0, job.batch.meshes.length, near, far);
+          job.mesh.visible = false;
           original.dispose();
           group.userData['libraryLoaded'] = (group.userData['libraryLoaded'] as number) + 1;
           if (job.mesh.castShadow) shadowChanged = true;
@@ -808,6 +851,77 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
   return {
     group, batches,
     update(time: number): void { for (const u of windUniforms) u.value = time; },
+    updateCulling(position, frustum, maxDistance, hidden): boolean {
+      let changes = false;
+      const matrix = new THREE.Matrix4();
+      const centre = new THREE.Vector3();
+      const test = new THREE.Sphere();
+      const colour = new THREE.Color();
+      const same = (a: readonly number[], b: readonly number[]): boolean =>
+        a.length === b.length && a.every((value, i) => value === b[i]);
+      for (const job of jobs) {
+        const suppressed = hidden(job.mesh);
+        if (!job.near || !job.far) {
+          const distance = job.batch.sphere.center.distanceTo(position);
+          const visible = !suppressed && distance < maxDistance +
+            job.batch.sphere.radius && frustum.intersectsSphere(job.batch.sphere);
+          for (const mesh of job.batch.meshes) {
+            if (mesh.castShadow && mesh.visible !== visible) changes = true;
+            mesh.visible = visible;
+          }
+          continue;
+        }
+
+        const nearIndices: number[] = [], farIndices: number[] = [];
+        if (!suppressed) for (let i = 0; i < job.entries.length; i++) {
+          if (job.occluded[i]) continue;
+          job.mesh.getMatrixAt(i, matrix);
+          const el = matrix.elements;
+          // The authored districts suppress old overlapping art with a
+          // zero-scale transform, not by deleting its physics descriptor.
+          if (el[0] === 0 && el[5] === 0 && el[10] === 0) continue;
+          centre.set(el[12]!, el[13]!, el[14]!);
+          const size = job.entries[i]!.size;
+          const radius = Math.hypot(size.x, size.y, size.z) * 0.52;
+          const distance = position.distanceTo(centre);
+          if (distance - radius > (isSmallWorldModel(job.kind)
+            ? WORLD_LOD.smallPropDistance : maxDistance)) continue;
+          test.center.copy(centre);
+          test.radius = radius;
+          if (!frustum.intersectsSphere(test)) continue;
+          (distance - radius <= WORLD_LOD.detailedDistance ?
+            nearIndices : farIndices).push(i);
+        }
+        const version = job.mesh.instanceMatrix.version;
+        const changed = version !== job.originalVersion ||
+          !same(job.nearIndices, nearIndices) || !same(job.farIndices, farIndices);
+        if (changed) {
+          const compact = (mesh: THREE.InstancedMesh, indices: readonly number[]): void => {
+            for (let at = 0; at < indices.length; at++) {
+              const index = indices[at]!;
+              job.mesh.getMatrixAt(index, matrix);
+              mesh.setMatrixAt(at, matrix);
+              if (job.mesh.instanceColor) {
+                job.mesh.getColorAt(index, colour);
+                mesh.setColorAt(at, colour);
+              }
+            }
+            mesh.count = indices.length;
+            mesh.instanceMatrix.needsUpdate = true;
+            if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+          };
+          compact(job.near, nearIndices);
+          compact(job.far, farIndices);
+          job.nearIndices = nearIndices;
+          job.farIndices = farIndices;
+          job.originalVersion = version;
+          if (job.near.castShadow || job.far.castShadow) changes = true;
+        }
+        job.near.visible = job.near.count > 0 && !suppressed;
+        job.far.visible = job.far.count > 0 && !suppressed;
+      }
+      return changes;
+    },
     consumeShadowChange(): boolean {
       const changed = shadowChanged;
       shadowChanged = false;
