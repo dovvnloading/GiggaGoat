@@ -1,9 +1,9 @@
-import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { dumpChromeDom } from '../test-utils/chrome';
 import { GameHud } from './GameHud';
 import { fitGigCardText } from './GigCardLayout';
 
@@ -64,14 +64,6 @@ type Geometry = {
   checkboxVisible: boolean;
   checkboxHiddenAttribute: boolean;
 };
-
-function chromeBinary(): string {
-  for (const name of [process.env.CHROME_BIN, 'google-chrome', 'google-chrome-stable',
-    'chromium', 'chromium-browser'].filter((name): name is string => !!name)) {
-    if (spawnSync(name, ['--version'], { encoding: 'utf8', timeout: 3000 }).status === 0) return name;
-  }
-  throw new Error('A headless Chrome/Chromium binary is required for gig card DOM geometry tests');
-}
 
 function measureHud(width: number, height: number, active: boolean, longCopy: boolean): Geometry {
   const head = new ElementStub();
@@ -150,12 +142,12 @@ function measureHud(width: number, height: number, active: boolean, longCopy: bo
   try {
     const file = join(dir, 'fixture.html');
     writeFileSync(file, html);
-    const proc = spawnSync(chromeBinary(), ['--headless', '--no-sandbox',
-      '--disable-gpu', '--disable-dev-shm-usage', '--disable-background-networking',
-      '--dump-dom', pathToFileURL(file).href], { encoding: 'utf8', timeout: 15000 });
-    if (proc.status !== 0) throw new Error('Chrome layout failed: ' + proc.stderr);
-    const raw = proc.stdout.match(/<output id="geometry-result">([^<]+)<\/output>/)?.[1];
-    if (!raw) throw new Error('Chrome did not return geometry: ' + proc.stdout.slice(-800));
+    const stdout = dumpChromeDom(pathToFileURL(file).href, {
+      width, height, timeoutMs: 35000,
+      expectedOutput: '<output id="geometry-result">',
+    });
+    const raw = stdout.match(/<output id="geometry-result">([^<]+)<\/output>/)?.[1];
+    if (!raw) throw new Error('Chrome did not return geometry: ' + stdout.slice(-800));
     return JSON.parse(raw) as Geometry;
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -192,7 +184,7 @@ describe('live gig card text box geometry (headless browser DOM)', () => {
       expect(styles.coinWidth).toBe('18px');
       expect(styles.coinHeight).toBe('18px');
       expect(styles.coinFit).toBe('contain');
-    }, 20_000,
+    }, 90_000,
   );
   it.each([[1280, 720], [1512, 797], [1920, 1080]])(
     'keeps YOUR NEXT GIG clear of the painted ribbon at %ix%i', (width, height) => {
@@ -209,7 +201,7 @@ describe('live gig card text box geometry (headless browser DOM)', () => {
       expect(footer.top).toBeGreaterThanOrEqual(detail.bottom + 1);
       expect(g.paperFits && g.taskFits && g.detailFits && g.footerFits).toBe(true);
     },
-    20_000,
+    90_000,
   );
 
   it.each([[1280, 720], [1512, 797], [1600, 900], [1920, 1080]])(
@@ -232,7 +224,7 @@ describe('live gig card text box geometry (headless browser DOM)', () => {
       expect(g.checkboxVisible).toBe(false);
       expect(g.checkboxHiddenAttribute).toBe(true);
     },
-    20_000,
+    90_000,
   );
 
   it.each([[1280, 720], [1512, 797], [1600, 900], [1920, 1080]])(
@@ -252,6 +244,6 @@ describe('live gig card text box geometry (headless browser DOM)', () => {
       expect(g.checkboxVisible).toBe(true);
       expect(g.checkboxHiddenAttribute).toBe(false);
     },
-    20_000,
+    90_000,
   );
 });

@@ -16,7 +16,9 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Typecheck
         run: npm run typecheck
-      - name: Test
+      - name: Test (unit)
         run: npm test
+      - name: Test (headless Chrome, serial)
+        run: npm run test:chrome
       - name: Build
         run: npm run build
