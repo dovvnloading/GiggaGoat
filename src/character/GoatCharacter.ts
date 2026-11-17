@@ -8,7 +8,7 @@ import {
 } from './motion';
 import { LegacyGoatCharacter } from './LegacyGoatCharacter';
 import {
-  GOAT_CLIPS, GOAT_GLB_FILES, clipForAction, goatPublicAssetUrl,
+  GOAT_CLIPS, GOAT_GLB_FILES, alignRiggedSceneForward, clipForAction, goatPublicAssetUrl,
   locomotionBlend, selectGoatVariant, type GoatCharacterOptions,
   type GoatClip, type GoatOneShot, type GoatVariant,
 } from './rigged';
@@ -336,6 +336,9 @@ export class GoatCharacter {
     // Every goat gets its own skeleton and its own AnimationMixer; neither is
     // allowed to animate another goat or mutate a cached template.
     const skeleton = cloneSkeleton(gltf.scene);
+    // The exported armature root is yawed 180°; cancel it before applying the
+    // authoritative, interpolated torso quaternion to the outer model.
+    alignRiggedSceneForward(skeleton);
     const model = new THREE.Group();
     model.name = 'rigged goat | ' + this.variantValue;
     model.add(skeleton);
