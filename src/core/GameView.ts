@@ -80,8 +80,10 @@ export class GameView {
     this.world.sun.shadow.camera.far = 300;
     this.world.sun.shadow.bias = -.00035;
     this.scene.add(this.world.sun.target);
+    // Physics yawQuaternion rotates local -Z toward the opposite sign of the
+    // locomotion heading; compose the opening shot from the rendered facing.
     this.input = new GameInput(this.renderer.domElement,
-      game.island.spawns[0]!.heading + SPAWN_CAMERA_YAW_OFFSET);
+      -game.island.spawns[0]!.heading + SPAWN_CAMERA_YAW_OFFSET);
     this.input.pitch = SPAWN_CAMERA_PITCH;
     this.hud = new GameHud(host);
     this.characters = new GameCharacters(this.scene, game);
