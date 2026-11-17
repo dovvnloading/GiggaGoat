@@ -33,7 +33,7 @@ export function buildSkyVisuals(): SkyVisuals {
         'void main() {',
         '  vec3 dir = normalize(vDirection);',
         '  float horizon = smoothstep(-0.15, 0.90, dir.y);',
-        '  vec3 sunny = mix(vec3(0.87, 0.88, 0.79), vec3(0.24, 0.61, 0.92), horizon);',
+        '  vec3 sunny = mix(vec3(0.76, 0.88, 0.98), vec3(0.08, 0.48, 0.94), horizon);',
         '  vec3 sunset = mix(vec3(1.0, 0.60, 0.47), vec3(0.56, 0.45, 0.73), horizon);',
         '  vec3 night = mix(vec3(0.18, 0.22, 0.38), vec3(0.018, 0.045, 0.14), horizon);',
         '  vec3 dayColor = mix(sunny, sunset, uGolden);',
@@ -52,7 +52,7 @@ export function buildSkyVisuals(): SkyVisuals {
     color: 0xfff6eb, gradientMap: TOON_RAMP,
     transparent: true, opacity: 0.94, depthWrite: false,
   });
-  const cloudCount = 54;
+  const cloudCount = 72;
   const clouds = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1),
     cloudMaterial, cloudCount);
   clouds.name = 'puffy-cloud-banks';
@@ -63,10 +63,10 @@ export function buildSkyVisuals(): SkyVisuals {
     return s / 0x100000000;
   };
   for (let i = 0; i < cloudCount / 3; i++) {
-    const a = rand() * Math.PI * 2, r = 460 + rand() * 410;
+    const a = rand() * Math.PI * 2, r = 265 + rand() * 370;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
-    const y = 205 + rand() * 125;
-    const breadth = 32 + rand() * 25;
+    const y = 100 + rand() * 110;
+    const breadth = 28 + rand() * 28;
     for (let j = 0; j < 3; j++) {
       matrix.compose(
         new THREE.Vector3(x + (j - 1) * breadth * 0.63, y + (j === 1 ? 7 : 0),
@@ -111,7 +111,9 @@ export function buildSkyVisuals(): SkyVisuals {
     const altitude = Math.sin(angle);
     const daylight = THREE.MathUtils.clamp(altitude * 1.8 + 0.3, 0.025, 1);
     const golden = Math.pow(1 - Math.min(1, Math.abs(altitude) * 1.9), 1.7) * daylight;
-    const direction = new THREE.Vector3(Math.cos(angle), altitude, -0.35).normalize();
+    // Diagonal warm key, not a nearly vertical noon light that erases facade relief.
+    const direction = new THREE.Vector3(Math.cos(angle) * 0.7 + 0.48 * daylight,
+      altitude * 0.87, -0.63).normalize();
     uniforms.uDay.value = daylight;
     uniforms.uGolden.value = golden;
     uniforms.uSun.value.copy(direction);
