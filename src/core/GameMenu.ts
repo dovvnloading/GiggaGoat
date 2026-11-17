@@ -243,10 +243,14 @@ export class GameMenu {
     // Escape is consumed by Chrome when it first releases pointer lock, so its
     // keydown event may never reach onKey. Still pause when the player unlocks.
     this.pointerLockChange = () => {
-      const locked = document.pointerLockElement === this.view.renderer.domElement;
-      if (this.wasPointerLocked && !locked && this.screen === 'playing') {
-        this.setScreen('pause');
+      // Remember locks acquired during gameplay only. An asynchronous unlock
+      // from the gig board or another overlay must never pause a newly resumed game.
+      if (this.screen !== 'playing') {
+        this.wasPointerLocked = false;
+        return;
       }
+      const locked = document.pointerLockElement === this.view.renderer.domElement;
+      if (this.wasPointerLocked && !locked) this.setScreen('pause');
       this.wasPointerLocked = locked;
     };
     document.addEventListener('pointerlockchange', this.pointerLockChange);
@@ -260,6 +264,9 @@ export class GameMenu {
   private save(): void { saveGame(this.game, this.settings); }
   private setScreen(next: Screen): void {
     this.screen = next;
+    // Leaving gameplay intentionally can asynchronously release pointer lock.
+    // Forget that lock before a later menu action resumes the game.
+    if (next !== 'playing') this.wasPointerLocked = false;
     this.view.paused = next !== 'playing';
     this.audio?.setPaused(this.view.paused || !!document.hidden);
     if (next !== 'playing') this.view.input.reset();
