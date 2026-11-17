@@ -39,8 +39,8 @@ export const HOOFINGTON_MODELS = {
 } as const;
 export type HoofModel = keyof typeof HOOFINGTON_MODELS;
 
-export interface HoofPlacement {
-  model: HoofModel;
+export interface HoofPlacement<Model extends string = HoofModel> {
+  model: Model;
   position: Vec3;
   size: Vec3;
   yaw: number;
@@ -168,9 +168,9 @@ const sampleUv = new THREE.Vector2();
  * procedural kind draws; no separate draw is created per source material.
  * Textured roofs/windows keep their broad colours without needing N materials.
  */
-export function bakeHoofingtonGeometry(
-  placements: readonly HoofPlacement[],
-  models: ReadonlyMap<HoofModel, ModelScene>,
+export function bakeLibraryGeometry<Model extends string>(
+  placements: readonly HoofPlacement<Model>[],
+  models: ReadonlyMap<Model, ModelScene>,
 ): THREE.BufferGeometry | null {
   const coordinates: number[] = [], colours: number[] = [];
   const imageCache = new WeakMap<THREE.Texture, PixelMap | null>();
@@ -309,6 +309,9 @@ export function bakeHoofingtonGeometry(
   geometry.computeBoundingSphere();
   return geometry;
 }
+
+/** The original Hoofington API remains available to existing consumers. */
+export const bakeHoofingtonGeometry = bakeLibraryGeometry;
 
 function disposeModel(root: THREE.Object3D): void {
   const geometries = new Set<THREE.BufferGeometry>();
