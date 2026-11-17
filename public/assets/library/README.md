@@ -6,7 +6,7 @@ model with its path, pack, source, license and credit. Agents: load models with 
 packs mapped to the location you are working on; keep the chunky stylised look of `docs/art/hifi/`; never ship a
 CC-BY model without its credit in `CREDITS.md`.
 
-**Total: 4046 models** (kenney: 2689, kaykit: 789, quaternius: 464, polypizza: 104). Licenses: CC0: 3969, CC-BY 3.0: 77.
+**Total: 4047 models** (kenney: 2689, kaykit: 789, quaternius: 464, polypizza: 104, custom: 1). Licenses: CC0: 3970, CC-BY 3.0: 77.
 
 ## Packs
 
@@ -118,13 +118,18 @@ CC-BY model without its credit in `CREDITS.md`.
 | Downtown Bleatsville | kenney city-kit-commercial, city-kit-roads, retro-urban-kit, modular-buildings, mini-shop, car-kit; kaykit city-builder-bits, furniture-bits |
 | Mt. Gigga | quaternius stylized-nature-megakit (rocks, cliffs); kenney nature-kit; kaykit forest-nature-pack; polypizza mountain, cave, satellite-dish |
 | Whispering Pines | quaternius stylized-nature-megakit, ultimate-stylized-nature-pack, animated-animal-pack; kaykit forest-nature-pack; kenney mini-forest; polypizza log, mushroom, waterfall, tree-house, bridge |
-| The Dam | polypizza dam, water-tower; kenney city-kit-industrial, factory-kit (pipes, tanks) - weakest coverage |
+| The Dam | **custom `the-dam`** (hero model matched to `docs/art/hifi/14_poi_the_dam.png`); kenney city-kit-industrial, factory-kit (extra pipes, tanks); polypizza water-tower |
 | Old Lighthouse | polypizza lighthouse, shipwreck, rowboat, crab, seagull; kenney pirate-kit, watercraft-kit; quaternius pirate-kit |
 | Gameplay props | kenney platformer-kit (springs, coins); kaykit platformer-pack; polypizza trampoline; survival/resource crates and barrels |
 | NPCs / animals | kenney mini-characters; quaternius farm and animated animals; polypizza goat, ram, seagull, crab |
 
 ## Known gaps (to fill from Meshy or generated art)
 
-- **The Dam**: no proper concrete dam wall with spillways; build from primitives or source one.
 - **Style mix**: Kenney (flat colour), Quaternius (stylised textured) and Poly Pizza (mixed Google Poly) differ; prefer Kenney + Quaternius + KayKit, use Poly Pizza only for specific landmarks, and unify with the shared toon material.
 - **Signature landmarks** that should look unique: Mt. Gigga summit dish, the GIGGA goat statue, Baa-ardwalk ferris wheel styling.
+
+## Custom models
+
+| Model | File | Notes |
+|---|---|---|
+| The Dam | `custom/the-dam/the-dam.glb` (preview `_preview.png`) | Original CC0 model built in Blender against `docs/art/hifi/14_poi_the_dam.png`. 1 GLB, ~8.6k faces, ~1 MB, metres, Y-up, origin at the base centre of the wall, spillway front faces +Z (control house sits at +X). 60 m wall, 18 m tall, deck top at 18.8 m. Named parts so code can swap or animate them: `Water_Fall_0..3` (streak texture, scroll its UVs for flow), `Water_Foam_*`, `Water_Lip_*`, `Water_Reservoir`, `Lamp_*_Glow`, `ControlHouse_*`, `Pipe_*`, `Ladder_*`, `Rail*`, `Abutment_Rock_*` (drop these if the terrain already supplies cliffs). |
