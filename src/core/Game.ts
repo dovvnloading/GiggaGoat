@@ -145,6 +145,12 @@ export class Game {
       yaw: spawn.heading, size: TUNING.size[this.rules.style.tier].scale,
       id: 'player',
     });
+    // GoatRagdoll's yawQuaternion rotates local -Z opposite to the
+    // physics lane's forward(yaw) steering vector. The world spawn heading
+    // was therefore forcing the balance controller to torque a correctly
+    // assembled, stationary goat against its actual facing on every tick.
+    // Match its physical facing without changing any physics-lane code.
+    this.goat.locomotion.heading = -spawn.heading;
     this.water.track(this.goat.torso, { buoyancyScale: 0.7, paddleSpeed: 2.6 });
     this.lastY = this.goat.torso.translation().y;
     this.off.push(physics.onAfterStep(dt => this.afterTick(dt)));
@@ -696,7 +702,9 @@ export class Game {
       body.setAngvel(V(), true);
     }
     if (uprightHeading !== undefined) {
-      this.goat.locomotion.heading = uprightHeading;
+      // Teleport rotates the physical assembly to yaw=uprightHeading;
+      // forward() expects the opposite sign for the same facing.
+      this.goat.locomotion.heading = -uprightHeading;
       this.goat.setPose('stand');
     }
     this.drownSeconds = 0;
