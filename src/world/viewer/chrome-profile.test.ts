@@ -194,14 +194,14 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
       // Temporary self-review capture: one JPEG of bookmark 08, with all the
       // GLBs loaded, to compare directly with 08_poi_hoofington.png.
       const screenshot = await send('Runtime.evaluate', {
-        expression: String.raw\`(() => {
+        expression: String.raw`(() => {
           const menu = document.getElementById('bookmark');
           menu.value = '08';
           menu.dispatchEvent(new Event('change', { bubbles: true }));
           window.__worldProfile.measure(2);
           const canvas = document.querySelector('#app canvas');
           return canvas ? canvas.toDataURL('image/jpeg', 0.68) : '';
-        })()\`,
+        })()`,
         returnByValue: true,
       });
       const jpeg = String(screenshot.result?.value ?? '');
