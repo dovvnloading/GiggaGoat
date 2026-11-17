@@ -6,7 +6,7 @@ interface Link { from: PoiId; to: PoiId; type: 'road' | 'trail'; via?: Vec2[] }
 /** Main asphalt loop traces the coastal settlements; dirt spurs access the summit and islet. */
 const LINKS: Link[] = [
   { from: 'hoofington', to: 'baa-ardwalk', type: 'road',
-    via: [{ x: -110, z: 185 }, { x: -35, z: 222 }, { x: 20, z: 226 }] },
+    via: [{ x: -147, z: 177 }, { x: -110, z: 185 }, { x: -35, z: 222 }, { x: 20, z: 226 }] },
   { from: 'baa-ardwalk', to: 'downtown-bleatsville', type: 'road',
     via: [{ x: 108, z: 205 }, { x: 145, z: 170 }] },
   { from: 'downtown-bleatsville', to: 'crane-yard', type: 'road',
@@ -16,7 +16,7 @@ const LINKS: Link[] = [
   { from: 'the-dam', to: 'whispering-pines', type: 'road',
     via: [{ x: -73, z: -217 }, { x: -112, z: -188 }] },
   { from: 'whispering-pines', to: 'hoofington', type: 'road',
-    via: [{ x: -190, z: -80 }, { x: -209, z: 15 }, { x: -183, z: 88 }] },
+    via: [{ x: -190, z: -80 }, { x: -209, z: 15 }, { x: -183, z: 88 }, { x: -147, z: 89 }] },
   { from: 'whispering-pines', to: 'old-lighthouse', type: 'trail',
     via: [{ x: -185, z: -93 }, { x: -211, z: -18 }, { x: -244, z: -18 }] },
   { from: 'mt-gigga', to: 'hoofington', type: 'trail' },
@@ -78,9 +78,16 @@ function mountainSwitchbacks(island: IslandData, destination: PoiId): Vec2[] {
       { x: farm.x, z: farm.z },
     ], 4 * scale).slice(1));
   }
+  // Enter the farm along the same axial street as the ring-road approaches,
+  // instead of feeding three diagonal slabs into the village crossroads.
+  const scale = island.size / 600;
+  const approach = destination === 'hoofington'
+    ? { x: farm.x, z: farm.z - 45 * scale }
+    : { x: lerp(outer.x, farm.x, 0.58), z: lerp(outer.z, farm.z, 0.58) };
   return points.concat(catmullRom([outer,
-    { x: lerp(outer.x, farm.x, 0.58), z: lerp(outer.z, farm.z, 0.58) },
-    { x: farm.x, z: farm.z }], 4).slice(1));
+    { x: lerp(outer.x, approach.x, 0.58), z: lerp(outer.z, approach.z, 0.58) },
+    approach,
+    { x: farm.x, z: farm.z }], 4 * scale).slice(1));
 }
 
 /** Two-sided Lipschitz projection enforces the max longitudinal grade. */
@@ -184,7 +191,7 @@ export function makeLocalStreets(island: IslandData): RoadDescriptor[] {
   return (['hoofington', 'downtown-bleatsville'] as const).map(id => {
     const centre = island.pois.find(p => p.id === id)!.center;
     const halfLength = id === 'hoofington' ? 42 : 43;
-    const width = (id === 'hoofington' ? 8.6 : 10) * scale;
+    const width = (id === 'hoofington' ? 6.8 : 9.1) * scale;
     const points: RoadPoint[] = [];
     for (let j = 0; j <= 22; j++) {
       const z = centre.z + (-halfLength + j * 2 * halfLength / 22) * scale;
