@@ -45,24 +45,27 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
       for (let i = 0; i < props.length; i++) {
         instances.getMatrixAt(i, matrix);
         expect(matrix.elements.every(Number.isFinite), kind + ':' + i).toBe(true);
-        matrix.decompose(position, rotation, scale);
         const prop = props[i]!;
         if (prop.poiId === 'old-lighthouse' && replacedLighthouseKinds.has(kind)) {
-          // A zero-scale visual is intentional; its descriptor and collider remain.
-          expect(scale.length(), prop.id).toBe(0);
+          // A zero-scale matrix is intentional; decompose() cannot recover its
+          // scale and rotation. The collider descriptor still has real size.
+          const m = matrix.elements;
+          expect(Math.hypot(m[0]!, m[1]!, m[2]!, m[4]!, m[5]!, m[6]!,
+            m[8]!, m[9]!, m[10]!), prop.id).toBe(0);
         } else {
+          matrix.decompose(position, rotation, scale);
           expect(position.distanceTo(new THREE.Vector3(
             prop.transform.position.x, prop.transform.position.y,
             prop.transform.position.z)), prop.id).toBeLessThan(0.006);
           expect(Math.abs(scale.x - prop.size.x), prop.id).toBeLessThan(0.006);
           expect(Math.abs(scale.y - prop.size.y), prop.id).toBeLessThan(0.006);
           expect(Math.abs(scale.z - prop.size.z), prop.id).toBeLessThan(0.006);
+          // Allow the intentional pier/buoys outside the 600-m terrain square,
+          // never a kilometer-long fence, cable, roof or shadow-caster streak.
+          const limit = island.size / 2 + 150;
+          expect(Math.abs(position.x), prop.id).toBeLessThan(limit);
+          expect(Math.abs(position.z), prop.id).toBeLessThan(limit);
         }
-        // Allow the intentional pier/buoys outside the 600-m terrain square,
-        // never a kilometer-long fence, cable, roof or shadow-caster streak.
-        const limit = island.size / 2 + 150;
-        expect(Math.abs(position.x), prop.id).toBeLessThan(limit);
-        expect(Math.abs(position.z), prop.id).toBeLessThan(limit);
         expect(prop.size.x, prop.id).toBeLessThan(island.size / 3);
         expect(prop.size.z, prop.id).toBeLessThan(island.size / 3);
       }
