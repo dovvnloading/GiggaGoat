@@ -12,6 +12,7 @@ import { buildWaterVisuals } from './visual-water';
 import { buildDamVisuals } from './visual-dam';
 import { buildLighthouseVisuals } from './visual-lighthouse';
 import { buildHoofingtonVisuals } from './visual-hoofington';
+import { buildDowntownVisuals } from './visual-downtown';
 import { buildSkyVisuals, type LightingPreset } from './visual-sky';
 
 export interface WorldSceneOptions {
@@ -263,6 +264,28 @@ function buildTerrain(island: IslandData, segments: number): Chunk[] {
   }
   return chunks;
 }
+/**
+ * The POI road network and the authored Downtown high street both terminate
+ * at the same city centre. Rendering every inter-POI endpoint over the local
+ * street produces fanned, vertically tilted road planks in the shop corridor.
+ *
+ * Suppress only those redundant VISUAL pieces inside the main-street plot.
+ * The actual island roads, graded terrain, collision and connected graph are
+ * deliberately unchanged; the continuous local street remains visible.
+ */
+export function isDowntownRoadOverlay(
+  island: IslandData, roadId: string,
+  a: { x: number; z: number }, b: { x: number; z: number },
+): boolean {
+  if (!roadId.includes('--')) return false;
+  const centre = island.pois.find(p => p.id === 'downtown-bleatsville')?.center;
+  if (!centre) return false;
+  const scale = island.size / 600;
+  const x = (a.x + b.x) / 2 - centre.x;
+  const z = (a.z + b.z) / 2 - centre.z;
+  return Math.abs(x) < 21 * scale && Math.abs(z) < 42 * scale;
+}
+
 function buildRoads(island: IslandData): THREE.Group {
   const group = new THREE.Group();
   group.name = 'graded-ring-road-and-trails';
@@ -272,7 +295,10 @@ function buildRoads(island: IslandData): THREE.Group {
   for (const type of ['road', 'trail'] as const) {
     const segments = [...island.roads, ...makeLocalStreets(island)].filter(r => r.type === type)
       .flatMap(r => r.points.slice(1).map((b, i) =>
-        ({ a: r.points[i]!, b, width: r.width })));
+        ({ a: r.points[i]!, b, width: r.width, roadId: r.id }))
+        .filter(segment => !isDowntownRoadOverlay(
+          island, segment.roadId, segment.a, segment.b,
+        )));
     const material = new THREE.MeshToonMaterial({
       color: type === 'road' ? 0x727e8a : 0xc3a06c, gradientMap: TOON_RAMP,
     });
@@ -328,6 +354,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(props.group);
   const hoofington = buildHoofingtonVisuals(island, props.group);
   group.add(hoofington.group);
+  const downtown = buildDowntownVisuals(island, props.group);
+  group.add(downtown.group);
   const waterVisuals = buildWaterVisuals(island);
   group.add(waterVisuals.inland, waterVisuals.sea);
   const dam = buildDamVisuals(island);
@@ -403,7 +431,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
       const visible = distance < (batch.nearOnly ? island.size * 0.32 : cullingDistance) +
         batch.sphere.radius && frustum.intersectsSphere(batch.sphere);
       for (const mesh of batch.meshes) {
-        const show = visible && !hoofington.isFallbackHidden(mesh);
+        const show = visible && !hoofington.isFallbackHidden(mesh) &&
+          !downtown.isFallbackHidden(mesh);
         if (mesh.castShadow && mesh.visible !== show) shadowCastersChanged = true;
         mesh.visible = show;
       }
@@ -412,6 +441,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     // on success, but retain it in the graph for disposal; it remains visible
     // if the model fails and the procedural fallback is needed.
     if (hoofington.consumeShadowChange()) shadowCastersChanged = true;
+    if (downtown.consumeShadowChange()) shadowCastersChanged = true;
     if (dam.consumeShadowChange()) {
       const reservoir = waterVisuals.inland.getObjectByName('dam-reservoir');
       if (reservoir) reservoir.visible = false;
@@ -421,6 +451,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   }
   function dispose(): void {
     hoofington.dispose();
+    downtown.dispose();
     dam.dispose();
     lighthouse.dispose();
     const geometries = new Set<THREE.BufferGeometry>();

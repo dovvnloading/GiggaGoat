@@ -191,6 +191,51 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
       expect(hoofington.models).toBeGreaterThanOrEqual(20);
       expect(hoofington.triangles).toBeGreaterThan(5000);
 
+      // Rendered bookmark-11 QA runs after the actual GLTF handoff, not while
+      // the fallback procedural shops are still on screen.
+      const downtown = await until(async () => {
+        const response = await send('Runtime.evaluate', {
+          expression: 'window.__worldProfile.downtownState()',
+          returnByValue: true,
+        });
+        const state = response.result?.value as {
+          loaded: boolean; models: number; triangles: number;
+          signs: number; awnings: boolean;
+        } | undefined;
+        return state?.loaded ? state : null;
+      }, 45000);
+      expect(downtown.models).toBeGreaterThanOrEqual(28);
+      expect(downtown.triangles).toBeGreaterThan(5000);
+      expect(downtown.signs).toBe(10);
+      expect(downtown.awnings).toBe(true);
+      await send('Runtime.evaluate', {
+        expression: '(() => { const menu = document.getElementById("bookmark"); ' +
+          'menu.value = "11"; menu.dispatchEvent(new Event("change", ' +
+          '{ bubbles: true })); window.__worldProfile.measure(2); })()',
+      });
+      // A compact real-WebGL reference for comparing the painting by eye.
+      // The JPEG is emitted only on CI; no image is committed to another lane.
+      const screenshot = await send('Page.captureScreenshot', {
+        format: 'jpeg', quality: 58, fromSurface: true,
+      });
+      if (screenshot.data) {
+        console.log('WORLD_DOWNTOWN_SCREENSHOT ' + screenshot.data);
+      }
+      // Also capture the unobscured 3D world at precisely the same bookmark
+      // for hands-on art review; restore all overlays before profiling.
+      await send('Runtime.evaluate', {
+        expression: '["panel","reference","labels","hint"].forEach(id => ' +
+          '{ document.getElementById(id).style.visibility = "hidden"; });',
+      });
+      const clean = await send('Page.captureScreenshot', {
+        format: 'jpeg', quality: 68, fromSurface: true,
+      });
+      if (clean.data) console.log('WORLD_DOWNTOWN_CLEAN ' + clean.data);
+      await send('Runtime.evaluate', {
+        expression: '["panel","reference","labels","hint"].forEach(id => ' +
+          '{ document.getElementById(id).style.visibility = ""; });',
+      });
+
       const expression = String.raw`(() => {
         const profile = window.__worldProfile;
         const menu = document.getElementById('bookmark');
