@@ -198,7 +198,8 @@ describe('authored daisy grass-tuft instances', () => {
     try {
       await vi.waitFor(() => expect(visuals.group.userData['libraryReady']).toBe(true));
       expect(visuals.group.userData['libraryFailed']).toBe(0);
-      expect(load).toHaveBeenCalledExactlyOnceWith(publicAssetUrl(
+      expect(load).toHaveBeenCalledOnce();
+      expect(load).toHaveBeenCalledWith(publicAssetUrl(
         PROP_LIBRARY_MODELS['grass-tuft']));
       const original = visuals.group.getObjectByName('props-grass-tuft') as THREE.InstancedMesh;
       expect(original.count).toBe(props.length);
