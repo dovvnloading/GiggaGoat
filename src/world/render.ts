@@ -440,6 +440,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     // The GLB supplies its own reservoir surface. Hide the procedural one
     // on success, but retain it in the graph for disposal; it remains visible
     // if the model fails and the procedural fallback is needed.
+    if (props.consumeShadowChange()) shadowCastersChanged = true;
     if (hoofington.consumeShadowChange()) shadowCastersChanged = true;
     if (downtown.consumeShadowChange()) shadowCastersChanged = true;
     if (dam.consumeShadowChange()) {
@@ -450,6 +451,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     return shadowCastersChanged;
   }
   function dispose(): void {
+    props.dispose();
     hoofington.dispose();
     downtown.dispose();
     dam.dispose();

@@ -487,6 +487,16 @@ if (new URLSearchParams(window.location.search).has('profile')) {
           awnings: Boolean(root?.getObjectByName('downtown-striped-awnings')),
         };
       },
+      /** Real-Chrome QA: all sourced prop batches must finish without fallbacks. */
+      propLibraryState(): { ready: boolean; loaded: number; failed: number; pending: number } {
+        const root = worldView.group.getObjectByName('handcrafted-props');
+        return {
+          ready: root?.userData['libraryReady'] === true,
+          loaded: Number(root?.userData['libraryLoaded'] ?? 0),
+          failed: Number(root?.userData['libraryFailed'] ?? 0),
+          pending: Number(root?.userData['libraryPending'] ?? 0),
+        };
+      },
       /** Runtime QA for the painting's sourced-village asset handoff. */
       hoofingtonState(): { loaded: boolean; models: number; triangles: number } {
         const root = worldView.group.getObjectByName('hoofington-library-models');
