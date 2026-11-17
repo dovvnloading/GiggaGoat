@@ -273,6 +273,7 @@ export class GameMenu {
       this.setScreen('party');
     } else if (key === 'settings') {
       this.settingsReturn = this.screen;
+      this.settingsTab = 'controls';
       this.setScreen('settings');
     } else if (key === 'back') this.back();
     else if (key === 'start-party') {
@@ -333,6 +334,12 @@ export class GameMenu {
       if (focused instanceof HTMLSelectElement) return;
       event.preventDefault();
       this.navigate(event.code === 'ArrowDown' ? 1 : -1);
+    } else if (this.screen === 'settings' &&
+      (event.code === 'ArrowLeft' || event.code === 'ArrowRight') &&
+      document.activeElement instanceof HTMLButtonElement &&
+      document.activeElement.dataset.tab) {
+      event.preventDefault();
+      this.adjustFocused(event.code === 'ArrowRight' ? 1 : -1);
     }
   }
   private navigate(direction: number): void {
@@ -341,9 +348,17 @@ export class GameMenu {
     const current = items.indexOf(document.activeElement as HTMLElement);
     items[(current + direction + items.length) % items.length]!.focus();
   }
-  /** D-pad / stick left and right edit native selects and ranges without a mouse. */
+  /** D-pad / stick left and right edit tabs, native selects and ranges without a mouse. */
   private adjustFocused(direction: number): boolean {
     const active = document.activeElement;
+    if (active instanceof HTMLButtonElement && active.dataset.tab) {
+      const current = SETTINGS_TABS.indexOf(active.dataset.tab as SettingsTab);
+      this.settingsTab = SETTINGS_TABS[(current + direction + SETTINGS_TABS.length) %
+        SETTINGS_TABS.length]!;
+      this.render();
+      this.root.querySelector<HTMLButtonElement>('[data-tab="' + this.settingsTab + '"]')?.focus();
+      return true;
+    }
     if (active instanceof HTMLSelectElement) {
       active.selectedIndex = (active.selectedIndex + direction + active.options.length) %
         active.options.length;
@@ -361,6 +376,37 @@ export class GameMenu {
     return false;
   }
 
+  /** Only buttons with three artwork states swap; toggles and icon buttons stay stateful. */
+  private spriteButton(target: EventTarget | null): HTMLButtonElement | null {
+    return (target as HTMLElement | null)?.closest<HTMLButtonElement>(
+      'button[data-sprite-normal]') ?? null;
+  }
+  private swapButtonSprite(button: HTMLButtonElement | null,
+    state: 'normal' | 'hover' | 'pressed'): void {
+    if (!button) return;
+    const name = button.dataset[state === 'normal' ? 'spriteNormal' :
+      state === 'hover' ? 'spriteHover' : 'spritePressed'] as MenuSpriteName | undefined;
+    if (!name) return;
+    button.dataset.sprite = name;
+    button.style.setProperty('--gg-sprite', "url('" + menuSpriteUrl(name) + "')");
+  }
+  private syncFullscreen(): void {
+    const button = this.root.querySelector<HTMLButtonElement>('[data-fullscreen]');
+    if (!button) return;
+    const enabled = !!document.fullscreenElement;
+    const name = enabled ? MENU_SPRITES.checkboxChecked : MENU_SPRITES.checkboxEmpty;
+    button.setAttribute('aria-checked', String(enabled));
+    button.dataset.sprite = name;
+    button.style.setProperty('--gg-sprite', "url('" + menuSpriteUrl(name) + "')");
+  }
+  private async toggleFullscreen(): Promise<void> {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch (error) { this.error(error); }
+    this.syncFullscreen();
+  }
+
   private editSetting(element: HTMLInputElement | HTMLSelectElement): void {
     if (!element.id.startsWith('gg-setting-')) return;
     const key = element.id.slice('gg-setting-'.length);
@@ -372,6 +418,11 @@ export class GameMenu {
     else if (key === 'invertY') this.settings.invertY = element.value === 'yes';
     else if (key === 'graphics') this.settings.graphics = element.value as GameSettings['graphics'];
     const isVolume = key === 'volume' || key === 'musicVolume' || key === 'effectsVolume';
+    if (element instanceof HTMLInputElement && element.type === 'range') {
+      const min = Number(element.min), max = Number(element.max);
+      element.style.setProperty('--gg-pct', ((Number(element.value) - min) /
+        (max - min) * 100) + '%');
+    }
     const output = element.parentElement?.querySelector<HTMLOutputElement>('output');
     if (output) output.textContent = isVolume ? Math.round(Number(element.value) * 100) + '%' :
       key === 'fov' ? this.settings.fov + '°' : this.settings.mouseSensitivity.toFixed(2) + '×';
@@ -409,7 +460,8 @@ export class GameMenu {
         if (select && !this.padAccept) {
           const active = document.activeElement as HTMLElement;
           if (this.root.contains(active)) {
-            if (!this.adjustFocused(1)) active.click();
+            if (active instanceof HTMLButtonElement && active.dataset.tab) active.click();
+            else if (!this.adjustFocused(1)) active.click();
           } else this.root.querySelector<HTMLButtonElement>('button')?.click();
         }
         if (back && !this.padBack) this.back();
@@ -552,14 +604,16 @@ export class GameMenu {
       this.screen === 'settings' ? this.settingsBody() :
       this.screen === 'board' ? this.boardBody() :
       this.screen === 'gig-results' ? this.gigResultsBody() : this.partyResultsBody();
-    this.root.innerHTML = `<section class="gg-shell-panel" role="dialog" aria-modal="true">${body}
+    this.root.innerHTML = `<section class="gg-shell-panel" role="dialog" aria-modal="true" ${menuSkin(MENU_SPRITES.panel)}>${body}
       <footer>ENTER / CLICK select · ↑↓ navigate · GAMEPAD A select, B back · ESC back</footer></section>`;
+    this.syncFullscreen();
     this.root.querySelector<HTMLElement>('button')?.focus();
   }
   dispose(): void {
     this.save();
     window.removeEventListener('keydown', this.keyHandler, true);
     window.removeEventListener('pagehide', this.pageHide);
+    document.removeEventListener('fullscreenchange', this.fullscreenChange);
     this.root.remove(); this.style.remove();
     this.view.onFrame = null; this.view.onInteract = null;
   }
