@@ -42,7 +42,7 @@ export const DOWNTOWN_MODELS = {
   oakC: 'assets/library/custom/hoofington-props/tree-round-c.glb',
   trash: 'assets/library/kenney/furniture-kit/trashcan.glb',
   ac: 'assets/library/custom/town/ac-unit.glb',
-  waterTower: 'assets/library/kenney/city-kit-industrial/water-tower.glb',
+  waterTower: 'assets/library/custom/town/water-tower-timber.glb',
   fountain: 'assets/library/kenney/fantasy-town-kit/fountain-round-detail.glb',
   cone: 'assets/library/kenney/city-kit-roads/construction-cone.glb',
   table: 'assets/library/kenney/furniture-kit/tableRound.glb',
@@ -278,10 +278,10 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
     scatter('cone', -2.1, dz, 0.45, 0.7, 0.45);
     scatter('cone', 2.2, dz + 1.4, 0.45, 0.7, 0.45);
   }
-  // Two slender source-model garlands cross the street; keep their span.
+  // Both garlands cross the street with their tops 8 m above the pavement.
   for (const dz of [-14, 6])
-    scatter('lights', 0, dz, 27, 0.162, 0.126, 0,
-      gridSample(island, centre.x, centre.z + dz * scale) + 14.2 * scale);
+    scatter('lights', 0, dz, 27, 1.4, 0.12, 0,
+      gridSample(island, centre.x, centre.z + dz * scale) + (8 - 1.4 / 2) * scale);
   // Skyline machinery is intentionally behind the roofs, not on the route.
   scatter('skylineCrane', 32, -48, 19, 22, 8, Math.PI / 2,
     gridSample(island, centre.x + 32 * scale, centre.z - 48 * scale) + 11 * scale);

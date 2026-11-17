@@ -126,14 +126,30 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
           .toBeGreaterThan(heightAt(island, stall.transform.position.x,
             stall.transform.position.z) + 0.3);
       }
-      for (const [kind, dx] of [['awning', 3.3], ['signboard', 4.1]] as const) {
-        const overlays = props.filter(p => p.kind === kind);
-        expect(overlays).toHaveLength(5);
-        for (const item of overlays) {
-          expect(item.transform.position.x).toBeCloseTo(
-            centre.x + dx * island.size / 600, 6);
-          expect(item.transform.rotationY).toBeCloseTo(-Math.PI / 2, 6);
-        }
+      const scale = island.size / 600;
+      const awnings = props.filter(p => p.kind === 'awning');
+      expect(awnings).toHaveLength(5);
+      for (const item of awnings) {
+        expect(item.transform.position.x).toBeCloseTo(centre.x + 3.3 * scale, 6);
+        expect(item.transform.rotationY).toBeCloseTo(-Math.PI / 2, 6);
+      }
+      const kioskSigns = [
+        'kiosk-sign-icecream', 'kiosk-sign-popcorn', 'kiosk-sign-games',
+        'kiosk-sign-prizes', 'kiosk-sign-candy',
+      ] as const;
+      const signs = props.filter(p => p.kind.startsWith('kiosk-sign-'));
+      expect(signs.map(p => p.kind)).toEqual(kioskSigns);
+      expect(new Set(signs.map(p => p.kind)).size).toBe(5);
+      expect(props.filter(p => p.kind === 'signboard')).toHaveLength(0);
+      for (const [i, sign] of signs.entries()) {
+        expect(sign.kind).toBe(kioskSigns[i]);
+        expect(sign.transform.position.x).toBeCloseTo(centre.x + 4.1 * scale, 6);
+        expect(sign.transform.position.z).toBeCloseTo(shops[i]!.transform.position.z, 6);
+        expect(sign.transform.position.y).toBeCloseTo(topOf(pier) + 6 * scale, 6);
+        expect(sign.size).toEqual({ x: 4.6 * scale, y: 1.4 * scale, z: 0.3 * scale });
+        expect(sign.transform.rotationY).toBeCloseTo(-Math.PI / 2, 6);
+        expect(sign.color).toBe(0xffe3a7);
+        expect(sign.collidable).toBe(false);
       }
       const promenadeLamps = props.filter(p => p.kind === 'lamp' &&
         Math.abs(p.transform.position.x -
@@ -147,7 +163,7 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
       expect(Math.abs(floorOf(wheel) - topOf(head))).toBeLessThan(0.05);
       expect(wheel.transform.position.z).toBeGreaterThan(
         shops[shops.length - 1]!.transform.position.z + 15);
-      for (const kind of ['awning', 'signboard', 'bunting', 'lamp', 'pier-rail']) {
+      for (const kind of ['awning', 'bunting', 'lamp', 'pier-rail', ...kioskSigns]) {
         expect(props.some(p => p.kind === kind), kind).toBe(true);
       }
       expect(props.filter(p => p.kind === 'pier-rail').length).toBeGreaterThan(20);

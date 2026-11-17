@@ -47,7 +47,9 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     expect(DOWNTOWN_MODELS.lamp).toBe('assets/library/usdcraft/street-lamp-lantern.glb');
     expect(DOWNTOWN_MODELS.skylineCrane)
       .toBe('assets/library/custom/crane-yard/skyline-tower-crane.glb');
-    expect(DOWNTOWN_MODELS.waterTower).toContain('/city-kit-industrial/');
+    expect(DOWNTOWN_MODELS.waterTower)
+      .toBe('assets/library/custom/town/water-tower-timber.glb');
+    expect(existsSync('public/' + DOWNTOWN_MODELS.waterTower)).toBe(true);
     for (const [model, path] of Object.entries({
       ac: 'assets/library/custom/town/ac-unit.glb',
       planter: 'assets/library/custom/town/planter.glb',
@@ -234,6 +236,7 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     const details = island.props.filter(p => p.poiId === 'downtown-bleatsville' &&
       p.id.startsWith('detail-'));
     expect(buildings).toHaveLength(16);
+    expect(details.filter(p => p.kind === 'signboard')).toHaveLength(10);
     const findAt = (kind: string, x: number, z: number) => details.find(p =>
       p.kind === kind && Math.hypot(p.transform.position.x - x,
         p.transform.position.z - z) < 0.01);
@@ -253,11 +256,15 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       const sign = findAt('signboard', x + frontX * (facade + 0.35 * scale),
         z + frontZ * (facade + 0.35 * scale));
       expect(awning, building.id + ' awning').toBeDefined();
-      expect(sign, building.id + ' sign').toBeDefined();
       expect(awning!.transform.position.y, building.id + ' awning height')
         .toBeCloseTo(roof - 3 * scale, 5);
-      expect(sign!.transform.position.y, building.id + ' sign height')
-        .toBeCloseTo(roof - 1.6 * scale, 5);
+      if (building.kind === 'shop') {
+        expect(sign, building.id + ' shop sign').toBeDefined();
+        expect(sign!.transform.position.y, building.id + ' sign height')
+          .toBeCloseTo(roof - 1.6 * scale, 5);
+      } else {
+        expect(sign, building.id + ' house must have no signboard').toBeUndefined();
+      }
       if (i % 4 === 0) {
         const waterTower = findAt('water-tower', x - frontX * 1.7 * scale,
           z - frontZ * 1.7 * scale);
@@ -315,6 +322,39 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     }
   });
 
+  it('keeps every bench and planter footprint at least 0.5 m apart on the default seed', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    const centre = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
+    const benches = island.props.filter(p =>
+      p.poiId === 'downtown-bleatsville' && p.kind === 'bench');
+    const planters = island.props.filter(p =>
+      p.poiId === 'downtown-bleatsville' && p.kind === 'planter');
+    expect(benches).toHaveLength(8);
+    expect(planters).toHaveLength(24);
+    const footprint = (p: (typeof benches)[number]) => {
+      const c = Math.abs(Math.cos(p.transform.rotationY));
+      const s = Math.abs(Math.sin(p.transform.rotationY));
+      return {
+        x: (c * p.size.x + s * p.size.z) / 2,
+        z: (s * p.size.x + c * p.size.z) / 2,
+      };
+    };
+    for (const bench of benches) {
+      // Keep the bench on the same pavement, shifting along the road instead.
+      expect(Math.abs(bench.transform.position.x - centre.x)).toBeCloseTo(12.7, 6);
+      const b = footprint(bench);
+      for (const planter of planters) {
+        const p = footprint(planter);
+        const gapX = Math.max(0, Math.abs(bench.transform.position.x -
+          planter.transform.position.x) - b.x - p.x);
+        const gapZ = Math.max(0, Math.abs(bench.transform.position.z -
+          planter.transform.position.z) - b.z - p.z);
+        expect(Math.hypot(gapX, gapZ), bench.id + ' / ' + planter.id)
+          .toBeGreaterThanOrEqual(0.5 - 1e-6);
+      }
+    }
+  });
+
   it('cycles authored vegetation variants without changing placement paint', () => {
     const plan = makeDowntownPlacements(generateIsland({
       seed: 'billy-isle', resolution: 97,
@@ -335,7 +375,7 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     }
   });
 
-  it('keeps street details, but only two 45%-thickness garlands and no striped overlay', () => {
+  it('keeps street details, two low-hanging full-height bunting spans and no striped overlay', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
     const centre = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
     const scale = island.size / 600;
@@ -351,8 +391,11 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       Math.round((p.position.z - centre.z) / scale))).toEqual([-14, 6]);
     for (const garland of garlands) {
       expect(garland.size.x).toBeCloseTo(27 * scale, 6);
-      expect(garland.size.y).toBeCloseTo(0.36 * 0.45 * scale, 6);
-      expect(garland.size.z).toBeCloseTo(0.28 * 0.45 * scale, 6);
+      expect(garland.size.y).toBeCloseTo(1.4 * scale, 6);
+      expect(garland.size.z).toBeCloseTo(0.12 * scale, 6);
+      expect(garland.position.y + garland.size.y / 2)
+        .toBeCloseTo(gridSample(island, garland.position.x, garland.position.z) +
+          8 * scale, 6);
     }
     const skyline = plan.filter(p => p.model === 'skylineCrane');
     expect(skyline).toHaveLength(1);

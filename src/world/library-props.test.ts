@@ -24,7 +24,7 @@ describe('library prop catalog', () => {
   it('covers every PropKind and every path exists locally with the right licence', () => {
     // The satisfies Record<PropKind, string> declaration enforces exhaustive
     // coverage at typecheck time, including any newly added descriptor kind.
-    expect(mapped).toHaveLength(81);
+    expect(mapped).toHaveLength(86);
     expect(new Set(mapped.map(([kind]) => kind)).size).toBe(mapped.length);
     for (const [kind, path] of mapped) {
       const entry = byPath.get(path);
@@ -94,7 +94,7 @@ describe('library prop catalog', () => {
     }
   });
 
-  it('maps nine authored Baa-ardwalk kinds to their Blender GLBs', () => {
+  it('maps all fourteen authored Baa-ardwalk kinds to their Blender GLBs', () => {
     const expected: Partial<Record<PropKind, string>> = {
       pier: 'boardwalk-pier.glb',
       'pier-rail': 'pier-rail.glb',
@@ -102,11 +102,16 @@ describe('library prop catalog', () => {
       booth: 'kiosk.glb',
       awning: 'striped-awning.glb',
       signboard: 'signboard.glb',
+      'kiosk-sign-icecream': 'kiosk-sign-icecream.glb',
+      'kiosk-sign-popcorn': 'kiosk-sign-popcorn.glb',
+      'kiosk-sign-games': 'kiosk-sign-games.glb',
+      'kiosk-sign-prizes': 'kiosk-sign-prizes.glb',
+      'kiosk-sign-candy': 'kiosk-sign-candy.glb',
       'ferris-wheel': 'ferris-wheel.glb',
       trampoline: 'trampoline.glb',
       bumper: 'beach-ball.glb',
     };
-    expect(Object.keys(expected)).toHaveLength(9);
+    expect(Object.keys(expected)).toHaveLength(14);
     for (const [kind, file] of Object.entries(expected)) {
       const path = 'assets/library/custom/baaardwalk/' + file;
       expect(PROP_LIBRARY_MODELS[kind as PropKind], kind).toBe(path);
@@ -115,7 +120,10 @@ describe('library prop catalog', () => {
     }
   });
 
-  it('maps all seven town and farm kinds to their authored GLBs', () => {
+  it('maps all seven town and farm kinds and the new timber water tower to authored GLBs', () => {
+    expect(PROP_LIBRARY_MODELS['water-tower'])
+      .toBe('assets/library/custom/town/water-tower-timber.glb');
+    expect(PROP_LIBRARY_MODELS['water-tower']).toBe(DOWNTOWN_MODELS.waterTower);
     const expected: Partial<Record<PropKind, string>> = {
       'ac-unit': 'assets/library/custom/town/ac-unit.glb',
       planter: 'assets/library/custom/town/planter.glb',
@@ -656,8 +664,45 @@ describe('Crane Yard container descriptor colours', () => {
 });
 
 describe('authored Baa-ardwalk model colours and LOD', () => {
+  it('uses five distinct named-sign box fallbacks, without tinting their own colours', () => {
+    const signs = [
+      ['kiosk-sign-icecream', 0xffd2e5],
+      ['kiosk-sign-popcorn', 0xffdc8a],
+      ['kiosk-sign-games', 0x82d9df],
+      ['kiosk-sign-prizes', 0xcfa2ea],
+      ['kiosk-sign-candy', 0xffb19c],
+    ] as const;
+    const props: PropDescriptor[] = signs.map(([kind], i) => ({
+      id: 'fallback-' + kind, kind,
+      transform: { position: { x: i * 6, y: 2, z: 0 }, rotationY: -Math.PI / 2 },
+      size: { x: 4.6, y: 1.4, z: 0.3 }, body: { type: 'static' },
+      shape: 'cuboid', collidable: false, breakable: false,
+      lickable: true, climbable: false, color: 0xffe3a7,
+    }));
+    const visuals = buildPropVisuals(props);
+    try {
+      for (const [kind, hex] of signs) {
+        const mesh = visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
+        expect(mesh).toBeInstanceOf(THREE.InstancedMesh);
+        expect(mesh.geometry.getAttribute('position').count, kind).toBe(36);
+        const painted = mesh.geometry.getAttribute('color');
+        const expected = new THREE.Color(hex);
+        expect(painted.getX(0), kind).toBeCloseTo(expected.r, 5);
+        expect(painted.getY(0), kind).toBeCloseTo(expected.g, 5);
+        expect(painted.getZ(0), kind).toBeCloseTo(expected.b, 5);
+        const instance = new THREE.Color();
+        mesh.getColorAt(0, instance);
+        expect(instance.getHex(), kind).toBe(0xffffff);
+      }
+    } finally {
+      visuals.dispose();
+    }
+  });
+
   it('uses full descriptor paint on kiosks and preserves every other GLB colour at distance', async () => {
     const kinds = ['pier', 'pier-rail', 'scaffold', 'awning', 'signboard',
+      'kiosk-sign-icecream', 'kiosk-sign-popcorn', 'kiosk-sign-games',
+      'kiosk-sign-prizes', 'kiosk-sign-candy',
       'ferris-wheel', 'trampoline', 'bumper'] as const;
     const scene = new THREE.Group();
     scene.add(new THREE.Mesh(new THREE.SphereGeometry(0.5, 24, 16),

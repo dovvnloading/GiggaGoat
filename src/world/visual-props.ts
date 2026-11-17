@@ -70,10 +70,17 @@ const COLORS: Partial<Record<PropKind, number>> = {
   dock: 0xb28b60, cottage: 0xf3c7a5, shipwreck: 0x866144,
   'cave-mouth': 0x4c515b, 'rope-rail': 0x986e4a,
   'stepping-stone': 0x9ca2a8, signboard: 0xf5d793,
+  'kiosk-sign-icecream': 0xffd2e5, 'kiosk-sign-popcorn': 0xffdc8a,
+  'kiosk-sign-games': 0x82d9df, 'kiosk-sign-prizes': 0xcfa2ea,
+  'kiosk-sign-candy': 0xffb19c,
   'palm-tree': 0x6d9b56, floodlight: 0xdfe4df, 'life-ring': 0xf5e1d4,
   'cable-spool': 0x9c7655, 'pallet-stack': 0xba8f62, 'log-bridge': 0x906742,
   fern: 0x548e57, 'lily-pads': 0x5d9a65,
 };
+const authoredKioskSignKinds = new Set<PropKind>([
+  'kiosk-sign-icecream', 'kiosk-sign-popcorn', 'kiosk-sign-games',
+  'kiosk-sign-prizes', 'kiosk-sign-candy',
+]);
 /** Authored painted hero dressing keeps its GLB vertex colours and full far LOD. */
 export const AUTHORED_HERO_DRESSING_KINDS: ReadonlySet<PropKind> = new Set([
   'palm-tree', 'floodlight', 'life-ring', 'cable-spool',
@@ -566,6 +573,9 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
   } else if (kind === 'ac-unit') {
     box(0, 0, 0, 0.92, 0.83, 0.94, 0xc8d4d5);
     cyl(0, 0.44, 0, 0.65, 0.09, 0.65, 0x72878c, 10);
+  } else if (authoredKioskSignKinds.has(kind)) {
+    // Coloured, descriptor-sized box if a named sign GLB fails to load.
+    box(0, 0, 0, 1, 1, 1, COLORS[kind]);
   } else if (kind === 'sign' || kind === 'signboard') {
     if (kind === 'sign') box(0, -0.21, 0, 0.08, 0.58, 0.10, 0x98704e);
     box(0, 0.19, 0, 0.97, 0.54, 0.11, 0xf8e8bf);
@@ -638,19 +648,18 @@ const SHADOW_KINDS = new Set<PropKind>([
 /** Blender-authored Baa-ardwalk pieces are low-poly with painted materials. */
 const authoredBaaardwalkKinds = new Set<PropKind>([
   'pier', 'pier-rail', 'scaffold', 'booth', 'awning', 'signboard',
+  ...authoredKioskSignKinds,
   'ferris-wheel', 'trampoline', 'bumper',
 ]);
 /** Kiosks alone have white walls for full-strength descriptor tint. */
 const authoredBaaardwalkPaintedKinds = new Set<PropKind>([
   'pier', 'pier-rail', 'scaffold', 'awning', 'signboard',
+  ...authoredKioskSignKinds,
   'ferris-wheel', 'trampoline', 'bumper',
 ]);
 /** Low-poly Blender town/farm models retain their native paint at every LOD. */
 const authoredTownFarmKinds = new Set<PropKind>([
   'ac-unit', 'planter', 'bench', 'gnome', 'hay-bale', 'ramp', 'buoy',
-]);
-const OUTLINE_KINDS = new Set<PropKind>([
-  'windmill', 'ferris-wheel', 'crane', 'satellite-dish',
 ]);
 function sways(kind: PropKind): boolean {
   return ['tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'fern', 'bunting', 'flag'].includes(kind);
@@ -688,7 +697,6 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
   }
   const geometries = new Map<PropKind, THREE.BufferGeometry>();
   const materials = new Map<PropKind, THREE.MeshToonMaterial>();
-  const outlineMat = new THREE.MeshBasicMaterial({ color: 0x34424b, side: THREE.BackSide });
   const windUniforms: Array<{ value: number }> = [];
   interface Job {
     kind: PropKind;
@@ -751,7 +759,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       dummy.scale.set(prop.size.x, prop.size.y, prop.size.z);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
-      mesh.setColorAt(i, new THREE.Color(foliage.has(kind)
+      mesh.setColorAt(i, new THREE.Color(foliage.has(kind) || authoredKioskSignKinds.has(kind)
         ? 0xffffff : (prop.color ?? COLORS[kind] ?? 0xc6c0a5)));
     }
     mesh.instanceMatrix.needsUpdate = true;
@@ -778,27 +786,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       group.add(details);
       drawn.push(details);
     }
-    if (OUTLINE_KINDS.has(kind)) {
-      const hull = new THREE.InstancedMesh(geometry, outlineMat, entries.length);
-      hull.name = 'outline-' + kind;
-      hull.frustumCulled = true;
-      hull.castShadow = false;
-      for (let i = 0; i < entries.length; i++) {
-        const prop = entries[i]!;
-        const p = prop.transform.position;
-        dummy.position.set(p.x, p.y, p.z);
-        dummy.rotation.set(0, prop.transform.rotationY, 0);
-        const expansion = 1.015;
-        dummy.scale.set(prop.size.x * expansion, prop.size.y * expansion,
-          prop.size.z * expansion);
-        dummy.updateMatrix();
-        hull.setMatrixAt(i, dummy.matrix);
-      }
-      hull.instanceMatrix.needsUpdate = true;
-      hull.computeBoundingSphere();
-      group.add(hull);
-      drawn.push(hull);
-    }
+    // The authored landmark GLBs replace these procedural silhouettes.
+    // Avoid a redundant fallback-only outline draw for each landmark.
     const batch: PropBatch = {
       meshes: drawn, sphere: mesh.boundingSphere?.clone() ?? new THREE.Sphere(),
       // Global instance batches must not vanish when their centre is distant.
@@ -1044,6 +1033,6 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       shadowChanged = false;
       return changed;
     },
-    dispose(): void { disposed = true; outlineMat.dispose(); },
+    dispose(): void { disposed = true; },
   };
 }
