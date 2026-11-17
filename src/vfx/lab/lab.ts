@@ -713,20 +713,7 @@ function frame(now: number): void {
 
 setDirection(directionControl.value);
 goat.update(0);
-// Start 08 mid-pop so the reference comparison is immediately readable.
-// The launch pad keeps its mid-flight initial seek when 07 is selected.
-const initialLaunch = makeLaunchPadBurstCue(
-  launchContact, launchDirection, Number(launchStrengthControl.value),
-);
-if (previewMode === 'combo') {
-  const first = makeComboPopCue(comboContact, 2)!;
-  comboClock = first.lifetime * 0.16;
-  comboPop.update(comboClock);
-} else if (previewMode === 'launch' && initialLaunch) {
-  launchClock = initialLaunch.lifetime * 0.60;
-  launchPad.update(launchClock);
-  poseLaunchGoat();
-}
+// Start at Kid; 01–08 seed their own previews when selected.
 refreshUi();
 resizeViewport();
 requestAnimationFrame(frame);
