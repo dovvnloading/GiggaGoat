@@ -149,8 +149,14 @@ describe('Hoofington sourced village model integration', () => {
     const batch = (await createLanternLampInstances(placements, source, 600))!;
     const allVisible = { intersectsSphere: () => true } as unknown as THREE.Frustum;
     expect(batch.updateCulling(new THREE.Vector3(10, 12, 3), allVisible)).toBe(true);
+    // Six authored materials only cost six active draws, not twelve,
+    // including when some visible lamps lie beyond the detailed distance.
+    expect(batch.group.children.filter(mesh => mesh.visible)).toHaveLength(4);
+    expect(batch.updateCulling(new THREE.Vector3(65, 12, 3), allVisible)).toBe(false);
+    expect(batch.group.children.filter(mesh => mesh.visible)).toHaveLength(4);
     // Switching the same lamps from high to low LOD must not repaint shadows.
     expect(batch.updateCulling(new THREE.Vector3(90, 12, 3), allVisible)).toBe(false);
+    expect(batch.group.children.filter(mesh => mesh.visible)).toHaveLength(4);
     expect(batch.updateCulling(new THREE.Vector3(10, 12, 3), allVisible)).toBe(false);
     const instances = batch.group.children.filter(mesh =>
       mesh.name === 'usdcraft-lantern-near') as THREE.InstancedMesh[];
