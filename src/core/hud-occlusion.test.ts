@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Game } from './Game';
 import { GameCharacters } from './GameCharacters';
 import { CAMERA_TARGET_HEIGHT, SPAWN_CAMERA_PITCH, SPAWN_CAMERA_YAW_OFFSET,
-  goatCameraLookAhead, goatCameraOffset } from './GoatCamera';
+  goatCameraLookAhead, goatCameraOffset, goatCameraVerticalOffset } from './GoatCamera';
 import { planGoatSafeHud, projectGoatScreenBox, rectsIntersect, visibleGoatBounds,
   type HudPanelRect, type ScreenRect } from './HudOcclusion';
 
@@ -27,17 +27,22 @@ describe('goat-safe HUD in free roam', () => {
       camera.position.copy(target).add(new THREE.Vector3(offset.x, offset.y, offset.z));
       camera.lookAt(target.clone().add(new THREE.Vector3(ahead.x, ahead.y, ahead.z)));
       const viewport = rect(0, 0, 1568, 744);
-      const goat = projectGoatScreenBox(visibleGoatBounds(characters.player.root), camera, viewport);
+      const bounds = visibleGoatBounds(characters.player.root);
+      const unframed = projectGoatScreenBox(bounds, camera, viewport, false);
+      expect(unframed).not.toBeNull();
+      camera.setViewOffset(1568, 744, 0, goatCameraVerticalOffset(unframed!, viewport), 1568, 744);
+      const goat = projectGoatScreenBox(bounds, camera, viewport);
       expect(goat).not.toBeNull();
       const goatBox = goat!;
-      // Approximate painted extents of the existing CSS corner cards at the
-      // supplied 1568x744 QA resolution; the build hotbar is absent in free roam.
+      // Approximate painted extents of the compact, always-visible HUD at the
+      // supplied 1568x744 QA resolution, including the Hay-Build tray.
       const panels: HudPanelRect[] = [
         { id: 'meter', rect: rect(21, 8, 486, 168) },
         { id: 'combo', rect: rect(520, 7, 528, 166) },
         { id: 'map', rect: rect(1270, 7, 285, 305) },
         { id: 'gig', rect: rect(1180, 309, 376, 210) },
         { id: 'stamina', rect: rect(25, 509, 215, 215) },
+        { id: 'hotbar', rect: rect(504, 609, 560, 124) },
       ];
       const layout = planGoatSafeHud(goatBox, viewport, panels,
         [{ id: 'click', width: 285, height: 45 }]);
