@@ -23,7 +23,7 @@ const SITES: SiteDefinition[] = [
   { id: 'baa-ardwalk', name: 'Baa-ardwalk', x: 58, z: 228, radius: 33, plot: 24,
     biome: 'beach', flat: true, description: 'Sunset pier, rides, stalls and sandy launch pads' },
   { id: 'crane-yard', name: 'Crane Yard', x: 185, z: -47, radius: 36, plot: 31,
-    biome: 'industrial', flat: true, description: 'Two cranes, steel tower and stacked cargo' },
+    biome: 'industrial', flat: true, description: 'Paved and fenced construction yard with open concrete floors and two tower cranes' },
   { id: 'downtown-bleatsville', name: 'Downtown Bleatsville', x: 145, z: 119, radius: 43, plot: 38,
     biome: 'town', flat: true, description: 'Colourful shopping streets and rooftop parkour' },
   { id: 'mt-gigga', name: 'Mt. Gigga', x: 0, z: 0, radius: 63, plot: 8,
