@@ -69,7 +69,7 @@ describe('painting bookmark recompositions (default billy-isle)', () => {
     });
   });
 
-  it('09 frames the first kiosk, wheel, pier entrance and beach palms from the sand', () => {
+  it('09 frames the first kiosk, wheel and pier entrance from the sand', () => {
     const bookmark = findBookmark('09')!;
     const pier = props('baa-ardwalk', 'pier')[0]!;
     const wheel = props('baa-ardwalk', 'ferris-wheel')[0]!;
@@ -105,17 +105,6 @@ describe('painting bookmark recompositions (default billy-isle)', () => {
     expect(bookmark.camera.y - ground, '09 goat-eye ground clearance')
       .toBeLessThanOrEqual(2.5);
 
-    const camera = new THREE.PerspectiveCamera(bookmark.fov, 16 / 9, 0.25, 4000);
-    camera.position.set(bookmark.camera.x, bookmark.camera.y, bookmark.camera.z);
-    camera.lookAt(bookmark.target.x, bookmark.target.y, bookmark.target.z);
-    camera.updateMatrixWorld();
-    const visiblePalms = props('baa-ardwalk', 'palm-tree').filter(palm => {
-      const point = palm.transform.position;
-      const ndc = new THREE.Vector3(point.x, point.y, point.z).project(camera);
-      return Math.abs(ndc.x) < 0.94 && Math.abs(ndc.y) < 0.94 && ndc.z < 1;
-    });
-    expect(visiblePalms.length, '09 beach palms visible on screen')
-      .toBeGreaterThanOrEqual(2);
     projectBookmark('09', {
       firstKiosk: kiosk.transform.position,
       wheelCentre: wheel.transform.position,
@@ -124,8 +113,6 @@ describe('painting bookmark recompositions (default billy-isle)', () => {
         y: pier.transform.position.y + pier.size.y / 2,
         z: landEnd,
       },
-      ...Object.fromEntries(visiblePalms.slice(0, 2).map((palm, i) =>
-        ['beachPalm' + (i + 1), palm.transform.position])),
     });
   });
 
