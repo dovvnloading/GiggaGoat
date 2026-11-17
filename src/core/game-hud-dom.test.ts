@@ -9,6 +9,7 @@ import { GameHud } from './GameHud';
 class ElementStub {
   className = '';
   textContent = '';
+  hidden = false;
   readonly children: ElementStub[] = [];
   private readonly dataAttributes = new Set<string>();
   private nodes: ElementStub[] = [];
@@ -85,4 +86,66 @@ describe('live free-roam HUD DOM', () => {
       hud.dispose();
     }
   });
+  it.each([1280, 1600, 1920])('keeps both sprite prompts on a single row at %ipx', width => {
+    const head = new ElementStub();
+    vi.stubGlobal('document', { head, createElement: () => new ElementStub() });
+    const host = new ElementStub();
+    const hud = new GameHud(host as unknown as HTMLElement);
+    try {
+      const root = host.children[0]!;
+      const css = head.children[0]!.textContent;
+      const rowRule = css.match(/\.gg-board-hint,\.gg-hint\{([^}]*)\}/)?.[1] ?? '';
+      const copyRule = css.match(/\.gg-prompt-copy\{([^}]*)\}/)?.[1] ?? '';
+      expect(rowRule).toContain('display:flex');
+      expect(rowRule).toContain('flex-wrap:nowrap');
+      expect(rowRule).toContain('width:max-content');
+      expect(rowRule).toContain('max-width:82vw');
+      expect(copyRule).toContain('white-space:nowrap');
+
+      for (const [name, message] of [
+        ['gg-board-hint', 'GOAT GIGS · GAMEPAD X'],
+        ['gg-hint', 'CLICK TO PLAY · MOUSE TO LOOK'],
+      ]) {
+        expect(root.querySelector('.' + name)).not.toBeNull();
+        // Read the exact constructor markup, rather than a second HTML fixture.
+        const start = root.innerHTML.indexOf('<div class="' + name + '"');
+        expect(start).toBeGreaterThan(-1);
+        const markup = root.innerHTML.slice(start, root.innerHTML.indexOf('</div>', start) + 6);
+        expect(markup).toContain(message);
+        // One outer prompt_pill and one inner key_badge; never a nested pill.
+        expect(markup.match(/data-sprite="hud\/prompt_pill"/g)).toHaveLength(1);
+        expect(markup.match(/data-sprite="hud\/key_badge"/g)).toHaveLength(1);
+
+        // Every glyph is budgeted a generous full 14px em (the CSS font cap),
+        // plus the badge, borders, padding and gap. Even that upper bound fits.
+        const maximumRowWidth = [...message].length * 14 + 50 + 26 + 22 + 6;
+        expect(maximumRowWidth).toBeLessThan(width * .82);
+      }
+      expect(root.querySelector<ElementStub>('[data-hint-copy]')?.textContent)
+        .toBe('CLICK TO PLAY · MOUSE TO LOOK');
+      expect(root.innerHTML).toContain('gg-prompt-mouse');
+      expect(root.innerHTML).not.toContain('>CLICK</span>');
+    } finally {
+      hud.dispose();
+    }
+  });
+
+  it('hides the click prompt on pointer lock and restores the flex row on unlock', () => {
+    const head = new ElementStub();
+    vi.stubGlobal('document', { head, createElement: () => new ElementStub() });
+    const host = new ElementStub();
+    const hud = new GameHud(host as unknown as HTMLElement);
+    try {
+      const hint = host.children[0]!.querySelector<ElementStub>('[data-hint]')!;
+      expect(hint.hidden).toBe(false);
+      hud.setPointerLockHint(true);
+      expect(hint.hidden).toBe(true);
+      hud.setPointerLockHint(false);
+      expect(hint.hidden).toBe(false);
+      expect(head.children[0]!.textContent).toContain('.gg-ui [hidden]{display:none!important}');
+    } finally {
+      hud.dispose();
+    }
+  });
+
 });
