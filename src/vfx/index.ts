@@ -53,3 +53,12 @@ export {
   TRAMPOLINE_MAT_Y, makeTrampolineBoingBurst, makeTrampolineBoingFrame,
   sampleTrampolineBoing, type TrampolineBoingBurst, type TrampolineBoingFrame,
 } from './trampolineBoingMath';
+
+export {
+  LaunchPadBurst, createLaunchPadBurst, type LaunchPadBurstOptions,
+} from './LaunchPadBurst';
+export {
+  LAUNCH_PAD_TOP_Y, launchFlightX, launchFlightY,
+  makeLaunchPadBurstCue, makeLaunchPadBurstFrame, sampleLaunchPadBurst,
+  type LaunchPadBurstCue, type LaunchPadBurstFrame,
+} from './launchPadMath';
