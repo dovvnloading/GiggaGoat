@@ -44,7 +44,7 @@ export const ART_BOOKMARKS: readonly ArtBookmark[] = [
     fov: 57, day: 0.53, tide: 0 },
   { id: '15', label: '15 · Old Lighthouse', image: '15_poi_lighthouse.png',
     camera: { x: -342, y: 30, z: 62 }, target: { x: -259, y: 14, z: -18 },
-    fov: 57, day: 0.29, tide: 0 },
+    fov: 37, day: 0.29, tide: 0 },
   { id: '16', label: '16 · Rising tide', image: '16_mode_rising_tide.png',
     camera: { x: 264, y: 249, z: 284 }, target: { x: 0, y: 65, z: 0 },
     fov: 54, day: 0.43, tide: 49 },
