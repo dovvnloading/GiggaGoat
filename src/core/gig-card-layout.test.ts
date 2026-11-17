@@ -18,12 +18,12 @@ class ElementStub {
 
   set innerHTML(html: string) {
     this.html = html;
-    this.nodes = Array.from(html.matchAll(/<([a-z][\\w-]*)\\b([^>]*)>([^<]*)/gi), match => {
+    this.nodes = Array.from(html.matchAll(/<([a-z][\w-]*)\b([^>]*)>([^<]*)/gi), match => {
       const attrs = match[2] ?? '';
       const element = new ElementStub();
-      element.className = attrs.match(/(?:^|\\s)class="([^"]*)"/)?.[1] ?? '';
+      element.className = attrs.match(/(?:^|\s)class="([^"]*)"/)?.[1] ?? '';
       element.textContent = match[3] ?? '';
-      for (const attr of attrs.matchAll(/\\b(data-[\\w-]+)(?:="[^"]*")?/g)) {
+      for (const attr of attrs.matchAll(/\b(data-[\w-]+)(?:="[^"]*")?/g)) {
         element.data.add(attr[1]!);
       }
       return element;
@@ -38,7 +38,7 @@ class ElementStub {
   }
   querySelectorAll<T = ElementStub>(selector: string): T[] {
     if (selector.startsWith('.')) return this.nodes.filter(node =>
-      node.className.split(/\\s+/).includes(selector.slice(1))) as T[];
+      node.className.split(/\s+/).includes(selector.slice(1))) as T[];
     if (selector.startsWith('[data-') && selector.endsWith(']')) return this.nodes.filter(node =>
       node.data.has(selector.slice(1, -1))) as T[];
     throw new Error('Unsupported selector: ' + selector);
@@ -118,7 +118,7 @@ function measureHud(width: number, height: number, active: boolean, longCopy: bo
   // Tests measure the actual generated DOM and styles, not a duplicate card fixture.
   // Sprite URLs are omitted: only the paint changes, never the geometric boxes.
   const html = '<!doctype html><meta charset="utf-8"><style>html,body{margin:0}' +
-    css.replace(/url\\("[^"]*"\\)/g, 'none') + '</style>' +
+    css.replace(/url\("[^"]*"\)/g, 'none') + '</style>' +
     '<div class="gg-ui" style="position:relative;width:' + width + 'px;height:' + height + 'px">' +
     markup.replace(/src="[^"]*"/g, 'src=""') + '</div>' +
     '<output id="geometry-result"></output><script>' + js + '</script>';
@@ -130,7 +130,7 @@ function measureHud(width: number, height: number, active: boolean, longCopy: bo
       '--disable-gpu', '--disable-dev-shm-usage', '--disable-background-networking',
       '--dump-dom', pathToFileURL(file).href], { encoding: 'utf8', timeout: 15000 });
     if (proc.status !== 0) throw new Error('Chrome layout failed: ' + proc.stderr);
-    const raw = proc.stdout.match(/<output id="geometry-result">([^<]+)<\\/output>/)?.[1];
+    const raw = proc.stdout.match(/<output id="geometry-result">([^<]+)<\/output>/)?.[1];
     if (!raw) throw new Error('Chrome did not return geometry: ' + proc.stdout.slice(-800));
     return JSON.parse(raw) as Geometry;
   } finally {
