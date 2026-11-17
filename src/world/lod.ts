@@ -10,7 +10,7 @@ export const WORLD_LOD = {
   smallPropDistance: 140,
   districtCellSize: 42,
   distantTriangleRatio: 0.19,
-  minSimplifyTriangles: 48,
+  minSimplifyTriangles: 600,
   smallModels: [
     'flower', 'bush', 'mailbox', 'lamp', 'grass-tuft', 'mushroom',
     'gnome', 'cone', 'planter',

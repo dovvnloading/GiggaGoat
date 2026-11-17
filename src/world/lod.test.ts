@@ -12,9 +12,32 @@ describe('cached world mesh LOD', () => {
   it('uses one central metre-scale config and identifies distant small props', () => {
     expect(WORLD_LOD.detailedDistance).toBe(60);
     expect(WORLD_LOD.smallPropDistance).toBe(140);
+    expect(WORLD_LOD.distantTriangleRatio).toBe(0.19);
+    expect(WORLD_LOD.minSimplifyTriangles).toBe(600);
     for (const kind of ['flower', 'bush', 'mailbox', 'lamp'])
       expect(isSmallWorldModel(kind)).toBe(true);
     expect(isSmallWorldModel('house')).toBe(false);
+  });
+
+  it('keeps 100-triangle boxy props and other sub-600 meshes unchanged', async () => {
+    const crate = new THREE.BoxGeometry(1, 1, 1, 1, 1, 12);
+    const nearThreshold = new THREE.PlaneGeometry(1, 1, 13, 23);
+    expect(triangleCount(crate)).toBe(100);
+    expect(triangleCount(nearThreshold)).toBe(598);
+    expect(await simplifiedWorldGeometry(crate)).toBe(crate);
+    expect(await simplifiedWorldGeometry(nearThreshold)).toBe(nearThreshold);
+    crate.dispose();
+    nearThreshold.dispose();
+  });
+
+  it('still simplifies a 2,000-triangle geometry', async () => {
+    const source = new THREE.SphereGeometry(1, 50, 21);
+    expect(triangleCount(source)).toBe(2_000);
+    const distant = await simplifiedWorldGeometry(source);
+    expect(distant).not.toBe(source);
+    expect(triangleCount(distant)).toBeLessThan(triangleCount(source));
+    distant.dispose();
+    source.dispose();
   });
 
   it('welds painted triangles and reuses meshoptimizer simplification', async () => {
