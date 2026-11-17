@@ -1,4 +1,4 @@
-/** Production art QA: 01–09, growth aura centered by default. */
+/** Production art QA: 01–10, coin pickup sparkle centered by default. */
 import * as THREE from 'three';
 import { GoatCharacter } from '../../character/GoatCharacter';
 import { RunningDustPuffs } from '../RunningDustPuffs';
@@ -14,6 +14,8 @@ import {
 import { LaunchPadBurst } from '../LaunchPadBurst';
 import { ComboPopText } from '../ComboPopText';
 import { GiggaGrowthPurpleAura } from '../GiggaGrowthPurpleAura';
+import { CoinPickupSparkle } from '../CoinPickupSparkle';
+import { COIN_PICKUP_SECONDS } from '../coinPickupMath';
 import type { GrowthTier } from '../growthAuraMath';
 import { makeComboPopCue } from '../comboPopMath';
 import {
@@ -72,6 +74,10 @@ const growthReference = element<HTMLElement>('growth-reference');
 const growthControls = element<HTMLElement>('growth-controls');
 const growthReplayButton = element<HTMLButtonElement>('growth-replay');
 const growthNextButton = element<HTMLButtonElement>('growth-next');
+const coinReference = element<HTMLElement>('coin-reference');
+const coinControls = element<HTMLElement>('coin-controls');
+const coinReplayButton = element<HTMLButtonElement>('coin-replay');
+const coinSparklesButton = element<HTMLButtonElement>('coin-sparkles');
 const launchReference = element<HTMLElement>('launch-reference');
 const targetTitle = element<HTMLElement>('target-title');
 const trampolineControls = element<HTMLElement>('trampoline-controls');
@@ -137,9 +143,16 @@ const launchPad = new LaunchPadBurst({ capacity: 3 });
 scene.add(launchPad.group);
 const comboPop = new ComboPopText({ capacity: 4 });
 scene.add(comboPop.group);
+const coinPickup = new CoinPickupSparkle({ capacity: 4 });
+scene.add(coinPickup.group);
 // An unscaled root is a stable hoof-level anchor across all four character tiers.
 const growthAura = new GiggaGrowthPurpleAura({ capacity: 3 });
 growthAura.attach(goat.root);
+// A goat-local chest anchor for the preview; the effect never drives gameplay.
+const coinTarget = new THREE.Object3D();
+coinTarget.name = 'coin pickup preview chest target';
+coinTarget.position.set(0, 1.35, 0.12);
+goat.root.add(coinTarget);
 // A static faceted target for QA only; no collider or game physics.
 const rockGeometry = new THREE.DodecahedronGeometry(0.44, 0);
 const rockMaterial = new THREE.MeshToonMaterial({ color: 0x8e8194 });
@@ -163,13 +176,14 @@ let launchClock = 0;
 let comboClock = 0;
 let comboIndex = 0;
 let growthClock = 0;
+let coinClock = 0;
 let growthTier: GrowthTier = 0;
 const growthTierNames = ['KID', 'BILLY', 'BIG', 'GIGGA'] as const;
 const growthStageSeconds = [0.90, 1.65, 1.85, 4.05] as const;
 let activeCombo = 2;
 const comboSequence = [2, 3, 4] as const;
 const comboContact = { x: 0, y: 1.7, z: 0 };
-let previewMode: 'growth' | 'combo' | 'launch' | 'trampoline' | 'showcase' = 'growth';
+let previewMode: 'coin' | 'growth' | 'combo' | 'launch' | 'trampoline' | 'showcase' = 'coin';
 let trampolineBurst: TrampolineBoingBurst | null = null;
 const trampolinePreviewFrame = makeTrampolineBoingFrame();
 const trampolineContact = { x: 0, y: 0, z: 0 };
@@ -201,6 +215,7 @@ function setDirection(value: string): void {
   launchPad.clear();
   comboPop.clear();
   growthAura.clear();
+  coinPickup.clear();
   emissionClock = 0;
   landingClock = 0;
   headbuttClock = 0;
@@ -211,6 +226,7 @@ function setDirection(value: string): void {
   comboClock = 0;
   comboIndex = 0;
   growthClock = 0;
+  coinClock = 0;
   growthTier = 0;
   trampolineBurst = null;
   launchCue = null;
@@ -218,6 +234,7 @@ function setDirection(value: string): void {
   rock.position.set(headContact.x + heading * 0.58, 0.38, headContact.z - 0.05);
 
   const showcase = previewMode === 'showcase';
+  const isCoin = previewMode === 'coin';
   const boing = previewMode === 'trampoline';
   const isCombo = previewMode === 'combo';
   const isGrowth = previewMode === 'growth';
@@ -228,25 +245,31 @@ function setDirection(value: string): void {
   launchPad.group.visible = previewMode === 'launch';
   comboPop.group.visible = isCombo;
   growthAura.group.visible = isGrowth;
+  coinPickup.group.visible = isCoin;
   rock.visible = showcase;
   goat.root.visible = !isCombo;
   floor.visible = !isCombo;
-  (scene.background as THREE.Color).setHex(isGrowth ? 0xfff0fc : isCombo ? 0xfff7f5 : 0xfff3ea);
+  (scene.background as THREE.Color).setHex(isCoin ? 0xfff7ed : isGrowth ? 0xfff0fc : isCombo ? 0xfff7f5 : 0xfff3ea);
   showcaseControls.hidden = !showcase;
   showcaseTriggers.hidden = !showcase;
   trampolineControls.hidden = !boing;
   launchControls.hidden = previewMode !== 'launch';
   comboControls.hidden = !isCombo;
   growthControls.hidden = !isGrowth;
+  coinControls.hidden = !isCoin;
+  coinReference.hidden = !isCoin;
   comboReference.hidden = !isCombo;
   growthReference.hidden = !isGrowth;
-  launchReference.hidden = isCombo || isGrowth;
-  targetTitle.textContent = isGrowth ? '09 · GIGGA GROWTH PURPLE AURA · approved target'
+  launchReference.hidden = isCombo || isGrowth || isCoin;
+  targetTitle.textContent = isCoin ? '10 · COIN PICKUP SPARKLE · approved target'
+    : isGrowth ? '09 · GIGGA GROWTH PURPLE AURA · approved target'
     : isCombo ? '08 · COMBO POP TEXT · approved target'
     : '07 · Launch Pad Burst · target';
   burstButton.disabled = !showcase;
 
-  previewTitle.textContent = isGrowth
+  previewTitle.textContent = isCoin
+    ? '10 · Coin Pickup Sparkle · gold hoof coin → swoosh → twinkling stars'
+    : isGrowth
     ? '09 · GIGGA growth purple aura · Kid → Billy → Big → GIGGA'
     : isCombo
       ? '08 · Combo Pop Text · x2 → x3 → x4! · squash, stretch and float'
@@ -255,7 +278,9 @@ function setDirection(value: string): void {
     : boing
       ? '06 · Trampoline boing · squash → snap → flight · drag to orbit'
       : '07 · Launch pad burst · lit arrows → gold spikes → flight trails · drag to orbit';
-  poseHint.textContent = isGrowth
+  poseHint.textContent = isCoin
+    ? '10 · Spinning Cud Coin → gold orbit → four-point white-gold sparkles'
+    : isGrowth
     ? '09 · Hoof halo → lilac spirals + sparks → GIGGA flare → quiet aura'
     : isCombo
       ? '08 · Blue/yellow → orange/gold → purple with extra stars'
@@ -264,12 +289,14 @@ function setDirection(value: string): void {
     : boing
       ? '06 · Downward dip → golden fan → violet launch arcs'
       : '07 · Glowing steel pad → gold fountain → long golden goat trail';
-  lookAt.set(isGrowth ? 0 : isCombo ? 0 : showcase ? -0.35 : boing ? 0 : 0.22,
-    isGrowth ? 1.82 : isCombo ? 1.98 : showcase ? 0.83 : boing ? 1.70 : 1.63, 0);
-  distance = isGrowth ? 8.8 : isCombo ? 6.7 : showcase ? 5.1 : boing ? 7.7 : 8.9;
+  lookAt.set(isCoin ? 0.35 : isGrowth ? 0 : isCombo ? 0 : showcase ? -0.35 : boing ? 0 : 0.22,
+    isCoin ? 1.50 : isGrowth ? 1.82 : isCombo ? 1.98 : showcase ? 0.83 : boing ? 1.70 : 1.63, 0);
+  distance = isCoin ? 7.5 : isGrowth ? 8.8 : isCombo ? 6.7 : showcase ? 5.1 : boing ? 7.7 : 8.9;
   goat.root.rotation.z = 0;
-  goat.setPreview(isGrowth || boing ? 'stand' : 'sprint', isGrowth ? 'KID' : 'BILLY');
-  if (isGrowth) {
+  goat.setPreview(isCoin || isGrowth || boing ? 'stand' : 'sprint', isGrowth ? 'KID' : 'BILLY');
+  if (isCoin) {
+    emitCoin();
+  } else if (isGrowth) {
     emitGrowthTier(0);
   } else if (isCombo) {
     emitCombo();
@@ -342,6 +369,16 @@ function emitLaunch(): void {
   launchPad.emit(launchContact, launchDirection, strength);
 }
 
+function emitCoin(): void {
+  coinClock = 0;
+  coinPickup.clear();
+  goat.root.position.set(1.55, 0, 0);
+  goat.root.rotation.set(0, Math.PI / 2, 0);
+  goat.setPreview('stand', 'BILLY');
+  // Cosmetic only: coin hops to the goat-local chest anchor.
+  coinPickup.emit({ x: -1.13, y: 1.44, z: 0.15 }, coinTarget);
+}
+
 function emitGrowthTier(tier: GrowthTier): void {
   growthTier = tier;
   growthClock = 0;
@@ -387,7 +424,10 @@ function emitCrate(): void {
 }
 
 function refreshUi(): void {
-  state.textContent = previewMode === 'growth'
+  state.textContent = previewMode === 'coin'
+    ? (paused ? 'Paused' : 'Running') + ' / ' + coinPickup.activeCount +
+      ' coin pickup / spin → gold swoosh → four-point white-gold stars'
+    : previewMode === 'growth'
     ? (paused ? 'Paused' : 'Running') + ' / ' + growthTierNames[growthTier] +
       ' / ' + growthAura.activeCount + ' growth pulses / GIGGA hold at tier 3'
     : previewMode === 'combo'
@@ -418,7 +458,8 @@ function refreshUi(): void {
 }
 
 previewModeControl.addEventListener('change', () => {
-  previewMode = previewModeControl.value === 'growth' ? 'growth' :
+  previewMode = previewModeControl.value === 'coin' ? 'coin' :
+    previewModeControl.value === 'growth' ? 'growth' :
     previewModeControl.value === 'combo' ? 'combo' :
     previewModeControl.value === 'showcase' ? 'showcase' :
     previewModeControl.value === 'trampoline' ? 'trampoline' : 'launch';
@@ -491,6 +532,25 @@ comboNextButton.addEventListener('click', () => {
   comboPop.clear();
   emitCombo();
   if (paused) { comboPop.update(0.16); comboClock = 0.16; }
+  refreshUi();
+});
+coinReplayButton.addEventListener('click', () => {
+  if (previewMode !== 'coin') {
+    previewMode = 'coin';
+    previewModeControl.value = 'coin';
+    setDirection(directionControl.value);
+  } else emitCoin();
+  if (paused) { coinPickup.update(0.42); coinClock = 0.42; }
+  refreshUi();
+});
+coinSparklesButton.addEventListener('click', () => {
+  if (previewMode !== 'coin') {
+    previewMode = 'coin';
+    previewModeControl.value = 'coin';
+    setDirection(directionControl.value);
+  } else emitCoin();
+  coinPickup.update(0.91);
+  coinClock = 0.91;
   refreshUi();
 });
 launchStrengthControl.addEventListener('input', () => {
@@ -571,6 +631,7 @@ clearButton.addEventListener('click', () => {
   launchPad.clear();
   comboPop.clear();
   growthAura.clear();
+  coinPickup.clear();
   emissionClock = 0;
   landingClock = 0;
   headbuttClock = 0;
@@ -580,6 +641,7 @@ clearButton.addEventListener('click', () => {
   launchClock = 0;
   comboClock = 0;
   comboIndex = 0;
+  coinClock = 0;
   trampolineBurst = null;
   launchCue = null;
   if (previewMode === 'trampoline') poseTrampolineGoat();
@@ -654,7 +716,12 @@ function frame(now: number): void {
   const dt = lastTime ? Math.min(0.05, Math.max(0, (now - lastTime) / 1000)) : 0;
   lastTime = now;
   if (!paused) {
-    if (previewMode === 'growth') {
+    if (previewMode === 'coin') {
+      goat.update(dt);
+      coinPickup.update(dt);
+      coinClock += dt;
+      if (coinClock >= COIN_PICKUP_SECONDS + 0.24) emitCoin();
+    } else if (previewMode === 'growth') {
       goat.update(dt);
       growthAura.update(dt);
       growthClock += dt;
@@ -754,6 +821,7 @@ window.addEventListener('pagehide', () => {
   launchPad.dispose();
   comboPop.dispose();
   growthAura.dispose();
+  coinPickup.dispose();
   rockGeometry.dispose();
   rockMaterial.dispose();
   goat.dispose();

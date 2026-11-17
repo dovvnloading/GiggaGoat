@@ -1,4 +1,4 @@
-# VFX lane · Approved effects 01–09 (dust, landing, headbutt, water, crate, trampoline, launch pad, combo text, growth aura)
+# VFX lane · Approved effects 01–10 (dust, landing, headbutt, water, crate, trampoline, launch pad, combo text, growth aura)
 
 The top-left **RUNNING DUST PUFFS** and adjacent **LANDING IMPACT RING** panels
 of the approved [`23_vfx_sheet.png`](../../docs/art/hifi/23_vfx_sheet.png)
@@ -373,7 +373,7 @@ or the taller reference column to dictate its height. The pure
 `lab/viewport.ts` helper derives the drawing-buffer's logical dimensions from
 the wrapper width alone; a ResizeObserver, window resize handler and per-frame
 device-pixel-ratio check keep the camera projection and retina resolution in
-sync without a height feedback loop. The centered **09 GIGGA GROWTH PURPLE AURA** loops Kid → Billy → Big → GIGGA on the existing goat by default, with a reduced WebP copy of the supplied panel displayed beside the 16:9 Three.js viewport. A pure `lab/growthCamera.ts` helper fits the whole goat, ground ring, rising pillars, ribbons and flare inside the camera at **each size tier** (including during orbit/zoom). The stage gives GIGGA several seconds to show the flare settling into its persistent quiet aura. Tier replay and next-tier buttons allow paused art QA. The **08 COMBO POP TEXT** preview remains selectable with its supplied reference, looping x2 → x3 → x4!. The **07 launch pad burst** is still selectable: lit
+sync without a height feedback loop. The selectable **09 GIGGA GROWTH PURPLE AURA** loops Kid → Billy → Big → GIGGA on the existing goat by default, with a reduced WebP copy of the supplied panel displayed beside the 16:9 Three.js viewport. A pure `lab/growthCamera.ts` helper fits the whole goat, ground ring, rising pillars, ribbons and flare inside the camera at **each size tier** (including during orbit/zoom). The stage gives GIGGA several seconds to show the flare settling into its persistent quiet aura. Tier replay and next-tier buttons allow paused art QA. The **08 COMBO POP TEXT** preview remains selectable with its supplied reference, looping x2 → x3 → x4!. The **07 launch pad burst** is still selectable: lit
 chevrons, spiky gold fountain, an airborne in-repo goat and sweeping
 gold flight trails. Its reference is cropped from the **lower-right
 panel of the existing sheet**, with no new image asset required.
@@ -535,3 +535,74 @@ The viewport sizing helper still has headless Vitest coverage in
 - **Scope boundary:** only the independent VFX module, its pure math/tests,
   VFX barrel and production lab were changed. No other game lane, goat
   character source, physics size/timing or main scene wiring was altered.
+
+
+## Coin Pickup Sparkle · call from gameplay (panel 10)
+
+```ts
+import { createCoinPickupSparkle } from '../vfx';
+
+const pickups = createCoinPickupSparkle({ capacity: 6 });
+scene.add(pickups.group);
+
+// The pickup's world position (+Y up). Optional target is a Three
+// Object3D whose *world origin* is at the goat's chest/head pickup anchor.
+pickups.emit(coinWorldPosition, goatChestAnchor);
+pickups.emit(coinWorldPosition); // also works without a target
+pickups.update(dt); // elapsed seconds once per frame
+pickups.clear();    // optional pooled reuse
+pickups.dispose();  // scene teardown
+```
+
+`position` accepts `THREE.Vector3` or plain `{x,y,z}`; all coordinates must
+be finite. The optional target must be an `Object3D` (e.g. a goat-local
+chest anchor) and is read with `getWorldPosition` each update, so it can
+move while the coin flies. The effect **never** reparents, scales, or otherwise
+mutates the target or the goat. Without a target, the coin hops slightly
+forward and upward before bursting in place. Invalid time deltas (negative or
+non-finite) are rejected, and update units are always **seconds**.
+
+At trigger, a thick beveled orange/gold Cud Coin with a paired curling
+hoof/horn emblem pops to size and spins. A two-layer angled gold/ivory ring
+swooshes around it during the hop toward the goat. The coin then shrinks
+away into **12** asymmetrically arranged four-point white-hot gold sparkles:
+large bright points, tiny glints, staggered appearances, scale twinkles and
+a smooth fade. The entire sequence lasts `COIN_PICKUP_SECONDS = 1.32`
+seconds, with separate readable pop, flight/orbit and starburst phases.
+The lab's **10** preview now loops this in the *centered 16:9 viewport*
+beside a WebP reduction of the supplied target panel, with Replay and
+Show sparkle peak buttons for paused art QA. All **01–09** previews remain
+selectable unchanged.
+
+All coin geometry, dual-face hoof emblem tubes, two orbit toruses, and the
+96×96 procedural `DataTexture` star art are **shared** across the fixed pool.
+Per-slot orbit and sprite materials permit overlapping independent fades.
+`update(dt)` only changes cached Three transforms/material opacities and
+caller-owned mutable math frames, with **zero new objects, arrays, vectors,
+geometries, or textures per update**. Live target positions are read into
+preallocated vectors. Oldest active bursts are recycled on overflow;
+`clear` retains assets, and `dispose` is idempotent. This is a standalone,
+headless-testable visual effect and owns no renderer, canvas, event handlers,
+physics, coin rewards, scoring or gameplay behavior.
+
+`coinPickupMath.ts` exports `makeCoinPickupCue`,
+`makeCoinPickupFrame` and `sampleCoinPickup` for deterministic absolute-age
+sampling. `coinPickup.test.ts` checks stage order, validation, movement
+toward a live target without mutation, split/single-frame equivalence,
+resource sharing, overflow recycling, reuse and disposal.
+
+### Coin Pickup Sparkle · art-direction self-review (10)
+
+- **Matches:** raised orange-gold rim, thick warm copper coin edge,
+  readable paired curling golden hoof/horn stamp, a looping warm yellow
+  ring with a narrow ivory highlight, four cardinal points per star,
+  white-hot star centers with saturated gold edges, intentionally uneven
+  big/small glint placement, delayed twinkles and a clean fade.
+- **Intentional approximation:** the supplied storyboard is painterly 2D
+  artwork with soft brush highlights and staged separated poses; the lab
+  shows those stages in time using low-poly toon meshes, smooth tube
+  strokes and one procedural texture. The goat is visible as the target of
+  the pickup animation even though the panel shows the coin alone.
+- **Scope:** exclusively `src/vfx/` effect, math/tests, public barrel,
+  reference-image reduction and art-review lab. No game/core, goat-model,
+  physics or any other lane was edited.
