@@ -38,6 +38,8 @@ export interface SurfaceMarker {
 }
 export interface FallingPiece { body: RigidBody; type: PieceType; born: number }
 export interface GameOptions { seed?: string | number; resolution?: number; progress?: GameProgress }
+/** Read-only presentation cue for an ability accepted by the fixed-tick simulation. */
+export interface GoatVisualCue { goatId: string; action: 'headbutt' | 'bleat' | 'glide' }
 
 /**
  * The entire game simulation, including collision, chaos, and scoring, is headless.
@@ -65,6 +67,7 @@ export class Game {
   buildPiece: PieceType = 'floor';
   respawns = 0;
   private readonly off: Array<() => void> = [];
+  private readonly visualCueListeners = new Set<(cue: GoatVisualCue) => void>();
   private intent: PlayerIntent = {};
   private pendingSize: GoatSize | null = null;
   private drownSeconds = 0;
@@ -467,6 +470,17 @@ export class Game {
     return !!hit && hit.normal.y < .46 && hit.normal.x * wish.x + hit.normal.z * wish.z < -.45;
   }
 
+  /** Cosmetic events come from executed commands, never unaccepted input edges. */
+  onVisualCue(listener: (cue: GoatVisualCue) => void): () => void {
+    this.visualCueListeners.add(listener);
+    return () => { this.visualCueListeners.delete(listener); };
+  }
+
+  private sendVisualCue(goat: GoatRagdoll, action: GoatVisualCue['action']): void {
+    const cue = { goatId: goat.id, action };
+    for (const listener of this.visualCueListeners) listener(cue);
+  }
+
   private executeCommands(commands: AbilityCommands, g = this.goat, player = true): void {
     if (commands.jump) {
       g.locomotion.requestJump();
@@ -476,6 +490,7 @@ export class Game {
       }
     }
     if (commands.headbutt) {
+      this.sendVisualCue(g, 'headbutt');
       if (player) {
         this.lastActionTime = this.physics.time;
         this.gigs.noteAbility({ type: 'headbutt' });
@@ -546,6 +561,7 @@ export class Game {
       } else g.interactions.setReel(0);
     } else g.interactions.setReel(0);
     if (commands.bleat) {
+      this.sendVisualCue(g, 'bleat');
       if (player) {
         this.lastActionTime = this.physics.time;
         this.gigs.noteAbility({ type: 'bleat' });
@@ -557,6 +573,7 @@ export class Game {
       if (player) this.gigs.noteAbility({ type: 'flop' });
     }
     if (commands.setGlide && g.torso.linvel().y < -3.2) {
+      this.sendVisualCue(g, 'glide');
       const slow = Math.min(12, -3.2 - g.torso.linvel().y);
       g.torso.applyImpulse(V(0, slow * g.mass * .5, 0), true);
     }
@@ -682,6 +699,7 @@ export class Game {
     if (this.disposed) return;
     this.disposed = true;
     for (const unsub of this.off.splice(0)) unsub();
+    this.visualCueListeners.clear();
     this.party.dispose();
     this.gigs.dispose();
     this.goat.dispose();
