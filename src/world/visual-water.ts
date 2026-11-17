@@ -2,6 +2,66 @@ import * as THREE from 'three';
 import type { IslandData, RiverPoint } from './types';
 import { gridSample } from './terrain';
 
+/**
+ * Retain the former 96×96 sea grid around the island, then fan its square
+ * perimeter into three sparse circular rings. Only the distant edge changes:
+ * shoreline waves keep their original vertex spacing and the last ring has
+ * no square silhouette from elevated cameras.
+ */
+function circularSeaGeometry(islandSize: number): THREE.BufferGeometry {
+  const divisions = 96;
+  const half = islandSize * 2.15 / 2;
+  const positions: number[] = [], uvs: number[] = [], indices: number[] = [];
+  const add = (x: number, y: number): number => {
+    const index = positions.length / 3;
+    positions.push(x, y, 0); // local XY; the sea rotates onto world XZ
+    uvs.push(x / (2 * half) + 0.5, y / (2 * half) + 0.5);
+    return index;
+  };
+  for (let j = 0; j <= divisions; j++) {
+    for (let i = 0; i <= divisions; i++) {
+      add(-half + i * 2 * half / divisions, -half + j * 2 * half / divisions);
+    }
+  }
+  const stride = divisions + 1;
+  for (let j = 0; j < divisions; j++) {
+    for (let i = 0; i < divisions; i++) {
+      const a = j * stride + i, b = a + 1, c = a + stride + 1, d = a + stride;
+      indices.push(a, b, c, a, c, d);
+    }
+  }
+
+  // Traverse the square counter-clockwise; each ring reuses the same angles
+  // so the stitched outer triangles have no gaps or T-junctions.
+  const boundary: number[] = [];
+  for (let i = 0; i < divisions; i++) boundary.push(i);
+  for (let j = 0; j < divisions; j++) boundary.push(j * stride + divisions);
+  for (let i = divisions; i > 0; i--) boundary.push(divisions * stride + i);
+  for (let j = divisions; j > 0; j--) boundary.push(j * stride);
+  let inner = boundary;
+  for (const radius of [1.7, 2.7, 4].map(factor => factor * islandSize)) {
+    const outer = boundary.map(index => {
+      const x = positions[index * 3]!, y = positions[index * 3 + 1]!;
+      const scale = radius / Math.hypot(x, y);
+      return add(x * scale, y * scale);
+    });
+    for (let i = 0; i < inner.length; i++) {
+      const next = (i + 1) % inner.length;
+      indices.push(inner[i]!, outer[i]!, outer[next]!,
+        inner[i]!, outer[next]!, inner[next]!);
+    }
+    inner = outer;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
 interface AnimatedUniforms {
   uTime: { value: number };
   uLevel: { value: number };
@@ -29,22 +89,28 @@ function seaMaterial(island: IslandData): { material: THREE.ShaderMaterial;
   };
   const material = new THREE.ShaderMaterial({
     uniforms: {
+      // ShaderMaterial does not inject fog uniforms automatically. Include the
+      // standard set so refreshFogUniforms works in real WebGL scenes.
+      ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
       ...uniforms,
       uTerrain: { value: atlas },
       uSize: { value: island.size },
-      uShallow: { value: new THREE.Color('#21A8C6') },
-      uDeep: { value: new THREE.Color('#0F669E') },
+      uShallow: { value: new THREE.Color(0x48c9c9) },
+      uDeep: { value: new THREE.Color(0x2a8fc0) },
     },
-    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: true,
     vertexShader: [
       'uniform float uTime;',
+      '#include <fog_pars_vertex>',
       'varying vec3 vWorld;',
       'void main() {',
       '  vec3 p = position;',
       '  p.z -= 0.15 * sin(position.x * 0.10 + uTime * 1.7)',
       '        + 0.11 * cos(position.y * 0.12 - uTime * 1.3);',
       '  vWorld = (modelMatrix * vec4(p, 1.0)).xyz;',
-      '  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);',
+      '  vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);',
+      '  gl_Position = projectionMatrix * mvPosition;',
+      '  #include <fog_vertex>',
       '}',
     ].join('\n'),
     fragmentShader: [
@@ -52,6 +118,7 @@ function seaMaterial(island: IslandData): { material: THREE.ShaderMaterial;
       'uniform float uSize, uLevel, uTime;',
       'uniform vec3 uShallow, uDeep;',
       'varying vec3 vWorld;',
+      '#include <fog_pars_fragment>',
       'void main() {',
       '  vec2 atlasUV = clamp(vWorld.xz / uSize + 0.5, 0.0, 1.0);',
       '  float ground = texture2D(uTerrain, atlasUV).r;',
@@ -69,6 +136,7 @@ function seaMaterial(island: IslandData): { material: THREE.ShaderMaterial;
       '  color = mix(color, vec3(0.88, 0.96, 0.92), coast * foam * 0.66);',
       '  float cover = smoothstep(-0.24, 0.48, uLevel - ground);',
       '  gl_FragColor = vec4(color, 0.88 * cover);',
+      '  #include <fog_fragment>',
       '}',
     ].join('\n'),
   });
@@ -168,7 +236,7 @@ function makeFalls(group: THREE.Group, material: THREE.Material,
 export function buildWaterVisuals(island: IslandData): WaterVisuals {
   const seaMat = seaMaterial(island);
   const sea = new THREE.Mesh(
-    new THREE.PlaneGeometry(island.size * 2.15, island.size * 2.15, 96, 96),
+    circularSeaGeometry(island.size),
     seaMat.material,
   );
   sea.rotation.x = -Math.PI / 2;
