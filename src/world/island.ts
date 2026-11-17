@@ -11,6 +11,7 @@ import { populateProps } from './layouts';
 import { dressIsland } from './dressing';
 import { makeRelics, makeSpawns } from './collectibles';
 import { makeColliderDescriptors } from './colliders';
+import { sculptDamOutflow } from './dam-landscape';
 
 interface SiteDefinition {
   id: PoiId; name: string; x: number; z: number; radius: number;
@@ -86,9 +87,18 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
     { x: -27, z: -141, level: 14, width: 7 },
     { x: -18, z: -174, level: 12, width: 9 },
     { x: -31, z: -198, level: 9, width: 11 },
-    { x: -69, z: -191, level: 6.8, width: 9 },
-    { x: -113, z: -161, level: 4.8, width: 11 },
-    { x: -157, z: -183, level: 2.9, width: 13 },
+    // The spillway now opens into a broad pool and flows toward the camera;
+    // the old westward diagonal from the wall crossed dry grass.
+    { x: -27, z: -188, level: 6.2, width: 39 },
+    { x: -28, z: -174, level: 5.8, width: 46 },
+    { x: -32, z: -161, level: 5.2, width: 34 },
+    { x: -37, z: -145, level: 4.6, width: 25 },
+    { x: -42, z: -127, level: 4.0, width: 21 },
+    { x: -44, z: -107, level: 3.5, width: 19 },
+    // It rejoins the forest river beyond the bookmark's foreground.
+    { x: -70, z: -126, level: 3.1, width: 16 },
+    { x: -113, z: -161, level: 2.9, width: 11 },
+    { x: -157, z: -183, level: 2.1, width: 13 },
     { x: -196, z: -214, level: 0.6, width: 16 },
     { x: -227, z: -243, level: -1, width: 20 },
   ].map(p => ({ x: p.x * scale, z: p.z * scale, level: p.level * scale, width: p.width * scale }));
@@ -104,6 +114,8 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
     spawns: [], relics: [], tideLevels: [],
   };
   carveWater(island, river, reservoir);
+  // Cut the wide four-fall plunge pool and raise its rocky lips in Rapier terrain.
+  sculptDamOutflow(island);
   for (const definition of SITES) {
     const x = (definition.x + (definition.id === 'mt-gigga' ? 0 : rng.range(-2.3, 2.3))) * scale;
     const z = (definition.z + (definition.id === 'mt-gigga' ? 0 : rng.range(-2.3, 2.3))) * scale;
