@@ -203,8 +203,8 @@ void factory.whenReady().then(() => {
 });
 
 function resize(): void {
-  const width = Math.max(1, stage.clientWidth);
-  const height = Math.max(1, stage.clientHeight);
+  const width = Math.max(1, stage!.clientWidth);
+  const height = Math.max(1, stage!.clientHeight);
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
