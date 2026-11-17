@@ -62,7 +62,8 @@ const COLORS: Partial<Record<PropKind, number>> = {
   ledge: 0x77b754, bridge: 0xb28f6a, bench: 0x8c714e, sign: 0xf6e3c2,
   flag: 0xf66e95, buoy: 0xf79a4e, platform: 0xc9b08c, silo: 0xe3ddc8,
   mailbox: 0xd84f3d, gnome: 0xf77c4f, trampoline: 0x7960d9,
-  bunting: 0xffd833, container: 0x5da4bd, cone: 0xff891e,
+  bunting: 0xffd833, 'site-banner': 0xf07f2c,
+  container: 0x5da4bd, cone: 0xff891e,
   awning: 0xf2777f, planter: 0xb67f5b, fountain: 0x9ac7cd,
   'ac-unit': 0xc5d1d4, 'water-tower': 0xb59c75, mushroom: 0xe67768,
   stump: 0x956a4c, lookout: 0x916d4c, 'control-house': 0xc9d8d0,
@@ -72,13 +73,15 @@ const COLORS: Partial<Record<PropKind, number>> = {
 };
 const authoredCraneYardKinds = new Set<PropKind>([
   'crane', 'crane-jib', 'crane-cab', 'crane-cable', 'red-girder',
+  'concrete-slab', 'concrete-column', 'yard-scaffold', 'safety-rail',
+  'chain-fence', 'pipe-stack', 'site-barrier', 'site-banner', 'bunting',
 ]);
 const foliage = new Set<PropKind>([
   'tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'mushroom',
   'gnome', 'ferris-wheel', 'lighthouse', 'bunting',
   'crane', 'concrete-slab', 'concrete-column', 'yard-scaffold', 'safety-rail',
   'chain-fence', 'crane-jib', 'crane-cab', 'crane-cable', 'red-girder',
-  'pipe-stack', 'site-barrier',
+  'pipe-stack', 'site-barrier', 'site-banner',
 ]);
 
 /** Build one reusable, genuinely compound silhouette per prop kind. */
@@ -535,7 +538,7 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
       append(triangle, 0, 0, 0, 1, 1, 1,
         [0xff7794, 0xffd364, 0x5ed3c7, 0x7f9ee7][i % 4]);
     }
-  } else if (kind === 'awning' || kind === 'flag') {
+  } else if (kind === 'awning' || kind === 'site-banner' || kind === 'flag') {
     if (kind === 'flag') cyl(-0.43, 0, 0, 0.1, 1, 0.1, 0xddd6b8);
     box(kind === 'flag' ? 0.08 : 0, 0.10, 0, 0.96, 0.14, 0.96);
     for (let i = 0; i < 5; i++) box(-0.40 + i * 0.20, -0.07, 0.15,
@@ -801,7 +804,11 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
         }
         try {
           const libraryGeometry = await pending;
-          const distantGeometry = await simplifiedWorldGeometry(libraryGeometry);
+          // Authored Crane Yard lattice and painted container detail must remain
+          // intact beyond the detailed-distance threshold.
+          const distantGeometry = authoredCraneYardKinds.has(job.kind) ||
+            job.kind === 'container'
+            ? libraryGeometry : await simplifiedWorldGeometry(libraryGeometry);
           if (disposed) {
             if (distantGeometry !== libraryGeometry) distantGeometry.dispose();
             libraryGeometry.dispose();
@@ -827,13 +834,14 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
             });
           }
           job.mesh.geometry = libraryGeometry;
-          // Daisies and crane-yard models keep their authored paint exactly;
-          // other props retain mild per-descriptor colour variation.
+          // Authored Crane Yard paint and daisies stay untinted. Containers
+          // have near-white GLB bodies, so their descriptor paint is full strength.
           for (let i = 0; i < job.entries.length; i++) {
             const color = job.entries[i]!.color;
             job.mesh.setColorAt(i,
               job.kind === 'grass-tuft' || authoredCraneYardKinds.has(job.kind) ||
-                color === undefined ? white : tint.setHex(color).lerp(white, 0.82));
+                color === undefined ? white : job.kind === 'container'
+                  ? tint.setHex(color) : tint.setHex(color).lerp(white, 0.82));
           }
           if (job.mesh.instanceColor) job.mesh.instanceColor.needsUpdate = true;
           if (sways(job.kind)) {

@@ -73,7 +73,7 @@ describe('Billy Isle hi-fi environment map', () => {
     const kind = new Set(island.props.map(prop => prop.kind));
     for (const required of ['silo', 'gnome', 'mailbox', 'ferris-wheel', 'bunting', 'cone',
       'container', 'fountain', 'ac-unit', 'water-tower', 'mushroom', 'lookout',
-      'shipwreck', 'cave-mouth', 'grass-tuft', 'bush']) {
+      'shipwreck', 'cave-mouth', 'grass-tuft', 'bush', 'site-banner']) {
       expect(kind.has(required as never), required).toBe(true);
     }
   });

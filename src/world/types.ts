@@ -31,7 +31,7 @@ export type PropKind =
   | 'stepping-stone' | 'chimney' | 'signboard'
   | 'concrete-slab' | 'concrete-column' | 'yard-scaffold' | 'safety-rail'
   | 'chain-fence' | 'crane-jib' | 'crane-cab' | 'crane-cable'
-  | 'red-girder' | 'pipe-stack' | 'site-barrier';
+  | 'red-girder' | 'pipe-stack' | 'site-barrier' | 'site-banner';
 
 export type BodyDescriptor =
   | { type: 'static' }
