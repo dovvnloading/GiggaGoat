@@ -147,7 +147,7 @@ export function scrollDamWaterfallUVs(maps: readonly THREE.Texture[], seconds: n
   for (const texture of maps) texture.offset.y = offset;
 }
 
-/** A light, collider-aligned Dam until the authored model arrives (or if it fails). */
+/** A collider-aligned stand-in until the GLB loads (or if it fails). */
 function buildProceduralDamFallback(island: IslandData): THREE.Group {
   const fallback = new THREE.Group();
   fallback.name = 'the-dam-procedural-fallback';
@@ -155,33 +155,51 @@ function buildProceduralDamFallback(island: IslandData): THREE.Group {
   const stone = new THREE.MeshToonMaterial({ color: 0xb9c3c7 });
   const deck = new THREE.MeshToonMaterial({ color: 0xd6d6c9 });
   const house = new THREE.MeshToonMaterial({ color: 0xf3eee0 });
+  const stoneParts: THREE.BufferGeometry[] = [];
+  const deckParts: THREE.BufferGeometry[] = [];
+  const houseParts: THREE.BufferGeometry[] = [];
+
   for (const collider of makeDamColliderDescriptors(island)) {
-    const material = collider.id === 'the-dam-control-house' ? house :
-      collider.id === 'the-dam-deck' ? deck : stone;
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(
+    const geometry = new THREE.BoxGeometry(
       collider.size.x / scale, collider.size.y / scale, collider.size.z / scale,
-    ), material);
-    mesh.name = collider.id + '-fallback';
-    mesh.position.set(
+    );
+    geometry.translate(
       (collider.transform.position.x - position.x) / scale,
       (collider.transform.position.y - position.y) / scale,
       (collider.transform.position.z - position.z) / scale,
     );
-    mesh.castShadow = true;
+    const parts = collider.id === 'the-dam-control-house' ? houseParts :
+      collider.id === 'the-dam-deck' ? deckParts : stoneParts;
+    parts.push(geometry);
+  }
+
+  function addBatch(name: string, material: THREE.Material,
+    parts: THREE.BufferGeometry[], castShadow: boolean): void {
+    const geometry = mergeGeometries(parts, false);
+    parts.forEach(part => part.dispose());
+    if (!geometry) throw new Error('Could not batch Dam fallback: ' + name);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = name;
+    mesh.castShadow = castShadow;
     mesh.receiveShadow = true;
     fallback.add(mesh);
   }
+  // One draw call per solid material, not a shadow caster for every ladder rung.
+  addBatch('dam-fallback-stone', stone, stoneParts, true);
+  addBatch('dam-fallback-deck', deck, deckParts, true);
+  addBatch('dam-fallback-house', house, houseParts, true);
+
   const water = new THREE.MeshToonMaterial({
     color: 0x40c9e6, transparent: true, opacity: 0.88,
     side: THREE.DoubleSide, depthWrite: false,
   });
-  for (const x of [-7, 3, 13, 23]) {
-    const fall = new THREE.Mesh(new THREE.PlaneGeometry(7, 16), water);
-    fall.name = 'dam-fallback-waterfall';
-    fall.position.set(x, 9.5, 4.2);
-    fall.rotation.x = -0.16;
-    fallback.add(fall);
-  }
+  const falls = [-7, 3, 13, 23].map(x => {
+    const geometry = new THREE.PlaneGeometry(7, 16);
+    geometry.rotateX(-0.16);
+    geometry.translate(x, 9.5, 4.2);
+    return geometry;
+  });
+  addBatch('dam-fallback-spillways', water, falls, false);
   return fallback;
 }
 

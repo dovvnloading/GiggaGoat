@@ -86,12 +86,15 @@ describe('The Dam hero POI', () => {
     try {
       const fallback = visuals.group.getObjectByName('the-dam-procedural-fallback');
       expect(fallback).toBeInstanceOf(THREE.Group);
-      expect(fallback?.getObjectByName('the-dam-wall-fallback'))
+      expect(fallback?.getObjectByName('dam-fallback-stone'))
         .toBeInstanceOf(THREE.Mesh);
-      expect(fallback?.getObjectByName('the-dam-control-house-fallback'))
+      expect(fallback?.getObjectByName('dam-fallback-house'))
         .toBeInstanceOf(THREE.Mesh);
-      expect(fallback?.children.filter(child => child.name === 'dam-fallback-waterfall'))
-        .toHaveLength(4);
+      expect(fallback?.getObjectByName('dam-fallback-spillways'))
+        .toBeInstanceOf(THREE.Mesh);
+      expect(fallback?.children).toHaveLength(4);
+      expect(fallback?.children.filter(child => (child as THREE.Mesh).castShadow))
+        .toHaveLength(3);
     } finally {
       visuals.dispose();
     }
