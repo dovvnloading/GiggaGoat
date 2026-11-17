@@ -213,8 +213,8 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
     const a = rng.range(0, 2 * Math.PI), r = rng.range(13, 40);
     const p = at(cape, Math.cos(a) * r, Math.sin(a) * r);
     if (gridSample(island, p.x, p.z) < 0.4 * scale ||
-        Math.hypot(p.x - (byId.get(cape)!.center.x - 19 * scale),
-          p.z - (byId.get(cape)!.center.z + 13 * scale)) < 8 * scale) continue;
+        Math.hypot(p.x - (byId.get(cape)!.center.x + 2 * scale),
+          p.z - (byId.get(cape)!.center.z + 23 * scale)) < 8 * scale) continue;
     add(cape, 'rock', p.x, p.z,
       { x: rng.range(2, 7) * scale, y: rng.range(2, 5) * scale, z: rng.range(2, 6) * scale },
       { yaw: a, shape: 'convex', lickable: false });
