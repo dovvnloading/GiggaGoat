@@ -72,3 +72,12 @@ export {
   type ComboPopTier, type ComboPopCue, type ComboPopFrame,
 } from './comboPopMath';
 export { COMBO_POP_PALETTES, type ComboPopPalette } from './comboPopArt';
+
+export {
+  GiggaGrowthPurpleAura, createGiggaGrowthPurpleAura, type GiggaGrowthPurpleAuraOptions,
+} from './GiggaGrowthPurpleAura';
+export {
+  GROWTH_TIER_SCALES, GROWTH_BURST_SECONDS, assertGrowthTier,
+  makeGrowthAuraFrame, sampleGrowthBurst, sampleGiggaHold,
+  type GrowthTier, type GrowthAuraFrame,
+} from './growthAuraMath';
