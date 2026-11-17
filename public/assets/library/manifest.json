@@ -33555,5 +33555,23 @@
   "license": "CC0",
   "credit": "Gigga-Goat (original, built in Blender)",
   "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-props/hay-bale.glb",
+  "name": "Hoofington hay-bale",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-props/wooden-ramp.glb",
+  "name": "Hoofington wooden-ramp",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
  }
 ]
