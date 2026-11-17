@@ -203,10 +203,12 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   // OLD LIGHTHOUSE: a rocky cape with a climbable beacon and cliffside secrets.
   const cape: PoiId = 'old-lighthouse';
   site(cape, 'lighthouse', -2, 1, 9, 29, 9, { shape: 'cylinder', color: 0xf5f0db });
+  // Beacon Bleat contracts require this original house descriptor, even
+  // though the hero cottage is the more prominent painted building.
+  site(cape, 'house', 15, -10, 9, 7, 9, { color: 0xf4e6d4 });
   site(cape, 'cottage', 16, 9, 10, 8, 9,
     { yaw: -0.16, color: 0xf8ebd6 });
-  site(cape, 'ledge', -13, 15, 5, 1.4, 6,
-    { yaw: -0.3, color: 0xa5a6a9 });
+  site(cape, 'platform', -19, -9, 7, 1, 6, { lift: 4 });
   for (let i = 0; i < 20; i++) {
     const a = rng.range(0, 2 * Math.PI), r = rng.range(13, 40);
     const p = at(cape, Math.cos(a) * r, Math.sin(a) * r);
