@@ -1,7 +1,7 @@
 import type { RigidBody, ColliderDesc } from '@dimforge/rapier3d-compat';
 import {
-  PhysicsWorld, GoatRagdoll, RAPIER, V, forward, add, mul, collisionGroups,
-  type Vec3, type GoatSize, type PhysicsEvent,
+  PhysicsWorld, GoatRagdoll, RAPIER, V, forward, add, sub, mul, rotate, collisionGroups,
+  type Vec3, type Quat, type GoatSize, type PhysicsEvent,
 } from '../physics';
 import {
   generateIsland, buildRapierColliders, heightAt, zoneAt,
@@ -20,6 +20,14 @@ import { PartySession } from './PartySession';
 import type { GameProgress } from './Persistence';
 
 export const FIXED_DT = 1 / 60;
+
+/** Compose rotations for a whole-ragdoll rescue without modifying joint angles. */
+const multiplyRotation = (a: Quat, b: Quat): Quat => ({
+  x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+  y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+  z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+  w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+});
 export interface PlayerIntent extends GoatIntent {
   moveX?: number;
   moveZ?: number;
@@ -667,16 +675,29 @@ export class Game {
   }
 
   /** Reposition a whole linked ragdoll without destroying its joints. Also used by rescue. */
-  teleport(position: Vec3): void {
+  teleport(position: Vec3, uprightHeading?: number): void {
     this.goat.interactions.detachTongue('replaced');
     const current = this.goat.torso.translation();
     const target = V(position.x, position.y + .92 * this.goat.size, position.z);
-    const delta = V(target.x - current.x, target.y - current.y, target.z - current.z);
+    // Ordinary gig teleports preserve the ragdoll's pose. Respawn instead
+    // rotates the complete connected assembly back upright about its torso,
+    // preserving all six joints and their current relative rotations.
+    const q = this.goat.torso.rotation();
+    const wanted = uprightHeading === undefined ? null : {
+      x: 0, y: Math.sin(uprightHeading / 2), z: 0, w: Math.cos(uprightHeading / 2),
+    };
+    const rotation = wanted && multiplyRotation(wanted,
+      { x: -q.x, y: -q.y, z: -q.z, w: q.w });
     for (const body of this.goat.bodies) {
-      const old = body.translation();
-      body.setTranslation(add(old, delta), true);
+      const local = sub(body.translation(), current);
+      body.setTranslation(add(target, rotation ? rotate(rotation, local) : local), true);
+      if (rotation) body.setRotation(multiplyRotation(rotation, body.rotation()), true);
       body.setLinvel(V(), true);
       body.setAngvel(V(), true);
+    }
+    if (uprightHeading !== undefined) {
+      this.goat.locomotion.heading = uprightHeading;
+      this.goat.setPose('stand');
     }
     this.drownSeconds = 0;
     this.climbMetres = 0;
@@ -688,7 +709,8 @@ export class Game {
     const spawn = this.island.spawns[0]!.position;
     // A rescue is also a physical spawn; don't reapply the world lane's
     // clearance height on top of the ragdoll's own standing torso offset.
-    this.teleport(V(spawn.x, heightAt(this.island, spawn.x, spawn.z), spawn.z));
+    this.teleport(V(spawn.x, heightAt(this.island, spawn.x, spawn.z), spawn.z),
+      this.island.spawns[0]!.heading);
     this.respawns++;
   }
 
