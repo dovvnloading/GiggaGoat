@@ -1,5 +1,5 @@
 import type {
-  Biome, IslandData, IslandOptions, PlotDescriptor, PoiDescriptor, PoiId, RiverPoint, Vec2,
+  Biome, IslandData, IslandOptions, PlotDescriptor, PoiDescriptor, PoiId, PropDescriptor, RiverPoint, Vec2,
 } from './types';
 import { BIOMES, POI_IDS } from './types';
 import { hashString, SeededRandom } from './random';
@@ -35,6 +35,34 @@ const SITES: SiteDefinition[] = [
   { id: 'old-lighthouse', name: 'Old Lighthouse', x: -259, z: -18, radius: 26, plot: 12,
     biome: 'cliff', flat: false, description: 'Detached rocky islet, rope bridge and sea cave' },
 ];
+
+/**
+ * A town plot is not a building foundation. The farmhouse and barn sit outside
+ * the original 31-m village pad, so terrain used to bury their lower facades.
+ * Flatten the *actual rotated footprint*, feather its surround, and keep the
+ * top of each prop's existing collider at its authored height. No physics
+ * primitives or external lanes need to be changed.
+ */
+function gradeBuildingFootprints(island: IslandData, props: readonly PropDescriptor[]): void {
+  const buildings = new Set(['barn', 'house', 'shop', 'booth', 'cottage', 'control-house']);
+  const scale = island.size / 600;
+  for (const prop of props) {
+    if (!buildings.has(prop.kind) || prop.body.type !== 'static') continue;
+    // A bounding circle covers every corner even when the facade is rotated.
+    const radius = Math.hypot(prop.size.x, prop.size.z) * 0.5 + 5 * scale;
+    stampPlot(island, {
+      poiId: prop.poiId ?? 'hoofington',
+      center: { x: prop.transform.position.x, z: prop.transform.position.z },
+      elevation: prop.transform.position.y - prop.size.y * 0.5,
+      radius, flat: true,
+    });
+  }
+  for (const prop of props) {
+    if (!buildings.has(prop.kind) || prop.body.type !== 'static') continue;
+    const pos = prop.transform.position;
+    pos.y = gridSample(island, pos.x, pos.z) + prop.size.y * 0.5;
+  }
+}
 
 export function generateIsland(options: IslandOptions = {}): IslandData {
   const seed = options.seed ?? 'billy-isle';
@@ -91,8 +119,12 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   }
   island.roads = makeRoads(island, rng);
   island.props = populateProps(island, rng);
-  // Dressing needs access to the already-authored buildings for roof equipment.
-  island.props.push(...dressIsland(island, rng), ...makeBridgeDecks(island));
+  // Grade authored foundations first so nearby street furniture is placed
+  // on the final terrain, not hovering at pre-grade elevations.
+  gradeBuildingFootprints(island, island.props);
+  const dressed = dressIsland(island, rng);
+  gradeBuildingFootprints(island, dressed);
+  island.props.push(...dressed, ...makeBridgeDecks(island));
   assignBiomes(island);
   island.spawns = makeSpawns(island);
   island.relics = makeRelics(island, rng);

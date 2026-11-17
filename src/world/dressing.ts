@@ -64,6 +64,12 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   at(farm, 'cottage', 29, -2, 9, 8, 8,
     { yaw: -Math.PI / 2, color: 0xc0d8ef });
   at(farm, 'trampoline', 36, 34, 8, 1.1, 7, { color: 0x7960d9 });
+  // Street-level lamps frame the narrow roadway but do not encroach on it.
+  // Their integral pennants also give Hoofington the orange farm banners.
+  for (const side of [-1, 1]) for (const z of [-30, 0, 30]) {
+    at(farm, 'lamp', side * 9.8, z, 0.72, 7.8, 0.72,
+      { shape: 'cylinder', yaw: side < 0 ? 0 : Math.PI });
+  }
   for (let i = 0; i < 8; i++) {
     const side = i % 2 === 0 ? -1 : 1;
     const z = -26 + Math.floor(i / 2) * 17.5;
