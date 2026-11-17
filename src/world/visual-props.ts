@@ -366,7 +366,7 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
     }
   } else {
     box(0, 0, 0, 1, 1, 1);
-    if (kind === 'bridge' || kind === 'pier' || kind === 'dock') {
+    if (kind === 'bridge' || kind === 'dock') {
       for (let i = 0; i < 5; i++) box(-0.39 + i * 0.2, 0.53, 0,
         0.025, 0.075, 1, 0x896348);
     }
