@@ -332,6 +332,56 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       { shape: 'cylinder', color: 0x976744 });
   }
 
+  // The authored log bridge needs an unobstructed walkable corridor. Re-home
+  // only random logs/rocks and forest-detail stones/fungi which overlap its
+  // footprint, without removing any prop, changing its dimensions or using RNG.
+  // The crane/pier/other-district descriptors remain completely untouched.
+  const bridge = result.find(p => p.poiId === forest && p.kind === 'log-bridge')!;
+  const forestProps = [...island.props, ...result].filter(p =>
+    p.poiId === forest && p !== bridge && p.collidable);
+  const aabbHalf = (p: PropDescriptor): { x: number; z: number } => {
+    const c = Math.abs(Math.cos(p.transform.rotationY));
+    const s = Math.abs(Math.sin(p.transform.rotationY));
+    return { x: (c * p.size.x + s * p.size.z) / 2,
+      z: (s * p.size.x + c * p.size.z) / 2 };
+  };
+  const overlaps = (a: PropDescriptor, b: PropDescriptor): boolean => {
+    const aa = aabbHalf(a), bb = aabbHalf(b);
+    return Math.abs(a.transform.position.x - b.transform.position.x) <
+        aa.x + bb.x - 1e-5 &&
+      Math.abs(a.transform.position.z - b.transform.position.z) <
+        aa.z + bb.z - 1e-5;
+  };
+  for (const prop of forestProps) {
+    if (!overlaps(bridge, prop)) continue;
+    const original = { ...prop.transform.position };
+    let cleared = false;
+    // Slide along the river (perpendicular to the bridge), alternating banks.
+    // Require dry terrain and another empty footprint for each relocated prop.
+    for (let step = 1; step <= 48 && !cleared; step++) {
+      for (const side of [1, -1]) {
+        const offset = side * step * 2 * scale;
+        const x = original.x + directionX / length * offset;
+        const z = original.z + directionZ / length * offset;
+        const h = gridSample(island, x, z);
+        if (h <= crossing.level + 0.3 * scale) continue;
+        prop.transform.position.x = x;
+        prop.transform.position.z = z;
+        if (overlaps(bridge, prop) ||
+          forestProps.some(other => other !== prop && overlaps(prop, other))) continue;
+        prop.transform.position.y = original.y + h -
+          gridSample(island, original.x, original.z);
+        cleared = true;
+        break;
+      }
+    }
+    if (!cleared) {
+      prop.transform.position.x = original.x;
+      prop.transform.position.z = original.z;
+      throw new Error('No clear bank location for ' + prop.id + ' beside log bridge');
+    }
+  }
+
   // The hero GLB handles the Dam itself. Keep its landscaped riverbanks
   // physically meaningful: low wildflowers, bushes, grass and climbable
   // stones use the same collidable prop descriptors as other districts.
