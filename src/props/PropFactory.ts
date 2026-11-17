@@ -94,6 +94,8 @@ export class PropFactory {
   private readonly geometries = new Set<THREE.BufferGeometry>();
   private readonly materials = new Set<THREE.Material>();
   private readonly colors = new Map<ColorName, THREE.MeshToonMaterial>();
+  private readonly geometryCache = new Map<string, THREE.BufferGeometry>();
+  private readonly convertedMaterials = new WeakMap<THREE.Material, THREE.Material>();
   private disposed = false;
 
   constructor(options: PropFactoryOptions = {}) {
@@ -112,6 +114,16 @@ export class PropFactory {
     return mat;
   }
 
+  private cachedGeometry(key: string, create: () => THREE.BufferGeometry): THREE.BufferGeometry {
+    let geometry = this.geometryCache.get(key);
+    if (!geometry) {
+      geometry = create();
+      this.geometryCache.set(key, geometry);
+      this.geometries.add(geometry);
+    }
+    return geometry;
+  }
+
   private addMesh(parent: THREE.Object3D, geometry: THREE.BufferGeometry,
     color: ColorName, x = 0, y = 0, z = 0): THREE.Mesh {
     this.geometries.add(geometry);
@@ -125,13 +137,16 @@ export class PropFactory {
 
   private box(parent: THREE.Object3D, s: Size3, color: ColorName,
     x = 0, y = 0, z = 0): THREE.Mesh {
-    return this.addMesh(parent, new THREE.BoxGeometry(s.x, s.y, s.z), color, x, y, z);
+    return this.addMesh(parent,
+      this.cachedGeometry(`box:${s.x}:${s.y}:${s.z}`,
+        () => new THREE.BoxGeometry(s.x, s.y, s.z)), color, x, y, z);
   }
 
   private cylinder(parent: THREE.Object3D, top: number, bottom: number, h: number,
     color: ColorName, x = 0, y = 0, z = 0, sides = 12): THREE.Mesh {
-    return this.addMesh(parent, new THREE.CylinderGeometry(top, bottom, h, sides),
-      color, x, y, z);
+    return this.addMesh(parent,
+      this.cachedGeometry(`cylinder:${top}:${bottom}:${h}:${sides}`,
+        () => new THREE.CylinderGeometry(top, bottom, h, sides)), color, x, y, z);
   }
 
   private root(name: string, size: Size3, groundAnchored = false): THREE.Group {
@@ -142,6 +157,7 @@ export class PropFactory {
     root.userData.nominalSize = { ...size };
     root.userData.groundAnchored = groundAnchored;
     root.userData.assetStatus = 'loading';
+    root.userData.assetRevision = 0;
     this.instances.add(root);
     return root;
   }
@@ -187,11 +203,15 @@ export class PropFactory {
       object.receiveShadow = true;
       const toon = (m: THREE.Material): THREE.Material => {
         if (!(m instanceof THREE.MeshStandardMaterial)) return m;
-        const mat = new THREE.MeshToonMaterial({
-          color: m.color, map: m.map, transparent: m.transparent,
-          opacity: m.opacity, alphaTest: m.alphaTest, side: m.side,
-        });
-        this.materials.add(mat);
+        let mat = this.convertedMaterials.get(m);
+        if (!mat) {
+          mat = new THREE.MeshToonMaterial({
+            color: m.color, map: m.map, transparent: m.transparent,
+            opacity: m.opacity, alphaTest: m.alphaTest, side: m.side,
+          });
+          this.materials.add(mat);
+          this.convertedMaterials.set(m, mat);
+        }
         return mat;
       };
       object.material = Array.isArray(object.material)
@@ -217,8 +237,10 @@ export class PropFactory {
         slot.add(model);
         slot.userData.assetPath = path;
         owner.userData.assetStatus = 'ready';
+        owner.userData.assetRevision = (owner.userData.assetRevision as number) + 1;
       } else if (owner.userData.assetStatus !== 'ready') {
         owner.userData.assetStatus = 'fallback';
+        owner.userData.assetRevision = (owner.userData.assetRevision as number) + 1;
       }
     });
   }
@@ -287,7 +309,8 @@ export class PropFactory {
     this.cylinder(root, 1.67, 1.67, .11, red ? 'red' : 'gold', 0, y + .465, 0, 36);
     this.cylinder(root, 1.50, 1.50, .017, red ? 'redLight' : 'orange',
       0, y + .525, 0, 36);
-    const rim = this.addMesh(root, new THREE.TorusGeometry(1.67, .085, 7, 32),
+    const rim = this.addMesh(root,
+      this.cachedGeometry('spring-rim', () => new THREE.TorusGeometry(1.67, .085, 7, 32)),
       'woodDark', 0, y + .47, 0);
     rim.rotation.x = Math.PI / 2;
     if (!red) {
@@ -345,14 +368,17 @@ export class PropFactory {
       }
     } else if (type === 'ramp') {
       // Same rising +Z plane and +/-0.9 Y as GameView's convex ramp collider.
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-        -1,-.9,-1, 1,-.9,-1, -1,-.9,1,
-        1,-.9,1, -1,.9,1, 1,.9,1,
-      ], 3));
-      geometry.setIndex([0,2,1, 1,2,3, 2,4,3, 3,4,5, 0,1,4, 1,5,4,
-        0,4,2, 1,3,5]);
-      geometry.computeVertexNormals();
+      const geometry = this.cachedGeometry('build-ramp', () => {
+        const shape = new THREE.BufferGeometry();
+        shape.setAttribute('position', new THREE.Float32BufferAttribute([
+          -1,-.9,-1, 1,-.9,-1, -1,-.9,1,
+          1,-.9,1, -1,.9,1, 1,.9,1,
+        ], 3));
+        shape.setIndex([0,2,1, 1,2,3, 2,4,3, 3,4,5, 0,1,4, 1,5,4,
+          0,4,2, 1,3,5]);
+        shape.computeVertexNormals();
+        return shape;
+      });
       this.addMesh(root, geometry, 'woodDark');
       const top = new THREE.Group();
       top.rotation.x = -Math.atan2(1.8, 2);
@@ -380,6 +406,13 @@ export class PropFactory {
     return root;
   }
 
+  /** Stop tracking a transient prop; pending GLB requests cannot remount it. */
+  release(root: THREE.Group): void {
+    if (!this.instances.delete(root)) return;
+    root.removeFromParent();
+    root.clear();
+  }
+
   /** Await all currently requested assets, useful for a lab or a headless test. */
   async whenReady(): Promise<void> {
     await Promise.all(this.cache.values());
@@ -404,6 +437,7 @@ export class PropFactory {
     for (const geo of this.geometries) geo.dispose();
     for (const mat of this.materials) mat.dispose();
     this.cache.clear();
+    this.geometryCache.clear();
     this.prototypes.clear();
     this.geometries.clear();
     this.materials.clear();

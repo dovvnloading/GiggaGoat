@@ -7,7 +7,7 @@ import { DEFAULT_SETTINGS, type GameSettings } from './Persistence';
 import { AdaptiveResolution } from './AdaptiveResolution';
 import { GRAPHICS_PRESETS, type GraphicsQuality } from './GraphicsQuality';
 import type { GameAudio } from './GameAudio';
-import { type BuildPiece, type PieceType } from '../gameplay';
+import { PropFactory, InstancedPropRenderer } from '../props';
 import { Game } from './Game';
 import { GameCharacters } from './GameCharacters';
 import { GameVfx } from './GameVfx';
@@ -16,6 +16,11 @@ import { CAMERA_TARGET_HEIGHT, SPAWN_CAMERA_PITCH, SPAWN_CAMERA_YAW_OFFSET,
   goatCameraLookAhead, goatCameraOffset, goatCameraVerticalOffset } from './GoatCamera';
 import { GameHud, type FramePerformance } from './GameHud';
 import { projectGoatScreenBox, visibleGoatBounds } from './HudOcclusion';
+import {
+  WORLD_LIBRARY_KINDS, createWorldLibraryProp, createBoardLibraryProp,
+  createSurfaceLibraryProp, createSpawnLibraryProp, createHeistHayLibraryProp,
+  createBuildLibraryProp, createDebrisLibraryProp,
+} from './GamePropMapping';
 
 interface PropVisual {
   mesh: THREE.InstancedMesh;
@@ -24,9 +29,12 @@ interface PropVisual {
   wasSleeping?: boolean;
   wasHidden?: boolean;
 }
-const MATERIALS: Record<PieceType, number> = {
-  floor: 0xf2c14f, wall: 0xe8aa57, ramp: 0xc9924f, 'launch-pad': 0xff891e,
-};
+interface LibraryWorldVisual {
+  root: THREE.Group;
+  prop: PropDescriptor;
+  wasSleeping?: boolean;
+  wasHidden?: boolean;
+}
 
 const lerpAlpha = (speed: number, dt: number): number => 1 - Math.exp(-speed * dt);
 const vec = (p: Vec3): THREE.Vector3 => new THREE.Vector3(p.x, p.y, p.z);
@@ -44,8 +52,8 @@ export class GameView {
   private readonly boardMarkers = new THREE.Group();
   private readonly gigMarkers = new THREE.Group();
   private readonly partyMarkers = new THREE.Group();
-  private readonly gigProps = new Map<string, THREE.Mesh>();
-  private readonly heistBales = new Map<string, THREE.Mesh>();
+  private readonly gigProps = new Map<string, THREE.Group>();
+  private readonly heistBales = new Map<string, THREE.Group>();
   private readonly textTextures = new Set<THREE.Texture>();
   private displayedGig = -1;
   private displayedMode: string | null = null;
@@ -53,14 +61,12 @@ export class GameView {
   paused = false;
   onFrame: (() => void) | null = null;
   onInteract: (() => boolean) | null = null;
+  private readonly propFactory = new PropFactory();
+  private readonly instancedProps = new InstancedPropRenderer(this.scene);
   private readonly propVisuals: PropVisual[] = [];
-  private readonly buildVisuals = new Map<number, THREE.Mesh>();
-  private readonly debrisVisuals = new Map<number, THREE.Mesh>();
-  private readonly markers = new THREE.Group();
-  private readonly debrisGeometry = new THREE.BoxGeometry(1, 1, 1);
-  private readonly debrisMaterial = new THREE.MeshToonMaterial({ color: 0xd6b36f });
-  private readonly buildGeometries = new Map<PieceType, THREE.BufferGeometry>();
-  private readonly buildMaterials = new Map<PieceType, THREE.MeshToonMaterial>();
+  private readonly libraryWorldProps: LibraryWorldVisual[] = [];
+  private readonly buildVisuals = new Map<number, THREE.Group>();
+  private readonly debrisVisuals = new Map<number, THREE.Group>();
   private readonly activeBuildIds = new Set<number>();
   private readonly activeDebrisIds = new Set<number>();
   private readonly changedPropMeshes = new Set<THREE.InstancedMesh>();
@@ -157,44 +163,59 @@ export class GameView {
     this.renderer.setAnimationLoop(time => { this.frame(time); });
   }
 
-  private mesh(parent: THREE.Object3D, geometry: THREE.BufferGeometry,
-    material: THREE.Material, p = new THREE.Vector3()): THREE.Mesh {
-    const item = new THREE.Mesh(geometry, material);
-    item.position.copy(p);
-    item.castShadow = true;
-    item.receiveShadow = true;
-    parent.add(item);
-    return item;
-  }
-
-  /** The world exports only a scene group, not individual dynamic prop mesh handles.
-   * Identify its existing instanced batches by kind and keep their transforms in sync. */
+  /** Keep only unsupported world batches on the procedural renderer.
+   * Disabling layer 0 is permanent even when world.updateCulling toggles visible. */
   private bindWorldProps(): void {
     const batches = new Map<string, PropDescriptor[]>();
     for (const prop of this.game.island.props) {
       const list = batches.get(prop.kind) ?? [];
       list.push(prop);
       batches.set(prop.kind, list);
+      const root = createWorldLibraryProp(this.propFactory, prop);
+      if (!root) continue;
+      root.position.copy(vec(prop.transform.position));
+      root.rotation.y = prop.transform.rotationY;
+      this.instancedProps.add(root);
+      if (this.game.colliders.bodies.has(prop.id)) {
+        this.libraryWorldProps.push({ root, prop });
+      }
     }
     this.world.group.traverse(object => {
       if (!(object instanceof THREE.InstancedMesh) || !object.name.startsWith('props-')) return;
       const kind = object.name.substring('props-'.length);
+      if (WORLD_LIBRARY_KINDS.has(kind as PropDescriptor['kind'])) {
+        object.layers.disable(0);
+        return;
+      }
       const entries = batches.get(kind);
       if (!entries) return;
-      // A shattered source is hidden by a zero-scale instance; any new material
-      // or tree geometry generated by the world lane is preserved untouched.
       for (let index = 0; index < Math.min(entries.length, object.count); index++) {
         const prop = entries[index]!;
         if (this.game.colliders.bodies.has(prop.id)) {
           this.propVisuals.push({ mesh: object, index, prop });
         }
       }
-      // Keep the world lane's precomputed batch bounds and frustum rejection.
       object.frustumCulled = true;
     });
   }
 
   private updateProps(alpha: number): void {
+    for (const visual of this.libraryWorldProps) {
+      const { root, prop } = visual;
+      const body = this.game.colliders.bodies.get(prop.id);
+      const live = body && this.game.physics.raw.getRigidBody(body.handle);
+      const hidden = !live || this.game.destroyedProps.has(prop.id);
+      if (hidden && visual.wasHidden) continue;
+      if (!hidden && live?.isSleeping() && visual.wasSleeping && !visual.wasHidden) continue;
+      visual.wasHidden = hidden;
+      visual.wasSleeping = !!live?.isSleeping();
+      root.visible = !hidden;
+      if (live && !hidden) {
+        const pose = this.game.physics.getInterpolatedTransform(live, alpha);
+        root.position.set(pose.translation.x, pose.translation.y, pose.translation.z);
+        root.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
+      }
+    }
     const changed = this.changedPropMeshes;
     changed.clear();
     for (const visual of this.propVisuals) {
@@ -203,7 +224,6 @@ export class GameView {
       const live = body && this.game.physics.raw.getRigidBody(body.handle);
       const hidden = !live || this.game.destroyedProps.has(prop.id);
       if (hidden && visual.wasHidden) continue;
-      // Rapier sleepers do not need an interpolated transform or GPU upload.
       if (!hidden && live?.isSleeping() && visual.wasSleeping && !visual.wasHidden) continue;
       visual.wasHidden = hidden;
       visual.wasSleeping = !!live?.isSleeping();
@@ -225,63 +245,37 @@ export class GameView {
   }
 
   private createSurfaceMarkers(): void {
-    this.scene.add(this.markers);
     for (const marker of this.game.surfaceMarkers) {
-      const group = new THREE.Group();
-      group.position.copy(vec(marker.position));
-      const color = marker.kind === 'trampoline' ? 0x7a4cff : 0xff891e;
-      const material = new THREE.MeshToonMaterial({ color, emissive: color, emissiveIntensity: .16 });
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(marker.halfExtents.x * 2,
-        .18, marker.halfExtents.z * 2), material);
-      frame.position.y = marker.halfExtents.y + .09;
-      frame.castShadow = true;
-      group.add(frame);
-      const rim = new THREE.Mesh(new THREE.TorusGeometry(1.6, .105, 7, 24),
-        new THREE.MeshToonMaterial({ color: 0xffd833 }));
-      rim.rotation.x = -Math.PI / 2;
-      rim.position.y = marker.halfExtents.y + .19;
-      group.add(rim);
-      if (marker.kind === 'launch') {
-        const arrow = new THREE.Mesh(new THREE.ConeGeometry(.7, 1.6, 3),
-          new THREE.MeshBasicMaterial({ color: 0xfff3cc, side: THREE.DoubleSide }));
-        arrow.rotation.x = -Math.PI / 2;
-        arrow.position.set(0, marker.halfExtents.y + .22, 0);
-        group.add(arrow);
-      } else {
-        for (const x of [-1.6, 1.6]) for (const z of [-1.6, 1.6]) {
-          this.mesh(group, new THREE.CylinderGeometry(.17, .17, .29, 6),
-            new THREE.MeshToonMaterial({ color: 0xffd833 }),
-            new THREE.Vector3(x, marker.halfExtents.y - .09, z));
-        }
-      }
-      this.markers.add(group);
+      const root = createSurfaceLibraryProp(this.propFactory, marker);
+      root.position.copy(vec(marker.position));
+      this.instancedProps.add(root);
     }
   }
 
-  /** Instanced world props remain owned by the world lane. Our signposts are independent. */
+  /** Factory signposts share geometry; the original text/ring remain independent UI. */
   private createBoardMarkers(): void {
     this.scene.add(this.boardMarkers);
     for (const board of this.game.gigs.boards) {
-      const group = new THREE.Group();
-      group.position.set(board.position.x, board.position.y + .15, board.position.z);
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(.23, .3, 3.0, 6),
-        new THREE.MeshToonMaterial({ color: 0xffd833 }));
-      post.position.y = 1.5;
-      post.castShadow = true;
-      group.add(post);
-      const sign = new THREE.Mesh(new THREE.BoxGeometry(3.6, 1.9, .32),
-        new THREE.MeshToonMaterial({ color: 0x6542b9, emissive: 0x35216e, emissiveIntensity: .3 }));
-      sign.position.y = 3.3;
-      sign.castShadow = true;
-      group.add(sign);
-      group.add(this.textSprite('E · GIGS', 4.8, 1.2, 3.4));
+      const root = createBoardLibraryProp(this.propFactory);
+      root.position.set(board.position.x, board.position.y + .15, board.position.z);
+      this.instancedProps.add(root);
+
+      const overlay = new THREE.Group();
+      overlay.position.copy(root.position);
+      overlay.add(this.textSprite('E · GIGS', 4.8, 1.2, 3.4));
       const ring = new THREE.Mesh(new THREE.RingGeometry(3.8, 4.25, 28),
-        new THREE.MeshBasicMaterial({ color: 0xffd833, side: THREE.DoubleSide, transparent: true, opacity: .7 }));
+        new THREE.MeshBasicMaterial({ color: 0xffd833, side: THREE.DoubleSide,
+          transparent: true, opacity: .7 }));
       ring.rotation.x = -Math.PI / 2;
       ring.position.y = .09;
-      group.add(ring);
-      this.boardMarkers.add(group);
+      overlay.add(ring);
+      this.boardMarkers.add(overlay);
     }
+  }
+
+  private releaseLibraryProp(root: THREE.Group): void {
+    this.instancedProps.remove(root);
+    this.propFactory.release(root);
   }
 
   private textSprite(label: string, width: number, height: number, y: number): THREE.Sprite {
@@ -327,10 +321,7 @@ export class GameView {
     if (attempt !== this.displayedGig) {
       this.displayedGig = attempt;
       this.clearGroup(this.gigMarkers);
-      for (const mesh of this.gigProps.values()) {
-        mesh.geometry.dispose(); (mesh.material as THREE.Material).dispose();
-        mesh.removeFromParent();
-      }
+      for (const root of this.gigProps.values()) this.releaseLibraryProp(root);
       this.gigProps.clear();
       if (run?.status === 'running') {
         const markers = [...run.setup.markers];
@@ -355,21 +346,19 @@ export class GameView {
           this.gigMarkers.add(group);
         }
         for (const spawn of run.setup.spawns) {
-          const color = new THREE.Color(spawn.color);
-          const mesh = new THREE.Mesh(new THREE.BoxGeometry(spawn.size.x, spawn.size.y, spawn.size.z),
-            new THREE.MeshToonMaterial({ color }));
-          mesh.castShadow = true; mesh.receiveShadow = true;
-          this.scene.add(mesh); this.gigProps.set(spawn.id, mesh);
+          const root = createSpawnLibraryProp(this.propFactory, spawn);
+          this.instancedProps.add(root);
+          this.gigProps.set(spawn.id, root);
         }
       }
     }
-    for (const [id, mesh] of this.gigProps) {
+    for (const [id, root] of this.gigProps) {
       const prop = this.game.gigs.props.get(id);
-      if (!prop) { mesh.visible = false; continue; }
-      mesh.visible = !prop.broken;
+      if (!prop) { root.visible = false; continue; }
+      root.visible = !prop.broken;
       const pose = this.game.physics.getInterpolatedTransform(prop.body, alpha);
-      mesh.position.copy(vec(pose.translation));
-      mesh.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
+      root.position.set(pose.translation.x, pose.translation.y, pose.translation.z);
+      root.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
     }
     for (const group of this.gigMarkers.children) {
       const ring = group.children[0];
@@ -384,10 +373,7 @@ export class GameView {
     const match = this.game.party.match;
     const mode = match ? match.mode : null;
     if (this.displayedMode !== mode) {
-      for (const mesh of this.heistBales.values()) {
-        mesh.geometry.dispose(); (mesh.material as THREE.Material).dispose();
-        mesh.removeFromParent();
-      }
+      for (const root of this.heistBales.values()) this.releaseLibraryProp(root);
       this.heistBales.clear(); this.displayedMode = mode;
       this.clearGroup(this.partyMarkers);
       if (match?.mode === 'king-of-the-peak') {
@@ -428,18 +414,17 @@ export class GameView {
     }
     if (match?.mode === 'hay-heist') {
       for (const bale of match.bales) {
-        let mesh = this.heistBales.get(bale.id);
-        if (!mesh) {
-          mesh = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1, 1.1),
-            new THREE.MeshToonMaterial({ color: 0xf2c14f }));
-          mesh.castShadow = true;
-          this.scene.add(mesh); this.heistBales.set(bale.id, mesh);
+        let root = this.heistBales.get(bale.id);
+        if (!root) {
+          root = createHeistHayLibraryProp(this.propFactory);
+          this.instancedProps.add(root);
+          this.heistBales.set(bale.id, root);
         }
         const carrier = bale.carrierId === 'player' ? this.game.goat :
           roster.get(bale.carrierId ?? '')?.goat;
         const point = carrier ? carrier.torso.translation() : bale.position;
-        mesh.position.set(point.x, point.y + (carrier ? 1 : .25), point.z);
-        mesh.rotation.y += .009;
+        root.position.set(point.x, point.y + (carrier ? 1 : .25), point.z);
+        root.rotation.y += .009;
       }
     }
   }
@@ -514,29 +499,14 @@ export class GameView {
     }
   }
 
-  private buildGeometry(piece: BuildPiece): THREE.BufferGeometry {
-    if (piece.type === 'ramp') {
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-        -1,-.9,-1, 1,-.9,-1, -1,-.9,1, 1,-.9,1, -1,.9,1, 1,.9,1,
-      ], 3));
-      geometry.setIndex([0,2,1,1,2,3,2,4,3,3,4,5,0,1,4,1,5,4,0,4,2,1,3,5]);
-      geometry.computeVertexNormals();
-      return geometry;
-    }
-    return new THREE.BoxGeometry(piece.type === 'wall' ? .46 : 2,
-      piece.type === 'wall' ? 2 : .46, 2);
-  }
-
   private updateBuildings(): void {
     const entries = this.game.rules.build.pieces;
     const active = this.activeBuildIds;
     active.clear();
     for (const piece of entries) active.add(piece.id);
-    for (const [id, mesh] of this.buildVisuals) {
+    for (const [id, root] of this.buildVisuals) {
       if (!active.has(id)) {
-        this.scene.remove(mesh);
-        // Shared geometries/materials remain cached for the next build.
+        this.releaseLibraryProp(root);
         this.buildVisuals.delete(id);
       }
     }
@@ -544,22 +514,13 @@ export class GameView {
       if (this.buildVisuals.has(piece.id)) continue;
       const body = this.game.buildBodies.get(piece.id);
       if (!body) continue;
-      let geometry = this.buildGeometries.get(piece.type);
-      if (!geometry) { geometry = this.buildGeometry(piece); this.buildGeometries.set(piece.type, geometry); }
-      let material = this.buildMaterials.get(piece.type);
-      if (!material) {
-        material = new THREE.MeshToonMaterial({ color: MATERIALS[piece.type], side: THREE.DoubleSide });
-        this.buildMaterials.set(piece.type, material);
-      }
-      const mesh = new THREE.Mesh(geometry, material);
+      const root = createBuildLibraryProp(this.propFactory, piece.type);
       const p = body.translation();
-      mesh.position.set(p.x, p.y, p.z);
+      root.position.set(p.x, p.y, p.z);
       const q = body.rotation();
-      mesh.quaternion.set(q.x, q.y, q.z, q.w);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      this.scene.add(mesh);
-      this.buildVisuals.set(piece.id, mesh);
+      root.quaternion.set(q.x, q.y, q.z, q.w);
+      this.instancedProps.add(root);
+      this.buildVisuals.set(piece.id, root);
     }
   }
 
@@ -568,26 +529,24 @@ export class GameView {
     handles.clear();
     for (const handle of this.game.breakables.debrisHandles) handles.add(handle);
     for (const handle of this.game.fallingPieces.keys()) handles.add(handle);
-    for (const [handle, mesh] of this.debrisVisuals) if (!handles.has(handle) ||
+    for (const [handle, root] of this.debrisVisuals) if (!handles.has(handle) ||
       !this.game.physics.raw.getRigidBody(handle)) {
-      this.scene.remove(mesh);
+      this.releaseLibraryProp(root);
       this.debrisVisuals.delete(handle);
     }
     for (const handle of handles) {
       const body = this.game.physics.raw.getRigidBody(handle);
       if (!body) continue;
-      let mesh = this.debrisVisuals.get(handle);
-      if (!mesh) {
-        mesh = new THREE.Mesh(this.debrisGeometry, this.debrisMaterial);
+      let root = this.debrisVisuals.get(handle);
+      if (!root) {
         const radius = Math.max(.12, Math.min(.65, Math.cbrt(body.mass()) * .24));
-        mesh.scale.set(radius, radius, radius);
-        mesh.castShadow = true;
-        this.scene.add(mesh);
-        this.debrisVisuals.set(handle, mesh);
+        root = createDebrisLibraryProp(this.propFactory, radius);
+        this.instancedProps.add(root);
+        this.debrisVisuals.set(handle, root);
       }
       const pose = this.game.physics.getInterpolatedTransform(body, alpha);
-      mesh.position.set(pose.translation.x, pose.translation.y, pose.translation.z);
-      mesh.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
+      root.position.set(pose.translation.x, pose.translation.y, pose.translation.z);
+      root.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
     }
   }
 
@@ -707,6 +666,7 @@ export class GameView {
     }
     this.world.updateCulling(this.camera);
     this.limitDrawDistance();
+    this.instancedProps.update(this.camera, range);
     this.shadowTimer += dt;
     if (this.shadowTimer >= .1 && this.renderer.shadowMap.enabled) {
       this.shadowTimer = 0;
@@ -748,30 +708,12 @@ export class GameView {
     this.clearGroup(this.boardMarkers);
     this.clearGroup(this.gigMarkers);
     this.clearGroup(this.partyMarkers);
-    for (const mesh of this.gigProps.values()) {
-      mesh.removeFromParent(); mesh.geometry.dispose(); (mesh.material as THREE.Material).dispose();
-    }
-    for (const mesh of this.heistBales.values()) {
-      mesh.removeFromParent(); mesh.geometry.dispose(); (mesh.material as THREE.Material).dispose();
-    }
     this.gigProps.clear(); this.heistBales.clear();
+    this.buildVisuals.clear(); this.debrisVisuals.clear();
+    this.libraryWorldProps.length = 0;
     for (const texture of this.textTextures) texture.dispose();
-    for (const mesh of this.buildVisuals.values()) mesh.removeFromParent();
-    this.buildVisuals.clear();
-    for (const geometry of this.buildGeometries.values()) geometry.dispose();
-    for (const material of this.buildMaterials.values()) material.dispose();
-    this.buildGeometries.clear();
-    this.buildMaterials.clear();
-    for (const mesh of this.debrisVisuals.values()) mesh.removeFromParent();
-    this.debrisVisuals.clear();
-    this.debrisGeometry.dispose();
-    this.debrisMaterial.dispose();
-    this.markers.traverse(obj => {
-      if (obj instanceof THREE.Mesh) {
-        obj.geometry.dispose();
-        (obj.material as THREE.Material).dispose();
-      }
-    });
+    this.instancedProps.dispose();
+    this.propFactory.dispose();
     this.world.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();

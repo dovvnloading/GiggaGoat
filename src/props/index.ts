@@ -5,3 +5,4 @@ export {
   libraryAssetUrl,
 } from './PropFactory';
 export type { BuildPieceType, GigPropType, Size3, PropFactoryOptions } from './PropFactory';
+export { InstancedPropRenderer } from './InstancedPropRenderer';
