@@ -1,7 +1,8 @@
-/** Production-ready, self-contained visual QA page for the one RUNNING DUST PUFFS effect. */
+/** Production-ready visual QA page for running dust and landing impact ring. */
 import * as THREE from 'three';
 import { GoatCharacter } from '../../character/GoatCharacter';
 import { RunningDustPuffs } from '../RunningDustPuffs';
+import { LandingImpactRing } from '../LandingImpactRing';
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -17,6 +18,9 @@ const clearButton = element<HTMLButtonElement>('clear');
 const directionControl = element<HTMLSelectElement>('direction');
 const rateControl = element<HTMLInputElement>('rate');
 const rateLabel = element<HTMLOutputElement>('rate-value');
+const landingButton = element<HTMLButtonElement>('landing');
+const impactStrengthControl = element<HTMLInputElement>('impact-strength');
+const impactStrengthLabel = element<HTMLOutputElement>('impact-strength-value');
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xfff3ea);
@@ -63,10 +67,14 @@ scene.add(goat.root);
 const dust = new RunningDustPuffs({ capacity: 160, seed: 2317 });
 scene.add(dust.group);
 
+const landing = new LandingImpactRing({ capacity: 10 });
+scene.add(landing.group);
+
 let heading = -1;
 let cadence = Number(rateControl.value);
 let paused = false;
 let emissionClock = 0;
+let landingClock = 0;
 let lastTime = 0;
 let yaw = 0;
 let elevation = 0.19;
@@ -82,7 +90,9 @@ function setDirection(value: string): void {
   goat.root.rotation.y = heading < 0 ? Math.PI / 2 : -Math.PI / 2;
   goat.root.position.set(heading < 0 ? -0.91 : 0.91, 0, 0);
   dust.clear();
+  landing.clear();
   emissionClock = 0;
+  landingClock = 0;
 }
 
 function emitHoof(): void {
@@ -93,12 +103,21 @@ function emitHoof(): void {
   );
 }
 
+function emitLanding(): void {
+  // Ground point beneath the goat. The effect owns no character physics.
+  landing.emit(
+    { x: goat.root.position.x, y: 0, z: 0.03 },
+    Number(impactStrengthControl.value),
+  );
+}
+
 function refreshUi(): void {
   state.textContent = (paused ? 'Paused' : 'Running') + ' / ' +
-    dust.activeCount + ' visible puffs';
+    dust.activeCount + ' dust sprites / ' + landing.activeCount + ' landing rings';
   pauseButton.textContent = paused ? 'Resume motion' : 'Pause motion';
   pauseButton.setAttribute('aria-pressed', String(paused));
   rateLabel.textContent = cadence.toFixed(1) + '/s';
+  impactStrengthLabel.textContent = Number(impactStrengthControl.value).toFixed(1);
 }
 
 directionControl.addEventListener('change', () => {
@@ -108,6 +127,13 @@ directionControl.addEventListener('change', () => {
 });
 rateControl.addEventListener('input', () => {
   cadence = Number(rateControl.value);
+  refreshUi();
+});
+impactStrengthControl.addEventListener('input', refreshUi);
+landingButton.addEventListener('click', () => {
+  emitLanding();
+  // Hold a developed shockwave in the pause-to-compare workflow.
+  if (paused) landing.update(0.19);
   refreshUi();
 });
 pauseButton.addEventListener('click', () => {
@@ -122,7 +148,9 @@ burstButton.addEventListener('click', () => {
 });
 clearButton.addEventListener('click', () => {
   dust.clear();
+  landing.clear();
   emissionClock = 0;
+  landingClock = 0;
   refreshUi();
 });
 
@@ -169,6 +197,13 @@ function frame(now: number): void {
     }
     if (emitted === 3) emissionClock = 0;
     dust.update(dt);
+    landingClock += dt;
+    if (landingClock >= 1.65) {
+      // Periodic landings demonstrate overlapping shockwave and dust.
+      landingClock %= 1.65;
+      emitLanding();
+    }
+    landing.update(dt);
   }
 
   const horizontal = Math.cos(elevation) * distance;
@@ -197,6 +232,8 @@ goat.update(0);
 // Start with a visible small→large group instead of an empty first frame.
 emitHoof();
 dust.update(0.19);
+emitLanding();
+landing.update(0.19);
 refreshUi();
 requestAnimationFrame(frame);
 
@@ -204,6 +241,7 @@ window.addEventListener('pagehide', () => {
   if (disposed) return;
   disposed = true;
   dust.dispose();
+  landing.dispose();
   goat.dispose();
   floor.geometry.dispose();
   (floor.material as THREE.Material).dispose();
