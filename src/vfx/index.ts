@@ -25,3 +25,12 @@ export {
   HEADBUTT_STAR_COUNT, makeHeadbuttBurst, sampleHeadbuttFlash, sampleHeadbuttStar,
   type HeadbuttBurst, type HeadbuttFlashFrame, type HeadbuttStarFrame,
 } from './headbuttMath';
+
+export {
+  WaterSplash, createWaterSplash,
+  type WaterSplashOptions,
+} from './WaterSplash';
+export {
+  WATER_DROPLET_COUNT, makeWaterSplashBurst, sampleWaterSplash, sampleWaterDroplet,
+  type WaterSplashBurst, type WaterSplashFrame, type WaterDropletFrame,
+} from './waterSplashMath';
