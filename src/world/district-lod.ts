@@ -22,6 +22,7 @@ interface Cell<Model extends string> {
   small: boolean;
   ranges: BakedPlacement<Model>[];
   vertices: number;
+  keepSilhouette: boolean;
 }
 
 /**
@@ -39,6 +40,9 @@ export async function createDistrictLod<Model extends string>(
   meshName: string,
 ): Promise<DistrictLod> {
   const cells = new Map<string, Cell<Model>>();
+  // Slender freestanding geometry can lose whole beams when aggressively
+  // decimated, even though the bulk of a district's buildings simplify well.
+  const silhouetteModels = new Set(['skylineCrane', 'waterTower', 'windmill']);
   for (const range of placements) {
     if (range.count === 0) continue;
     const p = range.placement;
@@ -49,11 +53,12 @@ export async function createDistrictLod<Model extends string>(
     const key = x + ':' + z + ':' + (small ? 'small' : 'large');
     let cell = cells.get(key);
     if (!cell) {
-      cell = { small, ranges: [], vertices: 0 };
+      cell = { small, ranges: [], vertices: 0, keepSilhouette: false };
       cells.set(key, cell);
     }
     cell.ranges.push(range);
     cell.vertices += range.count;
+    if (silhouetteModels.has(p.model)) cell.keepSilhouette = true;
   }
 
   const positions = baked.getAttribute('position').array as Float32Array;
@@ -85,7 +90,7 @@ export async function createDistrictLod<Model extends string>(
       high.setAttribute(attribute, new THREE.BufferAttribute(buffer, 3));
     }
     high.computeBoundingSphere();
-    const low = await simplifiedWorldGeometry(high);
+    const low = cell.keepSilhouette ? high : await simplifiedWorldGeometry(high);
     const mesh = new THREE.Mesh(high, new THREE.MeshToonMaterial({
       color: 0xffffff, vertexColors: true,
       gradientMap: TOON_RAMP, side: THREE.DoubleSide,
