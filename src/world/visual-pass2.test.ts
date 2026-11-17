@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { createWorldScene, generateIsland, heightAt } from './index';
+import { AUTHORED_HERO_DRESSING_KINDS } from './visual-props';
 import type { IslandData, PropDescriptor, WorldScene } from './index';
 import { makeLocalStreets } from './roads';
 import { segmentProjection } from './terrain';
@@ -86,7 +87,11 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
     const shadowPass = meshes.filter(mesh => mesh.castShadow).length;
     const outlines = meshes.filter(mesh => mesh.name.startsWith('outline-')).length;
     // This detects the previous ~600-call pattern even without a GPU.
-    expect(meshes.length + shadowPass).toBeLessThan(180);
+    // Six new authored PropKinds each require one stable physics-bound
+    // InstancedMesh (even in the procedural fallback). Preserve the legacy
+    // draw budget for everything else rather than tuning Chrome budgets.
+    expect(meshes.length + shadowPass)
+      .toBeLessThan(180 + AUTHORED_HERO_DRESSING_KINDS.size);
     expect(shadowPass).toBeLessThan(20);
     expect(outlines).toBeLessThanOrEqual(8);
     for (const mesh of meshes) {

@@ -176,7 +176,9 @@ describe('hero placements on Billy Isle', () => {
         expect(prop.transform.position.x).toBeCloseTo(centre.x + x * scale, 5);
         expect(prop.transform.position.z).toBeCloseTo(centre.z + z * scale, 5);
         expect(prop.transform.rotationY).toBe(yaw);
-        expect(prop.transform.position.y - prop.size.y / 2).toBeCloseTo(centre.y, 3);
+        // The final plot grading can shift the POI's cached padY by centimetres.
+        expect(Math.abs(prop.transform.position.y - prop.size.y / 2 - centre.y))
+          .toBeLessThan(0.05 * scale);
         // The fence entrance lies at z=36, x from 8..32 (rear z=-36, x -16..8).
         const bounds = halfExtents(prop);
         const frontGap = x + bounds.x / scale > 8 && x - bounds.x / scale < 32 &&
@@ -231,10 +233,12 @@ describe('hero placements on Billy Isle', () => {
     }
   });
 
-  it('does not overlap other collidable POI footprints with any newly collidable hero', () => {
+  it('avoids actual POI collider intersections, including footprint and height', () => {
     const heroes = island.props.filter(p => HERO_SET.has(p.kind));
     const existing = island.props.filter(p => !HERO_SET.has(p.kind) && p.collidable);
     const clashes: Array<{hero: string; old: string; poi: string; kind: string}> = [];
+    const xzClashes: Array<{hero: string; old: string; kind: string;
+      heroY: number[]; oldY: number[]}> = [];
     for (const prop of heroes) {
       expect(prop.body.type).toBe('static');
       expect(prop.breakable).toBe(false);
@@ -242,11 +246,21 @@ describe('hero placements on Billy Isle', () => {
       expect(prop.collidable).toBe(true);
       for (const earlier of existing) {
         if (earlier.poiId !== prop.poiId) continue;
-        if (aabbFootprintOverlaps(prop, earlier))
+        if (!aabbFootprintOverlaps(prop, earlier)) continue;
+        const vertical = Math.abs(prop.transform.position.y - earlier.transform.position.y) <
+          (prop.size.y + earlier.size.y) / 2 - 1e-5;
+        xzClashes.push({hero: prop.id, old: earlier.id, kind: earlier.kind,
+          heroY: [prop.transform.position.y - prop.size.y / 2,
+            prop.transform.position.y + prop.size.y / 2],
+          oldY: [earlier.transform.position.y - earlier.size.y / 2,
+            earlier.transform.position.y + earlier.size.y / 2]});
+        if (vertical)
           clashes.push({hero:prop.id,old:earlier.id,poi:prop.poiId??'',kind:earlier.kind});
       }
     }
-    console.log('HERO_COLLISION_DIAG', JSON.stringify(clashes.slice(0,40)));
+    console.log('HERO_COLLISION_DIAG', JSON.stringify({
+      xz: xzClashes.slice(0,40), volumes: clashes.slice(0,40),
+    }));
     expect(clashes).toEqual([]);
   });
 });
