@@ -2,6 +2,7 @@ import type { IslandData, PoiId, PropDescriptor, PropKind, Vec2, Vec3 } from './
 import { SeededRandom } from './random';
 import { gridSample, riverAt } from './terrain';
 import { buildBaaardwalk } from './boardwalk';
+import { buildCraneYard } from './crane-yard';
 
 interface AddOptions {
   yaw?: number;
@@ -87,29 +88,8 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   // BAA-ARDWALK: one cohesive shore-connected, walkable pier scene.
   props.push(...buildBaaardwalk(island));
 
-  // CRANE YARD: climbable framing, diagonally stacked cargo and movable barrels.
-  const yard: PoiId = 'crane-yard';
-  site(yard, 'tower', -16, -12, 14, 21, 12, { color: 0xaab4ba });
-  site(yard, 'crane', 19, 12, 2.8, 33, 2.8, { color: 0xffd14c });
-  site(yard, 'beam', 12, 12, 29, 2, 2, { lift: 29, color: 0xffd14c });
-  site(yard, 'crane', -27, 22, 2.4, 25, 2.4);
-  site(yard, 'beam', -16, 22, 23, 1.8, 1.8, { lift: 23 });
-  for (let i = 0; i < 4; i++) {
-    const dz = -4 + i * 10;
-    site(yard, 'scaffold', 1, dz, 2, 18, 2);
-    site(yard, 'scaffold', 17, dz, 2, 18, 2);
-    site(yard, 'platform', 9, dz, 18, 0.9, 5, { lift: 7 + (i % 2) * 6 });
-  }
-  for (let i = 0; i < 23; i++) {
-    site(yard, 'crate', rng.range(-29, 31), rng.range(-26, 27), 2.4, 2.4, 2.4,
-      { dynamicMass: rng.range(18, 35), yaw: rng.range(0, 6.28) });
-  }
-  for (let i = 0; i < 9; i++) {
-    site(yard, 'barrel', rng.range(-30, 29), rng.range(-29, 30), 1.8, 2.2, 1.8,
-      { dynamicMass: 11, shape: 'cylinder', climbable: false });
-  }
-  site(yard, 'ramp', -4, -16, 7, 3, 15, { yaw: 0.9 });
-  site(yard, 'ramp', 25, -10, 7, 4, 17, { yaw: -0.3 });
+  // CRANE YARD: one authored, physically traversable construction site.
+  props.push(...buildCraneYard(island));
 
   // DOWNTOWN: five storefronts per side look into the paved main street.
   // Three four-roof cross-street rows remain intact for Rooftop Express gigs
