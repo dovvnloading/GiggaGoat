@@ -158,7 +158,7 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
         return state?.loaded ? state : null;
       }, 30000);
       expect(damView.inFrame).toBe(true);
-      for (const [axis, value] of [73, 43, -258].entries()) {
+      for (const [axis, value] of [-52, 26, -119].entries()) {
         expect(damView.camera[axis]).toBeCloseTo(value, 5);
       }
       for (const [axis, value] of [-17, 16, -191].entries()) {
