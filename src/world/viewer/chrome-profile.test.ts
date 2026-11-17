@@ -138,6 +138,42 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
         return response.result?.value === true ? true : null;
       }, 45000);
 
+      // The benchmark starts as soon as the viewer boots, before its async
+      // GLB could arrive. Check the actual model and the painting's bookmark
+      // camera first rather than profiling the temporary fallback.
+      const damView = await until(async () => {
+        const value = await send('Runtime.evaluate', {
+          expression: String.raw`(() => {
+            const menu = document.getElementById('bookmark');
+            if (!menu || !window.__worldProfile) return null;
+            menu.value = '14';
+            menu.dispatchEvent(new Event('change', { bubbles: true }));
+            return window.__worldProfile.damHeroState();
+          })()`,
+          returnByValue: true,
+        });
+        const state = value.result?.value as {
+          loaded: boolean; inFrame: boolean; camera: number[]; target: number[];
+        } | undefined;
+        return state?.loaded ? state : null;
+      }, 30000);
+      expect(damView.inFrame).toBe(true);
+      expect(damView.camera).toEqual([73, 43, -258]);
+      expect(damView.target).toEqual([-17, 16, -191]);
+
+      // Temporary visual QA snapshot (removed after review).
+      await send('Runtime.evaluate', {
+        expression: 'window.__worldProfile.measure(2)', returnByValue: true,
+      });
+      const snapshot = await send('Page.captureScreenshot', {
+        format: 'jpeg', quality: 55, captureBeyondViewport: false,
+      });
+      expect(snapshot.data.length).toBeGreaterThan(10000);
+      for (let i = 0; i < snapshot.data.length; i += 6000) {
+        console.log('WORLD_DAM_JPEG_' + String(i / 6000).padStart(4, '0') +
+          ' ' + snapshot.data.slice(i, i + 6000));
+      }
+
       const expression = String.raw`(() => {
         const profile = window.__worldProfile;
         const menu = document.getElementById('bookmark');
