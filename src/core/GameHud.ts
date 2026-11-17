@@ -1,6 +1,7 @@
 import type { Game } from './Game';
 import { HUD_PIECES, deriveHudState, projectHudMap } from './GameHudState';
 import { buildArtwork, goatArtwork, renderHudMinimap } from './HudArtwork';
+import { planGoatSafeHud, type ScreenRect } from './HudOcclusion';
 
 const CSS = `
 .gg-ui{position:absolute;inset:0;z-index:4;pointer-events:none;user-select:none;overflow:hidden;color:#fff9df;font-family:"Trebuchet MS","Arial Rounded MT Bold","Arial Black",system-ui,sans-serif;font-weight:900;text-shadow:0 2px 1px #422b3d,0 3px 3px #412a4999}
@@ -59,25 +60,25 @@ const CSS = `
 .gg-hoof:after{transform:rotate(-14deg)}
 .gg-stamina-label{margin-top:4px;color:#ffe5a8;font-size:clamp(13px,1.35vw,22px);line-height:1.1;transform:rotate(7deg)}
 .gg-stamina-value{font-size:clamp(10px,.9vw,14px);color:#fff9dd;margin-top:2px}
-.gg-hotbar{position:absolute;left:50%;bottom:15px;transform:translateX(-50%);width:min(650px,53vw);padding:13px 14px 11px;border:6px solid #e9a758;border-radius:35px;background:linear-gradient(180deg,#98552c,#723e2d 54%,#85482b);box-shadow:0 0 0 3px #693b4e,inset 0 4px #ffe2ab,inset 0 -4px #4c2b42,0 7px 0 #3b2346}
-.gg-hotbar-header{position:absolute;top:-49px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:1px 29px 4px;border:5px solid #f0b75e;border-radius:35px;background:linear-gradient(#ac562f,#723d31);box-shadow:0 4px 0 #62344e,inset 0 2px #ffe5b0;color:#ffe08a;font-size:clamp(18px,1.8vw,30px);letter-spacing:.4px;-webkit-text-stroke:.8px #753e37;text-shadow:2px 3px #532d43}
+.gg-hotbar{position:absolute;left:50%;bottom:7px;transform:translateX(-50%);width:min(600px,45vw);padding:9px 10px 7px;border:5px solid #e9a758;border-radius:28px;background:linear-gradient(180deg,#98552c,#723e2d 54%,#85482b);box-shadow:0 0 0 3px #693b4e,inset 0 4px #ffe2ab,inset 0 -4px #4c2b42,0 7px 0 #3b2346}
+.gg-hotbar-header{position:absolute;top:-38px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:0 22px 2px;border:4px solid #f0b75e;border-radius:30px;background:linear-gradient(#ac562f,#723d31);box-shadow:0 4px 0 #62344e,inset 0 2px #ffe5b0;color:#ffe08a;font-size:clamp(16px,1.5vw,25px);letter-spacing:.4px;-webkit-text-stroke:.8px #753e37;text-shadow:2px 3px #532d43}
 .gg-hotbar-header:before,.gg-hotbar-header:after{content:"✺";position:absolute;top:0;color:#ffe13f;font-size:24px}
 .gg-hotbar-header:before{left:-23px}.gg-hotbar-header:after{right:-23px}
 .gg-hotbar-slots{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}
-.gg-slot{height:clamp(76px,7.5vw,117px);position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;border:4px solid #cc965b;border-radius:20px;background:linear-gradient(150deg,#663a3c,#482b38);box-shadow:inset 0 2px #edc18a44,0 3px 0 #49283d;min-width:0}
+.gg-slot{height:clamp(62px,5.3vw,86px);position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;border:3px solid #cc965b;border-radius:17px;background:linear-gradient(150deg,#663a3c,#482b38);box-shadow:inset 0 2px #edc18a44,0 3px 0 #49283d;min-width:0}
 .gg-slot.is-selected{border-color:#ffed6a;box-shadow:0 0 0 4px #ffcf31,0 0 18px #ffed5e,inset 0 2px #fff1af;z-index:1;background:linear-gradient(155deg,#ac612a,#6c3a36)}
 .gg-slot.is-empty .gg-piece-art{opacity:.53}
 .gg-slot-key{position:absolute;top:-8px;left:-6px;padding:1px 8px;border-radius:9px;border:2px solid #f6d69e;background:#fff2cf;color:#603720;font-size:clamp(12px,1.12vw,17px);font-weight:1000;text-shadow:none;box-shadow:0 2px 0 #734437}
 .gg-piece-art{display:block;width:83%;height:73%;filter:drop-shadow(1px 4px 2px #281a32a0)}
 .gg-slot-count{position:absolute;bottom:4px;right:5px;font-size:clamp(13px,1.15vw,20px);line-height:1;color:#fff6d5;text-shadow:2px 2px #381e37}
 .gg-slot-name{position:absolute;bottom:3px;left:6px;font-size:clamp(7px,.6vw,10px);color:#ffdda0;text-shadow:none;max-width:67%;line-height:1.1}
-.gg-hotbar-foot{display:flex;align-items:center;justify-content:space-between;gap:7px;margin:8px 4px 0;font-size:clamp(9px,.68vw,12px);color:#ffe6aa}
+.gg-hotbar-foot{display:flex;align-items:center;justify-content:space-between;gap:7px;margin:5px 3px 0;font-size:clamp(9px,.68vw,12px);color:#ffe6aa}
 .gg-hotbar-foot strong{color:#fff9d5}
-.gg-hotbar-charge{height:5px;border-radius:10px;background:#49253b;overflow:hidden;margin:6px 2px 0}
+.gg-hotbar-charge{height:5px;border-radius:10px;background:#49253b;overflow:hidden;margin:4px 2px 0}
 .gg-hotbar-charge>div{height:100%;width:0;background:linear-gradient(90deg,#ffb538,#ffeb65);transition:width .1s linear}
 .gg-build-tip{font-weight:900}
-.gg-board-hint{position:absolute;left:50%;bottom:clamp(210px,17vw,246px);transform:translateX(-50%);background:linear-gradient(#ffe86a,#f9bc45);color:#57372c;border:4px solid #7c4a42;border-radius:20px;padding:8px 14px;text-shadow:none;font-size:14px;box-shadow:0 4px 0 #453056;white-space:nowrap}
-.gg-hint{position:absolute;left:50%;top:59%;transform:translate(-50%,-50%);padding:10px 18px;max-width:85vw;text-align:center;background:#342950ed;border:3px solid #ffde68;border-radius:15px;color:#fff7d1;font-size:clamp(12px,1.15vw,18px);box-shadow:0 5px 0 #302044}
+.gg-board-hint{position:absolute;left:50%;top:40%;transform:translateX(-50%);background:linear-gradient(#ffe86a,#f9bc45);color:#57372c;border:4px solid #7c4a42;border-radius:20px;padding:8px 14px;text-shadow:none;font-size:14px;box-shadow:0 4px 0 #453056;white-space:nowrap}
+.gg-hint{position:absolute;left:50%;top:34%;transform:translateX(-50%);padding:10px 18px;max-width:85vw;text-align:center;background:#342950ed;border:3px solid #ffde68;border-radius:15px;color:#fff7d1;font-size:clamp(12px,1.15vw,18px);box-shadow:0 5px 0 #302044}
 .gg-debug{position:absolute;left:20px;top:220px;background:#192542e8;border:2px solid #b7dfbc;border-radius:12px;padding:10px;font:12px/1.5 monospace;white-space:pre;color:#d7ffc9;text-shadow:none}
 @media (max-width:1200px){
 .gg-meter{top:15px;left:13px;width:clamp(290px,33vw,400px);padding:16px 12px 9px}
@@ -86,7 +87,7 @@ const CSS = `
 .gg-map-panel{right:11px;top:10px;width:clamp(145px,20vw,230px)}
 .gg-gig-card{right:10px;top:clamp(216px,25vw,267px);width:clamp(230px,29vw,315px)}
 .gg-stamina{left:19px;bottom:20px;width:clamp(116px,14vw,168px)}
-.gg-hotbar{width:min(610px,63vw)}
+.gg-hotbar{width:min(560px,56vw)}
 }
 @media (max-width:760px){
 .gg-meter{left:8px;top:12px;width:min(274px,49vw);border-width:3px;border-radius:24px;padding:17px 7px 7px}
@@ -140,6 +141,8 @@ export class GameHud {
   private readonly gigTask: HTMLElement;
   private readonly gigDetail: HTMLElement;
   private readonly board: HTMLElement;
+  private readonly hotbar: HTMLElement;
+  private readonly panels: Array<{ id: string; element: HTMLElement }>;
 
   constructor(host: HTMLElement) {
     this.styles.textContent = CSS;
@@ -219,6 +222,18 @@ export class GameHud {
     this.hint = get('hint'); this.debug = get('debug'); this.wallet = get('wallet');
     this.gigTitle = get('gig-title'); this.gigTask = get('gig-task');
     this.gigDetail = get('gig-detail'); this.board = get('board-hint');
+    this.hotbar = get('hotbar');
+    const panel = (id: string, selector: string): { id: string; element: HTMLElement } => {
+      const element = this.root.querySelector<HTMLElement>(selector);
+      if (!element) throw new Error('HUD panel missing: ' + selector);
+      return { id, element };
+    };
+    this.panels = [
+      panel('meter', '.gg-meter'), panel('combo', '.gg-combo'),
+      panel('map', '.gg-map-panel'), panel('gig', '.gg-gig-card'),
+      panel('stamina', '.gg-stamina'), panel('hotbar', '.gg-hotbar'),
+      panel('debug', '.gg-debug'),
+    ];
   }
 
   private updateMap(game: Game, location: string): void {
@@ -280,8 +295,65 @@ export class GameHud {
     this.gigDetail.textContent = detail + ' · ' + seconds + 's';
   }
 
+
+  /** Move transient prompts above the projected goat, then hide any remaining
+   * fixed panel whose painted bounds would obscure its visible silhouette.
+   * Visibility preserves layout measurements, so panels reappear as soon as
+   * the player/camera moves clear on the next render frame. */
+  private clearGoat(goat: ScreenRect | null): void {
+    if (!goat || this.root.clientWidth === 0 || this.root.clientHeight === 0) {
+      for (const panel of this.panels) panel.element.style.visibility = 'visible';
+      for (const prompt of [this.board, this.hint]) {
+        prompt.style.visibility = 'visible';
+        prompt.style.removeProperty('left');
+        prompt.style.removeProperty('top');
+      }
+      return;
+    }
+
+    const paintedBox = (element: HTMLElement): ScreenRect => {
+      const initial = element.getBoundingClientRect();
+      const result = { left: initial.left, top: initial.top,
+        right: initial.right, bottom: initial.bottom };
+      // These labels/ornaments extend beyond the containing panel border.
+      element.querySelectorAll<HTMLElement>(
+        '.gg-meter-label,.gg-combo-burst,.gg-map-north,.gg-map-location,.gg-hotbar-header'
+      ).forEach(child => {
+        const edge = child.getBoundingClientRect();
+        result.left = Math.min(result.left, edge.left);
+        result.top = Math.min(result.top, edge.top);
+        result.right = Math.max(result.right, edge.right);
+        result.bottom = Math.max(result.bottom, edge.bottom);
+      });
+      return result;
+    };
+    const viewport = this.root.getBoundingClientRect();
+    const panels = this.panels.filter(({ element }) => !element.hidden)
+      .map(({ id, element }) => ({ id, rect: paintedBox(element) }));
+    const candidates = [
+      { id: 'board', element: this.board },
+      { id: 'hint', element: this.hint },
+    ].filter(({ element }) => !element.hidden && element.style.display !== 'none');
+    const layout = planGoatSafeHud(goat, viewport, panels,
+      candidates.map(({ id, element }) => {
+        const rect = element.getBoundingClientRect();
+        return { id, width: rect.width, height: rect.height };
+      }));
+    for (const panel of this.panels) {
+      panel.element.style.visibility = layout.hiddenPanels.has(panel.id) ? 'hidden' : 'visible';
+    }
+    for (const { id, element } of candidates) {
+      const rect = layout.prompts.get(id);
+      element.style.visibility = rect ? 'visible' : 'hidden';
+      if (rect) {
+        element.style.left = ((rect.left + rect.right) / 2 - viewport.left) + 'px';
+        element.style.top = (rect.top - viewport.top) + 'px';
+      }
+    }
+  }
+
   update(game: Game, fps: number, stepMilliseconds: number, debugVisible: boolean,
-    pointerLocked: boolean): void {
+    pointerLocked: boolean, goatScreenBox: ScreenRect | null = null): void {
     const rules = game.rules;
     const run = game.gigs.active;
     const state = deriveHudState({
@@ -321,8 +393,8 @@ export class GameHud {
     this.staminaNumber.textContent = Math.floor(state.stamina) + ' / 100';
     this.charge.style.width = state.headbutt.toFixed(2) + '%';
     this.mode.textContent = state.mode;
-    this.root.querySelector<HTMLElement>('[data-hotbar]')!.dataset.active =
-      state.buildMode ? 'true' : 'false';
+    this.hotbar.hidden = !state.buildMode;
+    this.hotbar.dataset.active = state.buildMode ? 'true' : 'false';
     this.buildStatus.textContent = state.buildMode ?
       'B EXIT BUILD · 1–4 SELECT · LMB PLACE' : 'B TO BUILD · 1–4 SELECT';
     this.materials.textContent = state.materials;
@@ -351,6 +423,7 @@ export class GameHud {
       'WATER BODIES: ' + game.water.submergedCount + '\n' +
       'DEBRIS: ' + game.breakables.debrisCount + '\n' +
       'RESPAWNS: ' + game.respawns;
+    this.clearGoat(goatScreenBox);
   }
 
   setVisible(visible: boolean): void { this.root.style.display = visible ? 'block' : 'none'; }

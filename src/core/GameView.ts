@@ -11,6 +11,7 @@ import { GameInput } from './GameInput';
 import { CAMERA_TARGET_HEIGHT, SPAWN_CAMERA_PITCH, SPAWN_CAMERA_YAW_OFFSET,
   goatCameraLookAhead, goatCameraOffset } from './GoatCamera';
 import { GameHud } from './GameHud';
+import { projectGoatScreenBox, visibleGoatBounds } from './HudOcclusion';
 
 interface PropVisual { mesh: THREE.InstancedMesh; index: number; prop: PropDescriptor }
 const MATERIALS: Record<PieceType, number> = {
@@ -50,6 +51,7 @@ export class GameView {
   private readonly debrisMaterial = new THREE.MeshToonMaterial({ color: 0xd6b36f });
   private readonly cameraTarget = new THREE.Vector3();
   private readonly cameraPosition = new THREE.Vector3();
+  private readonly playerWorldBox = new THREE.Box3();
   private readonly dummy = new THREE.Object3D();
   private readonly onResize: () => void;
   private lastTimestamp = 0;
@@ -545,8 +547,13 @@ export class GameView {
     this.world.setDayNight(.5 + Math.sin(this.game.physics.time / 150) * .035);
     this.updateCamera(alpha, dt);
     this.world.updateCulling(this.camera);
+    // Screen-space silhouette of the actual rendered player, after physics and
+    // camera updates. HUD panels can never paint on top of this box.
+    const goatScreenBox = projectGoatScreenBox(
+      visibleGoatBounds(this.characters.player.root, this.playerWorldBox),
+      this.camera, this.renderer.domElement.getBoundingClientRect());
     this.hud.update(this.game, this.fps, this.simMs, this.input.debugVisible,
-      document.pointerLockElement === this.renderer.domElement);
+      document.pointerLockElement === this.renderer.domElement, goatScreenBox);
     this.renderer.render(this.scene, this.camera);
     this.onFrame?.();
   }
