@@ -13,6 +13,9 @@ interface Placement {
   x: number; y: number; z: number;
   width: number; height: number; depth: number; yaw: number;
 }
+/** Dam river markers share the new painted buoy with the Baa-ardwalk. */
+export const DAM_BUOY_MODEL = 'custom/props/buoy.glb';
+export const DAM_BUOY_SIZE = { width: 1.0, height: 1.8, depth: 1.0 } as const;
 interface AssetSet {
   name: string;
   path: string;
@@ -530,18 +533,18 @@ export function buildDamLandscape(
   }
   const buoys: Placement[] = [
     { x: 8, z: 35, y: damChannelAt(35).level - 0.5,
-      width: 2.2, height: 2.3, depth: 2.2, yaw: 0.25 },
+      ...DAM_BUOY_SIZE, yaw: 0.25 },
     { x: 5, z: 48, y: damChannelAt(48).level - 0.5,
-      width: 2.2, height: 2.3, depth: 2.2, yaw: 0.9 },
+      ...DAM_BUOY_SIZE, yaw: 0.9 },
   ];
   const fallbackBuoys = new THREE.InstancedMesh(
-    new THREE.CylinderGeometry(0.77, 0.69, 1.6, 9),
+    new THREE.CylinderGeometry(0.5, 0.5, DAM_BUOY_SIZE.height, 9),
     new THREE.MeshToonMaterial({ color: 0xff7d20 }), 2);
   fallbackBuoys.name = 'dam-two-orange-buoys-fallback';
   const matrix = new THREE.Matrix4(), quaternion = new THREE.Quaternion();
   for (let i = 0; i < buoys.length; i++) {
     const b = buoys[i]!;
-    matrix.compose(new THREE.Vector3(b.x, b.y + 0.8, b.z), quaternion,
+    matrix.compose(new THREE.Vector3(b.x, b.y + b.height / 2, b.z), quaternion,
       new THREE.Vector3(1, 1, 1));
     fallbackBuoys.setMatrixAt(i, matrix);
   }
@@ -579,8 +582,8 @@ export function buildDamLandscape(
         x: sign.x, z: sign.z, y: signY,
         width: 3.7, height: 4.6, depth: 1.0, yaw: sign.yaw,
       }], tint: 0x9c6a3f },
-    { name: 'dam-two-orange-survival-barrels',
-      path: 'kenney/survival-kit/barrel.glb', placements: buoys, orange: true,
+    { name: 'dam-two-orange-buoys',
+      path: DAM_BUOY_MODEL, placements: buoys,
       onReady: () => {
         group.remove(fallbackBuoys);
         fallbackBuoys.geometry.dispose();

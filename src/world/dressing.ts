@@ -81,7 +81,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   for (let i = 0; i < 13; i++) {
     const side = i % 2 === 0 ? -1 : 1;
     at(farm, 'gnome', side * rand(16, 34), rand(-31, 34),
-      0.85, 1.6, 0.85, { yaw: turn(), color: i % 2 ? 0xff891e : 0x7a4cff });
+      0.5, 0.9, 0.5, { yaw: turn(), color: i % 2 ? 0xff891e : 0x7a4cff });
   }
   for (const side of [-1, 1]) for (let i = 0; i < 8; i++) {
     // The outer west fence runs behind both barn and silo foundations.
@@ -115,7 +115,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     at(farm, 'planter', side * 12.7, z, 1.8, 1.4, 1.8,
       { shape: 'cylinder' });
   }
-  at(farm, 'bench', -14, 34, 3.6, 1.55, 1.3,
+  at(farm, 'bench', -14, 34, 2.0, 0.95, 0.75,
     { yaw: Math.PI / 2, color: 0x9d6f57 });
 
   // The main road is 6.8 m wide and the POI access roads bend around the
@@ -226,8 +226,8 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
         yaw, y: top - 1.6 * scale, color: 0xffe6a2,
       });
     place('ac-unit', x - frontX * 1.8 * scale,
-      z - frontZ * 1.8 * scale, 3.3, 2.1, 3.1, city,
-      { yaw, y: top + 1.05 * scale, color: 0xc0cbd0 });
+      z - frontZ * 1.8 * scale, 1.2, 1.0, 1.0, city,
+      { yaw, y: top + 0.5 * scale, color: 0xc0cbd0 });
     if (i % 4 === 0) {
       place('water-tower', x - frontX * 1.7 * scale,
         z - frontZ * 1.7 * scale, 4.5, 7.6, 4.5, city,
@@ -240,7 +240,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   for (let i = 0; i < 20; i++) {
     const side = i % 2 ? 1 : -1;
     const z = -36 + Math.floor(i / 2) * 8;
-    at(city, 'planter', side * 12.1, z, 2.6, 2.2, 2.6,
+    at(city, 'planter', side * 12.1, z, 1.6, 1.1, 1.6,
       { shape: 'cylinder', color: 0xc3916d });
     if (i % 2 === 0) {
       at(city, 'flower', side * 13.1, z + 3, 0.8, 1.1, 0.8,
@@ -250,10 +250,10 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   for (let i = 0; i < 8; i++) {
     const side = i % 2 ? -1 : 1;
     at(city, 'bench', side * 12.7, -27 + i * 7.8,
-      4.3, 1.55, 1.3, { yaw: Math.PI / 2, color: 0x9d6f57 });
+      2.0, 0.95, 0.75, { yaw: Math.PI / 2, color: 0x9d6f57 });
   }
   for (const dz of [-12, 8]) for (const dx of [-46, -32]) {
-    at(city, 'planter', dx, dz, 3.2, 2.8, 3.2,
+    at(city, 'planter', dx, dz, 1.6, 1.1, 1.6,
       { shape: 'cylinder', color: 0xc3916d });
   }
 
