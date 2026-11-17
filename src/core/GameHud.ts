@@ -60,25 +60,25 @@ const CSS = `
 .gg-hoof:after{transform:rotate(-14deg)}
 .gg-stamina-label{margin-top:4px;color:#ffe5a8;font-size:clamp(13px,1.35vw,22px);line-height:1.1;transform:rotate(7deg)}
 .gg-stamina-value{font-size:clamp(10px,.9vw,14px);color:#fff9dd;margin-top:2px}
-.gg-hotbar{position:absolute;left:50%;bottom:7px;transform:translateX(-50%);width:min(600px,45vw);padding:9px 10px 7px;border:5px solid #e9a758;border-radius:28px;background:linear-gradient(180deg,#98552c,#723e2d 54%,#85482b);box-shadow:0 0 0 3px #693b4e,inset 0 4px #ffe2ab,inset 0 -4px #4c2b42,0 7px 0 #3b2346}
-.gg-hotbar-header{position:absolute;top:-38px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:0 22px 2px;border:4px solid #f0b75e;border-radius:30px;background:linear-gradient(#ac562f,#723d31);box-shadow:0 4px 0 #62344e,inset 0 2px #ffe5b0;color:#ffe08a;font-size:clamp(16px,1.5vw,25px);letter-spacing:.4px;-webkit-text-stroke:.8px #753e37;text-shadow:2px 3px #532d43}
+.gg-hotbar{position:absolute;left:50%;bottom:7px;transform:translateX(-50%);width:min(560px,43vw);padding:7px 9px 5px;border:4px solid #e9a758;border-radius:23px;background:linear-gradient(180deg,#98552c,#723e2d 54%,#85482b);box-shadow:0 0 0 3px #693b4e,inset 0 4px #ffe2ab,inset 0 -4px #4c2b42,0 7px 0 #3b2346}
+.gg-hotbar-header{position:absolute;top:-28px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:0 18px 1px;border:3px solid #f0b75e;border-radius:30px;background:linear-gradient(#ac562f,#723d31);box-shadow:0 4px 0 #62344e,inset 0 2px #ffe5b0;color:#ffe08a;font-size:clamp(16px,1.25vw,22px);letter-spacing:.4px;-webkit-text-stroke:.8px #753e37;text-shadow:2px 3px #532d43}
 .gg-hotbar-header:before,.gg-hotbar-header:after{content:"✺";position:absolute;top:0;color:#ffe13f;font-size:24px}
 .gg-hotbar-header:before{left:-23px}.gg-hotbar-header:after{right:-23px}
-.gg-hotbar-slots{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}
-.gg-slot{height:clamp(62px,5.3vw,86px);position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;border:3px solid #cc965b;border-radius:17px;background:linear-gradient(150deg,#663a3c,#482b38);box-shadow:inset 0 2px #edc18a44,0 3px 0 #49283d;min-width:0}
+.gg-hotbar-slots{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.gg-slot{height:clamp(52px,4.2vw,70px);position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;border:3px solid #cc965b;border-radius:17px;background:linear-gradient(150deg,#663a3c,#482b38);box-shadow:inset 0 2px #edc18a44,0 3px 0 #49283d;min-width:0}
 .gg-slot.is-selected{border-color:#ffed6a;box-shadow:0 0 0 4px #ffcf31,0 0 18px #ffed5e,inset 0 2px #fff1af;z-index:1;background:linear-gradient(155deg,#ac612a,#6c3a36)}
 .gg-slot.is-empty .gg-piece-art{opacity:.53}
-.gg-slot-key{position:absolute;top:-8px;left:-6px;padding:1px 8px;border-radius:9px;border:2px solid #f6d69e;background:#fff2cf;color:#603720;font-size:clamp(12px,1.12vw,17px);font-weight:1000;text-shadow:none;box-shadow:0 2px 0 #734437}
+.gg-slot-key{position:absolute;top:-8px;left:-6px;padding:1px 8px;border-radius:9px;border:2px solid #f6d69e;background:#fff2cf;color:#603720;font-size:clamp(11px,.9vw,15px);font-weight:1000;text-shadow:none;box-shadow:0 2px 0 #734437}
 .gg-piece-art{display:block;width:83%;height:73%;filter:drop-shadow(1px 4px 2px #281a32a0)}
-.gg-slot-count{position:absolute;bottom:4px;right:5px;font-size:clamp(13px,1.15vw,20px);line-height:1;color:#fff6d5;text-shadow:2px 2px #381e37}
+.gg-slot-count{position:absolute;bottom:4px;right:5px;font-size:clamp(12px,1.05vw,18px);line-height:1;color:#fff6d5;text-shadow:2px 2px #381e37}
 .gg-slot-name{position:absolute;bottom:3px;left:6px;font-size:clamp(7px,.6vw,10px);color:#ffdda0;text-shadow:none;max-width:67%;line-height:1.1}
-.gg-hotbar-foot{display:flex;align-items:center;justify-content:space-between;gap:7px;margin:5px 3px 0;font-size:clamp(9px,.68vw,12px);color:#ffe6aa}
+.gg-hotbar-foot{display:flex;align-items:center;justify-content:space-between;gap:7px;margin:3px 3px 0;font-size:clamp(9px,.65vw,11px);color:#ffe6aa}
 .gg-hotbar-foot strong{color:#fff9d5}
-.gg-hotbar-charge{height:5px;border-radius:10px;background:#49253b;overflow:hidden;margin:4px 2px 0}
+.gg-hotbar-charge{height:4px;border-radius:10px;background:#49253b;overflow:hidden;margin:3px 2px 0}
 .gg-hotbar-charge>div{height:100%;width:0;background:linear-gradient(90deg,#ffb538,#ffeb65);transition:width .1s linear}
 .gg-build-tip{font-weight:900}
-.gg-board-hint{position:absolute;left:50%;top:40%;transform:translateX(-50%);background:linear-gradient(#ffe86a,#f9bc45);color:#57372c;border:4px solid #7c4a42;border-radius:20px;padding:8px 14px;text-shadow:none;font-size:14px;box-shadow:0 4px 0 #453056;white-space:nowrap}
-.gg-hint{position:absolute;left:50%;top:34%;transform:translateX(-50%);padding:10px 18px;max-width:85vw;text-align:center;background:#342950ed;border:3px solid #ffde68;border-radius:15px;color:#fff7d1;font-size:clamp(12px,1.15vw,18px);box-shadow:0 5px 0 #302044}
+.gg-board-hint{position:absolute;left:50%;top:192px;transform:translateX(-50%);background:linear-gradient(#ffe86a,#f9bc45);color:#57372c;border:3px solid #7c4a42;border-radius:16px;padding:5px 11px;text-shadow:none;font-size:clamp(11px,.85vw,13px);box-shadow:0 4px 0 #453056;white-space:nowrap}
+.gg-hint{position:absolute;left:50%;top:192px;transform:translateX(-50%);padding:6px 12px;max-width:85vw;text-align:center;background:#342950ed;border:2px solid #ffde68;border-radius:12px;color:#fff7d1;font-size:clamp(11px,.85vw,13px);box-shadow:0 5px 0 #302044}
 .gg-debug{position:absolute;left:20px;top:220px;background:#192542e8;border:2px solid #b7dfbc;border-radius:12px;padding:10px;font:12px/1.5 monospace;white-space:pre;color:#d7ffc9;text-shadow:none}
 @media (max-width:1200px){
 .gg-meter{top:15px;left:13px;width:clamp(290px,33vw,400px);padding:16px 12px 9px}
@@ -87,7 +87,7 @@ const CSS = `
 .gg-map-panel{right:11px;top:10px;width:clamp(145px,20vw,230px)}
 .gg-gig-card{right:10px;top:clamp(216px,25vw,267px);width:clamp(230px,29vw,315px)}
 .gg-stamina{left:19px;bottom:20px;width:clamp(116px,14vw,168px)}
-.gg-hotbar{width:min(560px,56vw)}
+.gg-hotbar{width:min(520px,54vw)}
 }
 @media (max-width:760px){
 .gg-meter{left:8px;top:12px;width:min(274px,49vw);border-width:3px;border-radius:24px;padding:17px 7px 7px}
@@ -99,12 +99,12 @@ const CSS = `
 .gg-gig-card{top:clamp(193px,38vw,270px);right:7px;width:min(238px,39vw);border-width:3px;border-radius:17px;padding:7px}.gg-gig-header{font-size:12px;margin:-10px -3px 5px}.gg-gig-clipboard{height:28px;width:27px;font-size:15px;border-width:2px}.gg-gig-paper{padding:8px;border-width:2px;border-radius:10px;min-height:99px}.gg-gig-title{font-size:9px}.gg-gig-task{font-size:12px}.gg-gig-detail{font-size:8px}.gg-gig-footer{font-size:8px}
 .gg-stamina{left:10px;bottom:164px;width:105px;border-width:4px}.gg-stamina-inner{border-width:3px}.gg-stamina-label{font-size:12px}.gg-stamina-value{font-size:8px}
 .gg-hotbar{width:calc(100% - 18px);bottom:9px;padding:7px 6px;border-width:3px;border-radius:20px}.gg-hotbar-header{top:-29px;padding:0 15px;border-width:3px;font-size:17px}.gg-hotbar-header:before,.gg-hotbar-header:after{font-size:16px}
-.gg-hotbar-slots{gap:3px}.gg-slot{height:clamp(59px,13vw,82px);border-width:2px;border-radius:12px}.gg-slot-key{top:-6px;left:-4px;padding:0 5px;border-width:1px;font-size:11px}.gg-slot-count{font-size:12px}.gg-slot-name{font-size:7px}.gg-hotbar-foot{font-size:8px;margin:6px 1px 0}.gg-hotbar-charge{margin:4px 2px 0}
-.gg-board-hint{top:40%;bottom:auto;font-size:9px;padding:5px 8px;border-width:2px;white-space:normal;text-align:center;max-width:50vw}
+.gg-hotbar-slots{gap:3px} .gg-slot{height:clamp(52px,12vw,69px);border-width:2px;border-radius:12px}.gg-slot-key{top:-6px;left:-4px;padding:0 5px;border-width:1px;font-size:11px}.gg-slot-count{font-size:12px}.gg-slot-name{font-size:7px}.gg-hotbar-foot{font-size:8px;margin:6px 1px 0}.gg-hotbar-charge{margin:4px 2px 0}
+.gg-board-hint{top:180px;bottom:auto;font-size:9px;padding:5px 8px;border-width:2px;white-space:normal;text-align:center;max-width:50vw}
 .gg-debug{top:270px;left:7px;font-size:9px}
 }
 @media (max-height:680px) and (min-width:760px){
-.gg-stamina{width:128px;bottom:13px}.gg-hotbar{bottom:8px;padding-top:9px}.gg-slot{height:76px}
+.gg-stamina{width:128px;bottom:13px}.gg-hotbar{bottom:7px;padding-top:6px}.gg-slot{height:58px}
 .gg-gig-card{top:220px}.gg-combo{top:116px}
 }
 `;
@@ -394,7 +394,7 @@ export class GameHud {
     this.staminaNumber.textContent = Math.floor(state.stamina) + ' / 100';
     this.charge.style.width = state.headbutt.toFixed(2) + '%';
     this.mode.textContent = state.mode;
-    this.hotbar.hidden = !state.buildMode;
+    // Keep the compact tray visible in free roam as in the HUD reference.
     this.hotbar.dataset.active = state.buildMode ? 'true' : 'false';
     this.buildStatus.textContent = state.buildMode ?
       'B EXIT BUILD · 1–4 SELECT · LMB PLACE' : 'B TO BUILD · 1–4 SELECT';

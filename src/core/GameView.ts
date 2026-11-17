@@ -9,7 +9,7 @@ import { Game } from './Game';
 import { GameCharacters } from './GameCharacters';
 import { GameInput } from './GameInput';
 import { CAMERA_TARGET_HEIGHT, SPAWN_CAMERA_PITCH, SPAWN_CAMERA_YAW_OFFSET,
-  goatCameraLookAhead, goatCameraOffset } from './GoatCamera';
+  goatCameraLookAhead, goatCameraOffset, goatCameraVerticalOffset } from './GoatCamera';
 import { GameHud } from './GameHud';
 import { projectGoatScreenBox, visibleGoatBounds } from './HudOcclusion';
 
@@ -52,6 +52,7 @@ export class GameView {
   private readonly cameraTarget = new THREE.Vector3();
   private readonly cameraPosition = new THREE.Vector3();
   private readonly playerWorldBox = new THREE.Box3();
+  private cameraShiftY = 0;
   private readonly dummy = new THREE.Object3D();
   private readonly onResize: () => void;
   private lastTimestamp = 0;
@@ -546,12 +547,26 @@ export class GameView {
     this.world.update(this.game.physics.time);
     this.world.setDayNight(.5 + Math.sin(this.game.physics.time / 150) * .035);
     this.updateCamera(alpha, dt);
+    const viewport = this.renderer.domElement.getBoundingClientRect();
+    const goatBounds = visibleGoatBounds(this.characters.player.root, this.playerWorldBox);
+    // First project through the normal orbit, then pan the *projection* until
+    // the whole sculpt sits above the hotbar. Preserve the wall-aware camera
+    // position and the player's freely orbitable yaw/pitch.
+    this.camera.clearViewOffset();
+    const unframed = projectGoatScreenBox(goatBounds, this.camera, viewport, false);
+    if (unframed && viewport.width > 0 && viewport.height > 0) {
+      const desired = goatCameraVerticalOffset(unframed, viewport);
+      this.cameraShiftY += (desired - this.cameraShiftY) * lerpAlpha(10, dt);
+      // Upward corrections must be immediate so neither a landing nor a fast
+      // camera turn can let the tray cover the player between render frames.
+      this.cameraShiftY = Math.max(this.cameraShiftY, desired);
+    }
+    if (viewport.width > 0 && viewport.height > 0) {
+      this.camera.setViewOffset(viewport.width, viewport.height,
+        0, this.cameraShiftY, viewport.width, viewport.height);
+    }
     this.world.updateCulling(this.camera);
-    // Screen-space silhouette of the actual rendered player, after physics and
-    // camera updates. HUD panels can never paint on top of this box.
-    const goatScreenBox = projectGoatScreenBox(
-      visibleGoatBounds(this.characters.player.root, this.playerWorldBox),
-      this.camera, this.renderer.domElement.getBoundingClientRect());
+    const goatScreenBox = projectGoatScreenBox(goatBounds, this.camera, viewport);
     this.hud.update(this.game, this.fps, this.simMs, this.input.debugVisible,
       document.pointerLockElement === this.renderer.domElement, goatScreenBox);
     this.renderer.render(this.scene, this.camera);
