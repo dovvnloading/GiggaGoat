@@ -13,8 +13,10 @@ export interface GameSettings {
   invertY: boolean;
   fov: number;
   graphics: 'low' | 'medium' | 'high';
-  /** Reserved for the audio lane; persisted without connecting an audio engine. */
+  /** Master, music and effects gains are stored with the same versioned game save. */
   volume: number;
+  musicVolume: number;
+  effectsVolume: number;
 }
 export interface GameSave {
   version: 1;
@@ -23,7 +25,8 @@ export interface GameSave {
 }
 export const SAVE_KEY = 'gigga-goat/save/v1';
 export const DEFAULT_SETTINGS: Readonly<GameSettings> = Object.freeze({
-  mouseSensitivity: 1, invertY: false, fov: 67, graphics: 'high', volume: .8,
+  mouseSensitivity: 1, invertY: false, fov: 67, graphics: 'high',
+  volume: .8, musicVolume: .52, effectsVolume: .88,
 });
 
 export function validateSettings(raw: unknown): GameSettings {
@@ -38,6 +41,8 @@ export function validateSettings(raw: unknown): GameSettings {
     graphics: s.graphics === 'low' || s.graphics === 'medium' || s.graphics === 'high'
       ? s.graphics : DEFAULT_SETTINGS.graphics,
     volume: between(s.volume, 0, 1, DEFAULT_SETTINGS.volume),
+    musicVolume: between(s.musicVolume, 0, 1, DEFAULT_SETTINGS.musicVolume),
+    effectsVolume: between(s.effectsVolume, 0, 1, DEFAULT_SETTINGS.effectsVolume),
   };
 }
 const storageOrNull = (): Storage | null => {

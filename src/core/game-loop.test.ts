@@ -165,7 +165,7 @@ describe('Core game loop — production adapters on real Rapier ticks', () => {
       expect(game.rules.unlocks.purchase('glide')).toEqual({ ok: true });
       const walletBeforeSave = game.rules.wallet.coins;
       const settings = { mouseSensitivity: 1.75, invertY: true, fov: 81,
-        graphics: 'medium' as const, volume: .35 };
+        graphics: 'medium' as const, volume: .35, musicVolume: .45, effectsVolume: .72 };
       expect(saveGame(game, settings, storage)).toBe(true);
       const restored = loadSave(storage)!;
       expect(restored.settings).toEqual(settings);

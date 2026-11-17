@@ -1,3 +1,5 @@
+import { AudioEngine, localAudioSettings } from '../audio';
+import { GameAudio } from './GameAudio';
 import { Game } from './Game';
 import { GameView } from './GameView';
 import { GameMenu } from './GameMenu';
@@ -5,7 +7,7 @@ import { loadSave, DEFAULT_SETTINGS } from './Persistence';
 
 /** Browser entry; Game itself remains usable headlessly without this module. */
 export async function bootGame(host: HTMLElement): Promise<{
-  game: Game; view: GameView; menu: GameMenu; dispose: () => void;
+  game: Game; view: GameView; menu: GameMenu; audio: AudioEngine; dispose: () => void;
 }> {
   const loading = document.createElement('div');
   loading.style.cssText = 'position:absolute;inset:0;display:grid;place-items:center;' +
@@ -16,17 +18,48 @@ export async function bootGame(host: HTMLElement): Promise<{
   try {
     const save = loadSave();
     const game = await Game.create({ progress: save?.progress });
+    // Exactly one lazily-unlocked audio engine for the island's lifetime.
+    // The game's versioned save owns the three exposed volume controls; on
+    // first boot, initialize those controls from the audio lane's own store.
+    const audio = new AudioEngine({ seed: game.island.seed, storage: localAudioSettings() });
+    const gameAudio = new GameAudio(game, audio);
+    const settings = save?.settings ?? {
+      ...DEFAULT_SETTINGS,
+      volume: audio.settings.master,
+      musicVolume: audio.settings.music,
+      effectsVolume: audio.settings.sfx,
+    };
+    const unbindUnlock = audio.unlockOnFirstInput(window);
     loading.remove();
     try {
-      const view = new GameView(host, game);
+      const view = new GameView(host, game, gameAudio);
+      const onVisibility = (): void => {
+        gameAudio.setPaused(view.paused || document.hidden);
+      };
+      document.addEventListener('visibilitychange', onVisibility);
       try {
-        const menu = new GameMenu(host, game, view, save?.settings ?? { ...DEFAULT_SETTINGS });
-        return { game, view, menu, dispose: () => { menu.dispose(); view.dispose(); game.dispose(); } };
+        const menu = new GameMenu(host, game, view, settings, gameAudio);
+        return {
+          game, view, menu, audio,
+          dispose: () => {
+            menu.dispose();
+            document.removeEventListener('visibilitychange', onVisibility);
+            unbindUnlock();
+            view.dispose();
+            gameAudio.dispose();
+            audio.dispose();
+            game.dispose();
+          },
+        };
       } catch (error) {
+        document.removeEventListener('visibilitychange', onVisibility);
         view.dispose();
         throw error;
       }
     } catch (error) {
+      unbindUnlock();
+      gameAudio.dispose();
+      audio.dispose();
       game.dispose();
       throw error;
     }
