@@ -151,8 +151,8 @@ export function buildArchitecture(kind: ArchitecturalKind): ArchitectureGeometri
       for (const x of [-0.25, 0.25]) {
         box(details, x, -0.29, 0.443, 0.040, 0.42, 0.032, white);
       }
-      box(details, 0, -0.29, 0.447, 0.045, 0.56, 0.03, white, 0.72);
-      box(details, 0, -0.29, 0.447, 0.045, 0.56, 0.03, white, -0.72);
+      box(details, 0, -0.29, 0.447, 0.045, 0.50, 0.03, white, 0.72);
+      box(details, 0, -0.29, 0.447, 0.045, 0.50, 0.03, white, -0.72);
       box(details, 0, 0.125, 0.406, 0.18, 0.15, 0.025, white);
       box(details, 0, 0.125, 0.424, 0.13, 0.11, 0.021, blue);
       box(details, 0, 0.125, 0.44, 0.025, 0.12, 0.02, white);
@@ -201,7 +201,8 @@ export function buildArchitecture(kind: ArchitecturalKind): ArchitectureGeometri
     if (Math.max(Math.abs(b.min.x), Math.abs(b.max.x),
       Math.abs(b.min.y), Math.abs(b.max.y),
       Math.abs(b.min.z), Math.abs(b.max.z)) > 0.511) {
-      throw new Error('Architecture exceeded its descriptor envelope: ' + kind);
+      throw new Error('Architecture exceeded its descriptor envelope: ' + kind +
+        ' ' + b.min.toArray().join(',') + ' / ' + b.max.toArray().join(','));
     }
   }
   return built;
