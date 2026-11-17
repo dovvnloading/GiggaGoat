@@ -65,7 +65,7 @@ scene.add(pedestal);
 
 const rock = new THREE.Mesh(
   new THREE.DodecahedronGeometry(.62, 1),
-  new THREE.MeshToonMaterial({ color: 0x8f879b, flatShading: true }),
+  new THREE.MeshToonMaterial({ color: 0x8f879b }),
 );
 rock.position.set(-.32, .40, -2.07);
 rock.castShadow = true;
@@ -86,7 +86,7 @@ crate.position.set(0, 1.13, -2.98);
 scene.add(crate);
 const wall = new THREE.Mesh(
   new THREE.BoxGeometry(1.5, 3.4, .45),
-  new THREE.MeshToonMaterial({ color: 0x9a92a5, flatShading: true }),
+  new THREE.MeshToonMaterial({ color: 0x9a92a5 }),
 );
 wall.castShadow = true;
 wall.position.set(-.85, 1.51, -1.51);
