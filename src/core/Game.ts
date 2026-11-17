@@ -1,7 +1,7 @@
 import type { RigidBody, ColliderDesc } from '@dimforge/rapier3d-compat';
 import {
   PhysicsWorld, GoatRagdoll, RAPIER, V, forward, add, mul, collisionGroups,
-  type Vec3, type GoatSize, type PhysicsEvent,
+  GROUND_QUERY_GROUPS, type Vec3, type GoatSize, type PhysicsEvent,
 } from '../physics';
 import {
   generateIsland, buildRapierColliders, heightAt, zoneAt,
@@ -422,10 +422,18 @@ export class Game {
     });
     this.water.setPaddle(goat.torso, wish);
     this.executeCommands(commands, goat, player);
-    if (player && input.graze && goat.locomotion.grounded &&
+    if (player && input.graze && this.canGraze() &&
         this.gigs.active?.setup.config.kind === 'mow-down') {
       this.gigs.noteAbility({ type: 'eat' });
     }
+  }
+
+  /** A bite is accepted only with actual near-foot terrain under the goat. */
+  canGraze(): boolean {
+    const ground = this.physics.raycast(this.goat.torso.translation(),
+      V(0, -1, 0), 1.6 * this.goat.size, { groups: GROUND_QUERY_GROUPS });
+    return this.goat.locomotion.grounded ||
+      !!ground && ground.distance <= 1.4 * this.goat.size && ground.normal.y >= .55;
   }
 
   private isFacingWall(wish: Vec3, goat = this.goat): boolean {
