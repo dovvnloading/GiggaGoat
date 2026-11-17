@@ -24,7 +24,7 @@ describe('library prop catalog', () => {
   it('covers every PropKind and every path exists locally with the right licence', () => {
     // The satisfies Record<PropKind, string> declaration enforces exhaustive
     // coverage at typecheck time, including any newly added descriptor kind.
-    expect(mapped).toHaveLength(73);
+    expect(mapped).toHaveLength(79);
     expect(new Set(mapped.map(([kind]) => kind)).size).toBe(mapped.length);
     for (const [kind, path] of mapped) {
       const entry = byPath.get(path);
@@ -36,6 +36,22 @@ describe('library prop catalog', () => {
         kind + ': missing file ' + path).toBe(true);
       expect(publicAssetUrl(path, '/GiggaGoat/src/world/viewer/index.html', './'),
         kind + ': bad GitHub Pages URL').toBe('/GiggaGoat/' + path);
+    }
+  });
+
+  it('registers all six authored painting-dressing models as CC0 assets', () => {
+    const expected = {
+      'palm-tree': 'assets/library/custom/props/palm-tree.glb',
+      floodlight: 'assets/library/custom/props/floodlight.glb',
+      'life-ring': 'assets/library/custom/props/life-ring.glb',
+      'cable-spool': 'assets/library/custom/props/cable-spool.glb',
+      'pallet-stack': 'assets/library/custom/props/pallet-stack.glb',
+      'log-bridge': 'assets/library/custom/pines/log-bridge.glb',
+    } as const;
+    for (const [kind, path] of Object.entries(expected)) {
+      expect(PROP_LIBRARY_MODELS[kind as PropKind], kind).toBe(path);
+      expect(byPath.get(path)?.license, kind).toBe('CC0');
+      expect(existsSync(new URL('../../public/' + path, import.meta.url)), kind).toBe(true);
     }
   });
 
