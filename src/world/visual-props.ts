@@ -623,8 +623,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
         color: 0xffffff, vertexColors: true, gradientMap: TOON_RAMP,
         side: kind === 'rock' || kind === 'stepping-stone'
           ? THREE.DoubleSide : THREE.FrontSide,
-        emissive: kind === 'rock' ? 0x24262c : 0x000000,
-        emissiveIntensity: kind === 'rock' ? 0.32 : 0,
+        emissive: kind === 'rock' ? 0x626773 : 0x000000,
+        emissiveIntensity: kind === 'rock' ? 0.42 : 0,
         fog: true,
       });
       if (sways(kind)) {
