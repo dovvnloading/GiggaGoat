@@ -82,4 +82,6 @@ These models are licensed CC-BY 3.0 and must be credited when shipped.
 | Windmill | Pixel | CC-BY 3.0 | https://poly.pizza/m/9BIMVqxyHV | `assets/library/polypizza/windmill/windmill_9BIMVqxyHV.glb` |
 | Windmill | Poly by Google | CC-BY 3.0 | https://poly.pizza/m/ctIRaIM3zXu | `assets/library/polypizza/windmill/windmill_ctIRaIM3zXu.glb` |
 
+Garden gnome (`assets/library/meshy/garden-gnome/garden-gnome.glb`) is "Gartenzwerg" by Tauberstein on Meshy, CC0: https://www.meshy.ai/posts/0199e482-7749-78a4-937d-6019638b4153
+
 All other models are CC0 / public domain: Kenney (kenney.nl), KayKit by Kay Lousberg, Quaternius (quaternius.com) and public-domain Poly Pizza uploads. Credit is appreciated but not required.
