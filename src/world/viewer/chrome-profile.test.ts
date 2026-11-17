@@ -221,6 +221,20 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
       if (screenshot.data) {
         console.log('WORLD_DOWNTOWN_SCREENSHOT ' + screenshot.data);
       }
+      // Also capture the unobscured 3D world at precisely the same bookmark
+      // for hands-on art review; restore all overlays before profiling.
+      await send('Runtime.evaluate', {
+        expression: '["panel","reference","labels","hint"].forEach(id => ' +
+          '{ document.getElementById(id).style.visibility = "hidden"; });',
+      });
+      const clean = await send('Page.captureScreenshot', {
+        format: 'jpeg', quality: 68, fromSurface: true,
+      });
+      if (clean.data) console.log('WORLD_DOWNTOWN_CLEAN ' + clean.data);
+      await send('Runtime.evaluate', {
+        expression: '["panel","reference","labels","hint"].forEach(id => ' +
+          '{ document.getElementById(id).style.visibility = ""; });',
+      });
 
       const expression = String.raw`(() => {
         const profile = window.__worldProfile;
