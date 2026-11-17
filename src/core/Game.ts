@@ -145,6 +145,15 @@ export class Game {
       yaw: spawn.heading, size: TUNING.size[this.rules.style.tier].scale,
       id: 'player',
     });
+    // GoatRagdoll's yawQuaternion rotates local -Z opposite to the
+    // physics lane's forward(yaw) steering vector. The world spawn heading
+    // was therefore forcing the balance controller to torque a correctly
+    // assembled, stationary goat against its actual facing on every tick.
+    // Match its physical facing without changing any physics-lane code.
+    this.goat.locomotion.heading = -spawn.heading;
+    // Registered after GoatRagdoll's motor hook so standing-only head
+    // corrections reach Rapier before the same physical tick is solved.
+    this.off.push(physics.onBeforeStep(dt => this.holdStandingHead(dt)));
     this.water.track(this.goat.torso, { buoyancyScale: 0.7, paddleSpeed: 2.6 });
     this.lastY = this.goat.torso.translation().y;
     this.off.push(physics.onAfterStep(dt => this.afterTick(dt)));
@@ -192,6 +201,33 @@ export class Game {
       this.gigs = new GigSession(this, island.seed);
     }
     this.party = new PartySession(this);
+  }
+
+  /**
+   * At KID scale the neck/head hinge motors sag under the weight of the
+   * forward-extending head. A damped physical spring to each body's original
+   * *relative* standing anchor gives the six real hinges enough lift during
+   * idle, without changing their constraint or the character's render pose.
+   * All movement, tricks, climbing and ragdoll states use the native physics.
+   */
+  private holdStandingHead(dt: number): void {
+    const g = this.goat;
+    if (g.pose !== 'stand' || g.isRagdoll || g.size !== .6) return;
+    const torso = g.torso;
+    const origin = torso.translation();
+    const orientation = torso.rotation();
+    const velocity = torso.linvel();
+    const support = (body: RigidBody, rest: Vec3): void => {
+      const target = add(origin, rotate(orientation, mul(rest, g.size)));
+      const displacement = sub(target, body.translation());
+      const relativeVelocity = sub(body.linvel(), velocity);
+      const acceleration = sub(mul(displacement, 110), mul(relativeVelocity, 18));
+      const magnitude = Math.hypot(acceleration.x, acceleration.y, acceleration.z);
+      const limited = mul(acceleration, Math.min(1, 55 / Math.max(1, magnitude)));
+      body.applyImpulse(mul(limited, body.mass() * dt), true);
+    };
+    support(g.neck, V(0, .32, -.62));
+    support(g.head, V(0, .56, -.84));
   }
 
   private prepareProps(): void {
@@ -696,7 +732,9 @@ export class Game {
       body.setAngvel(V(), true);
     }
     if (uprightHeading !== undefined) {
-      this.goat.locomotion.heading = uprightHeading;
+      // Teleport rotates the physical assembly to yaw=uprightHeading;
+      // forward() expects the opposite sign for the same facing.
+      this.goat.locomotion.heading = -uprightHeading;
       this.goat.setPose('stand');
     }
     this.drownSeconds = 0;
