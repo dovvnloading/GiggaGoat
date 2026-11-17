@@ -218,7 +218,8 @@ function inlandMaterial(): { material: THREE.ShaderMaterial; time: { value: numb
   });
   return { material, time };
 }
-function riverMesh(points: readonly RiverPoint[], material: THREE.Material): THREE.Mesh {
+function riverMesh(points: readonly RiverPoint[], material: THREE.Material,
+  damCenter?: { x: number; z: number }): THREE.Mesh {
   const vertices: number[] = [], uvs: number[] = [], indices: number[] = [];
   let accumulated = 0;
   for (let i = 0; i < points.length; i++) {
@@ -236,8 +237,18 @@ function riverMesh(points: readonly RiverPoint[], material: THREE.Material): THR
       p.x + nx * p.width * 0.5, y, p.z + nz * p.width * 0.5);
     uvs.push(0, accumulated / 10, 1, accumulated / 10);
     if (i > 0) {
-      const k = i * 2;
-      indices.push(k - 2, k - 1, k, k - 1, k + 1, k);
+      const prev = points[i - 1]!;
+      const horizontalRun = Math.hypot(p.x - prev.x, p.z - prev.z);
+      const nearDam = damCenter !== undefined && Math.hypot(
+        (prev.x + p.x) / 2 - damCenter.x,
+        (prev.z + p.z) / 2 - damCenter.z,
+      ) <= 70;
+      // The Dam landscape owns steep drops by its pool and spillway. Leave
+      // the vertices/UVs intact, but never emit their sloping river quads.
+      if (!nearDam || prev.level - p.level <= 0.25 * horizontalRun) {
+        const k = i * 2;
+        indices.push(k - 2, k - 1, k, k - 1, k + 1, k);
+      }
     }
   }
   const geometry = new THREE.BufferGeometry();
@@ -318,12 +329,15 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
   const inland = new THREE.Group();
   inland.name = 'rivers-reservoir-and-falls';
   const stream = inlandMaterial();
+  const damPlot = island.plots.find(plot => plot.poiId === 'the-dam');
   // The bespoke Dam plunge-pool surface occupies the middle reaches. Do
   // not draw the old thin river ribbon over it: its extra side vertices
   // make a bright diagonal sheet across the otherwise sculpted pool.
-  const upstream = riverMesh(island.river.slice(0, 5), stream.material);
+  const upstream = riverMesh(island.river.slice(0, 5), stream.material,
+    damPlot?.center);
   upstream.name = 'rippling-river';
-  const forestOutflow = riverMesh(island.river.slice(11), stream.material);
+  const forestOutflow = riverMesh(island.river.slice(11), stream.material,
+    damPlot?.center);
   forestOutflow.name = 'forest-river-after-dam';
   // Both reaches use the same animated shader. Merge their disconnected
   // index buffers into one draw so the new shoreline foam costs no extra
@@ -382,7 +396,6 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
   inland.add(reservoir, foam);
   // Cascades wherever a river segment descends across a mountain terrace.
   // Never overlay the bespoke Dam plot with a diagonal cyan sheet.
-  const damPlot = island.plots.find(plot => plot.poiId === 'the-dam');
   const insideDamPlot = (x: number, z: number): boolean =>
     damPlot !== undefined && Math.hypot(x - damPlot.center.x,
       z - damPlot.center.z) <= damPlot.radius;
