@@ -183,7 +183,7 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
   // make a bright diagonal sheet across the otherwise sculpted pool.
   const upstream = riverMesh(island.river.slice(0, 5), stream.material);
   upstream.name = 'rippling-river';
-  const forestOutflow = riverMesh(island.river.slice(10), stream.material);
+  const forestOutflow = riverMesh(island.river.slice(11), stream.material);
   forestOutflow.name = 'forest-river-after-dam';
   inland.add(upstream, forestOutflow);
   const lake = island.reservoir;
