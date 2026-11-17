@@ -33285,5 +33285,95 @@
   "license": "Apache-2.0",
   "credit": "NVIDIA USDCraft-10K (ds_R500_03, Apache-2.0)",
   "url": "https://huggingface.co/datasets/nvidia/USDCraft-10K"
+ },
+ {
+  "path": "assets/library/custom/crane-yard/concrete-column.glb",
+  "name": "Crane Yard concrete-column",
+  "source": "custom",
+  "pack": "crane-yard",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/crane-yard/concrete-slab.glb",
+  "name": "Crane Yard concrete-slab",
+  "source": "custom",
+  "pack": "crane-yard",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/crane-yard/chain-fence.glb",
+  "name": "Crane Yard chain-fence",
+  "source": "custom",
+  "pack": "crane-yard",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/crane-yard/safety-rail.glb",
+  "name": "Crane Yard safety-rail",
+  "source": "custom",
+  "pack": "crane-yard",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/crane-yard/site-barrier.glb",
+  "name": "Crane Yard site-barrier",
+  "source": "custom",
+  "pack": "crane-yard",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/crane-yard/pipe-stack.glb",
+  "name": "Crane Yard pipe-stack",
+  "source": "custom",
+  "pack": "crane-yard",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/crane-yard/yard-scaffold.glb",
+  "name": "Crane Yard yard-scaffold",
+  "source": "custom",
+  "pack": "crane-yard",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/crane-yard/bunting.glb",
+  "name": "Crane Yard bunting",
+  "source": "custom",
+  "pack": "crane-yard",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/crane-yard/site-banner.glb",
+  "name": "Crane Yard site-banner",
+  "source": "custom",
+  "pack": "crane-yard",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/crane-yard/container.glb",
+  "name": "Crane Yard container",
+  "source": "custom",
+  "pack": "crane-yard",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
  }
 ]
