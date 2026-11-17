@@ -383,10 +383,12 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
         mesh.visible = visible;
       }
     }
-    // The GLB supplies its own reservoir surface. Keep the procedural one
-    // for loading/failure fallback, but avoid overlapping water on success.
+    // The GLB supplies its own reservoir surface. Hide the procedural one
+    // on success, but retain it in the graph for disposal; it remains visible
+    // if the model fails and the procedural fallback is needed.
     if (dam.consumeShadowChange()) {
-      waterVisuals.inland.getObjectByName('dam-reservoir')?.removeFromParent();
+      const reservoir = waterVisuals.inland.getObjectByName('dam-reservoir');
+      if (reservoir) reservoir.visible = false;
       shadowCastersChanged = true;
     }
     return shadowCastersChanged;

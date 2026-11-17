@@ -153,7 +153,7 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
           returnByValue: true,
         });
         const state = value.result?.value as {
-          loaded: boolean; inFrame: boolean; reservoirRemoved: boolean;
+          loaded: boolean; inFrame: boolean; reservoirHidden: boolean;
           camera: number[]; target: number[];
         } | undefined;
         return state?.loaded ? state : null;
@@ -173,7 +173,7 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
       const latest = await send('Runtime.evaluate', {
         expression: 'window.__worldProfile.damHeroState()', returnByValue: true,
       });
-      expect(latest.result?.value?.reservoirRemoved).toBe(true);
+      expect(latest.result?.value?.reservoirHidden).toBe(true);
       const snapshot = await send('Page.captureScreenshot', {
         format: 'jpeg', quality: 55, captureBeyondViewport: false,
       });
