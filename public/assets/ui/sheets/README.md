@@ -2,7 +2,7 @@
 
 GPT-image sprite sheets generated from `docs/art/hifi/22_hud_mockup.png` (and the current title menu), in the exact HUD style. They are RGBA PNGs with transparent backgrounds and no baked text, so labels and numbers stay live HTML or canvas text. They are served at `assets/ui/sheets/<file>.png`.
 
-Agents building UI should slice these sheets into individual sprites. Slice them by alpha bounding boxes, or use CSS `background-position` and 9-slice `border-image` for the stretchable panels and buttons. Do not redraw these elements in CSS gradients.
+**Use the pre-sliced sprites in `../sprites/` (see `sprites.json`); do not slice these sheets yourself.** Agents building UI used to slice these sheets into individual sprites. Slice them by alpha bounding boxes, or use CSS `background-position` and 9-slice `border-image` for the stretchable panels and buttons. Do not redraw these elements in CSS gradients.
 
 | Sheet | Size | Elements (left to right, top to bottom) |
 |---|---|---|
