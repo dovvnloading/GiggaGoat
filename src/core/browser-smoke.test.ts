@@ -258,6 +258,7 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
       const launched = await launchChromeDevTools('about:blank', directory, {
         timeoutMs: 40000,
         extraFlags: ['--force-device-scale-factor=1'],
+        softwareWebgl: true,
       });
       browser = launched.browser;
       const port = launched.port;
@@ -313,7 +314,7 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         { type: 'mouseReleased', x: 640, y: 360, button: 'left', clickCount: 1 });
       await page.tap('Escape');
       await page.waitFor('document.querySelector(".gg-shell h2")?.textContent === "PAUSED"',
-        'pause menu');
+        'pause menu', 20000);
       await page.click('[data-action="resume"]');
       await page.waitFor('document.querySelector(".gg-shell")?.hidden === true',
         'resume from pause');

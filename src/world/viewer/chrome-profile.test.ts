@@ -68,6 +68,7 @@ describe.skipIf(!process.env['CI'])('world viewer real-Chrome frame profiling', 
         directory, {
           timeoutMs: 40000,
           extraFlags: ['--force-device-scale-factor=1.5'],
+          softwareWebgl: true,
         },
       );
       browser = launched.browser;
@@ -202,7 +203,7 @@ describe.skipIf(!process.env['CI'])('world viewer real-Chrome frame profiling', 
           ready: boolean; loaded: number; failed: number; pending: number;
         } | undefined;
         return state?.ready ? state : null;
-      }, 60000);
+      }, 120000);
       expect(library.pending).toBe(0);
       expect(library.loaded).toBeGreaterThan(50);
       expect(library.failed).toBe(0);

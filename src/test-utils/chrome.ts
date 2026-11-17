@@ -32,11 +32,12 @@ interface ChromeOptions {
   width?: number;
   height?: number;
   extraFlags?: readonly string[];
+  /** Keep the software WebGL GPU process enabled for renderer-based tests. */
+  softwareWebgl?: boolean;
 }
 
 const STABLE_FLAGS = [
-  '--headless=new', '--no-sandbox', '--disable-gpu',
-  '--disable-dev-shm-usage', '--disable-background-networking',
+  '--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
   '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
   '--enable-webgl', '--enable-unsafe-swiftshader',
   '--use-gl=angle', '--use-angle=swiftshader',
@@ -45,6 +46,8 @@ const STABLE_FLAGS = [
 function chromeFlags(options: ChromeOptions): string[] {
   return [
     ...STABLE_FLAGS,
+    // Chrome's --disable-gpu is safe for DOM layout, but breaks WebGL startup/asset loads.
+    ...(options.softwareWebgl ? [] : ['--disable-gpu', '--disable-background-networking']),
     `--window-size=${options.width ?? 1280},${options.height ?? 720}`,
     ...(options.extraFlags ?? []),
   ];
