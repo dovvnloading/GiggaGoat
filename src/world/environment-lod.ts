@@ -144,7 +144,7 @@ export function createEnvironmentLod(group: THREE.Group): {
             .applyMatrix4(entry.source.matrixWorld);
           const radius = base.radius * localMatrix.getMaxScaleOnAxis() *
             entry.source.matrixWorld.getMaxScaleOnAxis();
-          const distance = camera.distanceTo(centre) - radius;
+          const distance = position.distanceTo(centre) - radius;
           if (distance > (entry.small ? WORLD_LOD.smallPropDistance : 900))
             continue;
           bounds.center.copy(centre);
