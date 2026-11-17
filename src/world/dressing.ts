@@ -457,6 +457,8 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   );
   const mountainRoadPoints = island.roads.flatMap(road => road.points.filter(point =>
     Math.hypot(point.x - summit.x, point.z - summit.z) < 110 * scale));
+  // Snapshot only the pre-existing mountain props; don't impose the same
+  // five-metre exclusion between the 100 newly planted foliage descriptors.
   const mountainProps = [...island.props, ...result]
     .filter(prop => prop.poiId === peak).map(prop => prop.transform.position);
   const clearance = 5 * scale;
@@ -477,9 +479,8 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
         continue;
       const height = kind === 'tree-pine' ? rand(6, 10) : rand(1.6, 2.4);
       const width = height * (kind === 'tree-pine' ? 0.35 : 1.25);
-      const prop = place(kind, x, z, width, height, width, peak,
+      place(kind, x, z, width, height, width, peak,
         { shape: 'cylinder', yaw: turn() });
-      mountainProps.push(prop.transform.position);
       accepted++;
     }
     if (accepted !== wanted)

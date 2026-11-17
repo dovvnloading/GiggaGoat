@@ -267,18 +267,24 @@ function makeFalls(group: THREE.Group, material: THREE.Material,
   const fall = new THREE.Mesh(g, material);
   fall.name = id;
   group.add(fall);
-  const foamGeometry = new THREE.IcosahedronGeometry(1, 1);
-  const foamMaterial = new THREE.MeshBasicMaterial({
-    color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false,
-  });
+  // Three overlapping foam blobs, but one draw call per cascade (not three).
+  const foam = new THREE.InstancedMesh(
+    new THREE.IcosahedronGeometry(1, 1),
+    new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false,
+    }), 3);
+  foam.name = id + '-foam';
   const sideways = side.clone().normalize();
+  const dummy = new THREE.Object3D();
   for (const [index, offset] of [-0.28, 0, 0.28].entries()) {
-    const foam = new THREE.Mesh(foamGeometry, foamMaterial);
-    foam.name = id + '-foam-' + (index + 1);
-    foam.position.copy(b).addScaledVector(sideways, offset * newWidth);
-    foam.scale.set(newWidth * 0.45, newWidth * 0.3, newWidth * 0.45);
-    group.add(foam);
+    dummy.position.copy(b).addScaledVector(sideways, offset * newWidth);
+    dummy.scale.set(newWidth * 0.45, newWidth * 0.3, newWidth * 0.45);
+    dummy.updateMatrix();
+    foam.setMatrixAt(index, dummy.matrix);
   }
+  foam.instanceMatrix.needsUpdate = true;
+  foam.computeBoundingSphere();
+  group.add(foam);
 }
 /** Reusable animated sea, river, reservoir and waterfall visual effects. */
 export function buildWaterVisuals(island: IslandData): WaterVisuals {

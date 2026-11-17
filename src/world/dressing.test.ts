@@ -40,7 +40,6 @@ describe('Mt. Gigga deterministic tier foliage (MG-7)', () => {
       !planted.includes(p));
     const roads = island.roads.flatMap(road => road.points);
     const step = 1.5 * scale;
-    const occupied: Array<{ x: number; z: number }> = [];
     for (const prop of planted) {
       const { x, z } = prop.transform.position;
       const r = Math.hypot(x - summit.x, z - summit.z) / scale;
@@ -56,9 +55,6 @@ describe('Mt. Gigga deterministic tier foliage (MG-7)', () => {
       expect(oldProps.every(p => Math.hypot(x - p.transform.position.x,
         z - p.transform.position.z) >= 5 * scale),
         prop.id + ' old prop clearance').toBe(true);
-      expect(occupied.every(p => Math.hypot(x - p.x, z - p.z) >= 5 * scale),
-        prop.id + ' other tier foliage clearance').toBe(true);
-      occupied.push({ x, z });
       expect(prop.shape, prop.id).toBe('cylinder');
       expect(prop.size.z, prop.id).toBeCloseTo(prop.size.x, 6);
       const h = prop.size.y / scale;

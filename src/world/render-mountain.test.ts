@@ -6,6 +6,8 @@ import { gridIndex } from './terrain';
 describe('Mt. Gigga grassy tier and stone palette (MG-7)', () => {
   it('keeps gentle mountain terrain green and true cliffs warm-grey with height strata', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    // Test the mountain palette independently of the unchanged trail paint.
+    island.roads = [];
     const scene = createWorldScene(island, { chunkSegments: 32 });
     const scale = island.size / 600;
     const cell = island.size / (island.resolution - 1);
@@ -26,8 +28,9 @@ describe('Mt. Gigga grassy tier and stone palette (MG-7)', () => {
           const x = pos.getX(i) + chunk.position.x;
           const z = pos.getZ(i) + chunk.position.z;
           const r = Math.hypot(x, z) / scale;
-          const greenCandidate = r > 27 && r < 37;
-          const rockCandidate = r > 21 && r < 24;
+          const greenCandidate = r > 12 && r < 94;
+          const rockCandidate = [[19, 26], [38, 45], [56, 63], [74, 81]]
+            .some(([inner, outer]) => r > inner! + 2 && r < outer! - 2);
           if (!greenCandidate && !rockCandidate) continue;
           if (trailPoints.some(p => Math.hypot(x - p.x, z - p.z) < 9 * scale))
             continue;

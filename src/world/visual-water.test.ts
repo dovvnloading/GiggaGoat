@@ -202,22 +202,30 @@ describe('Mt. Gigga cascades and Dam plot exclusion (MG-5, DM-1)', () => {
             0.18 * island.size / 600, 5);
         }
         expect(width, fall.name).toBeCloseTo(original * 2.6, 4);
-        const foams = [1, 2, 3].map(i => inland.getObjectByName(
-          fall.name + '-foam-' + i) as THREE.Mesh);
-        for (const foam of foams) {
-          expect(foam, fall.name).toBeInstanceOf(THREE.Mesh);
-          expect(foam.geometry, foam.name).toBeInstanceOf(THREE.IcosahedronGeometry);
-          expect(foam.scale.x, foam.name).toBeCloseTo(width * 0.45, 5);
-          expect(foam.scale.y, foam.name).toBeCloseTo(width * 0.3, 5);
-          expect(foam.scale.z, foam.name).toBeCloseTo(width * 0.45, 5);
-          const mat = foam.material as THREE.MeshBasicMaterial;
-          expect(mat.color.getHex(), foam.name).toBe(0xffffff);
-          expect(mat.opacity, foam.name).toBe(0.85);
-          expect(mat.transparent, foam.name).toBe(true);
-          expect(mat.depthWrite, foam.name).toBe(false);
-          expect(foam.position.y, foam.name).toBeCloseTo(vertices.getY(2), 5);
+        const foam = inland.getObjectByName(
+          fall.name + '-foam') as THREE.InstancedMesh;
+        expect(foam, fall.name).toBeInstanceOf(THREE.InstancedMesh);
+        expect(foam.count, fall.name + ' blob count').toBe(3);
+        expect(foam.geometry).toBeInstanceOf(THREE.IcosahedronGeometry);
+        const mat = foam.material as THREE.MeshBasicMaterial;
+        expect(mat.color.getHex()).toBe(0xffffff);
+        expect(mat.opacity).toBe(0.85);
+        expect(mat.transparent).toBe(true);
+        expect(mat.depthWrite).toBe(false);
+        const transform = new THREE.Matrix4();
+        const size = new THREE.Vector3();
+        const locations: THREE.Vector3[] = [];
+        for (let i = 0; i < foam.count; i++) {
+          foam.getMatrixAt(i, transform);
+          size.setFromMatrixScale(transform);
+          expect(size.x, foam.name).toBeCloseTo(width * 0.45, 5);
+          expect(size.y, foam.name).toBeCloseTo(width * 0.3, 5);
+          expect(size.z, foam.name).toBeCloseTo(width * 0.45, 5);
+          const location = new THREE.Vector3().setFromMatrixPosition(transform);
+          expect(location.y, foam.name).toBeCloseTo(vertices.getY(2), 5);
+          locations.push(location);
         }
-        expect(foams[0]!.position.distanceTo(foams[2]!.position))
+        expect(locations[0]!.distanceTo(locations[2]!))
           .toBeCloseTo(width * 0.56, 4);
       }
       const torus: THREE.Mesh[] = [];
@@ -277,7 +285,7 @@ describe('Mt. Gigga cascades and Dam plot exclusion (MG-5, DM-1)', () => {
       expect(guarded.inland.getObjectByName('mountain-waterfall-' + index))
         .toBeUndefined();
       expect(guarded.inland.getObjectByName('mountain-waterfall-' + index +
-        '-foam-1')).toBeUndefined();
+        '-foam')).toBeUndefined();
     } finally {
       guarded.sea.geometry.dispose();
       (guarded.sea.material as THREE.Material).dispose();
