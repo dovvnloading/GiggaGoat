@@ -39,6 +39,27 @@ describe('library prop catalog', () => {
     }
   });
 
+  it('maps nine authored Baa-ardwalk kinds to their Blender GLBs', () => {
+    const expected: Partial<Record<PropKind, string>> = {
+      pier: 'boardwalk-pier.glb',
+      'pier-rail': 'pier-rail.glb',
+      scaffold: 'timber-pile.glb',
+      booth: 'kiosk.glb',
+      awning: 'striped-awning.glb',
+      signboard: 'signboard.glb',
+      'ferris-wheel': 'ferris-wheel.glb',
+      trampoline: 'trampoline.glb',
+      bumper: 'beach-ball.glb',
+    };
+    expect(Object.keys(expected)).toHaveLength(9);
+    for (const [kind, file] of Object.entries(expected)) {
+      const path = 'assets/library/custom/baaardwalk/' + file;
+      expect(PROP_LIBRARY_MODELS[kind as PropKind], kind).toBe(path);
+      expect(byPath.get(path)?.license, kind).toBe('CC0');
+      expect(existsSync(new URL('../../public/' + path, import.meta.url)), kind).toBe(true);
+    }
+  });
+
   it('maps all 15 Crane Yard kinds to their exact authored CC0 assets', () => {
     const expected: Partial<Record<PropKind, string>> = {
       crane: 'assets/library/custom/crane-yard/crane-mast.glb',
@@ -80,7 +101,7 @@ describe('library prop catalog', () => {
       crate: 'platformer-kit/crate.glb',
       barrel: 'survival-kit/barrel.glb',
       shop: 'city-kit-commercial/building-a.glb',
-      'ferris-wheel': 'ferris-wheel_6CepsZjXBw.glb',
+      'ferris-wheel': 'custom/baaardwalk/ferris-wheel.glb',
       crane: 'custom/crane-yard/crane-mast.glb',
       'crane-jib': 'custom/crane-yard/crane-jib.glb',
       'crane-cab': 'custom/crane-yard/crane-cab.glb',
@@ -472,6 +493,80 @@ describe('Crane Yard container descriptor colours', () => {
       const mesh = visuals.group.getObjectByName('props-container') as THREE.InstancedMesh;
       mesh.geometry.dispose();
       (mesh.material as THREE.Material).dispose();
+      visuals.dispose();
+      load.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('authored Baa-ardwalk model colours and LOD', () => {
+  it('uses full descriptor paint on kiosks and preserves every other GLB colour at distance', async () => {
+    const kinds = ['pier', 'pier-rail', 'scaffold', 'awning', 'signboard',
+      'ferris-wheel', 'trampoline', 'bumper'] as const;
+    const scene = new THREE.Group();
+    scene.add(new THREE.Mesh(new THREE.SphereGeometry(0.5, 24, 16),
+      new THREE.MeshStandardMaterial({ color: 0x75a5c9 })));
+    const load = vi.spyOn(GLTFLoader.prototype, 'loadAsync')
+      .mockResolvedValue({ scene } as Awaited<ReturnType<GLTFLoader['loadAsync']>>);
+    vi.stubGlobal('document', {});
+    const props: PropDescriptor[] = [
+      ...kinds.map((kind, i): PropDescriptor => ({
+        id: 'boardwalk-' + kind, kind,
+        transform: { position: { x: i * 3, y: 2, z: 0 }, rotationY: 0 },
+        size: { x: 2, y: 2, z: 2 }, body: { type: 'static' },
+        shape: 'cuboid', collidable: true, breakable: false,
+        lickable: true, climbable: true, color: 0xff0000,
+      })),
+      ...[0x75b3d4, 0xf4837c, undefined].map((color, i): PropDescriptor => ({
+        id: 'boardwalk-booth-' + i, kind: 'booth',
+        transform: { position: { x: i * 3, y: 2, z: 8 }, rotationY: 0 },
+        size: { x: 2, y: 2, z: 2 }, body: { type: 'static' },
+        shape: 'cuboid', collidable: true, breakable: false,
+        lickable: true, climbable: true,
+        ...(color === undefined ? {} : { color }),
+      })),
+    ];
+    const visuals = buildPropVisuals(props);
+    try {
+      await vi.waitFor(() => expect(visuals.group.userData['libraryReady']).toBe(true),
+        { timeout: 15000 });
+      expect(visuals.group.userData['libraryFailed']).toBe(0);
+      const white = new THREE.Color();
+      for (const kind of [...kinds, 'booth'] as const) {
+        const original = visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
+        const near = visuals.group.getObjectByName('render-near-' + kind) as THREE.InstancedMesh;
+        const far = visuals.group.getObjectByName('render-far-' + kind) as THREE.InstancedMesh;
+        expect(near.geometry, kind).toBe(original.geometry);
+        expect(far.geometry, kind).toBe(original.geometry);
+        expect(original.geometry.getAttribute('position').count / 3).toBeGreaterThan(48);
+        expect(load).toHaveBeenCalledWith(publicAssetUrl(PROP_LIBRARY_MODELS[kind]));
+        const colours = kind === 'booth' ? [0x75b3d4, 0xf4837c, 0xffffff] : [0xffffff];
+        colours.forEach((hex, i) => {
+          original.getColorAt(i, white);
+          expect(white.getHex(), kind + ' ' + i).toBe(hex);
+        });
+        const paint = original.geometry.getAttribute('color');
+        const sourcePaint = new THREE.Color(0x75a5c9);
+        expect(paint.getX(0), kind).toBeCloseTo(sourcePaint.r, 5);
+        expect(paint.getY(0), kind).toBeCloseTo(sourcePaint.g, 5);
+        expect(paint.getZ(0), kind).toBeCloseTo(sourcePaint.b, 5);
+      }
+      const visible = { intersectsSphere: () => true } as unknown as THREE.Frustum;
+      for (const [distance, level] of [[20, 'near'], [100, 'far']] as const) {
+        visuals.updateCulling(new THREE.Vector3(0, 2, distance), visible, 500, () => false);
+        for (const kind of [...kinds, 'booth'] as const) {
+          const mesh = visuals.group.getObjectByName('render-' + level + '-' + kind)
+            as THREE.InstancedMesh;
+          expect(mesh.count, kind + ' ' + level).toBe(kind === 'booth' ? 3 : 1);
+          const colours = kind === 'booth' ? [0x75b3d4, 0xf4837c, 0xffffff] : [0xffffff];
+          colours.forEach((hex, i) => {
+            mesh.getColorAt(i, white);
+            expect(white.getHex(), kind + ' ' + level + ' ' + i).toBe(hex);
+          });
+        }
+      }
+    } finally {
       visuals.dispose();
       load.mockRestore();
       vi.unstubAllGlobals();
