@@ -5,6 +5,7 @@ import { gridSample } from './terrain';
 import { publicAssetUrl } from './public-assets';
 import { TOON_RAMP } from './visual-props';
 import { bakeLibraryGeometry, type HoofPlacement } from './visual-hoofington';
+import { createDistrictLod, type BakedPlacement, type DistrictLod } from './district-lod';
 
 /**
  * CC0-only sourced Downtown art. These are library paths, not page-relative
@@ -61,6 +62,7 @@ export interface DowntownVisuals {
   group: THREE.Group;
   isFallbackHidden(mesh: THREE.InstancedMesh): boolean;
   consumeShadowChange(): boolean;
+  updateCulling(position: THREE.Vector3, frustum: THREE.Frustum): boolean;
   dispose(): void;
 }
 
@@ -430,6 +432,7 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
   group.userData['signCount'] = 0;
   const fullyHidden = new Set<PropKind>();
   let disposed = false, shadowChanged = false;
+  let districtLod: DistrictLod | undefined;
   if (typeof document !== 'undefined') {
     const plan = makeDowntownPlacements(island);
     const signs = makeDowntownSigns(island);
@@ -440,7 +443,7 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
         loader.load(publicAssetUrl(DOWNTOWN_MODELS[id]),
           gltf => resolve([id, gltf.scene]), undefined, reject);
       });
-    void Promise.allSettled([...required].map(load)).then(results => {
+    void Promise.allSettled([...required].map(load)).then(async results => {
       const models = new Map<DowntownModel, THREE.Group>();
       for (const result of results) {
         if (result.status === 'fulfilled') models.set(...result.value);
@@ -449,16 +452,14 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
       try {
         if (disposed) return;
         const visible = plan.filter(p => models.has(p.model));
-        const geometry = bakeLibraryGeometry(visible, models);
+        const ranges: BakedPlacement<DowntownModel>[] = [];
+        const geometry = bakeLibraryGeometry(visible, models,
+          (placement, start, count) => ranges.push({ placement, start, count }));
         if (!geometry) return;
-        const material = new THREE.MeshToonMaterial({
-          color: 0xffffff, vertexColors: true, gradientMap: TOON_RAMP,
-          side: THREE.DoubleSide,
-        });
-        const batch = new THREE.Mesh(geometry, material);
-        batch.name = 'downtown-library-batched';
-        batch.castShadow = true; batch.receiveShadow = true;
-        group.add(batch);
+        const lod = await createDistrictLod(island, geometry, ranges, group,
+          'downtown-library-batched');
+        if (disposed) { lod.dispose(); return; }
+        districtLod = lod;
         const loadedShops = signs.filter(sign => {
           const planned = plan.find(p => p.source?.id === sign.source.id);
           return planned && models.has(planned.model);
@@ -497,8 +498,12 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
     consumeShadowChange(): boolean {
       const changed = shadowChanged; shadowChanged = false; return changed;
     },
+    updateCulling(position, frustum): boolean {
+      return districtLod?.updateCulling(position, frustum) ?? false;
+    },
     dispose(): void {
       disposed = true;
+      districtLod?.dispose();
       group.traverse(node => {
         if (!(node instanceof THREE.Mesh)) return;
         node.geometry.dispose();

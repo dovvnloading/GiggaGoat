@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { IslandData, PropDescriptor, PropKind, Vec3 } from './types';
 import { gridSample } from './terrain';
 import { publicAssetUrl } from './public-assets';
+import { createDistrictLod, type BakedPlacement, type DistrictLod } from './district-lod';
 import { TOON_RAMP } from './visual-props';
 
 /**
@@ -56,6 +57,7 @@ export interface HoofingtonVisuals {
   /** The old whole-kind draws are suppressed even when culling is updated. */
   isFallbackHidden(mesh: THREE.InstancedMesh): boolean;
   consumeShadowChange(): boolean;
+  updateCulling(position: THREE.Vector3, frustum: THREE.Frustum): boolean;
   dispose(): void;
 }
 
@@ -170,6 +172,7 @@ const sampleUv = new THREE.Vector2();
 export function bakeLibraryGeometry<Model extends string>(
   placements: readonly HoofPlacement<Model>[],
   models: ReadonlyMap<Model, ModelScene>,
+  onPlacement?: (placement: HoofPlacement<Model>, start: number, count: number) => void,
 ): THREE.BufferGeometry | null {
   const coordinates: number[] = [], colours: number[] = [];
   const imageCache = new WeakMap<THREE.Texture, PixelMap | null>();
@@ -202,6 +205,7 @@ export function bakeLibraryGeometry<Model extends string>(
   }
 
   for (const placement of placements) {
+    const start = coordinates.length / 3;
     const root = models.get(placement.model);
     if (!root) continue;
     root.updateMatrixWorld(true);
@@ -316,6 +320,7 @@ export function bakeLibraryGeometry<Model extends string>(
         }
       }
     });
+    onPlacement?.(placement, start, coordinates.length / 3 - start);
   }
   if (!coordinates.length) return null;
   const geometry = new THREE.BufferGeometry();
@@ -451,6 +456,7 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
   group.userData['loadedModels'] = 0;
   const fullyHidden = new Set<PropKind>();
   let shadowChanged = false, disposed = false;
+  let districtLod: DistrictLod | undefined;
   if (typeof document !== 'undefined') {
     const plan = makeHoofingtonPlacements(island);
     // Dynamic hay bales must remain on their existing instanced mesh so the
@@ -463,7 +469,7 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
         loader.load(publicAssetUrl(HOOFINGTON_MODELS[id]),
           gltf => resolve([id, gltf.scene]), undefined, reject);
       });
-    void Promise.allSettled([...required].map(load)).then(results => {
+    void Promise.allSettled([...required].map(load)).then(async results => {
       const models = new Map<HoofModel, ModelScene>();
       for (const result of results) {
         if (result.status === 'fulfilled') models.set(...result.value);
@@ -473,17 +479,14 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
         if (disposed) return;
         // UV-mapped gnomes must not go through the vertex-colour baker.
         const staticPlan = plan.filter(p => p.model !== 'gnome' && models.has(p.model));
-        const geometry = bakeHoofingtonGeometry(staticPlan, models);
+        const ranges: BakedPlacement<HoofModel>[] = [];
+        const geometry = bakeLibraryGeometry(staticPlan, models,
+          (placement, start, count) => ranges.push({ placement, start, count }));
         if (geometry) {
-          const material = new THREE.MeshToonMaterial({
-            color: 0xffffff, vertexColors: true, gradientMap: TOON_RAMP,
-            side: THREE.DoubleSide,
-          });
-          const mesh = new THREE.Mesh(geometry, material);
-          mesh.name = 'hoofington-library-batched';
-          mesh.castShadow = true;
-          mesh.receiveShadow = true;
-          group.add(mesh);
+          const lod = await createDistrictLod(island, geometry, ranges, group,
+            'hoofington-library-batched');
+          if (disposed) { lod.dispose(); return; }
+          districtLod = lod;
         }
         const gnomePlan = plan.filter(p => p.model === 'gnome');
         const gnomeModel = models.get('gnome');
@@ -543,8 +546,12 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
       shadowChanged = false;
       return changed;
     },
+    updateCulling(position, frustum): boolean {
+      return districtLod?.updateCulling(position, frustum) ?? false;
+    },
     dispose(): void {
       disposed = true;
+      districtLod?.dispose();
       group.traverse(object => {
         if (!(object instanceof THREE.Mesh)) return;
         object.geometry.dispose();
