@@ -422,6 +422,60 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 regenerate();
+// Optional browser profiling bridge. Not active in normal viewer sessions.
+// The benchmark synchronously waits for WebGL completion to measure actual
+// frame cost rather than mistaking a 60 Hz rAF cadence for GPU throughput.
+if (new URLSearchParams(window.location.search).has('profile')) {
+  const gl = renderer.getContext();
+  const debug = gl.getExtension('WEBGL_debug_renderer_info');
+  Object.assign(window, {
+    __worldProfile: {
+      pixelRatio(ratio: number): void {
+        renderer.setPixelRatio(THREE.MathUtils.clamp(ratio, 0.5, 2));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      },
+      water(visible: boolean): void { worldView.water.visible = visible; },
+      sky(visible: boolean): void {
+        const dome = worldView.group.getObjectByName('gradient-sky');
+        if (dome) dome.visible = visible;
+      },
+      shadows(enabled: boolean): void {
+        renderer.shadowMap.enabled = enabled;
+        if (enabled) shadowCache.invalidate();
+      },
+      outlines(visible: boolean): void {
+        worldView.group.traverse(object => {
+          if (object.name.startsWith('outline-')) object.visible = visible;
+        });
+      },
+      measure(frames = 16): {
+        frameTimesMs: number[]; drawCalls: number; triangles: number;
+        width: number; height: number; pixelRatio: number; gpu: string;
+      } {
+        const frameTimesMs: number[] = [];
+        for (let i = 0; i < frames + 4; i++) {
+          const start = window.performance.now();
+          worldView.update(elapsed + i / 60);
+          if (orbit.enabled) orbit.update();
+          else fly.update(1 / 60);
+          renderWorldFrame();
+          gl.finish();
+          if (i >= 4) frameTimesMs.push(window.performance.now() - start);
+        }
+        return {
+          frameTimesMs,
+          drawCalls: renderer.info.render.calls,
+          triangles: renderer.info.render.triangles,
+          width: renderer.domElement.width,
+          height: renderer.domElement.height,
+          pixelRatio: renderer.getPixelRatio(),
+          gpu: String(debug ? gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) :
+            gl.getParameter(gl.RENDERER)),
+        };
+      },
+    },
+  });
+}
 renderer.setAnimationLoop(() => {
   if (capturing) return;
   const delta = Math.min(clock.getDelta(), 0.08);
