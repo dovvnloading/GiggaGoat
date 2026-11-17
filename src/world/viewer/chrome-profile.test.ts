@@ -239,6 +239,24 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
         format: 'jpeg', quality: 68, fromSurface: true,
       });
       if (clean.data) console.log('WORLD_DOWNTOWN_CLEAN ' + clean.data);
+      for (const name of ['downtown-library-models',
+        'handcrafted-props', 'graded-ring-road-and-trails']) {
+        const off = await send('Runtime.evaluate', {
+          expression: '(() => { window.__worldProfile.debugGroupVisible(' +
+            JSON.stringify(name) + ', false); window.__worldProfile.measure(2); })()',
+        });
+        if (off.exceptionDetails) throw new Error('Could not isolate ' + name);
+        const probe = await send('Page.captureScreenshot', {
+          format: 'jpeg', quality: 60, fromSurface: true,
+          clip: { x: 450, y: 285, width: 380, height: 240, scale: 1 },
+        });
+        if (probe.data) console.log('WORLD_DOWNTOWN_ISOLATE_' +
+          name.toUpperCase().replaceAll('-', '_') + ' ' + probe.data);
+        await send('Runtime.evaluate', {
+          expression: '(() => { window.__worldProfile.debugGroupVisible(' +
+            JSON.stringify(name) + ', true); window.__worldProfile.measure(1); })()',
+        });
+      }
       await send('Runtime.evaluate', {
         expression: '["panel","reference","labels","hint"].forEach(id => ' +
           '{ document.getElementById(id).style.visibility = ""; });',
