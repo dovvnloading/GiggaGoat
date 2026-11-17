@@ -85,7 +85,7 @@ export function sampleTrampolineBoing(
   // The lab can position its existing goat, while gameplay controls real flight.
   const flight = clamp01((t - 0.34) / 0.66);
   out.goatLift = t < 0.34
-    ? -out.matDip * 0.88
+    ? (out.matDip === 0 ? 0 : -out.matDip * 0.88)
     : (1.45 + 0.50 * power) * Math.pow(Math.sin(Math.PI * flight), 0.87);
   return out;
 }
