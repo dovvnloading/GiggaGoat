@@ -111,6 +111,8 @@ describe('Core game loop — production adapters on real Rapier ticks', () => {
     const game = await create();
     try {
       const before = game.bodyCount;
+      const startPose = { ...game.goat.torso.translation() };
+      const startFootY = startPose.y - .92 * game.goat.size;
       const match = game.party.start('king-of-the-peak', 7, 'easy', {
         countdownTicks: 0, durationTicks: 110, overtimeTicks: 15,
       });
@@ -128,6 +130,10 @@ describe('Core game loop — production adapters on real Rapier ticks', () => {
       const withBots = game.bodyCount;
       game.party.returnToFreeRoam();
       expect(withBots - game.bodyCount).toBe(49);
+      const returned = game.goat.torso.translation();
+      expect(returned.x).toBeCloseTo(startPose.x, 2);
+      expect(returned.z).toBeCloseTo(startPose.z, 2);
+      expect(returned.y - .92 * game.goat.size).toBeCloseTo(startFootY, 2);
     } finally { game.dispose(); }
   });
 
