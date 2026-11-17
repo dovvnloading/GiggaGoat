@@ -618,6 +618,16 @@ const SHADOW_KINDS = new Set<PropKind>([
   'satellite-dish', 'ferris-wheel',
   'concrete-slab', 'concrete-column', 'yard-scaffold', 'crane-jib',
 ]);
+/** Blender-authored Baa-ardwalk pieces are low-poly with painted materials. */
+const authoredBaaardwalkKinds = new Set<PropKind>([
+  'pier', 'pier-rail', 'scaffold', 'booth', 'awning', 'signboard',
+  'ferris-wheel', 'trampoline', 'bumper',
+]);
+/** Kiosks alone have white walls for full-strength descriptor tint. */
+const authoredBaaardwalkPaintedKinds = new Set<PropKind>([
+  'pier', 'pier-rail', 'scaffold', 'awning', 'signboard',
+  'ferris-wheel', 'trampoline', 'bumper',
+]);
 const OUTLINE_KINDS = new Set<PropKind>([
   'windmill', 'ferris-wheel', 'crane', 'satellite-dish',
 ]);
@@ -809,7 +819,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
           // Authored Crane Yard lattice and painted container detail must remain
           // intact beyond the detailed-distance threshold.
           const distantGeometry = authoredCraneYardKinds.has(job.kind) ||
-            job.kind === 'container'
+            authoredBaaardwalkKinds.has(job.kind) || job.kind === 'container'
             ? libraryGeometry : await simplifiedWorldGeometry(libraryGeometry);
           if (disposed) {
             if (distantGeometry !== libraryGeometry) distantGeometry.dispose();
@@ -836,13 +846,14 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
             });
           }
           job.mesh.geometry = libraryGeometry;
-          // Authored Crane Yard paint and daisies stay untinted. Containers
-          // have near-white GLB bodies, so their descriptor paint is full strength.
+          // Preserve authored Crane Yard / Baa-ardwalk paint. White kiosks
+          // and Crane Yard containers take their descriptor colour at full strength.
           for (let i = 0; i < job.entries.length; i++) {
             const color = job.entries[i]!.color;
             job.mesh.setColorAt(i,
               job.kind === 'grass-tuft' || authoredCraneYardKinds.has(job.kind) ||
-                color === undefined ? white : job.kind === 'container'
+                authoredBaaardwalkPaintedKinds.has(job.kind) || color === undefined
+                ? white : job.kind === 'container' || job.kind === 'booth'
                   ? tint.setHex(color) : tint.setHex(color).lerp(white, 0.82));
           }
           if (job.mesh.instanceColor) job.mesh.instanceColor.needsUpdate = true;
