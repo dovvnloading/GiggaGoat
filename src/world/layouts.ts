@@ -3,7 +3,8 @@ import { SeededRandom } from './random';
 import { gridSample, riverAt } from './terrain';
 import { buildBaaardwalk } from './boardwalk';
 import { buildCraneYard } from './crane-yard';
-import { DOWNTOWN_BUILDING_SIZES, SHOP_FRONTS, downtownRearHouseModel } from './visual-downtown';
+import { DOWNTOWN_BUILDING_SIZES, DOWNTOWN_INFILL, SHOP_FRONTS,
+  downtownRearHouseModel } from './visual-downtown';
 import { getDamPlacement } from './the-dam';
 
 interface AddOptions {
@@ -112,6 +113,14 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
       site(city, 'ramp', x + side * 9.6, z + 3, 4.5, 3, 9,
         { yaw: side * Math.PI / 2 });
     }
+  }
+  // Fill only the gaps between existing shops, not beyond the first or last.
+  // Each infill is a static cuboid whose GLB faces the same pavement plane.
+  for (const { side, z, model } of DOWNTOWN_INFILL) {
+    const size = DOWNTOWN_BUILDING_SIZES[model];
+    const x = side * (20 - 11.4 / 2 + size.z / 2);
+    site(city, 'house', x, z, size.x, size.y, size.z,
+      { yaw: -side * Math.PI / 2 });
   }
   // Rooftop rows need four physical roofs each: one taller rear
   // townhouse behind each near-side shop in rows -19, 0 and +19.
