@@ -30,8 +30,26 @@ describe('Hoofington sourced village model integration', () => {
       expect(HOOFINGTON_MODELS[home], home).toContain('custom/hoofington-houses/');
     }
     expect(HOOFINGTON_MODELS.lamp).toBe('assets/library/usdcraft/street-lamp-lantern.glb');
-    expect(HOOFINGTON_MODELS.windmill).toContain('farm-buildings-bundle');
-    expect(HOOFINGTON_MODELS.bush).toContain('stylized-nature-megakit');
+    const authored: Partial<Record<HoofModel, string>> = {
+      fence: 'picket-fence.glb',
+      mailbox: 'mailbox.glb',
+      silo: 'silo.glb',
+      windmill: 'windmill.glb',
+      flowerPink: 'flowers-pink.glb',
+      flowerPurple: 'flowers-purple.glb',
+      flowerSunny: 'flowers-sunny.glb',
+      bushA: 'bush-round-a.glb',
+      bushB: 'bush-round-b.glb',
+      oakA: 'tree-round-a.glb',
+      oakB: 'tree-round-b.glb',
+      oakC: 'tree-round-c.glb',
+    };
+    for (const [name, filename] of Object.entries(authored)) {
+      expect(HOOFINGTON_MODELS[name as HoofModel], name)
+        .toBe('assets/library/custom/hoofington-props/' + filename);
+    }
+    for (const retired of ['banner', 'flower', 'bush', 'oak'])
+      expect(HOOFINGTON_MODELS).not.toHaveProperty(retired);
   });
 
   it('selects the CC0 Meshy GLB with a WebP baseColor texture', () => {
@@ -181,17 +199,29 @@ describe('Hoofington sourced village model integration', () => {
     expect(homes.some(p => p.model === 'pinkHome')).toBe(true);
     expect(homes.some(p => p.model === 'creamHome')).toBe(true);
     expect(homes.some(p => p.model === 'yellowHome')).toBe(true);
-    // Houses carry their per-part painting colours in the GLB; the baker must
-    // not repaint walls/roofs (that flattened roofs and trim to one colour).
-    for (const home of linked.filter(p => p.source!.kind === 'house' || p.source!.kind === 'cottage')) {
-      expect(home.wall, home.model).toBeUndefined();
-      expect(home.roof, home.model).toBeUndefined();
+    // Painted meshes ship with their own colours, including barn and props.
+    const authoredKinds = new Set(['house', 'cottage', 'barn', 'silo', 'windmill',
+      'fence', 'mailbox', 'flower', 'bush', 'tree-oak']);
+    for (const placement of linked.filter(p => authoredKinds.has(p.source!.kind))) {
+      expect(placement.wall, placement.model).toBeUndefined();
+      expect(placement.roof, placement.model).toBeUndefined();
     }
     expect(linked.filter(p => p.source!.kind === 'barn')).toHaveLength(1);
     expect(linked.filter(p => p.source!.kind === 'silo')).toHaveLength(1);
     expect(linked.filter(p => p.source!.kind === 'windmill')).toHaveLength(1);
-    expect(linked.filter(p => p.source!.kind === 'mailbox')
-      .every(p => p.wall === 0xce493d)).toBe(true);
+    // Variants cycle in descriptor order and continue through extra scenery
+    // without consuming gameplay RNG or inventing physics descriptors.
+    for (const [kind, choices] of [
+      ['flower', ['flowerPink', 'flowerPurple', 'flowerSunny']],
+      ['bush', ['bushA', 'bushB']],
+      ['tree-oak', ['oakA', 'oakB', 'oakC']],
+    ] as const) {
+      const assigned = linked.filter(p => p.source!.kind === kind).map(p => p.model);
+      expect(assigned).toEqual(assigned.map((_, i) => choices[i % choices.length]));
+      for (const choice of choices)
+        expect(plan.some(p => p.model === choice), choice).toBe(true);
+    }
+    expect(plan.map(p => p.model)).not.toContain('banner');
     expect(plan.filter(p => p.model === 'cow' || p.model === 'sheep' ||
       p.model === 'pig' || p.model === 'horse').length).toBeGreaterThanOrEqual(5);
     expect(plan.filter(p => p.model === 'planter').length).toBeGreaterThan(5);
@@ -250,25 +280,29 @@ describe('Hoofington sourced village model integration', () => {
     (roof.material as THREE.Material).dispose();
   });
 
-  it('bakes leafy vegetation as coloured canopy rather than transparent-atlas black', () => {
-    const model = new THREE.Group();
-    const leaf = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshStandardMaterial({ color: 0x000000 }));
-    leaf.position.y = 0.6;
-    model.add(leaf);
-    const geometry = bakeHoofingtonGeometry([{
-      model: 'bush', position: { x: 0, y: 1, z: 0 },
-      size: { x: 2, y: 2, z: 2 }, yaw: 0,
-    }], new Map<HoofModel, THREE.Group>([['bush', model]]))!;
-    const colors = geometry.getAttribute('color');
-    for (let i = 0; i < colors.count; i++) {
-      // The source material may be all black while the foliage is intended
-      // to be bright green, as with alpha-cutout models from nature atlases.
-      expect(colors.getY(i)).toBeGreaterThan(0.2);
-    }
-    geometry.dispose(); leaf.geometry.dispose();
-    (leaf.material as THREE.Material).dispose();
-  });
+  it.each(['barn', 'silo', 'windmill', 'fence', 'mailbox',
+    'flowerPink', 'flowerPurple', 'flowerSunny', 'bushA', 'bushB',
+    'oakA', 'oakB', 'oakC'] as const)(
+    'preserves the GLB material paint for %s even with legacy wall/roof hints', model => {
+      const source = new THREE.Group();
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1),
+        new THREE.MeshStandardMaterial({ color: 0x5ab88d }));
+      source.add(mesh);
+      const geometry = bakeHoofingtonGeometry([{
+        model, position: { x: 0, y: 1, z: 0 },
+        size: { x: 2, y: 2, z: 2 }, yaw: 0,
+        wall: 0xff0000, roof: 0x0000ff,
+      }], new Map<HoofModel, THREE.Group>([[model, source]]))!;
+      const colours = geometry.getAttribute('color');
+      const authored = new THREE.Color(0x5ab88d);
+      for (let i = 0; i < colours.count; i++) {
+        expect(colours.getX(i)).toBeCloseTo(authored.r, 5);
+        expect(colours.getY(i)).toBeCloseTo(authored.g, 5);
+        expect(colours.getZ(i)).toBeCloseTo(authored.b, 5);
+      }
+      geometry.dispose(); mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+    });
 
   it('retains one original instance per collider and creates no browser loads in node', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });

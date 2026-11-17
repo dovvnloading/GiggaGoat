@@ -40,13 +40,16 @@ describe('library prop catalog', () => {
 
   it('prefers coherent, genuinely sourced models for the art-camera details', () => {
     const expected: Partial<Record<PropKind, string>> = {
-      'tree-oak': 'nature-kit/tree_oak.glb',
+      'tree-oak': 'custom/hoofington-props/tree-round-a.glb',
       'tree-pine': 'nature-kit/tree_pineTallA.glb',
-      bush: 'nature-kit/plant_bushDetailed.glb',
-      flower: 'nature-kit/flower_purpleA.glb',
+      bush: 'custom/hoofington-props/bush-round-a.glb',
+      flower: 'custom/hoofington-props/flowers-pink.glb',
       lamp: 'usdcraft/street-lamp-lantern.glb',
       bench: 'retro-urban-kit/detail-bench.glb',
-      fence: 'city-kit-suburban/fence.glb',
+      fence: 'custom/hoofington-props/picket-fence.glb',
+      mailbox: 'custom/hoofington-props/mailbox.glb',
+      silo: 'custom/hoofington-props/silo.glb',
+      windmill: 'custom/hoofington-props/windmill.glb',
       crate: 'platformer-kit/crate.glb',
       barrel: 'survival-kit/barrel.glb',
       shop: 'city-kit-commercial/building-a.glb',
@@ -91,6 +94,52 @@ describe('USDCraft lantern model consistency', () => {
 });
 
 describe('library geometry batching', () => {
+  it.each(['tree-oak', 'bush', 'flower', 'fence', 'mailbox',
+    'silo', 'windmill'] as const)(
+    'preserves authored material and vertex colours for %s', kind => {
+      const geometry = new THREE.BoxGeometry(1, 1, 1);
+      const paint = new Float32Array(geometry.getAttribute('position').count * 3);
+      for (let i = 0; i < paint.length; i += 3) {
+        paint[i] = 0.75; paint[i + 1] = 0.5; paint[i + 2] = 0.25;
+      }
+      geometry.setAttribute('color', new THREE.BufferAttribute(paint, 3));
+      const material = new THREE.MeshStandardMaterial({ color: 0x5ab88d });
+      const source = new THREE.Group();
+      source.add(new THREE.Mesh(geometry, material));
+      const baked = bakeLibraryPropGeometry(kind, source)!;
+      const colour = baked.getAttribute('color');
+      const authored = new THREE.Color(0x5ab88d);
+      for (let i = 0; i < colour.count; i++) {
+        expect(colour.getX(i)).toBeCloseTo(authored.r * 0.75, 5);
+        expect(colour.getY(i)).toBeCloseTo(authored.g * 0.5, 5);
+        expect(colour.getZ(i)).toBeCloseTo(authored.b * 0.25, 5);
+      }
+      baked.dispose(); geometry.dispose(); material.dispose();
+    });
+
+  it.each([
+    ['tree-pine', 0x478f62],
+    ['grass-tuft', 0x88c366],
+    ['planter', 0x77b65f],
+  ] as const)('keeps the existing %s foliage paint', (kind, hex) => {
+    const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const source = new THREE.Group();
+    source.add(new THREE.Mesh(geometry, material));
+    const baked = bakeLibraryPropGeometry(kind, source)!;
+    const colours = baked.getAttribute('color');
+    const expected = new THREE.Color(hex);
+    // The upper vertices use each legacy foliage override.
+    for (let i = 0; i < colours.count; i++) {
+      const y = baked.getAttribute('position').getY(i);
+      if (y <= 0) continue;
+      expect(colours.getX(i)).toBeCloseTo(expected.r, 5);
+      expect(colours.getY(i)).toBeCloseTo(expected.g, 5);
+      expect(colours.getZ(i)).toBeCloseTo(expected.b, 5);
+    }
+    baked.dispose(); geometry.dispose(); material.dispose();
+  });
+
   it('bakes multiple transformed model parts and their material paint into one unit envelope', () => {
     const source = new THREE.Group();
     const wood = new THREE.Mesh(
