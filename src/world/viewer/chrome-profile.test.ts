@@ -197,6 +197,46 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
         expect(mark.height).toBeGreaterThan(600);
       }
       console.log('WORLD_CHROME_PROFILE ' + JSON.stringify(report));
+      // rAF cadence includes compositor scheduling, overlays and browser delivery;
+      // gl.finish() above is intentionally a separate GPU/CPU render-cost metric.
+      const cadenceExpression = String.raw`(async () => {
+        const menu = document.getElementById('bookmark');
+        const samples = [];
+        for (const option of menu.options) {
+          menu.value = option.value;
+          menu.dispatchEvent(new Event('change', { bubbles: true }));
+          await new Promise(resolve => requestAnimationFrame(() => resolve()));
+          const gaps = [];
+          await new Promise(resolve => {
+            let previous = null;
+            const tick = time => {
+              if (previous !== null) gaps.push(time - previous);
+              previous = time;
+              if (gaps.length >= 60) resolve();
+              else requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+          });
+          gaps.sort((a, b) => a - b);
+          samples.push({
+            id: option.value, medianMs: gaps[30], p90Ms: gaps[54],
+            fps: 1000 / (gaps.reduce((a, b) => a + b, 0) / gaps.length),
+          });
+        }
+        return samples;
+      })()`;
+      const cadenceResult = await send('Runtime.evaluate', {
+        expression: cadenceExpression, awaitPromise: true, returnByValue: true,
+      });
+      if (cadenceResult.exceptionDetails) {
+        throw new Error('Chrome frame-cadence benchmark failed: ' +
+          JSON.stringify(cadenceResult.exceptionDetails));
+      }
+      const cadence = cadenceResult.result?.value as Array<{
+        id: string; medianMs: number; p90Ms: number; fps: number;
+      }>;
+      expect(cadence).toHaveLength(ART_BOOKMARKS.length);
+      console.log('WORLD_CHROME_CADENCE ' + JSON.stringify(cadence));
     } finally {
       socket?.close();
       browser?.kill();
