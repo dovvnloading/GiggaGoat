@@ -1,11 +1,11 @@
-# VFX lane · Running Dust Puffs + Landing Impact Ring
+# VFX lane · Running Dust Puffs + Landing Impact Ring + Headbutt Impact Stars
 
 The top-left **RUNNING DUST PUFFS** and adjacent **LANDING IMPACT RING** panels
 of the approved [`23_vfx_sheet.png`](../../docs/art/hifi/23_vfx_sheet.png)
 are the two effects implemented here. Dust uses soft, overlapping warm apricot /
 cream lobes and trailing chips. Landing creates a cream-to-gold expanding
 ground ellipse, jagged golden impact spikes, and small airborne sandstone
-chips. Neither effect touches another lane, game physics or the main game loop.
+chips. The third **HEADBUTT IMPACT STARS** panel is implemented as a bright collision flash that expands into a sharp golden burst, then three orange-rimmed yellow stars and tiny trailing glints. All three effects stay inside this VFX lane and never drive physics or the main game loop.
 
 ## Running dust · call from gameplay
 
@@ -70,14 +70,47 @@ once, without canvas, image downloads, physics, or per-frame GPU allocations.
 `landingRingMath.ts` is pure, absolute-age sampled motion logic; the Vitest
 suite also exercises the actual Three.js scene-graph lifecycle without WebGL.
 
+## Headbutt impact stars · call from gameplay
+
+```ts
+import { createHeadbuttImpactStars } from '../vfx';
+
+const headbutt = createHeadbuttImpactStars({ capacity: 12 });
+scene.add(headbutt.group);
+
+// At a goat-head / obstacle contact (world position, travel direction, power):
+headbutt.emit(headContactPosition, goatForwardWorldDirection, 1.5);
+headbutt.update(dt);  // elapsed seconds; call once per frame
+headbutt.clear();     // optional reuse without deallocating
+headbutt.dispose();   // on owning scene teardown
+```
+
+`position` and `direction` accept `THREE.Vector3` or plain `{x,y,z}`
+values. Supply the actual **head collision contact point**, not the goat's
+feet: +Y is up, travel direction is projected onto XZ, and a zero-length
+horizontal direction defaults to +X. Non-finite coordinates/direction and
+negative/non-finite `power` are rejected; `power=0` does nothing; positive
+power is capped at 4 to protect readability. Stronger impacts enlarge the
+burst, widen the star scatter and slightly extend the lifetime (~0.48–0.61s).
+
+The no-allocation-per-frame Three.js effect reuses a bounded sprite pool
+(oldest burst recycled when full), shares two procedurally generated
+`DataTexture` images, and owns no WebGL renderer, canvas, downloaded art,
+physics or global listeners. `headbuttMath.ts` provides deterministic,
+absolute-time flash and star sampling, with Vitest tests for validation,
+directionality, phase progression and real scene-graph lifecycle.
+
 ## Production art-review lab
 
 `/src/vfx/lab/index.html` works under `npm run dev` and in the **production
 Vite build / GitHub Pages**. The repo's existing lab-page discovery in
 `vite.config.ts` includes it automatically. The lab includes a running
-Three.js goat, a studio floor, dust and landing triggers, pause/direction/speed
-controls, a landing-strength slider and crops of **both** approved panels from
-the *existing* reference sheet (bundled by Vite from `docs/art/hifi`).
+Three.js goat, a studio floor, dust, landing and headbutt triggers, a small
+faceted decorative target rock, pause/direction/speed controls, landing
+strength and headbutt power sliders, and crops of **all three** approved
+panels from the *existing* reference sheet (bundled by Vite from
+`docs/art/hifi`). Headbutt hits replay every 2.75 seconds, and paused
+single-hit triggering freezes a representative gold-star frame.
 
 ## Art-direction self-review
 
@@ -108,3 +141,19 @@ the *existing* reference sheet (bundled by Vite from `docs/art/hifi`).
   stand-in rather than editing the character's animations.
 - **Scope boundary:** ring is callable via `emit(position, strength)` but is
   deliberately not wired into gameplay physics or any other VFX panel.
+
+### Headbutt Impact Stars
+
+- **Matches:** first a small bright ivory-centered orange/yellow eight-point
+  spark; then a much larger sharp many-ray golden impact flare; then three
+  separate five-point, bright-yellow stars with thick orange-red rims,
+  scattered forwards/up with smaller golden glints and a fast fade.
+- **Intentional approximation:** the approved third-panel starbursts and gold
+  stars have irregular hand-painted outlines and glowing 2D shading. Soft
+  procedural DataTextures plus camera-facing sprites preserve their strong
+  silhouettes, warm hue hierarchy and three-stage timing, not the exact
+  brushstroke details. The lab's low-poly grey target rock is only a scale
+  and collision-context stand-in, not a new gameplay collider.
+- **Scope boundary:** effect is triggered at arbitrary contact with
+  `emit(position, direction, power)`; no gameplay, character source,
+  other VFX panels, or repository files outside `src/vfx/` are modified.
