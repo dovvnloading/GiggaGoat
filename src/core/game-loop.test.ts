@@ -85,6 +85,9 @@ describe('Core game loop — production adapters on real Rapier ticks', () => {
       game.party.returnToFreeRoam();
       expect(game.party.bots.size).toBe(0);
       expect(game.water.seaLevel).toBe(game.island.seaLevel);
+    } catch (error) {
+      console.error('Rising Tide primary assertion/runtime failure before cleanup:', error);
+      throw error;
     } finally { game.dispose(); }
   });
 
