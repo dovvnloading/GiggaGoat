@@ -628,6 +628,10 @@ const authoredBaaardwalkPaintedKinds = new Set<PropKind>([
   'pier', 'pier-rail', 'scaffold', 'awning', 'signboard',
   'ferris-wheel', 'trampoline', 'bumper',
 ]);
+/** Low-poly Blender town/farm models retain their native palette at every LOD. */
+const authoredTownFarmKinds = new Set<PropKind>([
+  'ac-unit', 'planter', 'bench', 'gnome', 'hay-bale', 'ramp', 'buoy',
+]);
 const OUTLINE_KINDS = new Set<PropKind>([
   'windmill', 'ferris-wheel', 'crane', 'satellite-dish',
 ]);
@@ -819,7 +823,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
           // Authored Crane Yard lattice and painted container detail must remain
           // intact beyond the detailed-distance threshold.
           const distantGeometry = authoredCraneYardKinds.has(job.kind) ||
-            authoredBaaardwalkKinds.has(job.kind) || job.kind === 'container'
+            authoredBaaardwalkKinds.has(job.kind) ||
+            authoredTownFarmKinds.has(job.kind) || job.kind === 'container'
             ? libraryGeometry : await simplifiedWorldGeometry(libraryGeometry);
           if (disposed) {
             if (distantGeometry !== libraryGeometry) distantGeometry.dispose();
@@ -846,13 +851,14 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
             });
           }
           job.mesh.geometry = libraryGeometry;
-          // Preserve authored Crane Yard / Baa-ardwalk paint. White kiosks
-          // and Crane Yard containers take their descriptor colour at full strength.
+          // Preserve the authored GLB paint, including town and farm models.
+          // Only white kiosks and Crane Yard containers use full descriptor tint.
           for (let i = 0; i < job.entries.length; i++) {
             const color = job.entries[i]!.color;
             job.mesh.setColorAt(i,
               job.kind === 'grass-tuft' || authoredCraneYardKinds.has(job.kind) ||
-                authoredBaaardwalkPaintedKinds.has(job.kind) || color === undefined
+                authoredBaaardwalkPaintedKinds.has(job.kind) ||
+                authoredTownFarmKinds.has(job.kind) || color === undefined
                 ? white : job.kind === 'container' || job.kind === 'booth'
                   ? tint.setHex(color) : tint.setHex(color).lerp(white, 0.82));
           }
