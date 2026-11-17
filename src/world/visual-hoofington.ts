@@ -289,6 +289,16 @@ export function bakeLibraryGeometry<Model extends string>(
             tint.setHex(0x6db85b);
           } else if (placement.model === 'flower') {
             tint.setHex(height > 0.38 ? 0xc68ee6 : 0x6ba955);
+          } else if (placement.model === 'planter') {
+            // Sourced planters use an alpha atlas with black padding at the
+            // leaf tips; keep the pot terracotta and the leaves lively green.
+            tint.setHex(height > 0.58 ? 0x73b65c : 0xbd8865);
+          } else if (placement.model === 'lights') {
+            // Holiday-kit bulbs are tiny on the atlas; UV vertex samples can
+            // otherwise read the transparent black padding instead of bulbs.
+            const bulbPalette = [0xffdf70, 0xf5a1c9, 0x8fd2ef, 0x95d675];
+            const bulb = Math.floor((normalizedX + 0.5) * 16) & 3;
+            tint.setHex(height > 0.7 ? 0xffe6aa : bulbPalette[bulb]!);
           }
           const detail = /window|glass|door|shutter|trim|metal|flower/.test(hint);
           const roofVertex = /roof|tile|shingle|thatch/.test(hint) || height > 0.71;
