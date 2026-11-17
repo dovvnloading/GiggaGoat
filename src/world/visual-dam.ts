@@ -1,0 +1,209 @@
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import type { IslandData } from './types';
+import { gridSample } from './terrain';
+import { getDamPlacement } from './the-dam';
+
+export interface DamVisuals {
+  group: THREE.Group;
+  update(seconds: number): void;
+  /** Async model arrival changes the static shadow casters. */
+  consumeShadowChange(): boolean;
+  dispose(): void;
+}
+
+interface DamMeshes {
+  group: THREE.Group;
+  waterfallMaps: THREE.Texture[];
+}
+
+function namedPart(object: THREE.Object3D, prefix: RegExp): boolean {
+  for (let part: THREE.Object3D | null = object; part; part = part.parent) {
+    if (prefix.test(part.name)) return true;
+  }
+  return false;
+}
+
+/** The authored rocks are only needed where the island has no existing cliff. */
+function needsAbutmentRock(mesh: THREE.Mesh, island: IslandData): boolean {
+  const { position, scale } = getDamPlacement(island);
+  const bounds = new THREE.Box3().setFromObject(mesh);
+  const centre = bounds.getCenter(new THREE.Vector3());
+  const x = position.x + centre.x * scale, z = position.z + centre.z * scale;
+  const radius = 3.5 * scale;
+  const heights = [
+    gridSample(island, x, z),
+    gridSample(island, x - radius, z), gridSample(island, x + radius, z),
+    gridSample(island, x, z - radius), gridSample(island, x, z + radius),
+  ];
+  const steep = Math.max(...heights) - Math.min(...heights) > 3.2 * scale;
+  const buried = heights[0]! > position.y + bounds.max.y * scale - 0.5 * scale;
+  return !steep && !buried;
+}
+
+/**
+ * Reduce the GLB's many static parts to a draw per material and vertex layout.
+ * Keep water sheets in their own material buckets so their texture transform
+ * never moves the reservoir, lips, or foam.
+ *
+ * Exported for headless tests: this stage needs no fetch, DOM, or WebGL context.
+ */
+export function prepareDamModel(root: THREE.Object3D, island: IslandData): DamMeshes {
+  root.updateMatrixWorld(true);
+  const group = new THREE.Group();
+  group.name = 'the-dam-model';
+  type Bucket = { material: THREE.Material; geometries: THREE.BufferGeometry[];
+    shadow: boolean; waterfall: boolean; names: string[] };
+  const buckets = new Map<string, Bucket>();
+  const clonedFalls = new Map<THREE.Material, THREE.Material>();
+  const waterfallMaps: THREE.Texture[] = [];
+  const oldGeometries = new Set<THREE.BufferGeometry>();
+
+  function waterfallMaterial(original: THREE.Material): THREE.Material {
+    const existing = clonedFalls.get(original);
+    if (existing) return existing;
+    const material = original.clone();
+    // GLTF's falling-water streaks have a texture. Isolate it before scrolling
+    // so any shared reservoir/foam texture stays stationary.
+    const textured = material as THREE.MeshStandardMaterial;
+    if (textured.map) {
+      textured.map = textured.map.clone();
+      textured.map.wrapT = THREE.RepeatWrapping;
+      textured.map.needsUpdate = true;
+      waterfallMaps.push(textured.map);
+    }
+    clonedFalls.set(original, material);
+    return material;
+  }
+
+  root.traverse(object => {
+    if (!(object instanceof THREE.Mesh)) return;
+    const isFall = namedPart(object, /^Water_Fall_/i);
+    const isRock = namedPart(object, /^Abutment_Rock_/i);
+    const shadow = namedPart(object, /^(?:Wall_|Dam_Wall|ControlHouse_)/i);
+    if (isRock && !needsAbutmentRock(object, island)) return;
+    oldGeometries.add(object.geometry);
+    const transformed = object.geometry.clone();
+    transformed.applyMatrix4(object.matrixWorld);
+    const geometry = transformed.index ? transformed.toNonIndexed() : transformed;
+    if (geometry !== transformed) transformed.dispose();
+
+    // The authored model uses one material per part, but retain a safe path
+    // for a future multi-material part without discarding its geometry groups.
+    if (Array.isArray(object.material)) {
+      const materials = object.material.map(material =>
+        isFall ? waterfallMaterial(material) : material);
+      const mesh = new THREE.Mesh(geometry, materials);
+      mesh.name = object.name;
+      mesh.castShadow = shadow;
+      mesh.receiveShadow = !isFall;
+      group.add(mesh);
+      return;
+    }
+    const material = isFall ? waterfallMaterial(object.material) : object.material;
+    const signature = Object.entries(geometry.attributes)
+      .map(([name, attr]) => name + ':' + attr.itemSize + ':' +
+        attr.normalized + ':' + attr.array.constructor.name).sort().join(',');
+    const key = material.uuid + ':' + (shadow ? 'S' : 's') + ':' + signature;
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = { material, geometries: [], shadow, waterfall: isFall, names: [] };
+      buckets.set(key, bucket);
+    }
+    bucket.geometries.push(geometry);
+    bucket.names.push(object.name);
+  });
+
+  for (const [i, bucket] of [...buckets.values()].entries()) {
+    const merged = bucket.geometries.length > 1
+      ? mergeGeometries(bucket.geometries, false) : bucket.geometries[0]!;
+    // On an unusual attribute mismatch, render separate meshes instead of
+    // silently omitting an asset component.
+    const parts = merged ? [merged] : bucket.geometries;
+    if (merged && bucket.geometries.length > 1) {
+      bucket.geometries.forEach(geometry => geometry.dispose());
+    }
+    for (const [part, geometry] of parts.entries()) {
+      const mesh = new THREE.Mesh(geometry, bucket.material);
+      mesh.name = bucket.waterfall ? 'Water_Fall_merged-' + i + '-' + part :
+        bucket.shadow ? 'Dam_architecture_merged-' + i + '-' + part :
+          'Dam_details_merged-' + i + '-' + part;
+      mesh.castShadow = bucket.shadow;
+      mesh.receiveShadow = !bucket.waterfall;
+      group.add(mesh);
+    }
+  }
+  // No longer needed after baking every source node's world transform.
+  oldGeometries.forEach(geometry => geometry.dispose());
+  return { group, waterfallMaps };
+}
+
+export function scrollDamWaterfallUVs(maps: readonly THREE.Texture[], seconds: number): void {
+  const offset = -((Math.max(0, seconds) * 0.42) % 1);
+  for (const texture of maps) texture.offset.y = offset;
+}
+
+function disposeMeshes(object: THREE.Object3D): void {
+  const geometries = new Set<THREE.BufferGeometry>();
+  const materials = new Set<THREE.Material>();
+  const textures = new Set<THREE.Texture>();
+  object.traverse(part => {
+    if (!(part instanceof THREE.Mesh)) return;
+    geometries.add(part.geometry);
+    const mats = Array.isArray(part.material) ? part.material : [part.material];
+    for (const mat of mats) materials.add(mat);
+  });
+  for (const material of materials) {
+    for (const value of Object.values(material)) {
+      if (value instanceof THREE.Texture) textures.add(value);
+    }
+  }
+  geometries.forEach(geometry => geometry.dispose());
+  materials.forEach(material => material.dispose());
+  textures.forEach(texture => texture.dispose());
+}
+
+/** Load only at runtime; headless island creation and Rapier require no GLB. */
+export function buildDamVisuals(island: IslandData): DamVisuals {
+  const group = new THREE.Group();
+  group.name = 'the-dam-hero';
+  const placement = getDamPlacement(island);
+  group.position.set(placement.position.x, placement.position.y, placement.position.z);
+  group.scale.setScalar(placement.scale);
+  let waterfallMaps: THREE.Texture[] = [];
+  let shadowChange = false;
+  let disposed = false;
+
+  if (typeof document !== 'undefined') {
+    const url = import.meta.env.BASE_URL + 'assets/library/custom/the-dam/the-dam.glb';
+    new GLTFLoader().load(url, gltf => {
+      if (disposed) {
+        disposeMeshes(gltf.scene);
+        return;
+      }
+      const prepared = prepareDamModel(gltf.scene, island);
+      waterfallMaps = prepared.waterfallMaps;
+      group.add(prepared.group);
+      shadowChange = true;
+    }, undefined, error => {
+      if (!disposed) console.error('Could not load The Dam hero model:', error);
+    });
+  }
+
+  return {
+    group,
+    update(seconds: number): void { scrollDamWaterfallUVs(waterfallMaps, seconds); },
+    consumeShadowChange(): boolean {
+      const changed = shadowChange;
+      shadowChange = false;
+      return changed;
+    },
+    dispose(): void {
+      disposed = true;
+      disposeMeshes(group);
+      group.clear();
+      group.removeFromParent();
+    },
+  };
+}
