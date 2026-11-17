@@ -43,6 +43,7 @@ interface Report {
   crane: Record<string, Measurement>;
   dpr: number;
   userAgent: string;
+  hotspots: { name: string; triangles: number }[];
 }
 
 // Chrome is preinstalled on the GitHub-hosted Ubuntu runner. Running through
@@ -293,7 +294,9 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
         profile.pixelRatio(1.5);
         crane.pixelRatio1point5 = measure('10');
         profile.pixelRatio(1);
-        return { bookmarks, crane, dpr: window.devicePixelRatio,
+        measure('08');
+        const hotspots = profile.meshCosts();
+        return { bookmarks, crane, hotspots, dpr: window.devicePixelRatio,
           userAgent: navigator.userAgent };
       })()`;
       const answer = await send('Runtime.evaluate', {
@@ -304,6 +307,8 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
           JSON.stringify(answer.exceptionDetails));
       }
       const report = answer.result?.value as Report | undefined;
+      console.log('WORLD_CHROME_PROFILE ' + JSON.stringify(report));
+      console.log('WORLD_GPU_HOTSPOTS ' + JSON.stringify(report?.hotspots));
       expect(report?.bookmarks).toHaveLength(ART_BOOKMARKS.length);
       expect(report?.dpr).toBe(1.5);
       const hoofBudget = report!.bookmarks.find(mark => mark.id === '08');
@@ -325,7 +330,6 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
         expect(mark.width).toBeGreaterThan(1000);
         expect(mark.height).toBeGreaterThan(600);
       }
-      console.log('WORLD_CHROME_PROFILE ' + JSON.stringify(report));
       // Recorded by a successful main-branch Chrome CI run at the same
       // viewport, renderer scale and GPU backend.
       const baseline = {
