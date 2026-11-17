@@ -53,6 +53,8 @@ export class GameVfx {
   private readonly off: Array<() => void> = [];
   private readonly hoofAnchor = new THREE.Group();
   private readonly surfaces: Map<string, Game['surfaceMarkers'][number]>;
+  private readonly pools: Array<Pick<RunningDustPuffs, 'group' | 'update' | 'dispose'>>;
+  private readonly lastSurfaceUse = new Map<string, number>();
   private lastHoofBeat: number;
   private comboStage: number;
   private disposed = false;
@@ -65,12 +67,14 @@ export class GameVfx {
     readonly effects: GameVfxEffects = createGameVfxEffects(),
   ) {
     this.surfaces = new Map(game.surfaceMarkers.map(surface => [surface.id, surface]));
+    this.pools = [
+      effects.dust, effects.landing, effects.headbutt, effects.water,
+      effects.crate, effects.trampoline, effects.launch, effects.combo,
+      effects.aura, effects.coin,
+    ];
     this.lastHoofBeat = Math.floor(game.goat.phase / (Math.PI / 2));
     this.comboStage = Math.min(4, game.rules.style.combo.count);
-    for (const effect of [
-      effects.dust, effects.landing, effects.headbutt, effects.water,
-      effects.crate, effects.trampoline, effects.launch, effects.combo, effects.coin,
-    ]) scene.add(effect.group);
+    for (const effect of this.pools) if (effect !== effects.aura) scene.add(effect.group);
     this.hoofAnchor.name = 'goat hoof-level growth aura anchor';
     goatRoot.add(this.hoofAnchor); // character root is unscaled and world-aligned
     effects.aura.attach(this.hoofAnchor);
@@ -113,9 +117,15 @@ export class GameVfx {
     this.off.push(game.surfaces.events.on(event => {
       if ((event.type !== 'bounce' && event.type !== 'launch') ||
           !game.goat.ownsBody(event.bodyHandle)) return;
+      // A linked ragdoll has seven overlapping bodies, but a platform usage
+      // is one visual action. Keep the surface's own cooldown semantics intact.
+      const previous = this.lastSurfaceUse.get(event.surfaceId);
+      if (previous !== undefined && event.time - previous <
+          (event.type === 'bounce' ? .45 : .8)) return;
       const marker = this.surfaces.get(event.surfaceId);
       if (event.type === 'bounce') {
         if (marker?.kind !== 'trampoline') return;
+        this.lastSurfaceUse.set(event.surfaceId, event.time);
         effects.trampoline.emit({
           x: marker.position.x,
           y: marker.position.y - marker.halfExtents.y,
@@ -126,6 +136,8 @@ export class GameVfx {
         const built = event.surfaceId.startsWith('hay-')
           ? game.buildBodies.get(Number(event.surfaceId.slice(4))) : undefined;
         if (!marker && !built) return;
+        this.lastSurfaceUse.set(event.surfaceId, event.time);
+        if (this.lastSurfaceUse.size > 64) this.lastSurfaceUse.clear();
         const p = marker?.position ?? built!.translation();
         effects.launch.emit({
           x: p.x, y: marker ? p.y - marker.halfExtents.y : p.y + .14, z: p.z,
@@ -184,25 +196,18 @@ export class GameVfx {
     const goat = this.game.goat;
     const p = goat.torso.translation();
     this.hoofAnchor.position.set(p.x, p.y - .92 * goat.size, p.z);
-    for (const effect of [
-      this.effects.dust, this.effects.landing, this.effects.headbutt,
-      this.effects.water, this.effects.crate, this.effects.trampoline,
-      this.effects.launch, this.effects.combo, this.effects.aura, this.effects.coin,
-    ]) effect.update(dt);
+    for (const effect of this.pools) effect.update(dt);
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     for (const off of this.off.splice(0)) off();
-    for (const effect of [
-      this.effects.dust, this.effects.landing, this.effects.headbutt,
-      this.effects.water, this.effects.crate, this.effects.trampoline,
-      this.effects.launch, this.effects.combo, this.effects.aura, this.effects.coin,
-    ]) {
+    for (const effect of this.pools) {
       effect.dispose();
       effect.group.removeFromParent();
     }
     this.hoofAnchor.removeFromParent();
+    this.lastSurfaceUse.clear();
   }
 }
