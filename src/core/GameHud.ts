@@ -2,6 +2,7 @@ import type { Game } from './Game';
 import { HUD_PIECES, deriveHudState, projectHudMap } from './GameHudState';
 import { buildArtwork, goatArtwork, renderHudMinimap } from './HudArtwork';
 import { planGoatSafeHud, type ScreenRect } from './HudOcclusion';
+import { fitGigCardText } from './GigCardLayout';
 import { HUD_SPRITES, hudSpriteImage, hudSpriteVariables } from './HudSprites';
 
 const CSS = `
@@ -48,13 +49,18 @@ const CSS = `
 .gg-gig-header{position:absolute;top:9%;left:27%;right:9%;height:19%;display:grid;place-items:center;color:#ffcc43;font-size:clamp(15px,1.4vw,23px);white-space:nowrap;letter-spacing:.3px;-webkit-text-stroke:.6px #623645;text-shadow:2px 3px #583147}
 .gg-gig-clipboard{position:absolute;left:-17%;top:-33%;width:clamp(45px,4vw,67px);height:clamp(48px,4.5vw,72px)}
 .gg-gig-clipboard img{width:100%;height:100%}
-.gg-gig-paper{position:absolute;left:19%;right:6%;top:35%;bottom:22%;display:flex;flex-direction:column;justify-content:center;overflow:hidden;color:#4e312b;text-shadow:none}
-.gg-gig-title{font-size:clamp(9px,.77vw,13px);font-weight:1000;line-height:1.15;text-transform:uppercase;letter-spacing:.4px;color:#a55c30;margin:0 0 3px}
-.gg-gig-task{font-size:clamp(11px,.98vw,16px);line-height:1.15;font-weight:1000;margin:0;overflow-wrap:break-word;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
-.gg-gig-detail{font-size:clamp(8px,.66vw,11px);line-height:1.1;color:#93543e;margin-top:3px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.gg-gig-footer{position:absolute;left:20%;right:7%;bottom:11%;height:11%;display:flex;align-items:center;justify-content:space-between;gap:5px;color:#fff2ad;font-size:clamp(8px,.75vw,11px);white-space:nowrap;text-shadow:1px 2px #583147}
-.gg-gig-wallet{display:flex;gap:3px;align-items:center}
-.gg-coin{width:clamp(13px,1.25vw,19px);height:clamp(13px,1.25vw,19px)}
+/* The checkbox is painted into gig_card.png. Copy an adjacent, empty part of
+   that same cream sprite over it; only draw a live box for a running gig. */
+.gg-gig-checkbox-mask{position:absolute;left:8.3%;top:50.2%;width:10.7%;height:24%;background:var(--gg-gigCard) 27% 67%/935% 417% no-repeat;pointer-events:none}
+.gg-gig-checkbox{position:absolute;left:9.2%;top:52%;width:8.5%;height:18%;border:clamp(2px,.21vw,3px) solid #58331f;border-radius:5px;background:#fff2d34d;box-shadow:0 1px 1px #6a411744;pointer-events:none}
+.gg-gig-paper{position:absolute;left:20.5%;right:10%;top:41%;bottom:21%;display:flex;flex-direction:column;align-items:stretch;gap:2px;min-width:0;min-height:0;color:#4e312b;text-shadow:none}
+.gg-gig-title{flex:0 0 auto;font-size:clamp(9px,.77vw,13px);font-weight:1000;line-height:1.12;text-transform:uppercase;letter-spacing:.2px;color:#a55c30;margin:0;min-width:0;overflow-wrap:anywhere}
+.gg-gig-task{flex:0 1 auto;min-height:0;min-width:0;font-size:clamp(11px,.98vw,16px);line-height:1.13;font-weight:1000;margin:0;overflow-wrap:anywhere}
+.gg-gig-detail{flex:0 0 auto;min-width:0;font-size:clamp(8px,.66vw,11px);line-height:1.12;color:#93543e;overflow-wrap:anywhere;white-space:normal}
+.gg-gig-footer{position:absolute;left:20%;right:12%;bottom:9%;height:10%;display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0;color:#fff2ad;font-size:clamp(8px,.7vw,11px);white-space:nowrap;text-shadow:1px 2px #583147}
+.gg-gig-wallet{display:flex;align-items:center;gap:3px;flex-shrink:0;min-width:0}
+.gg-gig-footer [data-mode]{flex-shrink:0;text-align:right}
+.gg-coin{width:clamp(13px,1.25vw,19px);height:clamp(13px,1.25vw,19px);flex-shrink:0}
 /* Progress is a live masked conic arc painted on top of the illustrated ring. */
 .gg-stamina{position:absolute;left:clamp(11px,1.5vw,29px);bottom:clamp(10px,1.5vw,26px);width:clamp(138px,12.7vw,215px);aspect-ratio:243/252;background:var(--gg-staminaRing) center/100% 100% no-repeat}
 .gg-stamina-progress{position:absolute;inset:8%;border-radius:50%;background:conic-gradient(from -90deg,#9aff33 0 var(--gg-stamina,100%),#3c304c var(--gg-stamina,100%) 100%);-webkit-mask:radial-gradient(farthest-side,transparent 60%,#000 63% 84%,transparent 87%);mask:radial-gradient(farthest-side,transparent 60%,#000 63% 84%,transparent 87%)}
@@ -149,6 +155,9 @@ export class GameHud {
   private readonly hint: HTMLElement;
   private readonly debug: HTMLElement;
   private readonly wallet: HTMLElement;
+  private readonly gigCard: HTMLElement;
+  private readonly gigCheckbox: HTMLElement;
+  private gigLayoutKey = '';
   private readonly gigTitle: HTMLElement;
   private readonly gigTask: HTMLElement;
   private readonly gigDetail: HTMLElement;
@@ -201,10 +210,12 @@ export class GameHud {
       hudSpriteImage(HUD_SPRITES.compassN, 'gg-compass') + '</div>' +
       '<div class="gg-map-location"><strong data-place>HOOFINGTON</strong></div></section>' +
       '<section class="gg-gig-card" data-sprite="' + HUD_SPRITES.gigCard +
-      '" aria-label="Current gig">' +
+      '" data-gig-card aria-label="Current gig">' +
       '<div class="gg-gig-header"><span class="gg-gig-clipboard">' +
       hudSpriteImage(HUD_SPRITES.gigClipboard, 'gg-clipboard-art') +
       '</span>CURRENT GIG</div>' +
+      '<span class="gg-gig-checkbox-mask" aria-hidden="true"></span>' +
+      '<span class="gg-gig-checkbox" data-gig-checkbox aria-hidden="true" hidden></span>' +
       '<div class="gg-gig-paper"><h2 class="gg-gig-title" data-gig-title>YOUR NEXT GIG</h2>' +
       '<p class="gg-gig-task" data-gig-task></p>' +
       '<small class="gg-gig-detail" data-gig-detail></small></div>' +
@@ -257,6 +268,7 @@ export class GameHud {
     this.buildStatus = get('build-status'); this.materials = get('materials');
     this.slots = Array.from(this.root.querySelectorAll<HTMLElement>('[data-slot]'));
     this.hint = get('hint'); this.debug = get('debug'); this.wallet = get('wallet');
+    this.gigCard = get('gig-card'); this.gigCheckbox = get('gig-checkbox');
     this.gigTitle = get('gig-title'); this.gigTask = get('gig-task');
     this.gigDetail = get('gig-detail'); this.board = get('board-hint');
     this.hotbar = get('hotbar');
@@ -450,7 +462,16 @@ export class GameHud {
     this.gigTitle.textContent = state.gig.title;
     this.gigTask.textContent = state.gig.task;
     this.gigDetail.textContent = state.gig.detail;
+    this.gigCheckbox.hidden = run?.status !== 'running' || !!game.party.match;
     this.updatePartyCard(game);
+    // Refit only when copy or dimensions change, not every simulation frame.
+    const gigLayoutKey = [this.gigTitle.textContent, this.gigTask.textContent,
+      this.gigDetail.textContent, this.wallet.textContent, this.mode.textContent,
+      this.gigCard.clientWidth, this.gigCard.clientHeight].join('|');
+    if (gigLayoutKey !== this.gigLayoutKey) {
+      fitGigCardText(this.gigCard);
+      this.gigLayoutKey = gigLayoutKey;
+    }
     this.board.hidden = !game.gigs.nearBoard();
     this.hint.style.display = pointerLocked ? 'none' : 'block';
     this.debug.hidden = !debugVisible;
