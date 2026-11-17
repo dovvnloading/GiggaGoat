@@ -4,6 +4,8 @@ import {
 } from '../world';
 import { V, type Vec3 } from '../physics';
 import { DEFAULT_SETTINGS, type GameSettings } from './Persistence';
+import { AdaptiveResolution } from './AdaptiveResolution';
+import { GRAPHICS_PRESETS, type GraphicsQuality } from './GraphicsQuality';
 import type { GameAudio } from './GameAudio';
 import { type BuildPiece, type PieceType } from '../gameplay';
 import { Game } from './Game';
@@ -12,7 +14,7 @@ import { GameVfx } from './GameVfx';
 import { GameInput } from './GameInput';
 import { CAMERA_TARGET_HEIGHT, SPAWN_CAMERA_PITCH, SPAWN_CAMERA_YAW_OFFSET,
   goatCameraLookAhead, goatCameraOffset, goatCameraVerticalOffset } from './GoatCamera';
-import { GameHud } from './GameHud';
+import { GameHud, type FramePerformance } from './GameHud';
 import { projectGoatScreenBox, visibleGoatBounds } from './HudOcclusion';
 
 interface PropVisual { mesh: THREE.InstancedMesh; index: number; prop: PropDescriptor }
@@ -51,8 +53,32 @@ export class GameView {
   private readonly markers = new THREE.Group();
   private readonly debrisGeometry = new THREE.BoxGeometry(1, 1, 1);
   private readonly debrisMaterial = new THREE.MeshToonMaterial({ color: 0xd6b36f });
+  private readonly buildGeometries = new Map<PieceType, THREE.BufferGeometry>();
+  private readonly buildMaterials = new Map<PieceType, THREE.MeshToonMaterial>();
+  private readonly activeBuildIds = new Set<number>();
+  private readonly activeDebrisIds = new Set<number>();
+  private readonly changedPropMeshes = new Set<THREE.InstancedMesh>();
+  private readonly shadowDefaults = new WeakMap<THREE.Mesh, boolean>();
+  private readonly resolution = new AdaptiveResolution('high', 1);
+  private appliedGraphics: GraphicsQuality | null = null;
+  private shadowTimer = 1;
+  private hudTimer = 1;
+  private lastTide = Number.NaN;
+  private readonly perfStats: FramePerformance = {
+    fps: 60, frameMs: 16.67, renderMs: 0, physicsMs: 0,
+    drawCalls: 0, triangles: 0, textures: 0, pixelRatio: 1,
+  };
   private readonly cameraTarget = new THREE.Vector3();
   private readonly cameraPosition = new THREE.Vector3();
+  private readonly cameraOffset = new THREE.Vector3();
+  private readonly cameraDirection = new THREE.Vector3();
+  private readonly cameraPath = new THREE.Vector3();
+  private readonly cameraDesired = new THREE.Vector3();
+  private readonly cameraAim = new THREE.Vector3();
+  private readonly audioForward = new THREE.Vector3();
+  private readonly audioPose = {
+    position: this.camera.position, forward: this.audioForward, up: { x: 0, y: 1, z: 0 },
+  };
   private readonly playerWorldBox = new THREE.Box3();
   private cameraShiftY = 0;
   private readonly dummy = new THREE.Object3D();
@@ -60,21 +86,25 @@ export class GameView {
   private lastTimestamp = 0;
   private fps = 60;
   private simMs = 0;
+  private frameMs = 16.67;
+  private renderMs = 0;
   private disposed = false;
 
   constructor(private readonly host: HTMLElement, readonly game: Game,
     private readonly audio?: GameAudio) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.7));
+    this.renderer.setPixelRatio(1); // The saved graphics preset is applied by GameMenu.
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Colour renders at 60 Hz; only refresh the shadow pass periodically.
+    this.renderer.shadowMap.autoUpdate = false;
     this.renderer.domElement.style.cssText = 'display:block;width:100%;height:100%;outline:none;touch-action:none';
     host.appendChild(this.renderer.domElement);
     this.camera.position.set(0, 5, 8);
     this.scene.background = new THREE.Color(0x87c5f0);
     this.scene.fog = new THREE.FogExp2(0xb8deef, .0016);
-    this.world = createWorldScene(game.island, { chunkSegments: 24, cullingDistance: 530 });
+    this.world = createWorldScene(game.island, { chunkSegments: 24, cullingDistance: 340 });
     this.scene.add(this.world.group);
     this.world.sun.castShadow = true;
     this.world.sun.shadow.mapSize.set(1024, 1024);
@@ -153,18 +183,20 @@ export class GameView {
           this.propVisuals.push({ mesh: object, index, prop });
         }
       }
-      object.frustumCulled = false;
+      // Keep the world lane's precomputed batch bounds and frustum rejection.
+      object.frustumCulled = true;
     });
   }
 
   private updateProps(alpha: number): void {
-    const changed = new Set<THREE.InstancedMesh>();
+    const changed = this.changedPropMeshes;
+    changed.clear();
     for (const { mesh, index, prop } of this.propVisuals) {
       const body = this.game.colliders.bodies.get(prop.id);
       const live = body && this.game.physics.raw.getRigidBody(body.handle);
       if (live && !this.game.destroyedProps.has(prop.id)) {
         const pose = this.game.physics.getInterpolatedTransform(live, alpha);
-        this.dummy.position.copy(vec(pose.translation));
+        this.dummy.position.set(pose.translation.x, pose.translation.y, pose.translation.z);
         this.dummy.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
         this.dummy.scale.set(prop.size.x, prop.size.y, prop.size.z);
       } else {
@@ -399,15 +431,74 @@ export class GameView {
     }
   }
 
+  /** Settings now control the same render budgets, including draw distance. */
   applySettings(settings: GameSettings): void {
     this.currentSettings = { ...settings };
     this.input.sensitivity = settings.mouseSensitivity;
     this.input.invertY = settings.invertY;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1,
-      settings.graphics === 'high' ? 1.7 : settings.graphics === 'medium' ? 1.25 : 1));
-    this.renderer.shadowMap.enabled = settings.graphics !== 'low';
-    this.world.sun.castShadow = settings.graphics !== 'low';
+    if (this.appliedGraphics === settings.graphics) return;
+    this.appliedGraphics = settings.graphics;
+    const preset = GRAPHICS_PRESETS[settings.graphics];
+    const ratio = this.resolution.configure(settings.graphics, window.devicePixelRatio || 1);
+    this.renderer.setPixelRatio(ratio);
+    this.renderer.shadowMap.enabled = preset.shadowMapSize > 0;
+    this.world.sun.castShadow = preset.shadowMapSize > 0;
+    if (this.world.sun.shadow.mapSize.x !== Math.max(1, preset.shadowMapSize)) {
+      this.world.sun.shadow.map?.dispose();
+      this.world.sun.shadow.map = null;
+      this.world.sun.shadow.mapSize.set(Math.max(1, preset.shadowMapSize),
+        Math.max(1, preset.shadowMapSize));
+    }
+    const camera = this.world.sun.shadow.camera;
+    camera.left = camera.bottom = -Math.max(1, preset.shadowDistance);
+    camera.right = camera.top = Math.max(1, preset.shadowDistance);
+    camera.near = 1;
+    camera.far = 260;
+    camera.updateProjectionMatrix();
+    if (this.scene.fog instanceof THREE.FogExp2) {
+      this.scene.fog.density = settings.graphics === 'low' ? .0032 :
+        settings.graphics === 'medium' ? .0023 : .0016;
+    }
+    this.shadowTimer = 1;
+    this.renderer.shadowMap.needsUpdate = true;
     this.onResize();
+  }
+
+  /** Apply the quality draw distance to the world's existing terrain chunks. */
+  private limitDrawDistance(): void {
+    const range = GRAPHICS_PRESETS[this.currentSettings.graphics].drawDistance;
+    const x = this.camera.position.x, z = this.camera.position.z;
+    for (const chunk of this.world.chunks) {
+      if (!chunk.visible) continue;
+      const radius = chunk.geometry.boundingSphere?.radius ?? 25;
+      const dx = chunk.position.x - x, dz = chunk.position.z - z;
+      if (dx * dx + dz * dz > (range + radius) * (range + radius)) chunk.visible = false;
+    }
+  }
+
+  /** No global instanced foliage or huge landmark submissions in the shadow pass.
+   * Select a handful of nearby eligible meshes on a 10 Hz budget. */
+  private refreshShadowCasters(): void {
+    const preset = GRAPHICS_PRESETS[this.currentSettings.graphics];
+    const candidates: Array<{ mesh: THREE.Mesh; dist: number }> = [];
+    this.world.group.updateMatrixWorld(true);
+    this.world.group.traverse(object => {
+      if (!(object instanceof THREE.Mesh)) return;
+      if (!this.shadowDefaults.has(object)) this.shadowDefaults.set(object, object.castShadow);
+      const eligible = this.shadowDefaults.get(object);
+      object.castShadow = false;
+      if (!eligible || object instanceof THREE.InstancedMesh || !object.visible ||
+          preset.maxShadowCasters === 0) return;
+      object.getWorldPosition(this.cameraDesired);
+      const dist = this.cameraDesired.distanceToSquared(this.cameraTarget);
+      if (dist < preset.shadowDistance * preset.shadowDistance) {
+        candidates.push({ mesh: object, dist });
+      }
+    });
+    candidates.sort((a, b) => a.dist - b.dist);
+    for (let i = 0; i < Math.min(candidates.length, preset.maxShadowCasters); i++) {
+      candidates[i]!.mesh.castShadow = true;
+    }
   }
 
   private buildGeometry(piece: BuildPiece): THREE.BufferGeometry {
@@ -426,12 +517,13 @@ export class GameView {
 
   private updateBuildings(): void {
     const entries = this.game.rules.build.pieces;
-    const active = new Set(entries.map(piece => piece.id));
+    const active = this.activeBuildIds;
+    active.clear();
+    for (const piece of entries) active.add(piece.id);
     for (const [id, mesh] of this.buildVisuals) {
       if (!active.has(id)) {
         this.scene.remove(mesh);
-        mesh.geometry.dispose();
-        (mesh.material as THREE.Material).dispose();
+        // Shared geometries/materials remain cached for the next build.
         this.buildVisuals.delete(id);
       }
     }
@@ -439,9 +531,16 @@ export class GameView {
       if (this.buildVisuals.has(piece.id)) continue;
       const body = this.game.buildBodies.get(piece.id);
       if (!body) continue;
-      const mesh = new THREE.Mesh(this.buildGeometry(piece),
-        new THREE.MeshToonMaterial({ color: MATERIALS[piece.type], side: THREE.DoubleSide }));
-      mesh.position.copy(vec(body.translation()));
+      let geometry = this.buildGeometries.get(piece.type);
+      if (!geometry) { geometry = this.buildGeometry(piece); this.buildGeometries.set(piece.type, geometry); }
+      let material = this.buildMaterials.get(piece.type);
+      if (!material) {
+        material = new THREE.MeshToonMaterial({ color: MATERIALS[piece.type], side: THREE.DoubleSide });
+        this.buildMaterials.set(piece.type, material);
+      }
+      const mesh = new THREE.Mesh(geometry, material);
+      const p = body.translation();
+      mesh.position.set(p.x, p.y, p.z);
       const q = body.rotation();
       mesh.quaternion.set(q.x, q.y, q.z, q.w);
       mesh.castShadow = true;
@@ -452,10 +551,10 @@ export class GameView {
   }
 
   private updateDebris(alpha: number): void {
-    const handles = new Set([
-      ...this.game.breakables.debrisHandles,
-      ...this.game.fallingPieces.keys(),
-    ]);
+    const handles = this.activeDebrisIds;
+    handles.clear();
+    for (const handle of this.game.breakables.debrisHandles) handles.add(handle);
+    for (const handle of this.game.fallingPieces.keys()) handles.add(handle);
     for (const [handle, mesh] of this.debrisVisuals) if (!handles.has(handle) ||
       !this.game.physics.raw.getRigidBody(handle)) {
       this.scene.remove(mesh);
@@ -474,7 +573,7 @@ export class GameView {
         this.debrisVisuals.set(handle, mesh);
       }
       const pose = this.game.physics.getInterpolatedTransform(body, alpha);
-      mesh.position.copy(vec(pose.translation));
+      mesh.position.set(pose.translation.x, pose.translation.y, pose.translation.z);
       mesh.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
     }
   }
@@ -482,53 +581,65 @@ export class GameView {
   private updateCamera(alpha: number, dt: number): void {
     const pose = this.game.physics.getInterpolatedTransform(this.game.goat.torso, alpha);
     const size = this.game.rules.style.scale;
-    const target = vec(pose.translation).add(new THREE.Vector3(0, CAMERA_TARGET_HEIGHT * size, 0));
-    this.cameraTarget.lerp(target, lerpAlpha(12, dt));
-    const offset = vec(goatCameraOffset(size, this.input.yaw, this.input.pitch));
-    const direction = offset.clone().normalize();
-    const desiredDistance = offset.length();
+    this.cameraAim.set(pose.translation.x, pose.translation.y + CAMERA_TARGET_HEIGHT * size,
+      pose.translation.z);
+    this.cameraTarget.lerp(this.cameraAim, lerpAlpha(12, dt));
+    const offset = goatCameraOffset(size, this.input.yaw, this.input.pitch);
+    this.cameraOffset.set(offset.x, offset.y, offset.z);
+    const desiredDistance = this.cameraOffset.length();
+    this.cameraDirection.copy(this.cameraOffset).normalize();
+    const direction = this.cameraDirection;
     const hit = this.game.physics.raycast(this.cameraTarget, V(direction.x, direction.y, direction.z),
       desiredDistance, { predicate: collider => !this.game.goat.ownsBody(collider.parent()) });
     let safe = hit ? Math.max(1.1 * size, Math.min(desiredDistance, hit.distance - .36 * size)) :
       desiredDistance;
-    const desired = this.cameraTarget.clone().addScaledVector(direction, safe);
-    this.cameraPosition.lerp(desired, lerpAlpha(9, dt));
-    // A second query keeps the smoothed camera from passing through a wall when
-    // the obstacle suddenly gets between the target and the previous position.
-    const path = this.cameraPosition.clone().sub(this.cameraTarget);
-    const pathLength = path.length();
-    if (pathLength > 0.01) {
+    this.cameraAim.copy(this.cameraTarget).addScaledVector(direction, safe);
+    this.cameraPosition.lerp(this.cameraAim, lerpAlpha(9, dt));
+    this.cameraPath.copy(this.cameraPosition).sub(this.cameraTarget);
+    const pathLength = this.cameraPath.length();
+    if (pathLength > .01) {
       const immediate = this.game.physics.raycast(this.cameraTarget,
-        V(path.x / pathLength, path.y / pathLength, path.z / pathLength),
+        V(this.cameraPath.x / pathLength, this.cameraPath.y / pathLength,
+          this.cameraPath.z / pathLength),
         pathLength, { predicate: collider => !this.game.goat.ownsBody(collider.parent()) });
       if (immediate) {
         safe = Math.max(.6, immediate.distance - .24 * size);
-        this.cameraPosition.copy(this.cameraTarget).addScaledVector(path.normalize(), safe);
+        this.cameraPosition.copy(this.cameraTarget).addScaledVector(this.cameraPath.normalize(), safe);
       }
     }
-    const speed = vec(this.game.goat.torso.linvel()).length();
-    const kick = this.game.goat.locomotion.input.sprint ? 7 : Math.min(14, Math.max(0, speed - 8) * 1.4);
+    const velocity = this.game.goat.torso.linvel();
+    const speed = Math.hypot(velocity.x, velocity.y, velocity.z);
+    const kick = this.game.goat.locomotion.input.sprint ?
+      7 : Math.min(14, Math.max(0, speed - 8) * 1.4);
     const fov = this.currentSettings.fov + kick;
-    this.camera.fov += (fov - this.camera.fov) * lerpAlpha(5, dt);
-    this.camera.updateProjectionMatrix();
+    const nextFov = this.camera.fov + (fov - this.camera.fov) * lerpAlpha(5, dt);
+    if (Math.abs(this.camera.fov - nextFov) > .001) {
+      this.camera.fov = nextFov;
+      this.camera.updateProjectionMatrix();
+    }
     this.camera.position.copy(this.cameraPosition);
-    // Aim ahead at eye level when clear; near walls, fall back to the goat so
-    // the retained collision avoidance does not push it out of the frame.
     const clearance = Math.max(0, Math.min(1,
       (this.cameraPosition.distanceTo(this.cameraTarget) - 1.1 * size) /
       Math.max(.01, desiredDistance - 1.1 * size)));
-    this.camera.lookAt(this.cameraTarget.clone().add(vec(
-      goatCameraLookAhead(size, this.input.yaw, clearance))));
-    this.world.sun.position.copy(this.cameraTarget).add(new THREE.Vector3(70, 125, -65));
+    const ahead = goatCameraLookAhead(size, this.input.yaw, clearance);
+    this.cameraAim.copy(this.cameraTarget).add(this.cameraOffset.set(ahead.x, ahead.y, ahead.z));
+    this.camera.lookAt(this.cameraAim);
+    this.world.sun.position.set(this.cameraTarget.x + 70, this.cameraTarget.y + 125,
+      this.cameraTarget.z - 65);
     this.world.sun.target.position.copy(this.cameraTarget);
     this.world.sun.target.updateMatrixWorld();
   }
 
   private frame(timestamp: number): void {
     if (this.disposed) return;
-    const dt = this.lastTimestamp ? Math.min(.07, Math.max(0, (timestamp - this.lastTimestamp) / 1000)) : 1 / 60;
+    const dt = this.lastTimestamp ?
+      Math.min(.07, Math.max(0, (timestamp - this.lastTimestamp) / 1000)) : 1 / 60;
     this.lastTimestamp = timestamp;
-    if (dt > 0) this.fps += ((1 / dt) - this.fps) * lerpAlpha(2.6, dt);
+    if (dt > 0) {
+      const smoothing = lerpAlpha(2.6, dt);
+      this.fps += ((1 / dt) - this.fps) * smoothing;
+      this.frameMs += (dt * 1000 - this.frameMs) * smoothing;
+    }
     let alpha = this.game.physics.alpha;
     if (!this.paused) {
       let intent = this.input.sample(dt, this.game.buildMode);
@@ -540,49 +651,75 @@ export class GameView {
         const start = performance.now();
         const result = this.game.advance(dt, intent);
         alpha = result.alpha;
-        this.simMs += ((performance.now() - start) - this.simMs) * lerpAlpha(5, dt);
+        this.simMs += (performance.now() - start - this.simMs) * lerpAlpha(5, dt);
       }
     }
-    this.characters.update(dt, alpha);
-    this.vfx.frame(dt);
+    const range = GRAPHICS_PRESETS[this.currentSettings.graphics].drawDistance;
+    this.characters.update(dt, alpha, this.camera, range);
+    this.vfx.frame(dt, this.camera, range);
     this.updatePartyVisuals(alpha);
     this.updateGigVisuals(alpha);
     this.updateProps(alpha);
     this.updateBuildings();
     this.updateDebris(alpha);
-    this.world.setTideLevel(this.game.water.seaLevel);
+    if (this.lastTide !== this.game.water.seaLevel) {
+      this.lastTide = this.game.water.seaLevel;
+      this.world.setTideLevel(this.lastTide);
+    }
     this.world.update(this.game.physics.time);
     const dayPhase = .5 + Math.sin(this.game.physics.time / 150) * .035;
     this.world.setDayNight(dayPhase);
     this.updateCamera(alpha, dt);
-    const viewport = this.renderer.domElement.getBoundingClientRect();
-    const goatBounds = visibleGoatBounds(this.characters.player.root, this.playerWorldBox);
-    // First project through the normal orbit, then pan the *projection* until
-    // the whole sculpt sits above the hotbar. Preserve the wall-aware camera
-    // position and the player's freely orbitable yaw/pitch.
-    this.camera.clearViewOffset();
-    const unframed = projectGoatScreenBox(goatBounds, this.camera, viewport, false);
-    if (unframed && viewport.width > 0 && viewport.height > 0) {
-      const desired = goatCameraVerticalOffset(unframed, viewport);
-      this.cameraShiftY += (desired - this.cameraShiftY) * lerpAlpha(10, dt);
-      // Upward corrections must be immediate so neither a landing nor a fast
-      // camera turn can let the tray cover the player between render frames.
-      this.cameraShiftY = Math.max(this.cameraShiftY, desired);
-    }
-    if (viewport.width > 0 && viewport.height > 0) {
-      this.camera.setViewOffset(viewport.width, viewport.height,
-        0, this.cameraShiftY, viewport.width, viewport.height);
+    // Sampling ragdoll projections and reading DOM bounds at 60 Hz forced layout.
+    // Resolving HUD and the safe-camera view offset at 20 Hz avoids that churn.
+    this.hudTimer += dt;
+    if (this.hudTimer >= .05) {
+      this.hudTimer = 0;
+      const viewport = this.renderer.domElement.getBoundingClientRect();
+      const goatBounds = visibleGoatBounds(this.characters.player.root, this.playerWorldBox);
+      this.camera.clearViewOffset();
+      const unframed = projectGoatScreenBox(goatBounds, this.camera, viewport, false);
+      if (unframed && viewport.width > 0 && viewport.height > 0) {
+        const desired = goatCameraVerticalOffset(unframed, viewport);
+        this.cameraShiftY += (desired - this.cameraShiftY) * lerpAlpha(10, dt);
+        this.cameraShiftY = Math.max(this.cameraShiftY, desired);
+      }
+      if (viewport.width > 0 && viewport.height > 0) {
+        this.camera.setViewOffset(viewport.width, viewport.height,
+          0, this.cameraShiftY, viewport.width, viewport.height);
+      }
+      const goatScreenBox = projectGoatScreenBox(goatBounds, this.camera, viewport);
+      this.hud.update(this.game, this.fps, this.simMs, this.input.debugVisible,
+        document.pointerLockElement === this.renderer.domElement, goatScreenBox, this.perfStats);
     }
     this.world.updateCulling(this.camera);
-    const goatScreenBox = projectGoatScreenBox(goatBounds, this.camera, viewport);
-    this.hud.update(this.game, this.fps, this.simMs, this.input.debugVisible,
-      document.pointerLockElement === this.renderer.domElement, goatScreenBox);
-    this.audio?.frame(dt, {
-      position: this.camera.position,
-      forward: this.camera.getWorldDirection(new THREE.Vector3()),
-      up: { x: 0, y: 1, z: 0 },
-    }, dayPhase < .25 || dayPhase > .75);
+    this.limitDrawDistance();
+    this.shadowTimer += dt;
+    if (this.shadowTimer >= .1 && this.renderer.shadowMap.enabled) {
+      this.shadowTimer = 0;
+      this.refreshShadowCasters();
+      this.renderer.shadowMap.needsUpdate = true;
+    }
+    this.camera.getWorldDirection(this.audioForward);
+    this.audio?.frame(dt, this.audioPose, dayPhase < .25 || dayPhase > .75);
+    const renderStart = performance.now();
     this.renderer.render(this.scene, this.camera);
+    this.renderMs += (performance.now() - renderStart - this.renderMs) * lerpAlpha(5, dt);
+    const info = this.renderer.info;
+    this.perfStats.fps = this.fps;
+    this.perfStats.frameMs = this.frameMs;
+    this.perfStats.physicsMs = this.simMs;
+    this.perfStats.renderMs = this.renderMs;
+    this.perfStats.drawCalls = info.render.calls;
+    this.perfStats.triangles = info.render.triangles;
+    this.perfStats.textures = info.memory.textures;
+    this.perfStats.pixelRatio = this.renderer.getPixelRatio();
+    const nextRatio = this.resolution.sample(this.frameMs, this.renderMs, dt,
+      !this.paused && !document.hidden);
+    if (nextRatio !== null) {
+      this.renderer.setPixelRatio(nextRatio);
+      this.onResize();
+    }
     this.onFrame?.();
   }
 
@@ -606,12 +743,12 @@ export class GameView {
     }
     this.gigProps.clear(); this.heistBales.clear();
     for (const texture of this.textTextures) texture.dispose();
-    for (const mesh of this.buildVisuals.values()) {
-      mesh.geometry.dispose();
-      (mesh.material as THREE.Material).dispose();
-      mesh.removeFromParent();
-    }
+    for (const mesh of this.buildVisuals.values()) mesh.removeFromParent();
     this.buildVisuals.clear();
+    for (const geometry of this.buildGeometries.values()) geometry.dispose();
+    for (const material of this.buildMaterials.values()) material.dispose();
+    this.buildGeometries.clear();
+    this.buildMaterials.clear();
     for (const mesh of this.debrisVisuals.values()) mesh.removeFromParent();
     this.debrisVisuals.clear();
     this.debrisGeometry.dispose();
