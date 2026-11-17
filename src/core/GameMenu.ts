@@ -66,6 +66,7 @@ export class GameMenu {
   private lastGigAttempt = 0;
   private lastSavedTick = 0;
   private padDirection = 0;
+  private padHorizontal = 0;
   private padAccept = false;
   private padBack = false;
   private padMenu = false;
@@ -114,6 +115,7 @@ export class GameMenu {
     this.render();
   }
   private resume(): void {
+    this.view.input.reset();
     this.setScreen('playing');
     // This is invoked from a real menu button/key interaction.
     void this.view.renderer.domElement.requestPointerLock?.();
@@ -179,7 +181,7 @@ export class GameMenu {
       return;
     }
     if (this.screen === 'playing') {
-      if (event.code === 'KeyP') {
+      if (event.code === 'KeyP' && !this.game.party.match) {
         event.preventDefault(); this.action('party');
       }
       return;
@@ -198,6 +200,26 @@ export class GameMenu {
     const current = items.indexOf(document.activeElement as HTMLElement);
     items[(current + direction + items.length) % items.length]!.focus();
   }
+  /** D-pad / stick left and right edit native selects and ranges without a mouse. */
+  private adjustFocused(direction: number): boolean {
+    const active = document.activeElement;
+    if (active instanceof HTMLSelectElement) {
+      active.selectedIndex = (active.selectedIndex + direction + active.options.length) %
+        active.options.length;
+      active.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }
+    if (active instanceof HTMLInputElement && active.type === 'range') {
+      const step = Number(active.step) || 1;
+      const min = Number(active.min), max = Number(active.max);
+      active.value = String(Math.max(min, Math.min(max,
+        Math.round((Number(active.value) + direction * step - min) / step) * step + min)));
+      active.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    }
+    return false;
+  }
+
   private editSetting(element: HTMLInputElement | HTMLSelectElement): void {
     if (!element.id.startsWith('gg-setting-')) return;
     const key = element.id.slice('gg-setting-'.length);
@@ -227,6 +249,8 @@ export class GameMenu {
       const buttons = pad.buttons;
       const dir = buttons[13]?.pressed || (pad.axes[1] ?? 0) > .6 ? 1 :
         buttons[12]?.pressed || (pad.axes[1] ?? 0) < -.6 ? -1 : 0;
+      const horizontal = buttons[15]?.pressed || (pad.axes[0] ?? 0) > .65 ? 1 :
+        buttons[14]?.pressed || (pad.axes[0] ?? 0) < -.65 ? -1 : 0;
       const select = !!buttons[0]?.pressed;
       const back = !!buttons[1]?.pressed;
       const menu = !!buttons[9]?.pressed;
@@ -235,23 +259,27 @@ export class GameMenu {
       }
       if (this.screen !== 'playing') {
         if (dir && dir !== this.padDirection) this.navigate(dir);
+        if (horizontal && horizontal !== this.padHorizontal) this.adjustFocused(horizontal);
         if (select && !this.padAccept) {
           const active = document.activeElement as HTMLElement;
-          if (this.root.contains(active)) active.click();
-          else this.root.querySelector<HTMLButtonElement>('button')?.click();
+          if (this.root.contains(active)) {
+            if (!this.adjustFocused(1)) active.click();
+          } else this.root.querySelector<HTMLButtonElement>('button')?.click();
         }
         if (back && !this.padBack) this.back();
       }
-      this.padDirection = dir; this.padAccept = select;
+      this.padDirection = dir; this.padHorizontal = horizontal; this.padAccept = select;
       this.padBack = back; this.padMenu = menu;
     } else {
-      this.padDirection = 0; this.padAccept = false; this.padBack = false; this.padMenu = false;
+      this.padDirection = 0; this.padHorizontal = 0;
+      this.padAccept = false; this.padBack = false; this.padMenu = false;
     }
     if (this.screen === 'playing' && this.game.party.match?.phase === 'results') {
       this.setScreen('party-results');
     }
     const gig = this.game.gigs.active;
-    if (this.screen === 'playing' && gig && gig.status !== 'running' &&
+    if (this.screen === 'playing' && gig &&
+      (gig.status === 'completed' || gig.status === 'failed') &&
       gig.attemptId !== this.lastGigAttempt) {
       this.lastGigAttempt = gig.attemptId;
       this.save();
@@ -327,7 +355,7 @@ export class GameMenu {
       <p>Pick a contract. Skill and speed turn bronze into gold — and unlock new gear.</p>
       ${buttons || '<p>Board is refreshing.</p>'}
       <p>New offers in ${Math.ceil((board?.refreshInTicks ?? 0)/60)} seconds</p>
-      ${menuButton('back','← NOT NOW')}</div>`;
+      ${menuButton('back','← NOT NOW')}`;
   }
   private gigResultsBody(): string {
     const run = this.game.gigs.active;
