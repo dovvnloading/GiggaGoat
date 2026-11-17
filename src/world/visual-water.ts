@@ -217,16 +217,7 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
         'front-terrace-waterfall-' + (i + 1));
     }
   }
-  for (let i = -1; i <= 1; i++) {
-    // Three separate spillway curtains across the downhill face of the wall.
-    const x = lake.center.x - (16 + i * 8) * scale;
-    const z = lake.center.z - 22 * scale;
-    makeFalls(inland, stream.material,
-      new THREE.Vector3(x, lake.level + 0.25 * scale, z + 1.3 * scale),
-      new THREE.Vector3(x, lake.level - 13 * scale, z - 5 * scale),
-      3.4 * scale, 'dam-spillway-' + (i + 1));
-  }
-  return {
+  // The four spillway sheets and their foam now come from the custom Dam GLB.\n  // Keep the mountain and river cascades, but do not draw duplicate dam falls.\n  return {
     sea, inland,
     update(time: number, tide: number): void {
       seaMat.uniforms.uTime.value = time;
