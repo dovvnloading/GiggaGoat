@@ -105,13 +105,40 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
     for (let i = 0; i < 4; i++) cyl(0, -0.3 + i * 0.19, 0,
       0.89, 0.025, 0.89, 0xb6b2a8, 12);
   } else if (kind === 'lighthouse') {
-    append(new THREE.CylinderGeometry(0.30, 0.45, 1, 12),
-      0, -0.09, 0, 1, 0.83, 1, 0xf5ebd7);
-    for (let i = 0; i < 4; i++) cyl(0, -0.38 + i * 0.2, 0,
-      0.82 - i * 0.055, 0.06, 0.82 - i * 0.055, 0xc96860, 12);
-    cyl(0, 0.38, 0, 0.69, 0.19, 0.69, 0x3c5363);
-    cyl(0, 0.47, 0, 0.72, 0.09, 0.72, 0xffda79);
-    cone(0, 0.57, 0, 0.89, 0.2, 0.89, 0xcf6b60, 10);
+    // Five actual alternating tapered masonry courses, not pencil-thin red
+    // rings on a white cylinder. The gallery and open glass lantern are
+    // authored together so the entire beacon remains one instanced draw.
+    const bands = [0xbb4037, 0xfff0d8, 0xbd4439, 0xfff1dd, 0xb94237];
+    for (let i = 0; i < bands.length; i++) {
+      const baseY = -0.49 + i * 0.142;
+      const bottom = 0.445 - i * 0.021;
+      const top = bottom - 0.022;
+      append(new THREE.CylinderGeometry(top, bottom, 0.144, 20),
+        0, baseY + 0.071, 0, 1, 1, 1, bands[i]!);
+    }
+    cyl(0, 0.234, 0, 0.77, 0.058, 0.77, 0x6e4038, 20);
+    cyl(0, 0.265, 0, 0.96, 0.06, 0.96, 0x9e4734, 20);
+    cyl(0, 0.342, 0, 0.58, 0.152, 0.58, 0xffd179, 12);
+    for (let i = 0; i < 12; i++) {
+      const a = i * Math.PI / 6;
+      const x = Math.cos(a) * 0.40, z = Math.sin(a) * 0.40;
+      cyl(x, 0.330, z, 0.023, 0.13, 0.023, 0x753f31, 6);
+    }
+    cyl(0, 0.400, 0, 0.85, 0.027, 0.85, 0x7a3b32, 20);
+    for (let i = 0; i < 8; i++) {
+      const a = i * Math.PI / 4;
+      cyl(Math.cos(a) * 0.24, 0.346, Math.sin(a) * 0.24,
+        0.027, 0.133, 0.027, 0x69453a, 6);
+    }
+    cyl(0, 0.43, 0, 0.72, 0.055, 0.72, 0xb54136, 16);
+    cone(0, 0.49, 0, 0.86, 0.14, 0.86, 0xb93f32, 16);
+    cyl(0, 0.563, 0, 0.024, 0.12, 0.024, 0x633b2f, 6);
+    blob(0, 0.63, 0, 0.05, 0.05, 0.05, 0xf6c15a);
+    // Small warm windows make the stripes read as inhabitable masonry.
+    for (const height of [-0.22, 0.075]) {
+      box(0, height, 0.377, 0.13, 0.105, 0.025, 0xffd777);
+      box(0.377, height, 0, 0.025, 0.105, 0.13, 0xffdf87);
+    }
   } else if (kind === 'windmill') {
     cyl(0, -0.06, 0, 0.68, 0.85, 0.68, 0xf5e5cb, 8);
     cone(0, 0.41, 0, 0.88, 0.26, 0.88, 0xbd8064, 8);
@@ -531,6 +558,9 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
   const merged = mergeGeometries(parts, false);
   parts.forEach(g => g.dispose());
   if (!merged) throw new Error('Could not merge prop geometry ' + kind);
+  // Flat-faced boulder normals must be retained after the non-indexed merge;
+  // otherwise the cape rocks become unlit black silhouettes at golden hour.
+  if (kind === 'rock' || kind === 'stepping-stone') merged.computeVertexNormals();
   // Every kind is authored in its unit descriptor envelope. Without this,
   // tall roof trim and sign geometry extends beyond collider/instance bounds.
   merged.computeBoundingBox();
@@ -554,7 +584,7 @@ const SHADOW_KINDS = new Set<PropKind>([
   'concrete-slab', 'concrete-column', 'yard-scaffold', 'crane-jib',
 ]);
 const OUTLINE_KINDS = new Set<PropKind>([
-  'windmill', 'lighthouse', 'ferris-wheel', 'crane', 'satellite-dish',
+  'windmill', 'ferris-wheel', 'crane', 'satellite-dish',
 ]);
 function sways(kind: PropKind): boolean {
   return ['tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'bunting', 'flag'].includes(kind);
@@ -591,7 +621,11 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     if (!material) {
       material = new THREE.MeshToonMaterial({
         color: 0xffffff, vertexColors: true, gradientMap: TOON_RAMP,
-        side: THREE.FrontSide, fog: true,
+        side: kind === 'rock' || kind === 'stepping-stone'
+          ? THREE.DoubleSide : THREE.FrontSide,
+        emissive: kind === 'rock' ? 0x626773 : 0x000000,
+        emissiveIntensity: kind === 'rock' ? 0.42 : 0,
+        fog: true,
       });
       if (sways(kind)) {
         material.onBeforeCompile = shader => {

@@ -54,12 +54,23 @@ export function makeTerrain(seed: string | number, size: number, resolution: num
         const ridge = 1 + 0.013 * noise.fractal(u / 37, v / 37, 3);
         h += mountain * ridge;
       }
-      // The keeper's islet has a narrow underwater channel all the way around.
+      // A high, grass-capped headland with steep grey shoulders. The rock
+      // drops below sea level before reaching the mainland: the bridge remains
+      // the only dry crossing. Noise breaks the silhouette without touching
+      // the broad, traversable summit.
       const isletRadius = Math.hypot(u + 259, v + 18);
-      if (isletRadius < 30) {
-        const rock = 8.5 * (1 - smoothstep(14, 26, isletRadius))
-          - 3 * smoothstep(22, 30, isletRadius);
-        h = Math.max(h, rock + noise.fractal(u / 13, v / 13, 2) * 0.6);
+      if (isletRadius < 37) {
+        const cliff = 18.5 * (1 - smoothstep(16, 27, isletRadius))
+          - 7.0 * smoothstep(25, 32, isletRadius);
+        const roughness = noise.fractal(u / 9, v / 9, 3) *
+          (0.48 + 0.95 * smoothstep(16, 28, isletRadius));
+        h = Math.max(h, cliff + roughness);
+        // The underlying broad west-coast shelf can otherwise remain +5 m
+        // high exactly where the cape bridge crosses. Force a submerged
+        // annulus with feathered inner/outer edges, not an exposed sand spit.
+        const channel = smoothstep(25.5, 28.5, isletRadius) *
+          (1 - smoothstep(36, 40, isletRadius));
+        h = h + (Math.min(h, -3.2) - h) * channel;
       }
 
       heights[gridIndex(resolution, ix, iz)] = h * scale;
@@ -86,6 +97,45 @@ function visitDisc(
       heights[index] = change(heights[index]!, px, pz);
     }
   }
+}
+
+/**
+ * A shallow entrance cut into the western cape, leading beneath a rock arch.
+ * Heightfields cannot overhang, so the visual adapter adds a solid arch/roof
+ * above this depressed, physically traversable floor. The real entrance is
+ * centred on the seed-jittered cave descriptor, not the unmoved map anchor.
+ */
+export function sculptLighthouseSeaCave(
+  island: Pick<IslandData, 'heights' | 'resolution' | 'size'>,
+  center: Vec2,
+): void {
+  const scale = island.size / 600;
+  visitDisc(island, center.x, center.z, 9 * scale, (height, x, z) => {
+    const dx = (x - center.x) / scale;
+    const dz = (z - center.z) / scale;
+    const distance = Math.hypot(dx / 5.8, dz / 6.8);
+    const weight = 1 - smoothstep(0.72, 1.12, distance);
+    const floor = (1.25 + 0.12 * (dx / 5.8) ** 2) * scale;
+    return lerp(height, Math.min(height, floor), weight);
+  });
+}
+
+/**
+ * Building footprint feathering reaches the ring of water on the cape's
+ * east flank. Reopen this narrow sea channel *after* all pad grading while
+ * leaving the lighthouse and keeper house foundations solid.
+ */
+export function preserveLighthouseChannel(
+  island: Pick<IslandData, 'heights' | 'resolution' | 'size'>,
+  center: Vec2,
+): void {
+  const scale = island.size / 600;
+  visitDisc(island, center.x, center.z, 41 * scale, (h, x, z) => {
+    const radius = Math.hypot(x - center.x, z - center.z) / scale;
+    const channel = smoothstep(23.7, 26.3, radius) *
+      (1 - smoothstep(36.0, 39.5, radius));
+    return lerp(h, Math.min(h, -2.6 * scale), channel);
+  });
 }
 
 /** Gentle cut-and-fill pad for buildings; final flatness independent of grid resolution. */

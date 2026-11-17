@@ -4,7 +4,8 @@ import type {
 import { BIOMES, POI_IDS } from './types';
 import { hashString, SeededRandom } from './random';
 import {
-  assignBiomes, carveWater, gridCoordinate, gridIndex, gridSample, makeTerrain, stampPlot,
+  assignBiomes, carveWater, gridCoordinate, gridIndex, gridSample, makeTerrain,
+  preserveLighthouseChannel, sculptLighthouseSeaCave, stampPlot,
 } from './terrain';
 import { makeRoads, makeBridgeDecks } from './roads';
 import { populateProps } from './layouts';
@@ -133,6 +134,11 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
     stampPlot(island, plot);
     poi.center.y = gridSample(island, x, z);
   }
+  const lighthouse = island.pois.find(p => p.id === 'old-lighthouse')!;
+  sculptLighthouseSeaCave(island, {
+    x: lighthouse.center.x + 2 * scale,
+    z: lighthouse.center.z + 23 * scale,
+  });
   island.roads = makeRoads(island, rng);
   island.props = populateProps(island, rng);
   // Grade authored foundations first so nearby street furniture is placed
@@ -141,6 +147,8 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   const dressed = dressIsland(island, rng);
   gradeBuildingFootprints(island, dressed);
   island.props.push(...dressed, ...makeBridgeDecks(island));
+  // Restore the full water gap after footings have feathered toward the bridge.
+  preserveLighthouseChannel(island, lighthouse.center);
   assignBiomes(island);
   island.spawns = makeSpawns(island);
   island.relics = makeRelics(island, rng);
