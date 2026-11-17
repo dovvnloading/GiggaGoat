@@ -109,9 +109,9 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
       case 'trampoline': model = 'playPad'; break;
       case 'lamp': model = 'lamp'; break;
       case 'planter': model = 'planter'; break;
-      case 'flower': model = FLOWER_VARIANTS[flowerIndex++ % FLOWER_VARIANTS.length]; break;
-      case 'bush': model = BUSH_VARIANTS[bushIndex++ % BUSH_VARIANTS.length]; break;
-      case 'tree-oak': model = OAK_VARIANTS[oakIndex++ % OAK_VARIANTS.length]; break;
+      case 'flower': model = FLOWER_VARIANTS[flowerIndex++ % FLOWER_VARIANTS.length]!; break;
+      case 'bush': model = BUSH_VARIANTS[bushIndex++ % BUSH_VARIANTS.length]!; break;
+      case 'tree-oak': model = OAK_VARIANTS[oakIndex++ % OAK_VARIANTS.length]!; break;
       case 'tree-pine': model = 'pine'; break;
       default: break;
     }
@@ -145,8 +145,8 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
       scatter('planter', side * 16, dz, 1.5, 0.85, 1.05,
         Math.PI / 2);
       for (const colorOffset of [-0.48, 0.48]) {
-        scatter(FLOWER_VARIANTS[flowerIndex++ % FLOWER_VARIANTS.length]!, side * 15.3 + colorOffset, dz,
-          0.65, 0.72, 0.65);
+        scatter(FLOWER_VARIANTS[flowerIndex++ % FLOWER_VARIANTS.length]!,
+          side * 15.3 + colorOffset, dz, 0.65, 0.72, 0.65);
       }
     }
   }
