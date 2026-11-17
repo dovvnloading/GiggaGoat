@@ -9,6 +9,7 @@ import {
 } from './visual-downtown';
 import { bakeLibraryGeometry } from './visual-hoofington';
 import { isDowntownRoadOverlay } from './render';
+import { gridSample } from './terrain';
 
 describe('Downtown Bleatsville sourced streetscape', () => {
 
@@ -157,6 +158,13 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     const skyline = plan.filter(p => p.model === 'skylineCrane');
     expect(skyline).toHaveLength(1);
     expect(skyline[0]!.wall).toBeUndefined();
+    const crane = skyline[0]!;
+    expect(crane.size).toEqual({ x: 19 * scale, y: 22 * scale, z: 8 * scale });
+    expect(crane.position.x).toBeCloseTo(centre.x + 32 * scale, 6);
+    expect(crane.position.z).toBeCloseTo(centre.z - 48 * scale, 6);
+    // DT-1: the bottom of the 22 m crane meets terrain, not ground + 16 m.
+    expect(crane.position.y - crane.size.y / 2).toBeCloseTo(
+      gridSample(island, crane.position.x, crane.position.z), 6);
     for (const model of ['retroWindow', 'retroBalcony', 'canopy', 'retroCanopy'])
       expect(plan.filter(p => p.model === model), model).toHaveLength(0);
     // Sidewalk planting remains, but no extra facade window-box flower overlays.

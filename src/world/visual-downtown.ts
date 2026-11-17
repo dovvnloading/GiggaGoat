@@ -199,7 +199,7 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
       gridSample(island, centre.x, centre.z + dz * scale) + 14.2 * scale);
   // Skyline machinery is intentionally behind the roofs, not on the route.
   scatter('skylineCrane', 32, -48, 19, 22, 8, Math.PI / 2,
-    gridSample(island, centre.x + 32 * scale, centre.z - 48 * scale) + 27 * scale);
+    gridSample(island, centre.x + 32 * scale, centre.z - 48 * scale) + 11 * scale);
   return plan;
 }
 

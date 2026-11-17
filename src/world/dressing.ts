@@ -404,8 +404,10 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       : kind === 'tree-oak' ? rand(8, 14)
       : kind === 'bush' ? rand(1.8, 4)
       : kind === 'flower' ? rand(0.8, 1.5) : rand(0.7, 1.35);
-    const width = kind.startsWith('tree-') ? height * 0.39
-      : kind === 'bush' ? height * 1.25 : height * 0.55;
+    const width = kind === 'tree-oak' ? height * 0.72
+      : kind === 'tree-pine' ? height * 0.25
+      : kind === 'bush' ? height * 1.25
+      : kind === 'flower' ? height * 0.9 : height * 0.55;
     const yaw = turn();
     const position = near?.id === farm &&
       (kind === 'flower' || kind === 'bush' || kind.startsWith('tree-'))
