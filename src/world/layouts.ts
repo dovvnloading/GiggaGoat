@@ -234,8 +234,14 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
     if (gridSample(island, p.x, p.z) < 0.4 * scale ||
         Math.hypot(p.x - (byId.get(cape)!.center.x + 2 * scale),
           p.z - (byId.get(cape)!.center.z + 23 * scale)) < 8 * scale) continue;
-    add(cape, 'rock', p.x, p.z,
-      { x: rng.range(2, 7) * scale, y: rng.range(2, 5) * scale, z: rng.range(2, 6) * scale },
+    // Draw all three dimensions on every eligible iteration to preserve the seed stream.
+    const size = {
+      x: rng.range(2, 7) * scale,
+      y: rng.range(2, 5) * scale,
+      z: rng.range(2, 6) * scale,
+    };
+    if (i % 2 === 0) add(cape, 'rock', p.x, p.z,
+      { x: size.x * 0.55, y: size.y * 0.55, z: size.z * 0.55 },
       { yaw: a, shape: 'convex', lickable: false });
   }
   // Preserve the cape pole's x=26 anchor with the new wider pennant model.
