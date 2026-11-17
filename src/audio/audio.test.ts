@@ -231,9 +231,11 @@ describe('exhaustive typed lane mapping', () => {
       for (const cue of mapped) expect(SOUND_IDS).toContain(cue.sound);
     }
     expect(mapPhysics(physicsFixtures[0]!)[0]?.sound).toBe('landing');
+    expect(mapPhysics(physicsFixtures[3]!)[0]?.sound).toBe('jump');
     expect(mapChaos(chaosFixtures[2]!)[0]?.sound).toBe('splash');
     expect(mapMode(modeFixtures[4]!)[0]?.sound).toBe('tide-warning');
     expect(mapGig(gigFixtures[5]!).map(c => c.sound)).toEqual(['gig-success', 'rating-gold']);
+    expect(mapGig(gigFixtures[5]!)[1]!.delay).toBeGreaterThan(.5);
     expect(mapGameplay(gameplayFixtures[3]!)[0]?.sound).toBe('gigga-grow');
   });
   it('reacts to discriminant payloads rather than blindly playing the same patch', () => {
@@ -404,6 +406,7 @@ describe('mocked WebAudio integration', () => {
       state: { mode: 'party', tide: .9, combo: 7, meter: 90, poi: 'the-dam', night: true },
       physics: [physicsFixtures[0]!],
       gigs: [gigFixtures[5]!],
+      cues: [{ sound: 'headbutt-charge', intensity: .8 }],
       goatPosition: { x: 25, y: 4, z: 4 },
     });
     expect(ctx.listener.positionX.value).toBe(25);
@@ -411,6 +414,7 @@ describe('mocked WebAudio integration', () => {
     expect(audio.status.music.poi).toBe('the-dam');
     expect(audio.voiceTickets.some(t => t.sound === 'landing')).toBe(true);
     expect(audio.voiceTickets.some(t => t.sound === 'gig-success')).toBe(true);
+    expect(audio.voiceTickets.some(t => t.sound === 'headbutt-charge')).toBe(true);
     expect(ctx.oscillators.length).toBeGreaterThan(0); // song and sounds are actually scheduled
     audio.dispose();
   });

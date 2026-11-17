@@ -6,13 +6,14 @@
 
 ~~~ts
 import { AudioEngine, localAudioSettings } from '../audio';
-import type { GameplayAudioEvent } from '../audio';
+import type { GameplayAudioEvent, AudioCue } from '../audio';
 const audio = new AudioEngine({ seed: island.seed, storage: localAudioSettings() });
 const unbindUnlock = audio.unlockOnFirstInput(window);
 
 // The host already owns world, physics, gameplay, chaos, modes and gigs.
 // Queue gameplay events via its keyed EventBus; do not drain a queue twice.
 const gameplayQueue: GameplayAudioEvent[] = [];
+const queuedInputCues: AudioCue[] = []; // push from your input adapter
 const offScore = game.events.on('style:scored', data =>
   gameplayQueue.push({ type: 'style:scored', data }));
 // Add other gameplay subscriptions the host needs in the same pattern.
@@ -34,6 +35,7 @@ function renderFrame(dt: number) {
       night: nightCycleIsDark,
     },
     physics: goat.events.drain(),
+    cues: queuedInputCues.splice(0), // e.g. charge-start, UI, input-only pulses
     gameplay: gameplayQueue.splice(0),
     chaos: [...water.events.drain(), ...destruction.events.drain(),
             ...chains.events.drain(), ...surfaces.events.drain()],
@@ -56,7 +58,7 @@ The snippet illustrates an existing host and its already-defined variables, not 
 - **new AudioEngine({ seed?, contextFactory?, settings?, storage?, maxVoices? })**: lazily creates the AudioContext. contextFactory is for tests or advanced hosts; no context is created at module import. Seed can be a number or string.
 - **audio.unlock(): Promise<boolean>**: invoke from a pointer/key/touch gesture. **unlockOnFirstInput(target?)** attaches those listeners until successful and returns an unsubscriber. Do not auto-resume on page load.
 - **audio.play(soundId, { position?, size?, intensity?, pitch?, voice?, combo?, bus?, priority? })**: returns true when voice admitted. SOUND_IDS, VOICES and all option types are exported. Size 0.6 (Kid) sounds squeakier; size 3 (GIGGA) is thunderous. Bleat characters: hero, raspy, goofy and robot, with seeded timbral variation.
-- **audio.updateFrame({dt,camera?,state?,physics?,gameplay?,chaos?,modes?,gigs?,goats?,goatPosition?,positionForGoat?,positionForBody?,sizeForGoat?})**: music state is mode free/party, combo count, meter 0..100, tide fraction 0..1, poi (public PoiId), night boolean. Footsteps use measured speed, grounded state and one of six surface names.
+- **audio.updateFrame({dt,camera?,cues?,state?,physics?,gameplay?,chaos?,modes?,gigs?,goats?,goatPosition?,positionForGoat?,positionForBody?,sizeForGoat?})**: music state is mode free/party, combo count, meter 0..100, tide fraction 0..1, poi (public PoiId), night boolean. Footsteps use measured speed, grounded state and one of six surface names.
 - **audio.setSettings(partial)**, **audio.settings**, **audio.status** (unlocked, voices, settings, music), **audio.audioContext**, **audio.voiceTickets**, **audio.dispose()**. Five bus volume values are in 0..1; muted disables master. **localAudioSettings(key?)** is an optional localStorage adapter with a safe failure path. Custom AudioSettingsStore hooks may use the game's own save backend.
 - **VoiceManager**, **ProceduralSynth**, **AdaptiveMusic**, **IslandAmbience** for advanced use. Pure/testable exports: AudioRandom, settingsFrom, decideVoice, soundLimit, distanceGain, goatPitch, duckGainSince, selectMusic, scorePattern, locationFlavor. The five map* helpers and full type lists are exported.
 
@@ -74,7 +76,7 @@ Free-roam starts with gentle chord plucks; combo and meter unlock rhythmic pluck
 
 ## Typed lane event coverage and deduplication
 
-**mapPhysics**, **mapGameplay**, **mapChaos**, **mapMode**, **mapGig**, and **mapLaneEvent** import only public types from the five lanes. Each current event discriminant and gameplay key is in compile-time-checked *_EVENT_TYPES tuples. Some transitions intentionally emit no sound (airtimeStart/airtimeEnd, challenge progress, conveyor exit) to avoid event spam. style:input is silent because style:scored is authoritative. Gameplay events are {type, data} objects because its EventBus is keyed. This adapter never calls another lane's drain/subscription API; **the host owns all event drains** and can avoid double consumption. If the same physical flap/impact appears in both physics and gameplay, prefer feeding one canonical event; voice caps and cooldowns are a second line of defense.
+**mapPhysics**, **mapGameplay**, **mapChaos**, **mapMode**, **mapGig**, and **mapLaneEvent** import only public types from the five lanes. Each current event discriminant and gameplay key is in compile-time-checked *_EVENT_TYPES tuples. Some transitions intentionally emit no sound (airtimeEnd, challenge progress, conveyor exit) to avoid event spam. style:input is silent because style:scored is authoritative. Gameplay events are {type, data} objects because its EventBus is keyed. This adapter never calls another lane's drain/subscription API; **the host owns all event drains** and can avoid double consumption. If the same physical flap/impact appears in both physics and gameplay, prefer feeding one canonical event; voice caps and cooldowns are a second line of defense.
 
 ## Dev console and tests
 

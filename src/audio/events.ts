@@ -19,6 +19,8 @@ export type LaneAudioEvent =
   | { lane: 'gigs'; event: GigEvent };
 export type AudioCue = {
   sound: SoundId; intensity?: number; size?: number; position?: Vec3;
+  /** Optional musical delay in seconds from the current audio clock. */
+  delay?: number;
   goatId?: string; playerId?: string; bodyHandle?: number; combo?: number;
   pitch?: number;
 };
@@ -72,7 +74,7 @@ export function mapPhysics(event: PhysicsEvent): AudioCue[] {
         [cue('headbutt-impact', { goatId, intensity: clamp(event.impulse / 60),
           bodyHandle: event.otherBodyHandle ?? undefined })] : [];
     case 'flipped': return [cue('flip-whoosh', { goatId, intensity: clamp(event.rotations / 2) })];
-    case 'airtimeStart': return [];
+    case 'airtimeStart': return [cue('jump', { goatId, intensity: .56 })];
     case 'airtimeEnd': return [];
     case 'wallClingStart': return [cue('climb', { goatId, intensity: .45 })];
     case 'wallClingEnd': return [];
@@ -187,7 +189,7 @@ export function mapGig(event: GigEvent): AudioCue[] {
     case 'gig.completed': return [
       cue('gig-success', { intensity: 1 }),
       cue(event.award.rating === 'gold' ? 'rating-gold' :
-        event.award.rating === 'silver' ? 'rating-silver' : 'rating-bronze', { intensity: .8 }),
+        event.award.rating === 'silver' ? 'rating-silver' : 'rating-bronze', { intensity: .8, delay: .78 }),
     ];
     case 'cosmetic.unlocked': return [cue('ui-confirm', { intensity: .75 })];
   }
