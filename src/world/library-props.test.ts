@@ -6,7 +6,7 @@ import type { PropDescriptor, PropKind } from './types';
 import { bakeLibraryPropGeometry, loadLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
 import { bakeLibraryGeometry, HOOFINGTON_MODELS } from './visual-hoofington';
 import { DOWNTOWN_MODELS } from './visual-downtown';
-import { buildPropVisuals } from './visual-props';
+import { buildPropVisuals, AUTHORED_HERO_DRESSING_KINDS } from './visual-props';
 import { publicAssetUrl } from './public-assets';
 
 interface ManifestAsset {
@@ -24,7 +24,7 @@ describe('library prop catalog', () => {
   it('covers every PropKind and every path exists locally with the right licence', () => {
     // The satisfies Record<PropKind, string> declaration enforces exhaustive
     // coverage at typecheck time, including any newly added descriptor kind.
-    expect(mapped).toHaveLength(79);
+    expect(mapped).toHaveLength(81);
     expect(new Set(mapped.map(([kind]) => kind)).size).toBe(mapped.length);
     for (const [kind, path] of mapped) {
       const entry = byPath.get(path);
@@ -36,6 +36,45 @@ describe('library prop catalog', () => {
         kind + ': missing file ' + path).toBe(true);
       expect(publicAssetUrl(path, '/GiggaGoat/src/world/viewer/index.html', './'),
         kind + ': bad GitHub Pages URL').toBe('/GiggaGoat/' + path);
+    }
+  });
+
+  it('registers native-proportioned Pines ferns and lily pads as CC0 assets', () => {
+    for (const [kind, file] of [['fern', 'fern.glb'], ['lily-pads', 'lily-pads.glb']] as const) {
+      const path = 'assets/library/custom/pines/' + file;
+      expect(PROP_LIBRARY_MODELS[kind]).toBe(path);
+      expect(byPath.get(path)?.license).toBe('CC0');
+      expect(existsSync(new URL('../../public/' + path, import.meta.url))).toBe(true);
+    }
+    expect(AUTHORED_HERO_DRESSING_KINDS.has('lily-pads')).toBe(true);
+    expect(AUTHORED_HERO_DRESSING_KINDS.has('fern')).toBe(false);
+  });
+
+  it('renders separate glade box fallbacks, with fern wind sway and no lily-pad sway', () => {
+    const props: PropDescriptor[] = (['fern', 'lily-pads'] as const).map((kind, i) => ({
+      id: 'pines-fallback-' + kind, kind,
+      transform: { position: { x: i * 3, y: 3, z: 0 }, rotationY: 0.3 * i },
+      size: { x: 1.4, y: kind === 'fern' ? 0.77 : 0.08, z: 1.4 },
+      body: { type: 'static' }, shape: 'cuboid', collidable: false,
+      breakable: false, lickable: false, climbable: false,
+    }));
+    const visuals = buildPropVisuals(props);
+    try {
+      const fern = visuals.group.getObjectByName('props-fern') as THREE.InstancedMesh;
+      const lily = visuals.group.getObjectByName('props-lily-pads') as THREE.InstancedMesh;
+      expect(fern).toBeInstanceOf(THREE.InstancedMesh);
+      expect(lily).toBeInstanceOf(THREE.InstancedMesh);
+      for (const mesh of [fern, lily]) {
+        expect(mesh.count).toBe(1);
+        expect(mesh.geometry.getAttribute('position').count).toBe(36);
+        expect(mesh.geometry.getAttribute('color')).toBeDefined();
+      }
+      expect((fern.material as THREE.MeshToonMaterial).onBeforeCompile.toString())
+        .toContain('uWorldWind');
+      expect((lily.material as THREE.MeshToonMaterial).onBeforeCompile.toString())
+        .not.toContain('uWorldWind');
+    } finally {
+      visuals.dispose();
     }
   });
 
