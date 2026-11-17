@@ -45,7 +45,7 @@ export function visibleGoatBounds(root: THREE.Object3D, output = new THREE.Box3(
  * If the camera intersects the box, conservatively protect the entire viewport
  * rather than projecting corners behind the near plane to bogus locations. */
 export function projectGoatScreenBox(bounds: THREE.Box3, camera: THREE.PerspectiveCamera,
-  viewport: ScreenRect): ScreenRect | null {
+  viewport: ScreenRect, clipToViewport = true): ScreenRect | null {
   if (bounds.isEmpty() || viewport.right <= viewport.left || viewport.bottom <= viewport.top) {
     return null;
   }
@@ -69,6 +69,7 @@ export function projectGoatScreenBox(bounds: THREE.Box3, camera: THREE.Perspecti
       }
     }
   }
+  if (!clipToViewport) return { left, top, right, bottom };
   const clipped = {
     left: Math.max(viewport.left, left), top: Math.max(viewport.top, top),
     right: Math.min(viewport.right, right), bottom: Math.min(viewport.bottom, bottom),
@@ -76,9 +77,9 @@ export function projectGoatScreenBox(bounds: THREE.Box3, camera: THREE.Perspecti
   return clipped.right > clipped.left && clipped.bottom > clipped.top ? clipped : null;
 }
 
-/** Prefer the mockup's fixed corner panels. An encroaching panel is hidden
- * without reflow; prompts are stacked immediately above the goat, or hidden
- * when the camera/viewport leaves no genuinely clear space. */
+/** Keep mockup corner panels when possible. Place the small prompts under
+ * the score at top centre, falling back above the goat only when blocked.
+ * Every placement is checked against the actual projected silhouette. */
 export function planGoatSafeHud(goat: ScreenRect, viewport: ScreenRect,
   panels: readonly HudPanelRect[], prompts: readonly HudPromptSize[]): GoatSafeHudLayout {
   const hiddenPanels = new Set<string>();
@@ -91,28 +92,39 @@ export function planGoatSafeHud(goat: ScreenRect, viewport: ScreenRect,
     else occupied.push(box);
   }
 
-  let above = protectedGoat.top - 10;
+  const viewportHeight = viewport.bottom - viewport.top;
+  let nextTop = viewport.top + Math.max(184, Math.min(224, viewportHeight * .23));
   for (const prompt of prompts) {
-    const width = prompt.width, height = prompt.height;
+    const { width, height } = prompt;
     if (!(width > 0 && height > 0) || width > viewport.right - viewport.left - 16) continue;
-    const center = Math.max(viewport.left + 8 + width / 2,
-      Math.min(viewport.right - 8 - width / 2, (goat.left + goat.right) / 2));
-    const left = center - width / 2;
-    let top = above - height;
-    // Try successively higher slots when a fixed HUD panel or earlier prompt
-    // occupies the preferred position. Keep these controls out of the goat.
+    const center = (viewport.left + viewport.right) / 2;
+    const left = Math.max(viewport.left + 8, Math.min(
+      viewport.right - 8 - width, center - width / 2));
+    let top = nextTop;
+    // If a top card reaches the prompt strip, place the prompt just below it.
     for (let attempt = 0; attempt <= occupied.length; attempt++) {
-      const candidate = { left, top, right: left + width, bottom: top + height };
-      const blocker = occupied.find(box => rectsIntersect(candidate, box));
+      const box = { left, top, right: left + width, bottom: top + height };
+      const blocker = occupied.find(used => rectsIntersect(box, used));
       if (!blocker) break;
-      top = Math.min(top, blocker.top - height - 10);
+      top = Math.max(top, blocker.bottom + 10);
+    }
+    // A high jump or GIGGA-sized silhouette takes priority over the hint.
+    if (top + height > protectedGoat.top - 10) {
+      top = protectedGoat.top - height - 10;
+      for (let attempt = 0; attempt <= occupied.length; attempt++) {
+        const box = { left, top, right: left + width, bottom: top + height };
+        const blocker = occupied.find(used => rectsIntersect(box, used));
+        if (!blocker) break;
+        top = Math.min(top, blocker.top - height - 10);
+      }
     }
     const box = { left, top, right: left + width, bottom: top + height };
-    if (top < viewport.top + 8 || rectsIntersect(box, protectedGoat) ||
+    if (top < viewport.top + 8 || box.bottom > viewport.bottom - 8 ||
+      rectsIntersect(box, protectedGoat) ||
       occupied.some(used => rectsIntersect(box, used))) continue;
     placed.set(prompt.id, box);
-    occupied.push(expand(box, 8));
-    above = top - 10;
+    occupied.push(expand(box, 6));
+    nextTop = top + height + 10;
   }
   return { hiddenPanels, prompts: placed };
 }
