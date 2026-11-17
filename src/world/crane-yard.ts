@@ -67,6 +67,12 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
     return prop;
   }
 
+  // Compatibility marker for the existing demolition gig, which still
+  // locates its spawn via kind='tower'. Keep its footprint negligible and
+  // non-colliding so it cannot fill or block our genuinely open concrete bays.
+  put('tower', -12, 13, 0.07, 0.07, 0.07,
+    { fixedToPad: true, collidable: false, climbable: false });
+
   // Four genuine concrete floors with open bays; their horizontal colliders
   // let goats land on each level rather than a fake solid tower-sized box.
   const { tower, crane } = CRANE_YARD_PLAN;
