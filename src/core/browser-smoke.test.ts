@@ -158,8 +158,9 @@ class ChromePage {
   async click(selector: string): Promise<void> {
     const point = await this.evaluate<{ x: number; y: number }>(
       '(() => { const el = document.querySelector(' + JSON.stringify(selector) + ');' +
-      'if (!el || !el.getClientRects().length) throw new Error("Missing visible button: ' +
-      selector + '"); const r = el.getBoundingClientRect();' +
+      'if (!el || !el.getClientRects().length) throw new Error(' +
+      JSON.stringify('Missing visible button: ' + selector) +
+      '); const r = el.getBoundingClientRect();' +
       'return { x: r.left + r.width/2, y: r.top + r.height/2 }; })()');
     for (const type of ['mousePressed', 'mouseReleased']) {
       await this.send('Input.dispatchMouseEvent',
@@ -224,7 +225,7 @@ const initScript = [
   '})();',
 ].join('\n');
 
-describe.skipIf(!chrome && !process.env['CI'])('production game Chrome runtime smoke', () => {
+describe.skipIf(!process.env['CI'] && !process.env['BROWSER_SMOKE'])('production game Chrome runtime smoke', () => {
   it('builds, loads, plays, opens menus, and runs every party mode without browser errors', async () => {
     if (!chrome) throw new Error('Chrome must be installed on the CI runner');
     // Use the exact production Vite output, not Vite's forgiving development server.
