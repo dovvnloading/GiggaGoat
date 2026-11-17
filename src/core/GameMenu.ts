@@ -8,45 +8,110 @@ import type { PoiId } from '../world';
 type Screen = 'title' | 'playing' | 'pause' | 'party' | 'settings' |
   'board' | 'gig-results' | 'party-results';
 const CSS = `
+/* The frame, stat cards, tabs and action buttons are nine-sliced sprite PNGs.
+   Text and interactive values remain real HTML above the art. */
 .gg-shell{position:absolute;inset:0;z-index:15;display:grid;place-items:center;
-  font:700 16px/1.5 system-ui,Arial,sans-serif;color:#fff7de;text-shadow:0 2px 2px #27244299;
-  background:linear-gradient(125deg,#13152aaf,#241b3ab3 64%,#13152ab0)}
+  padding:12px;background:linear-gradient(120deg,#121632bf,#242044c4 66%,#16182fc4);
+  font:900 15px/1.3 "Trebuchet MS","Arial Rounded MT Bold","Arial Black",system-ui,sans-serif;
+  color:#fff4d6;text-shadow:1px 2px 1px #42304a,0 3px 3px #2c2148ad;
+  -webkit-font-smoothing:antialiased}
 .gg-shell *{box-sizing:border-box}
-.gg-shell-panel{width:min(580px,calc(100vw - 26px));max-height:calc(100dvh - 30px);
-  overflow:auto;border:3px solid #ffe5a1;border-radius:25px;padding:clamp(19px,4vw,32px);
-  background:linear-gradient(148deg,#40316aeF,#1c2543f6);
-  box-shadow:0 12px 0 #141327a0,0 30px 90px #12142c88}
-.gg-shell-eyebrow{font-size:12px;letter-spacing:3px;color:#a9dffd;text-transform:uppercase}
-.gg-shell h1{font-size:clamp(36px,7vw,66px);color:#ffd833;line-height:.98;
-  margin:10px 0 14px;font-weight:1000;letter-spacing:-2px;
-  -webkit-text-stroke:1px #9c6033;text-shadow:3px 5px 0 #703f94}
-.gg-shell h2{font-size:clamp(26px,5vw,40px);line-height:1.05;color:#ffd833;margin:10px 0 18px}
-.gg-shell p{margin:6px 0 15px;font-size:14px;color:#ebe5ff}
-.gg-shell .gg-options{display:grid;gap:9px}
+.gg-shell [hidden]{display:none!important}
+.gg-shell-panel{position:relative;width:min(610px,100%);max-height:calc(100dvh - 24px);
+  min-width:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;
+  padding:clamp(10px,2.5vw,22px) clamp(13px,3vw,26px);
+  border:27px solid transparent;border-image:var(--gg-sprite) 62 fill / 27px / 0 stretch;
+  background:transparent;filter:drop-shadow(0 11px 1px #17132aa0) drop-shadow(0 24px 32px #1111269a)}
+.gg-shell-eyebrow{font-size:11px;letter-spacing:2.2px;color:#a8e0ff;text-transform:uppercase}
+.gg-shell h1{font-size:clamp(42px,7vw,69px);color:#ffdc40;line-height:.94;
+  margin:8px 0 16px;font-weight:1000;letter-spacing:-2px;-webkit-text-stroke:1px #954931;
+  text-shadow:2px 3px 0 #9b4a35,4px 6px 0 #643a95}
+.gg-shell h2{font-size:clamp(27px,5vw,43px);line-height:1.05;color:#ffdc40;
+  margin:7px 0 13px;letter-spacing:-.6px;text-shadow:2px 3px #673884}
+.gg-shell p{margin:7px 0 15px;font-size:14px;line-height:1.44;color:#fff0e6}
+.gg-shell .gg-options{display:grid;gap:7px}
 .gg-shell button,.gg-shell select,.gg-shell input{font:inherit}
-.gg-shell button{border:2px solid #ffffff7a;background:#694bc2;color:#fff;border-radius:13px;
-  padding:12px 17px;text-align:left;cursor:pointer;font-weight:950;transition:transform .1s,background .1s}
-.gg-shell button:hover,.gg-shell button:focus-visible{background:#986df1;outline:3px solid #ffd833;outline-offset:2px;transform:translateY(-1px)}
-.gg-shell button.gg-primary{background:#ffd833;color:#292240;border-color:#fff4c9;text-shadow:none}
-.gg-shell button.gg-primary:hover,.gg-shell button.gg-primary:focus-visible{background:#fff2a8}
-.gg-shell .gg-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
-.gg-shell label{display:grid;gap:5px;font-size:12px;letter-spacing:.9px}
-.gg-shell select,.gg-shell input[type=range]{width:100%;accent-color:#ffd833}
-.gg-shell select{padding:12px;background:#fff7df;border:0;border-radius:10px;color:#241e38}
-.gg-shell .gg-range{display:flex;align-items:center;gap:9px}
-.gg-shell input[type=range]{min-width:0;flex:1}
-.gg-shell output{min-width:42px;text-align:right;color:#ffd833}
-.gg-shell .gg-offer{border:2px solid #ffffff38;padding:12px;border-radius:14px;margin:9px 0;background:#151b38a6}
-.gg-shell .gg-offer strong{color:#ffd833;font-size:19px}
+.gg-shell button{cursor:pointer;font-weight:1000;touch-action:manipulation}
+.gg-shell .gg-art-button{display:flex;align-items:center;width:100%;min-height:68px;
+  padding:5px 16px;border:18px solid transparent;
+  border-image:var(--gg-sprite) 42 fill / 18px / 0 stretch;background:transparent;
+  color:#fff9e4;text-align:left;font-size:clamp(13px,1.45vw,17px);letter-spacing:.3px;
+  text-shadow:1px 2px 0 #493277;transition:transform .09s}
+.gg-shell .gg-art-button.gg-primary{color:#432d28;text-shadow:0 1px #fff1b7}
+.gg-shell .gg-art-button:active{transform:translateY(2px) scale(.99)}
+.gg-shell button:focus-visible,.gg-shell select:focus-visible,
+.gg-shell input:focus-visible{outline:3px solid #ffe44b;outline-offset:2px}
+.gg-shell .gg-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 18px}
+.gg-shell label{display:grid;gap:7px;font-size:12px;letter-spacing:.7px}
+.gg-shell select{width:100%;min-width:0;min-height:48px;color:#fff3da;
+  border:12px solid transparent;border-image:var(--gg-sprite) 52 fill / 12px / 0 stretch;
+  background:#302250;accent-color:#ffe248;padding:2px 5px}
+.gg-shell select option{background:#302250;color:#fff4d6}
+.gg-shell .gg-range{display:flex;align-items:center;gap:13px}
+.gg-shell input.gg-slider{appearance:none;-webkit-appearance:none;flex:1;min-width:0;
+  height:29px;border:3px solid #b87437;border-radius:30px;cursor:pointer;
+  background:linear-gradient(90deg,#96f62c 0 var(--gg-pct),#48303f var(--gg-pct) 100%);
+  box-shadow:inset 0 2px 4px #261821,0 0 0 2px #f7c875}
+.gg-shell input.gg-slider::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;
+  width:42px;height:42px;border:0;background:var(--gg-sprite) 56.6% center/380px 42px no-repeat;
+  filter:drop-shadow(0 2px 1px #31203c)}
+.gg-shell input.gg-slider::-moz-range-thumb{width:42px;height:42px;border:0;
+  background:var(--gg-sprite) 56.6% center/380px 42px no-repeat}
+.gg-shell output{min-width:52px;text-align:right;color:#ffe153;font-size:15px;font-variant-numeric:tabular-nums}
+.gg-shell .gg-offer{border:2px solid #b794a466;padding:10px;border-radius:14px;margin:9px 0;background:#151b38a6}
+.gg-shell .gg-offer strong{color:#ffdb40;font-size:19px}
 .gg-shell .gg-offer p{margin:4px 0 10px}
-.gg-shell .gg-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:18px 0}
-.gg-shell .gg-stat{border:1px solid #ffffff55;border-radius:10px;background:#181c3baa;padding:12px;text-align:center}
-.gg-shell .gg-stat strong{display:block;color:#ffd833;font-size:20px}
+.gg-shell .gg-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin:18px 0}
+.gg-shell .gg-stat{display:flex;flex-direction:column;justify-content:center;align-items:center;
+  min-width:0;min-height:90px;padding:3px 5px;border:14px solid transparent;
+  border-image:var(--gg-sprite) 48 fill / 14px / 0 stretch;text-align:center;
+  color:#fff3db;font-size:clamp(9px,1.05vw,12px)}
+.gg-shell .gg-stat-line{display:flex;gap:3px;align-items:center;justify-content:center}
+.gg-shell .gg-stat strong{display:block;color:#ffe147;font-size:clamp(17px,2.1vw,24px);line-height:1.1}
+.gg-shell .gg-stat-coin{width:26px;height:26px;object-fit:contain}
 .gg-shell .gg-results{list-style:none;margin:8px 0 20px;padding:0;max-height:34vh;overflow:auto}
 .gg-shell .gg-results li{display:flex;justify-content:space-between;padding:7px 10px;margin:4px 0;
   border-radius:8px;background:#ffffff19}
-.gg-shell footer{margin-top:17px;color:#d0cceb;font-size:11px;line-height:1.6}
-@media(max-width:510px){.gg-shell .gg-grid{grid-template-columns:1fr}.gg-shell-panel{padding:16px}.gg-shell .gg-stats{gap:4px}}
+.gg-shell footer{margin-top:14px;color:#e0cfea;font-size:10px;line-height:1.6}
+.gg-shell .gg-settings-head{display:flex;align-items:start;justify-content:space-between;gap:12px}
+.gg-shell .gg-icon-button{display:grid;place-items:center;flex:0 0 auto;
+  width:53px;height:53px;border:0;padding:0;color:#fff7df;
+  background:var(--gg-sprite) center/contain no-repeat;transition:transform .08s}
+.gg-shell .gg-icon-button:hover{transform:scale(1.06)}
+.gg-shell .gg-icon-button:active{transform:scale(.96)}
+.gg-shell .gg-settings-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:3px;margin:1px 0 13px}
+.gg-shell .gg-tab{display:grid;place-items:end center;min-width:0;min-height:62px;
+  padding:9px 2px 6px;border:17px solid transparent;
+  border-image:var(--gg-sprite) 47 fill / 17px / 0 stretch;
+  background:transparent;color:#fff5df;text-shadow:1px 2px #6f3d30;
+  font-size:clamp(10px,1.15vw,13px);letter-spacing:.2px}
+.gg-shell .gg-tab[aria-selected="true"]{color:#4c2b1a;text-shadow:0 1px #ffe39c}
+.gg-shell .gg-settings-content{min-height:210px;padding:4px 2px}
+.gg-shell .gg-settings-content>.gg-setting{margin:0 0 20px}
+.gg-shell .gg-setting-row{display:flex;align-items:center;justify-content:space-between;
+  min-height:64px;gap:14px;margin-bottom:16px;font-size:13px;letter-spacing:.7px}
+.gg-shell .gg-switch{flex:0 0 auto;width:106px;height:54px;padding:0;border:0;
+  background:var(--gg-sprite) center/100% 100% no-repeat}
+.gg-shell .gg-check{flex:0 0 auto;width:48px;height:48px;padding:0;border:0;
+  background:var(--gg-sprite) center/100% 100% no-repeat}
+.gg-shell .gg-settings-bottom{display:flex;align-items:center;gap:12px;margin-top:7px}
+.gg-shell .gg-settings-bottom span{font-size:11px;line-height:1.4;color:#dfd0e8}
+.gg-shell .gg-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;
+  clip-path:inset(50%);white-space:nowrap}
+@media(max-width:510px){
+ .gg-shell{padding:6px}
+ .gg-shell-panel{width:100%;max-height:calc(100dvh - 12px);border-width:20px;
+   border-image-width:20px;padding:8px 10px}
+ .gg-shell h1{font-size:44px}
+ .gg-shell .gg-grid{grid-template-columns:1fr;gap:7px}
+ .gg-shell .gg-stats{gap:2px}
+ .gg-shell .gg-stat{min-height:79px;border-width:10px;border-image-width:10px}
+ .gg-shell .gg-stat-coin{width:20px;height:20px}
+ .gg-shell .gg-art-button{min-height:59px;font-size:13px}
+ .gg-shell footer{font-size:9px}
+ .gg-shell .gg-tab{min-height:54px;border-width:13px;border-image-width:13px}
+}
 `;
 const esc = (value: unknown): string => String(value).replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
