@@ -43,11 +43,16 @@ export interface SurfaceMarker {
   kind: 'trampoline' | 'launch';
   position: Vec3;
   halfExtents: Vec3;
+  direction?: Vec3;
 }
 export interface FallingPiece { body: RigidBody; type: PieceType; born: number }
 export interface GameOptions { seed?: string | number; resolution?: number; progress?: GameProgress }
 /** Read-only presentation cue for an ability accepted by the fixed-tick simulation. */
 export interface GoatVisualCue { goatId: string; action: 'headbutt' | 'bleat' | 'glide' }
+/** Headless, one-shot cues for contact information removed during simulation callbacks. */
+export type GameVfxCue =
+  | { type: 'headbutt-hit'; position: Vec3; direction: Vec3; power: number }
+  | { type: 'crate-break'; position: Vec3; direction: Vec3; size: number };
 
 /**
  * The entire game simulation, including collision, chaos, and scoring, is headless.
@@ -76,6 +81,7 @@ export class Game {
   respawns = 0;
   private readonly off: Array<() => void> = [];
   private readonly visualCueListeners = new Set<(cue: GoatVisualCue) => void>();
+  private readonly vfxCueListeners = new Set<(cue: GameVfxCue) => void>();
   private intent: PlayerIntent = {};
   private pendingSize: GoatSize | null = null;
   private drownSeconds = 0;
@@ -163,6 +169,13 @@ export class Game {
     }));
     this.off.push(this.breakables.events.on(event => {
       const prop = this.propByBody.get(event.bodyHandle);
+      if (prop?.kind === 'crate') {
+        this.sendVfxCue({ type: 'crate-break',
+          position: { x: event.position.x,
+            y: event.position.y - prop.size.y / 2, z: event.position.z },
+          direction: forward(this.goat.locomotion.heading),
+          size: Math.max(prop.size.x, prop.size.y, prop.size.z) });
+      }
       if (prop) {
         const removed = this.colliders.bodies.get(prop.id);
         if (removed) this.water.untrack(removed);
@@ -327,11 +340,12 @@ export class Game {
     const place = (kind: SurfaceMarker['kind'], x: number, z: number): void => {
       const pos = V(x, heightAt(this.island, x, z) + .22, z);
       const halfExtents = V(2.1, .23, 2.1);
+      const direction = kind === 'launch' ? V(.2, .93, -.3) : V(0, 1, 0);
       const id = kind === 'trampoline'
         ? this.surfaces.createTrampoline({ position: pos, halfExtents, bounceSpeed: 13 })
         : this.surfaces.createLaunchPad({ position: pos, halfExtents,
-          direction: V(.2, .93, -.3), launchSpeed: 15 });
-      this.surfaceMarkers.push({ id, kind, position: pos, halfExtents });
+          direction, launchSpeed: 15 });
+      this.surfaceMarkers.push({ id, kind, position: pos, halfExtents, direction });
     };
     place('trampoline', farm.center.x + 11, farm.center.z + 2);
     place('launch', farm.center.x + 3, farm.center.z - 8);
@@ -525,6 +539,15 @@ export class Game {
     return () => { this.visualCueListeners.delete(listener); };
   }
 
+  onVfxCue(listener: (cue: GameVfxCue) => void): () => void {
+    this.vfxCueListeners.add(listener);
+    return () => { this.vfxCueListeners.delete(listener); };
+  }
+
+  private sendVfxCue(cue: GameVfxCue): void {
+    for (const listener of this.vfxCueListeners) listener(cue);
+  }
+
   private sendVisualCue(goat: GoatRagdoll, action: GoatVisualCue['action']): void {
     const cue = { goatId: goat.id, action };
     for (const listener of this.visualCueListeners) listener(cue);
@@ -557,6 +580,10 @@ export class Game {
             (collider.parent()?.isDynamic() === true || [...this.buildBodies.values()]
               .some(body => body.handle === collider.parent()?.handle)),
         });
+      const contact = this.physics.shapeCast(origin, g.head.rotation(), facing,
+        new RAPIER.Ball(.22 * g.size), range, {
+          predicate: collider => !g.ownsBody(collider.parent()),
+        });
       const hit = g.interactions.headbutt(charge);
       let struck = hit;
       if (!struck && preferred?.body?.isDynamic()) {
@@ -580,9 +607,18 @@ export class Game {
       if (struck) this.breakables.hit(struck, commands.headbutt.impulse * .75);
       // Fixed Hay-Build pieces cannot be returned from GoatInteractions.headbutt,
       // so use the same forward query to route impact to logical HP.
+      let hitPiece = false;
       if (preferred?.body && !preferred.body.isDynamic()) {
         const pieceId = [...this.buildBodies].find(([, body]) => body.handle === preferred.body?.handle)?.[0];
-        if (pieceId !== undefined) this.rules.build.damage(pieceId, commands.headbutt.impulse * 3);
+        if (pieceId !== undefined) {
+          hitPiece = true;
+          this.rules.build.damage(pieceId, commands.headbutt.impulse * 3);
+        }
+      }
+      if (struck || hitPiece || contact) {
+        this.sendVfxCue({ type: 'headbutt-hit',
+          position: contact?.point ?? preferred?.point ?? origin,
+          direction: facing, power: .8 + charge * 1.8 });
       }
     }
     if (commands.tongue) {
@@ -768,6 +804,7 @@ export class Game {
     this.disposed = true;
     for (const unsub of this.off.splice(0)) unsub();
     this.visualCueListeners.clear();
+    this.vfxCueListeners.clear();
     this.party.dispose();
     this.gigs.dispose();
     this.goat.dispose();

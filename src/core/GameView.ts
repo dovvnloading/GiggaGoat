@@ -8,6 +8,7 @@ import type { GameAudio } from './GameAudio';
 import { type BuildPiece, type PieceType } from '../gameplay';
 import { Game } from './Game';
 import { GameCharacters } from './GameCharacters';
+import { GameVfx } from './GameVfx';
 import { GameInput } from './GameInput';
 import { CAMERA_TARGET_HEIGHT, SPAWN_CAMERA_PITCH, SPAWN_CAMERA_YAW_OFFSET,
   goatCameraLookAhead, goatCameraOffset, goatCameraVerticalOffset } from './GoatCamera';
@@ -31,6 +32,7 @@ export class GameView {
   readonly input: GameInput;
   readonly hud: GameHud;
   readonly characters: GameCharacters;
+  readonly vfx: GameVfx;
   private readonly boardMarkers = new THREE.Group();
   private readonly gigMarkers = new THREE.Group();
   private readonly partyMarkers = new THREE.Group();
@@ -91,6 +93,8 @@ export class GameView {
     this.input.pitch = SPAWN_CAMERA_PITCH;
     this.hud = new GameHud(host);
     this.characters = new GameCharacters(this.scene, game);
+    this.vfx = new GameVfx(this.scene, game,
+      this.characters.player.root, this.characters.player.mounts.neck);
     this.bindWorldProps();
     this.createSurfaceMarkers();
     this.createBoardMarkers();
@@ -540,6 +544,7 @@ export class GameView {
       }
     }
     this.characters.update(dt, alpha);
+    this.vfx.frame(dt);
     this.updatePartyVisuals(alpha);
     this.updateGigVisuals(alpha);
     this.updateProps(alpha);
@@ -588,6 +593,7 @@ export class GameView {
     window.removeEventListener('resize', this.onResize);
     this.input.dispose();
     this.hud.dispose();
+    this.vfx.dispose();
     this.characters.dispose();
     this.clearGroup(this.boardMarkers);
     this.clearGroup(this.gigMarkers);
