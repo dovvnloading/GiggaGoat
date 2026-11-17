@@ -446,8 +446,13 @@ if (new URLSearchParams(window.location.search).has('profile')) {
         if (enabled) shadowCache.invalidate();
       },
       outlines(visible: boolean): void {
+        // Culling owns mesh.visible and would restore an outline next frame;
+        // the material switch makes this pass-disabled diagnostic stable.
         worldView.group.traverse(object => {
-          if (object.name.startsWith('outline-')) object.visible = visible;
+          if (object.name.startsWith('outline-') && object instanceof THREE.Mesh) {
+            const materials = Array.isArray(object.material) ? object.material : [object.material];
+            for (const material of materials) material.visible = visible;
+          }
         });
       },
       measure(frames = 16): {
