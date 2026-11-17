@@ -119,26 +119,6 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       { y: 0.55 * scale, mass: 4, shape: 'cylinder', color: i % 2 ? 0xff891e : 0xf6f2e8 });
   }
 
-  // Crane Yard: stacked shipping containers, safety cones, decks and climbable steel.
-  const yard: PoiId = 'crane-yard';
-  for (let i = 0; i < 11; i++) {
-    at(yard, 'container', -32 + (i % 4) * 15, -31 + Math.floor(i / 4) * 14,
-      12, 4.7, 5.3, { yaw: i % 2 ? Math.PI / 2 : 0,
-        color: [0xe76e50, 0x55a6bd, 0xebbf58, 0x85b184][i % 4] });
-  }
-  for (let i = 0; i < 30; i++) {
-    at(yard, 'cone', rand(-38, 35), rand(-36, 39), 1.1, 1.75, 1.1,
-      { shape: 'cylinder', mass: 2.5, color: 0xff891e });
-  }
-  for (let i = 0; i < 9; i++) {
-    at(yard, 'beam', -17 + (i % 3) * 11, 32 + Math.floor(i / 3) * 2,
-      9, 1.1, 1.1, { yaw: 0.1 + i * 0.14, color: 0xffd833 });
-  }
-  for (let i = 0; i < 12; i++) {
-    at(yard, 'scaffold', 29, -32 + i * 6, 1.1, 12 + (i % 2) * 5, 1.1,
-      { color: 0xc7a367 });
-  }
-
   // Downtown: storefront trim and signs follow each building's facade normal
   // (local +Z), not a fixed world +Z direction. The +/- X-facing rows now
   // display their shop fronts to pedestrians in the central street.
