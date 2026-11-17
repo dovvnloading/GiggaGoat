@@ -33681,5 +33681,23 @@
   "license": "CC0",
   "credit": "Gigga-Goat (original, built in Blender)",
   "url": ""
+ },
+ {
+  "path": "assets/library/custom/pines/fern.glb",
+  "name": "pines fern",
+  "source": "custom",
+  "pack": "pines",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/pines/lily-pads.glb",
+  "name": "pines lily-pads",
+  "source": "custom",
+  "pack": "pines",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
  }
 ]

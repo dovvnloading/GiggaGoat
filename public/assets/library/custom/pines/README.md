@@ -13,3 +13,5 @@ Own colours, no tint. CC0.
 | File | Built at (m) | For |
 |---|---|---|
 | log-bridge.glb | 3 x 2.6 x 16 | new Whispering Pines log bridge over the river (length along Z, flattened walking top, rope handrail on +X; QA WP-4) |
+| fern.glb | 1.6 x 0.9 x 1.6 | forest-floor fern clump (seven arching fronds; painting 13) |
+| lily-pads.glb | 1.4 x 0.08 x 1.4 | river lily pads with one pink water lily (painting 13); sits on the water surface |
