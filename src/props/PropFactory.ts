@@ -18,7 +18,7 @@ export const BUILD_PIECE_SIZES: Readonly<Record<BuildPieceType, Readonly<Size3>>
   'launch-pad': { x: 2, y: .46, z: 2 },
 };
 export const SURFACE_HALF_EXTENTS: Readonly<Size3> = { x: 2.1, y: .23, z: 2.1 };
-export const GIG_BOARD_SIZE: Readonly<Size3> = { x: 3.6, y: 4.25, z: .48 };
+export const GIG_BOARD_SIZE: Readonly<Size3> = { x: 3.6, y: 4.25, z: .6 };
 export const DEFAULT_CRATE_SIZE: Readonly<Size3> = { x: 1.5, y: 1.5, z: 1.5 };
 
 /** All entries are existing CC0 items in public/assets/library/manifest.json. */
@@ -164,9 +164,10 @@ export class PropFactory {
 
   /** Makes each model a centred, exact-size part regardless of source units. */
   private fitted(prototype: THREE.Object3D, bounds: Size3,
-    yRotation = 0): THREE.Object3D | null {
+    yRotation = 0, xRotation = 0): THREE.Object3D | null {
     const clone = prototype.clone(true);
     if (yRotation) clone.rotation.y += yRotation;
+    if (xRotation) clone.rotation.x += xRotation;
     clone.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(clone);
     if (box.isEmpty()) return null;
@@ -202,7 +203,7 @@ export class PropFactory {
   /** A model occupies only its allotted slot; all trim remains independent. */
   private mount(owner: THREE.Group, parent: THREE.Object3D, path: string,
     size: Size3, at: THREE.Vector3, fallbackColor: ColorName,
-    yRotation = 0): void {
+    yRotation = 0, xRotation = 0): void {
     const slot = new THREE.Group();
     slot.name = 'library-slot';
     slot.position.copy(at);
@@ -210,7 +211,7 @@ export class PropFactory {
     this.box(slot, size, fallbackColor);
     void this.request(path).then(prototype => {
       if (this.disposed || !this.instances.has(owner)) return;
-      const model = prototype && this.fitted(prototype, size, yRotation);
+      const model = prototype && this.fitted(prototype, size, yRotation, xRotation);
       if (model) {
         slot.clear();
         slot.add(model);
@@ -231,7 +232,8 @@ export class PropFactory {
     this.box(root, { x: 3.6, y: 1.9, z: .32 }, 'woodDark', 0, 3.3, 0);
     this.box(root, { x: 3.36, y: 1.66, z: .04 }, 'paper', 0, 3.3, .185);
     this.box(root, { x: .82, y: .19, z: .1 }, 'iron', 0, 4.13, .22);
-    this.cylinder(root, .095, .095, .08, 'silver', 0, 4.12, .285);
+    const clipboardPin = this.cylinder(root, .095, .095, .08, 'silver', 0, 4.12, .285);
+    clipboardPin.rotation.x = Math.PI / 2;
     for (const [i, length] of [2.15, 2.62, 1.9].entries()) {
       this.box(root, { x: length, y: .095, z: .045 }, 'ink',
         -.25, 3.74 - i * .37, .216);
@@ -250,8 +252,9 @@ export class PropFactory {
         this.box(root, { x: size.x * .105, y: size.y * .97, z: size.z * .028 },
           'iron', x * size.x, 0, z * size.z);
         for (const y of [-.4, .4]) {
-          this.cylinder(root, size.x * .035, size.x * .035, size.z * .021,
+          const rivet = this.cylinder(root, size.x * .035, size.x * .035, size.z * .021,
             'silver', x * size.x, y * size.y, z * size.z);
+          rivet.rotation.x = Math.PI / 2;
         }
       }
       for (const y of [-.43, .43]) {
@@ -289,7 +292,7 @@ export class PropFactory {
     rim.rotation.x = Math.PI / 2;
     if (!red) {
       this.mount(root, root, LIBRARY_MODELS.arrow,
-        { x: 1.03, y: .02, z: 1.26 }, new THREE.Vector3(0, y + .332, 0), 'paper');
+        { x: 1.03, y: .02, z: 1.26 }, new THREE.Vector3(0, y + .332, 0), 'paper', 0, -Math.PI / 2);
     }
     return root;
   }
