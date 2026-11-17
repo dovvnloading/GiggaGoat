@@ -60,6 +60,24 @@ describe('library prop catalog', () => {
     }
   });
 
+  it('maps all seven town and farm kinds to their authored GLBs', () => {
+    const expected: Partial<Record<PropKind, string>> = {
+      'ac-unit': 'assets/library/custom/town/ac-unit.glb',
+      planter: 'assets/library/custom/town/planter.glb',
+      bench: 'assets/library/custom/town/park-bench.glb',
+      gnome: 'assets/library/custom/town/gnome.glb',
+      'hay-bale': 'assets/library/custom/hoofington-props/hay-bale.glb',
+      ramp: 'assets/library/custom/hoofington-props/wooden-ramp.glb',
+      buoy: 'assets/library/custom/props/buoy.glb',
+    };
+    expect(Object.keys(expected)).toHaveLength(7);
+    for (const [kind, path] of Object.entries(expected)) {
+      expect(PROP_LIBRARY_MODELS[kind as PropKind]).toBe(path);
+      expect(byPath.get(path)?.license, kind).toBe('CC0');
+      expect(existsSync(new URL('../../public/' + path, import.meta.url)), kind).toBe(true);
+    }
+  });
+
   it('maps all 15 Crane Yard kinds to their exact authored CC0 assets', () => {
     const expected: Partial<Record<PropKind, string>> = {
       crane: 'assets/library/custom/crane-yard/crane-mast.glb',
@@ -114,7 +132,7 @@ describe('library prop catalog', () => {
       flower: 'custom/hoofington-props/flowers-pink.glb',
       'grass-tuft': 'custom/hoofington-props/daisies.glb',
       lamp: 'usdcraft/street-lamp-lantern.glb',
-      bench: 'retro-urban-kit/detail-bench.glb',
+      bench: 'custom/town/park-bench.glb',
       fence: 'custom/hoofington-props/picket-fence.glb',
       mailbox: 'custom/hoofington-props/mailbox.glb',
       silo: 'custom/hoofington-props/silo.glb',
@@ -191,7 +209,8 @@ describe('USDCraft lantern model consistency', () => {
 });
 
 describe('library geometry batching', () => {
-  it.each(['tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'fence', 'mailbox',
+  it.each(['tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'planter',
+    'fence', 'mailbox',
     'silo', 'windmill'] as const)(
     'preserves authored material and vertex colours for %s', kind => {
       const geometry = new THREE.BoxGeometry(1, 1, 1);
@@ -214,23 +233,18 @@ describe('library geometry batching', () => {
       baked.dispose(); geometry.dispose(); material.dispose();
     });
 
-  it.each([
-    ['planter', 0x77b65f],
-  ] as const)('keeps the existing %s foliage paint', (kind, hex) => {
-    const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
+  it('retains the authored planter material rather than legacy height paint', () => {
     const source = new THREE.Group();
+    const paint = new THREE.Color(0x509fc5);
+    const material = new THREE.MeshStandardMaterial({ color: paint });
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
     source.add(new THREE.Mesh(geometry, material));
-    const baked = bakeLibraryPropGeometry(kind, source)!;
+    const baked = bakeLibraryPropGeometry('planter', source)!;
     const colours = baked.getAttribute('color');
-    const expected = new THREE.Color(hex);
-    // The upper vertices still use the planter's legacy foliage override.
     for (let i = 0; i < colours.count; i++) {
-      const y = baked.getAttribute('position').getY(i);
-      if (y <= 0) continue;
-      expect(colours.getX(i)).toBeCloseTo(expected.r, 5);
-      expect(colours.getY(i)).toBeCloseTo(expected.g, 5);
-      expect(colours.getZ(i)).toBeCloseTo(expected.b, 5);
+      expect(colours.getX(i)).toBeCloseTo(paint.r, 5);
+      expect(colours.getY(i)).toBeCloseTo(paint.g, 5);
+      expect(colours.getZ(i)).toBeCloseTo(paint.b, 5);
     }
     baked.dispose(); geometry.dispose(); material.dispose();
   });
@@ -650,6 +664,69 @@ describe('authored Baa-ardwalk model colours and LOD', () => {
             mesh.getColorAt(i, white);
             expect(white.getHex(), kind + ' ' + level + ' ' + i).toBe(hex);
           });
+        }
+      }
+    } finally {
+      visuals.dispose();
+      load.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('authored town and farm prop paint and LOD', () => {
+  it('keeps all seven GLB colours untinted and at full near/far detail', async () => {
+    const kinds = ['ac-unit', 'planter', 'bench', 'gnome',
+      'hay-bale', 'ramp', 'buoy'] as const;
+    const authoredPaint = new THREE.Color(0x5299c2);
+    const prefab = new THREE.Group();
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.5, 24, 16),
+      new THREE.MeshStandardMaterial({ color: authoredPaint }));
+    prefab.add(mesh);
+    const load = vi.spyOn(GLTFLoader.prototype, 'loadAsync')
+      .mockResolvedValue({ scene: prefab } as Awaited<ReturnType<GLTFLoader['loadAsync']>>);
+    vi.stubGlobal('document', {});
+    const props: PropDescriptor[] = kinds.map((kind, i) => ({
+      id: 'authored-town-farm-' + kind, kind,
+      transform: { position: { x: i * 3 - 9, y: 1, z: 0 }, rotationY: 0 },
+      size: { x: 2, y: 2, z: 2 },
+      shape: 'cuboid', body: { type: 'static' },
+      collidable: true, breakable: false, lickable: true, climbable: true,
+      // Deliberately conflicting colour must not wash out authored paint.
+      color: 0xff0000,
+    }));
+    const visuals = buildPropVisuals(props);
+    try {
+      await vi.waitFor(() => expect(visuals.group.userData['libraryReady']).toBe(true),
+        { timeout: 15000 });
+      expect(visuals.group.userData['libraryFailed']).toBe(0);
+      const actual = new THREE.Color();
+      for (const kind of kinds) {
+        expect(load).toHaveBeenCalledWith(publicAssetUrl(PROP_LIBRARY_MODELS[kind]));
+        const source = visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
+        const near = visuals.group.getObjectByName('render-near-' + kind) as THREE.InstancedMesh;
+        const far = visuals.group.getObjectByName('render-far-' + kind) as THREE.InstancedMesh;
+        expect(source, kind).toBeInstanceOf(THREE.InstancedMesh);
+        expect(near.geometry, kind).toBe(source.geometry);
+        expect(far.geometry, kind).toBe(source.geometry);
+        expect(source.geometry.getAttribute('position').count / 3, kind)
+          .toBeGreaterThan(48);
+        const colours = source.geometry.getAttribute('color');
+        expect(colours.getX(0), kind).toBeCloseTo(authoredPaint.r, 5);
+        expect(colours.getY(0), kind).toBeCloseTo(authoredPaint.g, 5);
+        expect(colours.getZ(0), kind).toBeCloseTo(authoredPaint.b, 5);
+        source.getColorAt(0, actual);
+        expect(actual.getHex(), kind).toBe(0xffffff);
+      }
+      const visible = { intersectsSphere: () => true } as unknown as THREE.Frustum;
+      for (const [distance, level] of [[20, 'near'], [100, 'far']] as const) {
+        visuals.updateCulling(new THREE.Vector3(0, 1, distance), visible, 500, () => false);
+        for (const kind of kinds) {
+          const drawn = visuals.group.getObjectByName(
+            'render-' + level + '-' + kind) as THREE.InstancedMesh;
+          expect(drawn.count, kind + ' ' + level).toBe(1);
+          drawn.getColorAt(0, actual);
+          expect(actual.getHex(), kind + ' ' + level).toBe(0xffffff);
         }
       }
     } finally {
