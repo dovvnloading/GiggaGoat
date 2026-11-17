@@ -316,6 +316,9 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
         x - 0.05, 0.4, 0, x + 0.05, 0.4, 0,
         x, -0.35 + (i % 3) * 0.04, 0,
       ], 3));
+      triangle.setAttribute('uv', new THREE.Float32BufferAttribute([
+        0, 1, 1, 1, 0.5, 0,
+      ], 2));
       triangle.setIndex([0, 1, 2, 2, 1, 0]);
       triangle.computeVertexNormals();
       append(triangle, 0, 0, 0, 1, 1, 1,
