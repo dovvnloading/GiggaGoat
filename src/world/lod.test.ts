@@ -20,7 +20,7 @@ describe('cached world mesh LOD', () => {
   });
 
   it('keeps 100-triangle boxy props and other sub-600 meshes unchanged', async () => {
-    const crate = new THREE.BoxGeometry(1, 1, 1, 1, 2, 16);
+    const crate = new THREE.BoxGeometry(1, 1, 1, 1, 1, 12);
     const nearThreshold = new THREE.PlaneGeometry(1, 1, 13, 23);
     expect(triangleCount(crate)).toBe(100);
     expect(triangleCount(nearThreshold)).toBe(598);
