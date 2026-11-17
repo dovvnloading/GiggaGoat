@@ -604,10 +604,6 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     // The Dam Bomb gig keeps a data-only walkway anchor; the GLB draws
     // the entire structure, so never instanced-render this old platform.
     if (prop.id.startsWith('the-dam-compat-')) continue;
-    // Visual replacements are anchored to these exact descriptors in the
-    // lighthouse adapter. Colliders and secret-relic placement stay untouched.
-    if (prop.poiId === 'old-lighthouse' &&
-        ['rock', 'shipwreck', 'cave-mouth', 'cottage', 'dock'].includes(prop.kind)) continue;
     const entries = buckets.get(prop.kind) ?? [];
     entries.push(prop);
     buckets.set(prop.kind, entries);
