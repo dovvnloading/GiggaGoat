@@ -250,9 +250,22 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
     box(0, 0.28, 0, 0.68, 0.36, 0.54, 0xcf5448);
     box(0.33, 0.31, 0, 0.05, 0.52, 0.11, 0xffe29c);
   } else if (kind === 'lamp') {
-    cyl(0, -0.04, 0, 0.13, 0.90, 0.13, 0x596b73);
-    blob(0, 0.43, 0, 0.47, 0.28, 0.47, 0xffe9ae);
-    cone(0, 0.55, 0, 0.52, 0.14, 0.52, 0x5d6d72, 7);
+    // Town lamp with a curved lantern bracket and hanging orange village
+    // pennant. The luminous cream windows remain separate from its iron frame.
+    cyl(0, -0.09, 0, 0.11, 0.82, 0.11, 0x475766, 9);
+    cyl(0, -0.45, 0, 0.23, 0.10, 0.23, 0x455867, 9);
+    cyl(0, 0.30, 0, 0.18, 0.07, 0.18, 0x687988, 9);
+    box(0.18, 0.31, 0, 0.40, 0.065, 0.065, 0x455766);
+    box(0.36, 0.235, 0, 0.065, 0.17, 0.064, 0x455766);
+    box(0.36, 0.11, 0, 0.235, 0.23, 0.22, 0xffe3a3);
+    box(0.36, 0.02, 0, 0.25, 0.046, 0.25, 0x435665);
+    cone(0.36, 0.26, 0, 0.33, 0.11, 0.33, 0x435665, 6);
+    for (const side of [-1, 1]) {
+      box(0.36 + side * 0.12, 0.115, 0,
+        0.028, 0.24, 0.245, 0x526476);
+    }
+    box(-0.19, 0.09, 0.055, 0.27, 0.34, 0.035, 0xe8a63e);
+    box(-0.19, 0.16, 0.082, 0.095, 0.11, 0.012, 0xf8efcd);
   } else if (kind === 'container') {
     box(0, 0, 0, 1, 0.91, 0.96);
     for (let i = 0; i < 7; i++) box(-0.44 + i * 0.145, 0, 0.49,
