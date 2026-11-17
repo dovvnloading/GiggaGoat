@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gigga-Goat · Props Lab</title>
+  <style>
+    :root { font: 15px/1.45 system-ui, sans-serif; color: #422715; background: #fff4d4; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
+    header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+      gap: 12px; padding: 12px 22px; background: #ffdc77; border-bottom: 4px solid #98602a; }
+    h1 { margin: 0; font-size: clamp(21px, 2.4vw, 31px); letter-spacing: -.03em; }
+    h1 span { color: #a3393f; }
+    .pill { padding: 6px 14px; border-radius: 99px; background: #fff4cd; border: 2px solid #cd8d32;
+      font-weight: 750; }
+    main { display: grid; grid-template-columns: minmax(0, 1fr) 240px; flex: 1; min-height: 0; }
+    #stage { position: relative; min-height: 660px; background: #c4e7ee; }
+    #stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+    aside { background: #fff0c6; padding: 17px; border-left: 3px solid #dfae62; overflow: auto; }
+    h2 { font-size: 18px; margin: 8px 0 10px; }
+    p { margin: 0 0 12px; }
+    ol { padding-left: 21px; margin: 0; line-height: 2.05; font-weight: 600; }
+    .key { margin: 14px 0; border-top: 2px dashed #d5a364; padding-top: 13px; }
+    .old { color: #7448a9; } .new { color: #b44d2b; }
+    small { display: block; margin-top: 9px; opacity: .78; }
+    @media (max-width: 800px) { main { grid-template-columns: 1fr; } #stage { min-height: 62vh; }
+      aside { border-left: 0; border-top: 3px solid #dfae62; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🐐 GIGGA-GOAT <span>PROP WORKSHOP</span></h1>
+    <div id="status" class="pill" role="status">Loading library models…</div>
+  </header>
+  <main>
+    <div id="stage" aria-label="Three-dimensional side-by-side prop comparison"></div>
+    <aside>
+      <h2>Before → after</h2>
+      <p>Every station has a <b class="old">purple / plain</b> old GameView mesh on the left
+        and a <b class="new">library / toon</b> prop on the right.</p>
+      <p><b>Drag</b> to orbit · <b>Scroll</b> to zoom · <b>Right-drag</b> to pan.</p>
+      <ol>
+        <li>Gig clipboard board</li>
+        <li>Iron-banded crate</li>
+        <li>Breakable debris</li>
+        <li>Red trampoline</li>
+        <li>Launch marker</li>
+        <li>Gig hay bale</li>
+        <li>Gig barrel</li>
+        <li>Gig supplies</li>
+        <li>Hay-Build floor</li>
+        <li>Fence wall</li>
+        <li>Plank ramp</li>
+        <li>Build launch pad</li>
+      </ol>
+      <div class="key">The replacement is anchored to the same physics position.
+        Existing colliders and GameView are unchanged.</div>
+      <small>Models are CC0 and streamed from public/assets/library. The gold
+        ground labels are part of this lab only.</small>
+    </aside>
+  </main>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>
