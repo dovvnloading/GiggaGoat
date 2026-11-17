@@ -556,8 +556,8 @@ describe('authored Baa-ardwalk model colours and LOD', () => {
       for (const [distance, level] of [[20, 'near'], [100, 'far']] as const) {
         visuals.updateCulling(new THREE.Vector3(0, 2, distance), visible, 500, () => false);
         for (const kind of [...kinds, 'booth'] as const) {
-          const mesh = visuals.group.getObjectByName('render-' + level + '-' + kind)
-            as THREE.InstancedMesh;
+          const mesh = visuals.group.getObjectByName(
+            'render-' + level + '-' + kind) as THREE.InstancedMesh;
           expect(mesh.count, kind + ' ' + level).toBe(kind === 'booth' ? 3 : 1);
           const colours = kind === 'booth' ? [0x75b3d4, 0xf4837c, 0xffffff] : [0xffffff];
           colours.forEach((hex, i) => {
