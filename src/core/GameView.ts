@@ -31,6 +31,11 @@ export class GameView {
   private readonly botParts = new Map<string, GoatVisual[]>();
   private readonly botMaterials = new Map<string, THREE.Material>();
   private readonly botGeometry = new THREE.SphereGeometry(1, 10, 7);
+  private readonly botEyes = new THREE.SphereGeometry(1, 8, 6);
+  private readonly botHorns = new THREE.ConeGeometry(.5, 1, 7);
+  private readonly botEyeMaterial = new THREE.MeshToonMaterial({ color: 0x302b43 });
+  private readonly botHornMaterial = new THREE.MeshToonMaterial({ color: 0xffe9c4 });
+  private readonly botMuzzleMaterial = new THREE.MeshToonMaterial({ color: 0xfff5df });
   private readonly boardMarkers = new THREE.Group();
   private readonly gigMarkers = new THREE.Group();
   private readonly gigProps = new Map<string, THREE.Mesh>();
@@ -428,6 +433,26 @@ export class GameView {
           shape.scale.set(rad[0]!*size, rad[1]!*size, rad[2]!*size);
           shape.castShadow = true;
           group.add(shape);
+          // Head, eyes and horns all follow the real head rigid body. Opponents
+          // are recognizably goats even when several colorful bodies overlap.
+          if (names[j] === 'head') {
+            const muzzle = new THREE.Mesh(this.botGeometry, this.botMuzzleMaterial);
+            muzzle.position.set(0, -.08 * size, -.23 * size);
+            muzzle.scale.set(.19 * size, .13 * size, .17 * size);
+            group.add(muzzle);
+            for (const side of [-1, 1]) {
+              const eye = new THREE.Mesh(this.botEyes, this.botEyeMaterial);
+              eye.position.set(side * .14 * size, .065 * size, -.19 * size);
+              eye.scale.set(.055 * size, .063 * size, .035 * size);
+              group.add(eye);
+              const horn = new THREE.Mesh(this.botHorns, this.botHornMaterial);
+              horn.position.set(side * .17 * size, .29 * size, .075 * size);
+              horn.rotation.z = -side * .26;
+              horn.scale.set(.19 * size, .34 * size, .19 * size);
+              horn.castShadow = true;
+              group.add(horn);
+            }
+          }
           this.scene.add(group);
           parts.push({ part: group, body: bot.goat.getPart(names[j]!) });
         }
@@ -646,7 +671,10 @@ export class GameView {
     for (const parts of this.botParts.values()) for (const { part } of parts) part.removeFromParent();
     this.botParts.clear();
     for (const material of this.botMaterials.values()) material.dispose();
-    this.botMaterials.clear(); this.botGeometry.dispose();
+    this.botMaterials.clear();
+    this.botGeometry.dispose(); this.botEyes.dispose(); this.botHorns.dispose();
+    this.botEyeMaterial.dispose(); this.botHornMaterial.dispose();
+    this.botMuzzleMaterial.dispose();
     this.clearGroup(this.boardMarkers);
     this.clearGroup(this.gigMarkers);
     for (const mesh of this.gigProps.values()) {
