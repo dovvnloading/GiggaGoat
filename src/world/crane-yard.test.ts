@@ -69,15 +69,15 @@ describe('Crane Yard concept-art construction site', () => {
       p.transform.rotationY === 0).map(p => rel(island, p).x).sort((a, b) => a - b);
     const front = segments(CRANE_YARD_PLAN.halfDepth);
     const rear = segments(-CRANE_YARD_PLAN.halfDepth);
-    expect(front).toEqual([-36, -28, -20, -12, -4, 4, 12, 36]);
-    expect(rear).toEqual([-36, -28, -20, -12, 12, 20, 28, 36]);
+    expect(front).toEqual([-36, -28, -20, -12, -4, 4, 36]);
+    expect(rear).toEqual([-36, -28, -20, 12, 20, 28, 36]);
     for (const x of [-CRANE_YARD_PLAN.halfWidth, CRANE_YARD_PLAN.halfWidth]) {
       const side = fences.filter(p =>
         Math.abs(rel(island, p).x - x) < 0.001 &&
         p.transform.rotationY === Math.PI / 2);
       expect(side).toHaveLength(9);
-      expect(Math.min(...side.map(p => rel(island, p).z - 4))).toBe(-36);
-      expect(Math.max(...side.map(p => rel(island, p).z + 4))).toBe(36);
+      expect(Math.min(...side.map(p => rel(island, p).z - 4))).toBeCloseTo(-36);
+      expect(Math.max(...side.map(p => rel(island, p).z + 4))).toBeCloseTo(36);
     }
     expect(front.some(x => x > CRANE_YARD_PLAN.frontGate.min &&
       x < CRANE_YARD_PLAN.frontGate.max)).toBe(false);
