@@ -1,4 +1,4 @@
-import type { RigidBody, ColliderDesc } from '@dimforge/rapier3d-compat';
+import type { RigidBody, ColliderDesc, RevoluteImpulseJoint } from '@dimforge/rapier3d-compat';
 import {
   PhysicsWorld, GoatRagdoll, RAPIER, V, forward, add, sub, mul, rotate, collisionGroups,
   type Vec3, type Quat, type GoatSize, type PhysicsEvent,
@@ -151,6 +151,9 @@ export class Game {
     // assembled, stationary goat against its actual facing on every tick.
     // Match its physical facing without changing any physics-lane code.
     this.goat.locomotion.heading = -spawn.heading;
+    // Registered after GoatRagdoll's motor hook so standing-only head
+    // corrections reach Rapier before the same physical tick is solved.
+    this.off.push(physics.onBeforeStep(() => this.holdStandingHead()));
     this.water.track(this.goat.torso, { buoyancyScale: 0.7, paddleSpeed: 2.6 });
     this.lastY = this.goat.torso.translation().y;
     this.off.push(physics.onAfterStep(dt => this.afterTick(dt)));
@@ -198,6 +201,26 @@ export class Game {
       this.gigs = new GigSession(this, island.seed);
     }
     this.party = new PartySession(this);
+  }
+
+  /**
+   * The scaled KID neck/head hinge springs cannot hold the forward-extending
+   * head under gravity during idle. Keep both physical hinges driven into an
+   * elevated neck posture, without touching torso/leg motors, replacing joints,
+   * or faking the GoatCharacter art. Gameplay poses (walk, climb, flop, jump)
+   * retain the physics lane's own tuning and motor targets.
+   */
+  private holdStandingHead(): void {
+    const g = this.goat;
+    if (g.pose !== 'stand' || g.isRagdoll || g.size !== .6) return;
+    const neck = g.joints[0] as RevoluteImpulseJoint | undefined;
+    const head = g.joints[1] as RevoluteImpulseJoint | undefined;
+    if (!neck || !head) return;
+    const s5 = g.size ** 5;
+    neck.configureMotorPosition(.34, 950 * s5, 110 * s5);
+    neck.setMotorMaxForce(1600 * s5);
+    head.configureMotorPosition(.20, 950 * s5, 110 * s5);
+    head.setMotorMaxForce(1600 * s5);
   }
 
   private prepareProps(): void {
