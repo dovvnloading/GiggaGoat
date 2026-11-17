@@ -394,7 +394,9 @@ export class GiggaGrowthPurpleAura {
 
   get activeCount(): number {
     let count = 0;
-    for (const slot of this.slots) if (slot.active) count++;
+    for (let i = 0; i < this.slots.length; i++) {
+      if (this.slots[i]!.active) count++;
+    }
     return count;
   }
 
