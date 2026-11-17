@@ -20,6 +20,10 @@ const WARM = new THREE.Color('#999493');
 const JOINT = new THREE.Color('#858789');
 const MARKING = new THREE.Color('#EDC350');
 const PUDDLE = new THREE.Color(0x5f7f8f);
+const SOIL = new THREE.Color(0x7b5a3a);
+const CROP_ROW = new THREE.Color(0x6fb34a);
+const OLD_GARDEN = new THREE.Color('#6F8549');
+const QUAD_SHADES = [0.965, 0.98, 0.995, 0.965] as const;
 
 // Read the merged geometry, not implementation constants or a screenshot.
 // Each quad is indexed as (0,2,1) (1,2,3); discs are triangle fans.
@@ -60,6 +64,10 @@ function shadeOf(vertex: DetailVertex, color: THREE.Color, shade: number): boole
   return Math.abs(vertex.r - color.r * shade) < 0.0001 &&
     Math.abs(vertex.g - color.g * shade) < 0.0001 &&
     Math.abs(vertex.b - color.b * shade) < 0.0001;
+}
+
+function hasPaint(quad: DetailQuad, color: THREE.Color): boolean {
+  return quad.every((vertex, i) => shadeOf(vertex, color, QUAD_SHADES[i]!));
 }
 
 function footprint(quad: DetailQuad, x: number, z: number,
@@ -179,6 +187,56 @@ describe('Crane Yard CY-11 ground apron', () => {
       expect(result.vertices.length).toBeGreaterThan(400);
       expect(result.vertices.every(v =>
         Object.values(v).every(Number.isFinite))).toBe(true);
+    }
+  });
+});
+
+describe('Hoofington HF-9 vegetable patches', () => {
+  it('draws exactly two 11 x 8 m soil beds with five lifted 10 x 0.75 m rows each', () => {
+    for (const [seed, size] of [
+      ['billy-isle', 600], ['hf-9-alt', 400], [0, 2000],
+    ] as const) {
+      const island = generateIsland({ seed, size, resolution: 65 });
+      const details = readDetails(island);
+      const farm = island.pois.find(p => p.id === 'hoofington')!.center;
+      const scale = island.size / 600;
+      const soilPatches = details.quads.filter(quad =>
+        hasPaint(quad, SOIL) &&
+        Math.abs(quad[1].x - quad[0].x - 11 * scale) < 0.001 &&
+        Math.abs(quad[2].z - quad[0].z - 8 * scale) < 0.001);
+      const cropRows = details.quads.filter(quad => hasPaint(quad, CROP_ROW));
+
+      expect(soilPatches, String(seed)).toHaveLength(2);
+      expect(cropRows, String(seed)).toHaveLength(10);
+      for (const side of [-1, 1]) {
+        const patchX = farm.x + side * 27 * scale;
+        const patchZ = farm.z + 30 * scale;
+        const soils = soilPatches.filter(quad =>
+          footprint(quad, patchX, patchZ, 11 * scale, 8 * scale));
+        expect(soils, String(seed) + ' soil ' + side).toHaveLength(1);
+        for (const vertex of soils[0]!) {
+          expect(vertex.y - gridSample(island, vertex.x, vertex.z))
+            .toBeCloseTo(0.075 * scale, 4);
+        }
+
+        for (const dz of [-3, -1.5, 0, 1.5, 3]) {
+          const rows = cropRows.filter(quad =>
+            footprint(quad, patchX, patchZ + dz * scale,
+              10 * scale, 0.75 * scale));
+          expect(rows, String(seed) + ' row ' + side + ':' + dz).toHaveLength(1);
+          for (const vertex of rows[0]!) {
+            // The same terrain-sampled quad, raised 2 cm above the soil layer.
+            expect(vertex.y - gridSample(island, vertex.x, vertex.z))
+              .toBeCloseTo(0.095 * scale, 4);
+          }
+        }
+      }
+      // No quad (or loose vertex) retains the original dark-olive decal tint.
+      expect(details.quads.some(quad => hasPaint(quad, OLD_GARDEN))).toBe(false);
+      expect(details.vertices.some(vertex =>
+        QUAD_SHADES.some(shade => shadeOf(vertex, OLD_GARDEN, shade)))).toBe(false);
+      expect(details.vertices.every(vertex =>
+        Object.values(vertex).every(Number.isFinite))).toBe(true);
     }
   });
 });
