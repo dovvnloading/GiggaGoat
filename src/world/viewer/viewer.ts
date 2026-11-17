@@ -469,6 +469,20 @@ if (new URLSearchParams(window.location.search).has('profile')) {
           target: orbit.target.toArray(),
         };
       },
+      /** Source-model QA at the painting's bookmark-11 camera. */
+      downtownState(): { loaded: boolean; models: number; triangles: number;
+        signs: number; awnings: boolean } {
+        const root = worldView.group.getObjectByName('downtown-library-models');
+        const batch = root?.getObjectByName('downtown-library-batched');
+        return {
+          loaded: root?.userData['ready'] === true && batch instanceof THREE.Mesh,
+          models: Number(root?.userData['loadedModels'] ?? 0),
+          triangles: batch instanceof THREE.Mesh
+            ? batch.geometry.getAttribute('position').count / 3 : 0,
+          signs: Number(root?.userData['signCount'] ?? 0),
+          awnings: Boolean(root?.getObjectByName('downtown-striped-awnings')),
+        };
+      },
       /** Runtime QA for the painting's sourced-village asset handoff. */
       hoofingtonState(): { loaded: boolean; models: number; triangles: number } {
         const root = worldView.group.getObjectByName('hoofington-library-models');
