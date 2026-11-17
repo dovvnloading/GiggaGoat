@@ -2,8 +2,10 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { createWorldScene, generateIsland } from './index';
+import { gridSample } from './terrain';
 import {
-  HOOFINGTON_MODELS, bakeHoofingtonGeometry, makeHoofingtonPlacements,
+  GNOME_STATUE_HEIGHT, HOOFINGTON_MODELS, bakeHoofingtonGeometry,
+  createTexturedGnomeInstances, makeHoofingtonPlacements,
   type HoofModel, type HoofPlacement,
 } from './visual-hoofington';
 
@@ -14,12 +16,93 @@ describe('Hoofington sourced village model integration', () => {
     )) as Array<{ path: string; license: string }>;
     for (const [model, path] of Object.entries(HOOFINGTON_MODELS)) {
       expect(path.endsWith('.glb'), model).toBe(true);
-      expect(manifest.find(entry => entry.path === path)?.license, model).toBe('CC0');
+      if (model === 'gnome') {
+        // The new CC0 Meshy asset is present but not yet in the library manifest.
+        expect(readFileSync('public/assets/library/meshy/garden-gnome/README.md', 'utf8'))
+          .toContain('CC0');
+      } else {
+        expect(manifest.find(entry => entry.path === path)?.license, model).toBe('CC0');
+      }
     }
     expect(HOOFINGTON_MODELS.pinkHome).toContain('city-kit-suburban');
     expect(HOOFINGTON_MODELS.farmhouse).toContain('medieval-village-pack');
     expect(HOOFINGTON_MODELS.windmill).toContain('farm-buildings-bundle');
     expect(HOOFINGTON_MODELS.bush).toContain('stylized-nature-megakit');
+  });
+
+  it('selects the CC0 Meshy GLB with a WebP baseColor texture', () => {
+    expect(HOOFINGTON_MODELS.gnome)
+      .toBe('assets/library/meshy/garden-gnome/garden-gnome.glb');
+    const glb = readFileSync('public/' + HOOFINGTON_MODELS.gnome);
+    expect(glb.toString('utf8', 0, 4)).toBe('glTF');
+    const chunkLength = glb.readUInt32LE(12);
+    expect(glb.toString('utf8', 16, 20)).toBe('JSON');
+    const asset = JSON.parse(glb.toString('utf8', 20, 20 + chunkLength)) as {
+      meshes: Array<{ primitives: Array<{ material: number }> }>;
+      materials: Array<{ pbrMetallicRoughness?: { baseColorTexture?: { index: number } } }>;
+      textures: Array<{ extensions?: { EXT_texture_webp?: { source: number } } }>;
+      images: Array<{ mimeType: string }>;
+    };
+    expect(asset.meshes).toHaveLength(1);
+    expect(asset.meshes[0]?.primitives).toHaveLength(1);
+    const materialIndex = asset.meshes[0]!.primitives[0]!.material;
+    const textureIndex = asset.materials[materialIndex]?.pbrMetallicRoughness
+      ?.baseColorTexture?.index;
+    expect(textureIndex).toBeDefined();
+    expect(asset.textures[textureIndex!]?.extensions?.EXT_texture_webp?.source)
+      .toBe(0);
+    expect(asset.images[0]?.mimeType).toBe('image/webp');
+  });
+
+  it('instances all gnomes in one textured half-metre draw, on the lawn facing the street', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    const placements = makeHoofingtonPlacements(island).filter(p => p.model === 'gnome');
+    expect(placements.length).toBeGreaterThan(1);
+    expect(placements).toHaveLength(island.props.filter(p =>
+      p.kind === 'gnome' && p.poiId === 'hoofington').length);
+    const farmX = island.pois.find(p => p.id === 'hoofington')!.center.x;
+    const originalMap = new THREE.Texture();
+    const originalMaterial = new THREE.MeshStandardMaterial({ map: originalMap });
+    const originalGeometry = new THREE.BoxGeometry(0.2, 0.5, 0.2);
+    originalGeometry.translate(0, 0.25, 0);
+    const model = new THREE.Group();
+    model.add(new THREE.Mesh(originalGeometry, originalMaterial));
+
+    const batch = createTexturedGnomeInstances(placements, model, farmX,
+      (x, z) => gridSample(island, x, z));
+    expect(batch).toBeInstanceOf(THREE.InstancedMesh);
+    expect(batch!.count).toBe(placements.length);
+    expect(batch!.geometry.getAttribute('uv')).toBeDefined();
+    expect(batch!.geometry.getAttribute('color')).toBeUndefined();
+    const material = batch!.material as THREE.MeshStandardMaterial;
+    expect(material.map).toBeInstanceOf(THREE.Texture);
+    expect(material.map).not.toBe(originalMap);
+    expect(material.map!.source).toBe(originalMap.source);
+    expect(material.vertexColors).toBe(false);
+    const matrix = new THREE.Matrix4();
+    const bounds = new THREE.Box3();
+    const forward = new THREE.Vector3();
+    for (let i = 0; i < batch!.count; i++) {
+      const placement = placements[i]!;
+      batch!.getMatrixAt(i, matrix);
+      bounds.setFromBufferAttribute(batch!.geometry.getAttribute('position') as
+        THREE.BufferAttribute).applyMatrix4(matrix);
+      expect(bounds.max.y - bounds.min.y).toBeCloseTo(GNOME_STATUE_HEIGHT, 5);
+      expect(bounds.min.y)
+        .toBeCloseTo(gridSample(island, placement.position.x, placement.position.z), 5);
+      forward.set(0, 0, 1).transformDirection(matrix);
+      expect(forward.x).toBeCloseTo(placement.position.x < farmX ? 1 : -1, 5);
+      expect(forward.z).toBeCloseTo(0, 5);
+    }
+    // An untextured source must keep the procedural fallback, not become a blank statue.
+    originalMaterial.map = null;
+    expect(createTexturedGnomeInstances(placements, model, farmX, () => 0)).toBeNull();
+    batch!.geometry.dispose();
+    material.map!.dispose();
+    material.dispose();
+    originalGeometry.dispose();
+    originalMap.dispose();
+    originalMaterial.dispose();
   });
 
   it('maps the painting\'s foreground colours and rear landmarks to the same colliders', () => {
