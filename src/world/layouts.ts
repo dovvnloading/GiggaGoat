@@ -203,17 +203,21 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   // OLD LIGHTHOUSE: a rocky cape with a climbable beacon and cliffside secrets.
   const cape: PoiId = 'old-lighthouse';
   site(cape, 'lighthouse', -2, 1, 9, 29, 9, { shape: 'cylinder', color: 0xf5f0db });
-  site(cape, 'house', 15, -10, 9, 7, 9, { color: 0x9fd3d2 });
-  site(cape, 'platform', -19, -9, 7, 1, 6, { lift: 4 });
+  site(cape, 'cottage', 16, 9, 10, 8, 9,
+    { yaw: -0.16, color: 0xf8ebd6 });
+  site(cape, 'ledge', -13, 15, 5, 1.4, 6,
+    { yaw: -0.3, color: 0xa5a6a9 });
   for (let i = 0; i < 20; i++) {
     const a = rng.range(0, 2 * Math.PI), r = rng.range(13, 40);
     const p = at(cape, Math.cos(a) * r, Math.sin(a) * r);
-    if (gridSample(island, p.x, p.z) < 0.4 * scale) continue;
+    if (gridSample(island, p.x, p.z) < 0.4 * scale ||
+        Math.hypot(p.x - (byId.get(cape)!.center.x - 19 * scale),
+          p.z - (byId.get(cape)!.center.z + 13 * scale)) < 8 * scale) continue;
     add(cape, 'rock', p.x, p.z,
       { x: rng.range(2, 7) * scale, y: rng.range(2, 5) * scale, z: rng.range(2, 6) * scale },
       { yaw: a, shape: 'convex', lickable: false });
   }
-  site(cape, 'flag', 4, 11, 0.6, 9, 0.6);
+  site(cape, 'flag', 26, 11, 0.6, 9, 0.6);
 
   // Roads have lamp posts / obstacles along the shoulders, not in driving lanes.
   for (const road of island.roads) {
