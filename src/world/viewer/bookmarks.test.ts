@@ -88,13 +88,13 @@ describe('painting bookmark recompositions (default billy-isle)', () => {
       x: cameraX, y: gridSample(island, cameraX, cameraZ) + 2.2, z: cameraZ,
     }));
     expect(bookmark.target).toEqual(rounded({
-      x: wheel.transform.position.x,
-      y: wheel.transform.position.y + 1,
-      z: wheel.transform.position.z,
+      x: 0.6 * wheel.transform.position.x + 0.4 * pier.transform.position.x,
+      y: wheel.transform.position.y,
+      z: 0.6 * wheel.transform.position.z + 0.4 * landEnd,
     }));
     expect(bookmark.camera).toEqual({ x: 50, y: 7, z: 249 });
-    expect(bookmark.target).toEqual({ x: 56.5, y: 20.5, z: 347 });
-    expect(bookmark.fov).toBe(62);
+    expect(bookmark.target).toEqual({ x: 56.5, y: 19.5, z: 310 });
+    expect(bookmark.fov).toBe(70);
     expect(bookmark.day).toBe(0.29);
 
     const ground = gridSample(island, bookmark.camera.x, bookmark.camera.z);
@@ -105,7 +105,7 @@ describe('painting bookmark recompositions (default billy-isle)', () => {
     expect(bookmark.camera.y - ground, '09 goat-eye ground clearance')
       .toBeLessThanOrEqual(2.5);
 
-    projectBookmark('09', {
+    const landmarks = {
       firstKiosk: kiosk.transform.position,
       wheelCentre: wheel.transform.position,
       pierLandEnd: {
@@ -113,7 +113,19 @@ describe('painting bookmark recompositions (default billy-isle)', () => {
         y: pier.transform.position.y + pier.size.y / 2,
         z: landEnd,
       },
+    };
+    const firstFramingFov = [66, 68, 70, 72, 74].find(fov => {
+      const camera = new THREE.PerspectiveCamera(fov, 16 / 9, 0.25, 4000);
+      camera.position.set(bookmark.camera.x, bookmark.camera.y, bookmark.camera.z);
+      camera.lookAt(bookmark.target.x, bookmark.target.y, bookmark.target.z);
+      camera.updateMatrixWorld();
+      return Object.values(landmarks).every(point => {
+        const ndc = new THREE.Vector3(point.x, point.y, point.z).project(camera);
+        return Math.abs(ndc.x) < 0.94 && Math.abs(ndc.y) < 0.94 && ndc.z < 1;
+      });
     });
+    expect(bookmark.fov, '09 first FOV framing all landmarks').toBe(firstFramingFov);
+    projectBookmark('09', landmarks);
   });
 
   it('13 frames the log bridge, at least five bank ferns and the lookout upstream', () => {
