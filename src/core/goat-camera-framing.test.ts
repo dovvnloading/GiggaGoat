@@ -52,7 +52,7 @@ describe('free-roam camera / compact HUD reference framing', () => {
             const box = goat!;
             const safeBottom = Math.min(height * .775, height - 150);
             expect(box.bottom, `goat / tray at ${width}x${height}`).toBeLessThanOrEqual(safeBottom + 2);
-            expect(box.top, `goat clipped at ${width}x${height}`).toBeGreaterThan(12);
+            expect(box.top, `goat clipped: tier ${size} at ${width}x${height}; original ${unframed!.top.toFixed(1)}..${unframed!.bottom.toFixed(1)}`).toBeGreaterThan(12);
             expect(box.left).toBeGreaterThan(width * .2);
             expect(box.right).toBeLessThan(width * .8);
             const trayWidth = Math.min(560, width * .43);
