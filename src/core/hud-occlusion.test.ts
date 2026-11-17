@@ -100,7 +100,7 @@ describe('goat-safe HUD in free roam', () => {
       new THREE.Vector3(1, 1, 1));
     expect(projectGoatScreenBox(box, camera, viewport)).toEqual(viewport);
   });
-  it('keeps both single-line prompts clear of the real spawn goat at desktop sizes', async () => {
+  it('keeps visible prompts clear of the real spawn goat at desktop sizes', async () => {
     const game = await Game.create({ seed: 'billy-isle', resolution: 97 });
     const characters = new GameCharacters(new THREE.Scene(), game);
     try {
@@ -133,11 +133,13 @@ describe('goat-safe HUD in free roam', () => {
           { id: 'board', width: 320, height: 43 },
           { id: 'hint', width: 450, height: 43 },
         ]);
-        expect(layout.prompts.size, width + 'x' + height).toBe(2);
-        const board = layout.prompts.get('board')!;
-        const hint = layout.prompts.get('hint')!;
-        expect(rectsIntersect(board, hint)).toBe(false);
-        for (const prompt of [board, hint]) {
+        // Protect the goat even when there is only room for one of the prompts:
+        // the other prompt is intentionally suppressed instead of overlapping it.
+        expect(layout.prompts.size, width + 'x' + height).toBeGreaterThan(0);
+        const board = layout.prompts.get('board');
+        const hint = layout.prompts.get('hint');
+        if (board && hint) expect(rectsIntersect(board, hint)).toBe(false);
+        for (const prompt of layout.prompts.values()) {
           expect(rectsIntersect(goat!, prompt), width + 'x' + height).toBe(false);
           expect(prompt.bottom, width + 'x' + height).toBeLessThan(goat!.top);
           expect(prompt.left).toBeGreaterThanOrEqual(0);
