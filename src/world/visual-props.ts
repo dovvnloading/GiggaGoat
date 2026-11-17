@@ -70,7 +70,14 @@ const COLORS: Partial<Record<PropKind, number>> = {
   dock: 0xb28b60, cottage: 0xf3c7a5, shipwreck: 0x866144,
   'cave-mouth': 0x4c515b, 'rope-rail': 0x986e4a,
   'stepping-stone': 0x9ca2a8, signboard: 0xf5d793,
+  'palm-tree': 0x6d9b56, floodlight: 0xdfe4df, 'life-ring': 0xf5e1d4,
+  'cable-spool': 0x9c7655, 'pallet-stack': 0xba8f62, 'log-bridge': 0x906742,
 };
+/** Authored painted hero dressing keeps its GLB vertex colours and full far LOD. */
+export const AUTHORED_HERO_DRESSING_KINDS: ReadonlySet<PropKind> = new Set([
+  'palm-tree', 'floodlight', 'life-ring', 'cable-spool',
+  'pallet-stack', 'log-bridge',
+]);
 const authoredCraneYardKinds = new Set<PropKind>([
   'crane', 'crane-jib', 'crane-cab', 'crane-cable', 'red-girder',
   'concrete-slab', 'concrete-column', 'yard-scaffold', 'safety-rail',
@@ -86,6 +93,7 @@ const foliage = new Set<PropKind>([
   'crane', 'concrete-slab', 'concrete-column', 'yard-scaffold', 'safety-rail',
   'chain-fence', 'crane-jib', 'crane-cab', 'crane-cable', 'red-girder',
   'pipe-stack', 'site-barrier', 'site-banner',
+  ...AUTHORED_HERO_DRESSING_KINDS,
 ]);
 
 /** Build one reusable, genuinely compound silhouette per prop kind. */
@@ -576,6 +584,9 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
     for (const x of [-0.34, 0.34]) {
       box(x, 0.405, 0, 0.012, 0.024, 1, 0xd7aa7b);
     }
+  } else if (AUTHORED_HERO_DRESSING_KINDS.has(kind)) {
+    // Inert box while the authored GLB loads (one draw per new kind).
+    box(0, 0, 0, 0.98, 0.98, 0.98, COLORS[kind]);
   } else if (kind === 'pier-rail') {
     // Cream-white balustrade with visible gaps between its two horizontal rails.
     for (const x of [-0.48, 0.48]) {
@@ -826,7 +837,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
           // intact beyond the detailed-distance threshold.
           const distantGeometry = authoredCraneYardKinds.has(job.kind) ||
             authoredBaaardwalkKinds.has(job.kind) ||
-            authoredTownFarmKinds.has(job.kind) || job.kind === 'container'
+            authoredTownFarmKinds.has(job.kind) ||
+            AUTHORED_HERO_DRESSING_KINDS.has(job.kind) || job.kind === 'container'
             ? libraryGeometry : await simplifiedWorldGeometry(libraryGeometry);
           if (disposed) {
             if (distantGeometry !== libraryGeometry) distantGeometry.dispose();
@@ -861,7 +873,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
               job.kind === 'grass-tuft' || job.kind === 'tree-pine' ||
                 authoredCraneYardKinds.has(job.kind) ||
                 authoredBaaardwalkPaintedKinds.has(job.kind) ||
-                authoredTownFarmKinds.has(job.kind) || color === undefined
+                authoredTownFarmKinds.has(job.kind) ||
+                AUTHORED_HERO_DRESSING_KINDS.has(job.kind) || color === undefined
                 ? white : job.kind === 'container' || job.kind === 'booth'
                   ? tint.setHex(color) : tint.setHex(color).lerp(white, 0.82));
           }

@@ -209,5 +209,22 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
     put('cone', x, z, 0.5, 0.75, 0.5,
       { color: 0xff8e21, dynamicMass: 2, climbable: false, shape: 'cylinder' });
   }
+  // Foreground floodlights (local +Z faces the unfinished frame).
+  for (const [x, z, yaw] of [
+    [-37, 14, 0.9], [6, 29.5, -2.6],
+  ] as const) {
+    put('floodlight', x, z, 1.6, 7, 1.6, { yaw, fixedToPad: true });
+  }
+  // Distinct painted worksite clutter, well away from the road-gate openings.
+  for (const [x, z, yaw] of [
+    [27, -16, 0.3], [-6, 22, 1.2],
+  ] as const) {
+    put('cable-spool', x, z, 2.0, 1.6, 1.6, { yaw, fixedToPad: true });
+  }
+  for (const [x, z, yaw] of [
+    [21, 30, 0.2], [-33, 20, 1.4], [30, -12, 0.7],
+  ] as const) {
+    put('pallet-stack', x, z, 1.4, 0.8, 1.2, { yaw, fixedToPad: true });
+  }
   return props;
 }

@@ -110,6 +110,15 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
       { floor: headY, color: 0xffffff });
   }
 
+  // Painted life rings face out along their local +Z on both main-pier rails.
+  // The pier/rail remains the supporting collider; the rings are decorative.
+  for (const side of [-1, 1]) for (const z of [-25, 7, 39]) {
+    place('life-ring', side * 13.45, z, 0.9, 0.9, 0.2, {
+      centreY: deckY + 0.9 * scale, yaw: side > 0 ? Math.PI / 2 : -Math.PI / 2,
+      collidable: false, lickable: false, climbable: false,
+    });
+  }
+
   // From the beach looking out to sea, kiosks occupy the LEFT (+X) deck strip.
   // Their fronts, striped awnings and signs face the central promenade (-X).
   const paints = [0xf0757c, 0xffc567, 0x65c8cc, 0xd78abf, 0xff9469];
@@ -166,6 +175,18 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
       { mass: 10, shape: 'cylinder', color: side < 0 ? 0xffb76a : 0x75c4e0 });
     place('bench', side * 22, -32, 3.5, 1.5, 1.2,
       { yaw: Math.PI / 3, color: 0x9e7653 });
+  }
+  // Four coastal palms; never plant the model below the actual shifted
+  // waterline. Use place() so positions follow the same shoreShift as the pier.
+  for (const [dx, dz, height, yaw] of [
+    [-24, -44, 9.5, 0.4], [-31, -52, 10.5, 2.1],
+    [26, -48, 10, 3.6], [34, -41, 9, 5.2],
+  ] as const) {
+    const x = centre.x + dx * scale;
+    const z = centre.z + (dz + shoreShift) * scale;
+    if (gridSample(island, x, z) < island.seaLevel + 0.3 * scale) continue;
+    place('palm-tree', dx, dz, height * 0.5, height, height * 0.5,
+      { yaw });
   }
   return result;
 }

@@ -86,6 +86,12 @@ export const PROP_LIBRARY_MODELS = {
   'pipe-stack': 'assets/library/custom/crane-yard/pipe-stack.glb',
   'site-barrier': 'assets/library/custom/crane-yard/site-barrier.glb',
   'site-banner': 'assets/library/custom/crane-yard/site-banner.glb',
+  'palm-tree': 'assets/library/custom/props/palm-tree.glb',
+  'floodlight': 'assets/library/custom/props/floodlight.glb',
+  'life-ring': 'assets/library/custom/props/life-ring.glb',
+  'cable-spool': 'assets/library/custom/props/cable-spool.glb',
+  'pallet-stack': 'assets/library/custom/props/pallet-stack.glb',
+  'log-bridge': 'assets/library/custom/pines/log-bridge.glb',
 } as const satisfies Record<PropKind, string>;
 
 type PixelMap = { data: Uint8ClampedArray; width: number; height: number };

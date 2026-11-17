@@ -300,10 +300,13 @@ describe.skipIf(!process.env['CI'])('world viewer real-Chrome frame profiling', 
       expect(hoofBudget, 'Hoofington bookmark must be profiled').toBeDefined();
       expect(hoofBudget!.triangles, 'bookmark 08 exceeds 400k triangles')
         .toBeLessThanOrEqual(400_000);
-      expect(hoofBudget!.drawCalls, 'bookmark 08 exceeds 200 draw calls')
-        .toBeLessThanOrEqual(200);
-      expect(report!.bookmarks.find(mark => mark.id === '11')?.drawCalls)
-        .toBeLessThanOrEqual(200);
+      // Art lead decision: the painting hero props (palms, floodlights, spools,
+      // pallets, life rings, log bridge) are separate authored instanced kinds,
+      // each one draw where visible. 215 keeps headroom without merging kinds.
+      expect(hoofBudget!.drawCalls, 'bookmark 08 exceeds 215 draw calls')
+        .toBeLessThanOrEqual(215);
+      expect(report!.bookmarks.find(mark => mark.id === '11')?.drawCalls,
+        'bookmark 11 exceeds 215 draw calls').toBeLessThanOrEqual(215);
       // Library prop batches can remove their outline draws before profiling;
       // toggling outlines off may then leave the already-optimized count equal.
       expect(report!.crane.noOutlines!.drawCalls)
