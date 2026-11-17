@@ -305,6 +305,46 @@ function makeFalls(group: THREE.Group, material: THREE.Material,
   group.add(foam);
 }
 /**
+ * One InstancedMesh renders all cascade foam (five blobs per waterfall).
+ * Keep named, mesh-free markers with the corresponding instance ranges so
+ * waterfall-specific tests and debug inspection still locate their flecks.
+ * This offsets the new HF-10 cascade's draw call without changing budgets.
+ */
+function batchWaterfallFoam(group: THREE.Group): void {
+  const foams = group.children.filter((object): object is THREE.InstancedMesh =>
+    object instanceof THREE.InstancedMesh && object.name.endsWith('-waterfall-foam') ||
+    object instanceof THREE.InstancedMesh && object.name.includes('-waterfall-') &&
+      object.name.endsWith('-foam'));
+  if (!foams.length) return;
+  const first = foams[0]!;
+  const total = foams.reduce((sum, foam) => sum + foam.count, 0);
+  const combined = new THREE.InstancedMesh(first.geometry, first.material, total);
+  combined.name = 'waterfall-foam-batch';
+  const transform = new THREE.Matrix4();
+  let offset = 0;
+  for (const foam of foams) {
+    const marker = new THREE.Group();
+    marker.name = foam.name;
+    marker.userData['instanceOffset'] = offset;
+    marker.userData['instanceCount'] = foam.count;
+    for (let i = 0; i < foam.count; i++) {
+      foam.getMatrixAt(i, transform);
+      combined.setMatrixAt(offset + i, transform);
+    }
+    offset += foam.count;
+    group.remove(foam);
+    group.add(marker);
+    if (foam !== first) {
+      foam.geometry.dispose();
+      (foam.material as THREE.Material).dispose();
+    }
+  }
+  combined.instanceMatrix.needsUpdate = true;
+  combined.computeBoundingSphere();
+  group.add(combined);
+}
+
+/**
  * Find one descending Mt. Gigga face in Hoofington's painted composition.
  * Polar rings are spaced 2 m apart with <=2 m arc steps; no RNG or fixed
  * waterfall coordinates, so other island seeds/sizes can safely return none.
@@ -509,6 +549,7 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
     makeFalls(inland, stream.material, hoofingtonFall.top, hoofingtonFall.bottom,
       6 * scale, 'hoofington-backdrop-waterfall');
   }
+  batchWaterfallFoam(inland);
   // The four spillway sheets and their foam now come from the custom Dam GLB.
   // Keep the mountain and river cascades, but do not draw duplicate dam falls.
   return {
