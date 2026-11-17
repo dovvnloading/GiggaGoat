@@ -1,0 +1,20 @@
+# Baa-ardwalk set (art lead, Blender, flat materials)
+
+Replaces the stretched pirate dock planks, medieval fantasy-town stalls, highway-sign signboards,
+pirate lattice fence, alpha scaffold "piles", grey Poly Pizza wheel, spring disc and construction-barrier
+"bumpers" (island QA BW-2 to BW-9). Matched to painting 09 (docs/art/hifi/09_poi_baaardwalk.png).
+Each file is built at its gameplay collider box (glTF X = length, Y = up, Z = depth).
+
+| File | Built at (X x Y x Z m) | For | Colour |
+|---|---|---|---|
+| boardwalk-pier.glb | 27 x 0.92 x 83 | kind `pier` (boards run along Z, so it also stretches cleanly onto the 39 x 27 head deck) | own |
+| pier-rail.glb | 8 x 2.65 x 0.5 | kind `pier-rail` (white balustrade, 1.25 m visible inside a 2.65 m anchor frame) | own |
+| timber-pile.glb | 0.92 x 8 x 0.92 | Baa-ardwalk piles (round timber, iron straps; currently kind `scaffold`) | own |
+| kiosk.glb | 7.2 x 6.8 x 6.4 | kind `booth` (snack kiosk, front = +Z; walls painted white for FULL-strength descriptor paint) | tint 100% |
+| striped-awning.glb | 7.4 x 1.0 x 2.5 | kind `awning` (red/white canopy, high edge at -Z against the wall, scalloped valance) | own |
+| signboard.glb | 4.6 x 1.4 x 0.3 | kind `signboard` (cream board, timber frame, orange hoof roundel, both faces) | own |
+| ferris-wheel.glb | 29.5 x 29 x 4.6 | kind `ferris-wheel` (white A-frame and rim, warm bulbs, pink ring, 12 candy gondolas, hoof hub) | own |
+| trampoline.glb | 7 x 1.1 x 7 | kind `trampoline` (black mat, blue padded rim, legs) | own |
+| beach-ball.glb | 2.4 x 2.3 x 2.4 | kind `bumper` (red/blue/yellow/white beach ball) | own |
+
+Triangles: 120 (awning) to 5.1k (wheel, 1 instance). CC0.
