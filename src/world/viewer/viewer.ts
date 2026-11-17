@@ -473,6 +473,14 @@ if (new URLSearchParams(window.location.search).has('profile')) {
           target: orbit.target.toArray(),
         };
       },
+      /** Temporarily isolate a renderer group during painting comparison. */
+      debugGroupVisible(name: string, visible: boolean): boolean {
+        const group = worldView.group.getObjectByName(name);
+        if (!group) return false;
+        group.visible = visible;
+        shadowCache.invalidate();
+        return true;
+      },
       /** Targeted WebGL raycast for identifying stray geometry in art QA. */
       debugPick(x: number, y: number): Array<{ name: string; distance: number }> {
         const ray = new THREE.Raycaster();
