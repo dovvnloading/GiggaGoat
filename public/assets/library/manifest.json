@@ -33051,5 +33051,23 @@
   "license": "CC0",
   "credit": "Gigga-Goat (original, built in Blender)",
   "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-props/silo.glb",
+  "name": "Hoofington silo",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Quaternius farm buildings (CC0), repainted in Blender for Gigga-Goat",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-props/windmill.glb",
+  "name": "Hoofington windmill",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Quaternius farm buildings (CC0), repainted in Blender for Gigga-Goat",
+  "url": ""
  }
 ]
