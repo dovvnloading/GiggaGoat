@@ -166,7 +166,7 @@ describe('island sea, shoreline and horizon', () => {
 });
 
 describe('Mt. Gigga cascades and Dam plot exclusion (MG-5, DM-1)', () => {
-  it('widens both waterfall families by 2.6 and replaces each foam torus with three blobs', () => {
+  it('widens both waterfall families by 2.6 and sinks five translucent foam flecks per cascade', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
     const { inland, sea } = buildWaterVisuals(island);
     try {
@@ -205,28 +205,47 @@ describe('Mt. Gigga cascades and Dam plot exclusion (MG-5, DM-1)', () => {
         const foam = inland.getObjectByName(
           fall.name + '-foam') as THREE.InstancedMesh;
         expect(foam, fall.name).toBeInstanceOf(THREE.InstancedMesh);
-        expect(foam.count, fall.name + ' blob count').toBe(3);
+        expect(foam.count, fall.name + ' blob count').toBe(5);
         expect(foam.geometry).toBeInstanceOf(THREE.IcosahedronGeometry);
         const mat = foam.material as THREE.MeshBasicMaterial;
-        expect(mat.color.getHex()).toBe(0xffffff);
-        expect(mat.opacity).toBe(0.85);
+        expect(mat.color.getHex()).toBe(0xeaf8ff);
+        expect(mat.opacity).toBe(0.6);
         expect(mat.transparent).toBe(true);
         expect(mat.depthWrite).toBe(false);
         const transform = new THREE.Matrix4();
         const size = new THREE.Vector3();
+        const offsets = [-0.4, -0.2, 0, 0.2, 0.4] as const;
+        const jitter = [0.94, 1.11, 0.89, 1.07, 0.97] as const;
+        const base = new THREE.Vector3(
+          (vertices.getX(2) + vertices.getX(3)) / 2,
+          vertices.getY(2) - width * 0.03,
+          (vertices.getZ(2) + vertices.getZ(3)) / 2);
+        const across = new THREE.Vector3(
+          vertices.getX(3) - vertices.getX(2), 0,
+          vertices.getZ(3) - vertices.getZ(2)).normalize();
         const locations: THREE.Vector3[] = [];
         for (let i = 0; i < foam.count; i++) {
           foam.getMatrixAt(i, transform);
           size.setFromMatrixScale(transform);
-          expect(size.x, foam.name).toBeCloseTo(width * 0.45, 5);
-          expect(size.y, foam.name).toBeCloseTo(width * 0.3, 5);
-          expect(size.z, foam.name).toBeCloseTo(width * 0.45, 5);
+          // Deterministic, per-blob jitter stays inside +/-15%.
+          expect(jitter[i], foam.name).toBeGreaterThanOrEqual(0.85);
+          expect(jitter[i], foam.name).toBeLessThanOrEqual(1.15);
+          expect(size.x, foam.name).toBeCloseTo(width * 0.16 * jitter[i]!, 4);
+          expect(size.y, foam.name).toBeCloseTo(width * 0.07 * jitter[i]!, 4);
+          expect(size.z, foam.name).toBeCloseTo(width * 0.16 * jitter[i]!, 4);
           const location = new THREE.Vector3().setFromMatrixPosition(transform);
-          expect(location.y, foam.name).toBeCloseTo(vertices.getY(2), 5);
+          const expected = base.clone().addScaledVector(across, offsets[i]! * width);
+          expect(location.distanceTo(expected), foam.name + ' position')
+            .toBeLessThan(0.0002);
+          expect(location.y, foam.name).toBeCloseTo(vertices.getY(2) - width * 0.03, 4);
           locations.push(location);
         }
-        expect(locations[0]!.distanceTo(locations[2]!))
-          .toBeCloseTo(width * 0.56, 4);
+        for (let i = 1; i < locations.length; i++) {
+          expect(locations[i]!.distanceTo(locations[i - 1]!))
+            .toBeCloseTo(width * 0.2, 4);
+        }
+        expect(locations[0]!.distanceTo(locations[4]!))
+          .toBeCloseTo(width * 0.8, 4);
       }
       const torus: THREE.Mesh[] = [];
       inland.traverse(o => {
