@@ -8,6 +8,8 @@ import { type BuildPiece, type PieceType } from '../gameplay';
 import { Game } from './Game';
 import { GameCharacters } from './GameCharacters';
 import { GameInput } from './GameInput';
+import { CAMERA_TARGET_HEIGHT, SPAWN_CAMERA_PITCH, SPAWN_CAMERA_YAW_OFFSET,
+  goatCameraOffset } from './GoatCamera';
 import { GameHud } from './GameHud';
 
 interface PropVisual { mesh: THREE.InstancedMesh; index: number; prop: PropDescriptor }
@@ -78,7 +80,9 @@ export class GameView {
     this.world.sun.shadow.camera.far = 300;
     this.world.sun.shadow.bias = -.00035;
     this.scene.add(this.world.sun.target);
-    this.input = new GameInput(this.renderer.domElement, game.island.spawns[0]!.heading);
+    this.input = new GameInput(this.renderer.domElement,
+      game.island.spawns[0]!.heading + SPAWN_CAMERA_YAW_OFFSET);
+    this.input.pitch = SPAWN_CAMERA_PITCH;
     this.hud = new GameHud(host);
     this.characters = new GameCharacters(this.scene, game);
     this.bindWorldProps();
@@ -87,9 +91,14 @@ export class GameView {
     this.scene.add(this.gigMarkers);
     this.scene.add(this.partyMarkers);
     const p = vec(game.goat.torso.translation());
-    this.cameraTarget.copy(p);
-    this.cameraPosition.copy(p).add(new THREE.Vector3(0, 3.3, 7));
+    const size = game.rules.style.scale;
+    this.cameraTarget.copy(p).add(new THREE.Vector3(0, CAMERA_TARGET_HEIGHT * size, 0));
+    // Match the opening pose to the follow-camera formula immediately, even
+    // while the title menu pauses physics; no back-view camera fly-in.
+    this.cameraPosition.copy(this.cameraTarget).add(vec(
+      goatCameraOffset(size, this.input.yaw, this.input.pitch)));
     this.camera.position.copy(this.cameraPosition);
+    this.camera.lookAt(this.cameraTarget);
     this.onResize = () => {
       const width = Math.max(1, host.clientWidth), height = Math.max(1, host.clientHeight);
       this.camera.aspect = width / height;
@@ -462,14 +471,9 @@ export class GameView {
   private updateCamera(alpha: number, dt: number): void {
     const pose = this.game.physics.getInterpolatedTransform(this.game.goat.torso, alpha);
     const size = this.game.rules.style.scale;
-    const target = vec(pose.translation).add(new THREE.Vector3(0, .4 * size, 0));
+    const target = vec(pose.translation).add(new THREE.Vector3(0, CAMERA_TARGET_HEIGHT * size, 0));
     this.cameraTarget.lerp(target, lerpAlpha(12, dt));
-    const yaw = this.input.yaw, pitch = this.input.pitch;
-    const distance = Math.max(4.3, 6.4 * Math.pow(size, .79));
-    const offset = new THREE.Vector3(
-      -Math.sin(yaw) * Math.cos(pitch) * distance,
-      Math.sin(pitch) * distance + 1.25 * size,
-      Math.cos(yaw) * Math.cos(pitch) * distance);
+    const offset = vec(goatCameraOffset(size, this.input.yaw, this.input.pitch));
     const direction = offset.clone().normalize();
     const desiredDistance = offset.length();
     const hit = this.game.physics.raycast(this.cameraTarget, V(direction.x, direction.y, direction.z),
