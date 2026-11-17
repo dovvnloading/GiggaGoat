@@ -9,8 +9,8 @@ export const CRANE_YARD_PLAN = {
   halfDepth: 36,
   tower: { x: -19, z: -7, width: 29, depth: 26, roof: 23.6 },
   crane: { x: 21, z: -12, height: 40.5, jibLength: 78 },
-  frontGate: { min: 16, max: 32 },
-  rearGate: { min: -8, max: 8 },
+  frontGate: { min: 8, max: 32 },
+  rearGate: { min: -16, max: 8 },
 } as const;
 
 interface YardOptions {
@@ -23,6 +23,7 @@ interface YardOptions {
   dynamicMass?: number;
   collidable?: boolean;
   climbable?: boolean;
+  shape?: PropDescriptor['shape'];
 }
 
 /**
@@ -52,7 +53,7 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
         position: { x, y: ground + ((options.bottom ?? 0) + height / 2) * scale, z },
         rotationY: options.yaw ?? 0,
       },
-      size, shape: 'cuboid',
+      size, shape: options.shape ?? 'cuboid',
       body: options.dynamicMass === undefined
         ? { type: 'static' } : { type: 'dynamic', mass: options.dynamicMass },
       collidable: options.collidable ?? true,
@@ -111,7 +112,7 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
     { bottom: 38.2, fixedToPad: true, color: 0xffcd2d });
   put('crane-cab', 24.5, crane.z + 3.0, 5.2, 3.7, 4.1,
     { bottom: 34.9, fixedToPad: true });
-  put('site-barrier', -19, crane.z, 6.3, 3.5, 3.4,
+  put('beam', -19, crane.z, 6.3, 3.5, 3.4,
     { bottom: 37.8, fixedToPad: true, color: 0x555964 });
   put('crane-cable', 43, crane.z, 0.17, 11.65, 0.17,
     { bottom: 26.65, fixedToPad: true, collidable: false });
@@ -140,10 +141,10 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
   // Two gated breaks align with the through-road and are left traversable.
   for (let i = 0; i < 10; i++) {
     const x = -36 + i * 8;
-    if (x !== 20 && x !== 28) {
+    if (x !== 12 && x !== 20 && x !== 28) {
       put('chain-fence', x, CRANE_YARD_PLAN.halfDepth, 8, 2.85, 0.18);
     }
-    if (x !== -4 && x !== 4) {
+    if (x !== -12 && x !== -4 && x !== 4) {
       put('chain-fence', x, -CRANE_YARD_PLAN.halfDepth, 8, 2.85, 0.18);
     }
   }
@@ -154,9 +155,9 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
     }
   }
   // Gates swung back into the yard so they read as real construction entrances.
-  put('chain-fence', 17.0, 33.3, 5.7, 2.85, 0.18, { yaw: 1.10 });
+  put('chain-fence', 9.0, 33.3, 5.7, 2.85, 0.18, { yaw: 1.10 });
   put('chain-fence', 31.0, 33.3, 5.7, 2.85, 0.18, { yaw: -1.10 });
-  put('chain-fence', -7.5, -33.1, 4.3, 2.85, 0.18, { yaw: -1.15 });
+  put('chain-fence', -15.5, -33.1, 4.3, 2.85, 0.18, { yaw: -1.15 });
   put('chain-fence', 7.5, -33.1, 4.3, 2.85, 0.18, { yaw: 1.15 });
 
   // Containers hug the rear and side fence instead of covering the building.
@@ -183,7 +184,7 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
   }
   for (const [x, z] of [[29, 16], [31, 12], [26, 17], [-29, 15]] as const) {
     put('barrel', x, z, 1.9, 2.3, 1.9,
-      { color: 0xdd9c35, dynamicMass: 12, climbable: false });
+      { color: 0xdd9c35, dynamicMass: 12, climbable: false, shape: 'cylinder' });
   }
   for (const [x, z, yaw] of [
     [-35, 28, 0], [-28, 31, 0], [-18, 31, 0], [2, 31, 0],
@@ -199,7 +200,7 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
     [13, -20], [28, -20], [12, 3], [30, -4],
   ] as const) {
     put('cone', x, z, 1.0, 1.65, 1.0,
-      { color: 0xff8e21, dynamicMass: 2, climbable: false });
+      { color: 0xff8e21, dynamicMass: 2, climbable: false, shape: 'cylinder' });
   }
   return props;
 }
