@@ -25,9 +25,9 @@ const DARK_WOOD = 0x63432e;
 const CREAM = 0xf6e6c5;
 const GOLD = 0xffcf56;
 
-/** Non-indexed geometry with consistent transformed normals; one draw per paint. */
+/** Merge all painted parts into one vertex-coloured mesh per landmark. */
 function makePainter() {
-  const buckets = new Map<number, THREE.BufferGeometry[]>();
+  const painted: THREE.BufferGeometry[] = [];
   function add(geometry: THREE.BufferGeometry, color: number, at: Placement): void {
     const unpacked = geometry.index ? geometry.toNonIndexed() : geometry;
     if (unpacked !== geometry) geometry.dispose();
@@ -40,9 +40,16 @@ function makePainter() {
     );
     unpacked.applyMatrix4(transform);
     unpacked.computeVertexNormals();
-    const parts = buckets.get(color) ?? [];
-    parts.push(unpacked);
-    buckets.set(color, parts);
+    const paint = new THREE.Color(color);
+    const count = unpacked.getAttribute('position').count;
+    const vertexColors = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      vertexColors[i * 3] = paint.r;
+      vertexColors[i * 3 + 1] = paint.g;
+      vertexColors[i * 3 + 2] = paint.b;
+    }
+    unpacked.setAttribute('color', new THREE.BufferAttribute(vertexColors, 3));
+    painted.push(unpacked);
   }
   function box(color: number, x: number, y: number, z: number,
     width: number, height: number, depth: number,
@@ -65,19 +72,18 @@ function makePainter() {
   function finish(name: string): THREE.Group {
     const group = new THREE.Group();
     group.name = name;
-    for (const [color, parts] of buckets) {
-      const geometry = mergeGeometries(parts, false);
-      parts.forEach(part => part.dispose());
-      if (!geometry) throw new Error('Cannot batch lighthouse paint ' + color);
-      const material = new THREE.MeshToonMaterial({
-        color, side: THREE.DoubleSide, gradientMap: TOON_RAMP,
-      });
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.name = name + '-paint-' + color.toString(16);
-      mesh.receiveShadow = true;
-      mesh.castShadow = false;
-      group.add(mesh);
-    }
+    const geometry = mergeGeometries(painted, false);
+    painted.forEach(part => part.dispose());
+    if (!geometry) throw new Error('Cannot batch lighthouse landmark ' + name);
+    const material = new THREE.MeshToonMaterial({
+      color: 0xffffff, side: THREE.DoubleSide, vertexColors: true,
+      gradientMap: TOON_RAMP,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = name + '-merged-colours';
+    mesh.receiveShadow = true;
+    mesh.castShadow = false;
+    group.add(mesh);
     return group;
   }
   return { add, box, beam, finish };
@@ -154,7 +160,8 @@ function makeCottage(prop: PropDescriptor): THREE.Group {
   }));
   walls.name = 'keeper-cottage-plaster';
   details.name = 'keeper-cottage-red-tiled-gable';
-  walls.castShadow = true;
+  // The shared instanced cottage already participates in the cached shadow pass.
+  walls.castShadow = false;
   details.receiveShadow = true;
   cottage.add(walls, details);
 
