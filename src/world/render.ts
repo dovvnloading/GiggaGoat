@@ -7,6 +7,7 @@ import { makeLocalStreets } from './roads';
 import { buildPropVisuals, TOON_RAMP } from './visual-props';
 import { buildGroundDetails } from './visual-ground';
 import { buildStreetDetails } from './visual-streets';
+import { buildMeadowScatter } from './visual-meadow';
 import { buildWaterVisuals } from './visual-water';
 import { buildSkyVisuals, type LightingPreset } from './visual-sky';
 
@@ -302,6 +303,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(buildRoads(island));
   group.add(buildStreetDetails(island));
   group.add(buildGroundDetails(island));
+  group.add(buildMeadowScatter(island));
   const props = buildPropVisuals(island.props, options.propChunkSize ?? 96);
   group.add(props.group);
   const waterVisuals = buildWaterVisuals(island);
