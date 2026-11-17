@@ -149,7 +149,15 @@ function batchHeroMeshes(root: THREE.Group, name: string,
   pieces.forEach(piece => piece.dispose());
   if (!merged) throw new Error('Cannot batch Old Lighthouse meshes: ' + name);
   sources.forEach(source => {
+    // Preserve lightweight named art anchors for World Lab inspections even
+    // though their geometry is now part of one merged GPU draw.
+    const parent = source.parent;
     source.removeFromParent();
+    if (parent) {
+      const anchor = new THREE.Object3D();
+      anchor.name = source.name;
+      parent.add(anchor);
+    }
     source.geometry.dispose();
     if (Array.isArray(source.material)) source.material.forEach(mat => mat.dispose());
     else source.material.dispose();
