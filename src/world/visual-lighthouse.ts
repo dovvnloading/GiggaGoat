@@ -89,12 +89,88 @@ function makePainter() {
   return { add, box, beam, finish };
 }
 
+/**
+ * Bake all fixed painted detail into one world-space vertex-coloured draw and
+ * all three model fallbacks into a second. This keeps the full hero at four
+ * draws (including the instanced rocks and emissive lens), not twenty-one.
+ * Groups remain as named semantic anchors for art inspection and gameplay.
+ */
+function batchHeroMeshes(root: THREE.Group, name: string,
+  select: (mesh: THREE.Mesh) => boolean): THREE.Mesh {
+  root.updateMatrixWorld(true);
+  const sources: THREE.Mesh[] = [];
+  root.traverse(item => {
+    if (item instanceof THREE.Mesh && select(item)) sources.push(item);
+  });
+  const pieces: THREE.BufferGeometry[] = [];
+  const matrix = new THREE.Matrix4();
+  const instanceColor = new THREE.Color();
+  for (const source of sources) {
+    const material = Array.isArray(source.material)
+      ? source.material[0]! : source.material;
+    const base = 'color' in material && material.color instanceof THREE.Color
+      ? material.color : new THREE.Color(0xffffff);
+    const instances = source instanceof THREE.InstancedMesh ? source.count : 1;
+    for (let i = 0; i < instances; i++) {
+      const geometry = source.geometry.index
+        ? source.geometry.toNonIndexed() : source.geometry.clone();
+      const transform = source.matrixWorld.clone();
+      if (source instanceof THREE.InstancedMesh) {
+        source.getMatrixAt(i, matrix);
+        transform.multiply(matrix);
+        if (source.instanceColor) source.getColorAt(i, instanceColor);
+        else instanceColor.setHex(0xffffff);
+      } else instanceColor.setHex(0xffffff);
+      geometry.applyMatrix4(transform);
+      if (!geometry.getAttribute('normal')) geometry.computeVertexNormals();
+      const oldColors = geometry.getAttribute('color');
+      const count = geometry.getAttribute('position').count;
+      const colors = new Float32Array(count * 3);
+      for (let vertex = 0; vertex < count; vertex++) {
+        const k = vertex * 3;
+        colors[k] = (oldColors ? oldColors.getX(vertex) : 1) *
+          base.r * instanceColor.r;
+        colors[k + 1] = (oldColors ? oldColors.getY(vertex) : 1) *
+          base.g * instanceColor.g;
+        colors[k + 2] = (oldColors ? oldColors.getZ(vertex) : 1) *
+          base.b * instanceColor.b;
+      }
+      // Uniform attributes are mandatory for one BufferGeometryUtils merge.
+      for (const attribute of Object.keys(geometry.attributes)) {
+        if (attribute !== 'position' && attribute !== 'normal') {
+          geometry.deleteAttribute(attribute);
+        }
+      }
+      geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      pieces.push(geometry);
+    }
+  }
+  const merged = mergeGeometries(pieces, false);
+  pieces.forEach(piece => piece.dispose());
+  if (!merged) throw new Error('Cannot batch Old Lighthouse meshes: ' + name);
+  sources.forEach(source => {
+    source.removeFromParent();
+    source.geometry.dispose();
+    if (Array.isArray(source.material)) source.material.forEach(mat => mat.dispose());
+    else source.material.dispose();
+  });
+  const mesh = new THREE.Mesh(merged, new THREE.MeshToonMaterial({
+    color: 0xffffff, vertexColors: true, gradientMap: TOON_RAMP,
+    side: THREE.DoubleSide,
+  }));
+  mesh.name = name;
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  root.add(mesh);
+  return mesh;
+}
+
 /** A strip conforming to the heightfield: decorative, not a false flat collider. */
 function makeWindingFootpath(island: IslandData, center: { x: number; z: number }): THREE.Mesh {
   const scale = island.size / 600;
   const knots = [
-    [-30, 21], [-23, 25], [-15, 23], [-8, 18],
-    [1, 15], [5, 9], [-1, 5],
+    [-17, 4], [-15, 8], [-12, 10], [-8, 12],
+    [-3, 10], [-3, 6], [-2, 2],
   ];
   const curve = new THREE.CatmullRomCurve3(knots.map(([dx, dz]) =>
     new THREE.Vector3(center.x + dx! * scale, 0, center.z + dz! * scale)), false, 'centripetal');
@@ -403,15 +479,6 @@ export function buildLighthouseVisuals(island: IslandData): LighthouseVisuals {
     glass.name = 'lighthouse-glowing-lantern-room';
     glass.position.set(lighthouse.transform.position.x, y, lighthouse.transform.position.z);
     group.add(glass);
-    const beam = new THREE.Mesh(new THREE.ConeGeometry(5.6 * scale, 19 * scale, 20, 1, true),
-      new THREE.MeshBasicMaterial({
-        color: 0xffdd7e, transparent: true, opacity: 0.085,
-        side: THREE.DoubleSide, depthWrite: false,
-      }));
-    beam.name = 'lighthouse-soft-beacon-glow';
-    beam.rotation.z = Math.PI / 2;
-    beam.position.set(glass.position.x + 9 * scale, y, glass.position.z);
-    group.add(beam);
   }
 
   const cave = get('cave-mouth');
@@ -576,7 +643,26 @@ export function buildLighthouseVisuals(island: IslandData): LighthouseVisuals {
   const rockFallback = makeFallbackRocks(rocks);
   group.add(rockFallback);
 
+  const fallbackSections = [pierFallbackGroup, boatFallbackGroup, wreckFallbackGroup];
+  const isModelFallback = (mesh: THREE.Mesh): boolean => {
+    for (let parent: THREE.Object3D | null = mesh; parent; parent = parent.parent) {
+      if (fallbackSections.includes(parent as THREE.Group)) return true;
+    }
+    return false;
+  };
+  const fallbackPaint = batchHeroMeshes(group,
+    'lighthouse-shared-ship-dock-rowboat-fallback', isModelFallback);
+  batchHeroMeshes(group, 'lighthouse-static-painted-landmarks',
+    mesh => mesh !== rockFallback &&
+      mesh.name !== 'lighthouse-glowing-lantern-room' &&
+      mesh !== fallbackPaint && !isModelFallback(mesh));
+  // The cave retains separate logical arch and hidden-relic anchors after
+  // its surfaces have been merged into the one static GPU draw.
+  const caveAnchor = group.getObjectByName('lighthouse-recessed-sea-cave');
+  if (caveAnchor) caveAnchor.add(new THREE.Object3D());
+
   let disposed = false;
+  let heroSectionsLoaded = 0;
   const importedTextures = new Set<THREE.Texture>();
   function load(path: string, placements: readonly Placement[], name: string,
     hide?: THREE.Object3D, isRock = false): void {
@@ -597,7 +683,11 @@ export function buildLighthouseVisuals(island: IslandData): LighthouseVisuals {
             }
           });
           group.add(model);
-          if (hide) hide.visible = false;
+          if (hide && ++heroSectionsLoaded === 3) {
+            // All three model-dependent fallbacks share one draw and can now
+            // be hidden together without exposing a missing pier/hull/boat.
+            fallbackPaint.visible = false;
+          }
         } catch (error) {
           console.warn('Lighthouse asset could not be prepared: ' + url, error);
         }
@@ -651,10 +741,8 @@ export function buildLighthouseVisuals(island: IslandData): LighthouseVisuals {
 
   return {
     group,
-    update(seconds: number): void {
-      // The warm lantern lens is a static emissive volume, never a shadow pass.
-      const beacon = group.getObjectByName('lighthouse-soft-beacon-glow');
-      if (beacon) beacon.rotation.y = Math.max(0, seconds) * 0.12;
+    update(_seconds: number): void {
+      // The emissive lantern is static and adds no new animated shadow pass.
     },
     dispose(): void {
       disposed = true;
