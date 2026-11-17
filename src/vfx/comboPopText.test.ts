@@ -8,10 +8,10 @@ import { ComboPopText, createComboPopText } from './ComboPopText';
 
 const origin = { x: 0, y: 1.6, z: 0 };
 
-function billboard(root: THREE.Object3D, index: number): THREE.Sprite<THREE.SpriteMaterial> {
+function billboard(root: THREE.Object3D, index: number): THREE.Sprite {
   const object = root.children[index];
   if (!(object instanceof THREE.Sprite)) throw new Error('missing combo billboard');
-  return object as THREE.Sprite<THREE.SpriteMaterial>;
+  return object as THREE.Sprite;
 }
 
 describe('08 combo pop tier choice and absolute-age timeline', () => {
@@ -104,7 +104,7 @@ describe('08 combo pop pooled Three.js sprites (headless)', () => {
       expect(fx.activeCount).toBe(0);
       expect(fx.group.children.every(child => !child.visible)).toBe(true);
       fx.emit(origin, 5); // count is still shown as x5! on purple tier
-      const fiveTexture = a.material.map;
+      const fiveTexture = b.material.map;
       fx.update(10);
       fx.emit(origin, 5);
       expect(b.material.map).toBe(fiveTexture);
