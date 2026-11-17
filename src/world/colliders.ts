@@ -2,6 +2,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import type {
   ColliderBuild, ColliderDescriptor, IslandData, PropColliderDescriptor, PropDescriptor,
 } from './types';
+import { makeDamColliderDescriptors } from './the-dam';
 
 function hull(prop: PropDescriptor): Float32Array {
   const { x, y, z } = prop.size;
@@ -73,6 +74,7 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
     };
     colliders.push(collider);
   }
+  colliders.push(...makeDamColliderDescriptors(island));
   return colliders;
 }
 
