@@ -134,12 +134,14 @@ export class PartySession {
 
   private onContact(event: PhysicsContact): void {
     if (!this.match || event.type !== 'impact' || event.impulse < 2) return;
-    const goats = [this.game.goat, ...[...this.bots.values()].map(b => b.goat)];
-    const a = goats.find(g => event.bodyA !== null &&
-      g.bodies.some(body => body.handle === event.bodyA));
-    const b = goats.find(g => event.bodyB !== null &&
-      g.bodies.some(body => body.handle === event.bodyB));
-    if (!a || !b || a.id === b.id) return;
+    // PhysicsWorld already indexes each goat body by owner; avoid scanning
+    // 8 ragdolls × 7 body parts for every contact-force callback.
+    const aId = event.bodyA === null ? undefined : this.game.physics.bodyData(event.bodyA)?.owner;
+    const bId = event.bodyB === null ? undefined : this.game.physics.bodyData(event.bodyB)?.owner;
+    if (!aId || !bId || aId === bId) return;
+    const a = aId === 'player' ? this.game.goat : this.bots.get(aId)?.goat;
+    const b = bId === 'player' ? this.game.goat : this.bots.get(bId)?.goat;
+    if (!a || !b) return;
     const aVel = a.torso.linvel(), bVel = b.torso.linvel();
     const av = Math.hypot(aVel.x, aVel.z), bv = Math.hypot(bVel.x, bVel.z);
     const attacker = av >= bv ? a : b, victim = attacker === a ? b : a;
