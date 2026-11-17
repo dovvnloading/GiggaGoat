@@ -143,7 +143,13 @@ export class GameHud {
       } else if (view.mode === 'king-of-the-peak') {
         this.objectiveLine.textContent = 'YOUR SCORE ' + (you?.score ?? 0) +
           ' · GOAL ' + view.config.peakTargetScore;
-        this.objectiveDetail.textContent = 'CAPTURE THE SUMMIT · ' + match.phase.toUpperCase();
+        const peak = match.toJSON().peak;
+        this.objectiveDetail.textContent = match.phase === 'countdown' ? 'GET READY TO CLIMB!' :
+          peak?.contested ? 'PEAK CONTESTED · PUSH THEM OUT!' :
+          peak?.ownerId === 'player' ? 'YOU CONTROL THE ZONE!' :
+          peak?.ownerId ? 'PEAK HELD BY ' +
+            (view.players.find(p => p.id === peak.ownerId)?.name ?? 'A RIVAL').toUpperCase() :
+            'ZONE EMPTY · CLIMB TO CAPTURE!';
       } else {
         this.objectiveLine.textContent = Object.entries(view.teamScores)
           .map(([team, score]) => team.toUpperCase() + ' ' + score).join(' · ');
