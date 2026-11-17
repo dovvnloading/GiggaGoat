@@ -256,7 +256,8 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   const light: PoiId = 'old-lighthouse';
   at(light, 'shipwreck', -36, 7, 22, 8, 8.5,
     { yaw: 0.28, color: 0x936943 });
-  at(light, 'cave-mouth', 2, 23, 9, 5.5, 5, { color: 0x8e9299 });
+  at(light, 'cave-mouth', 2, 23, 9, 5.5, 5,
+    { yaw: -0.9, color: 0x8e9299 });
   for (const [dx, dz] of [[19, 24], [25, 29], [31, 34]] as const) {
     // Descriptors are the real planked deck collision surfaces; custom meshes
     // and a library GLB provide the visible boards, piles and lanterns.
