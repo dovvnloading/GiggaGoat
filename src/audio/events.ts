@@ -1,0 +1,203 @@
+/** Exact read-only adapter contracts, imported from the owning lanes' public barrels. */
+import type { PhysicsEvent } from '../physics';
+import type { GameplayEvents } from '../gameplay';
+import type { WaterEvent, DestructionEvent, ChainEvent, SurfaceEvent } from '../chaos';
+import type { MatchEvent } from '../modes';
+import type { GigEvent } from '../gigs';
+import type { SoundId, Vec3 } from './logic';
+import { clamp } from './logic';
+
+export type ChaosEvent = WaterEvent | DestructionEvent | ChainEvent | SurfaceEvent;
+export type GameplayAudioEvent = {
+  [K in keyof GameplayEvents]: { type: K; data: GameplayEvents[K] }
+}[keyof GameplayEvents];
+export type LaneAudioEvent =
+  | { lane: 'physics'; event: PhysicsEvent }
+  | { lane: 'gameplay'; event: GameplayAudioEvent }
+  | { lane: 'chaos'; event: ChaosEvent }
+  | { lane: 'modes'; event: MatchEvent }
+  | { lane: 'gigs'; event: GigEvent };
+export type AudioCue = {
+  sound: SoundId; intensity?: number; size?: number; position?: Vec3;
+  goatId?: string; playerId?: string; bodyHandle?: number; combo?: number;
+  pitch?: number;
+};
+const cue = (sound: SoundId, extra: Omit<AudioCue, 'sound'> = {}): AudioCue =>
+  ({ sound, ...extra });
+
+export const PHYSICS_EVENT_TYPES = [
+  'landed', 'impact', 'flipped', 'airtimeStart', 'airtimeEnd',
+  'wallClingStart', 'wallClingEnd', 'ragdollStart', 'ragdollEnd',
+  'tongueAttach', 'tongueDetach', 'knockedBody',
+] as const satisfies readonly PhysicsEvent['type'][];
+export const GAMEPLAY_EVENT_TYPES = [
+  'style:input', 'style:scored', 'combo:ended', 'size:changed', 'ability:used',
+  'balance:knockdown', 'balance:recovered', 'traversal', 'inventory:changed',
+  'material:harvested', 'build:placed', 'build:edited', 'build:removed',
+  'build:hit', 'build:broken', 'build:collapsed', 'coins:changed',
+  'unlock:claimed', 'challenge:completed', 'challenge:progress', 'build:requested',
+] as const satisfies readonly (keyof GameplayEvents)[];
+export const CHAOS_EVENT_TYPES = [
+  'enter', 'exit', 'splash', 'destruction', 'knock', 'topple', 'sodaPop',
+  'bounce', 'launch', 'conveyorEnter', 'conveyorExit',
+] as const satisfies readonly ChaosEvent['type'][];
+export const MODE_EVENT_TYPES = [
+  'player.joined', 'player.ready', 'phase.changed', 'countdown', 'tide.warning',
+  'tide.rose', 'goat.eliminated', 'goat.knockout', 'peak.contested',
+  'peak.control', 'peak.scored', 'hay.picked', 'hay.dropped', 'hay.punted',
+  'hay.scored', 'match.finished',
+] as const satisfies readonly MatchEvent['type'][];
+export const GIG_EVENT_TYPES = [
+  'board.rotated', 'gig.accepted', 'objective.progress', 'gig.failed',
+  'gig.abandoned', 'gig.completed', 'cosmetic.unlocked',
+] as const satisfies readonly GigEvent['type'][];
+type Exact<A, B> = [Exclude<A, B>, Exclude<B, A>] extends [never, never] ? true : false;
+// Compile fails if upstream adds an event type without this audio adapter being revisited.
+const complete: [
+  Exact<PhysicsEvent['type'], typeof PHYSICS_EVENT_TYPES[number]>,
+  Exact<keyof GameplayEvents, typeof GAMEPLAY_EVENT_TYPES[number]>,
+  Exact<ChaosEvent['type'], typeof CHAOS_EVENT_TYPES[number]>,
+  Exact<MatchEvent['type'], typeof MODE_EVENT_TYPES[number]>,
+  Exact<GigEvent['type'], typeof GIG_EVENT_TYPES[number]>,
+] = [true, true, true, true, true];
+void complete;
+
+export function mapPhysics(event: PhysicsEvent): AudioCue[] {
+  const goatId = event.goatId;
+  switch (event.type) {
+    case 'landed':
+      return [cue('landing', { goatId, intensity: clamp(Math.abs(event.verticalSpeed) / 17) })];
+    case 'impact':
+      return event.impulse > 5 ?
+        [cue('headbutt-impact', { goatId, intensity: clamp(event.impulse / 60),
+          bodyHandle: event.otherBodyHandle ?? undefined })] : [];
+    case 'flipped': return [cue('flip-whoosh', { goatId, intensity: clamp(event.rotations / 2) })];
+    case 'airtimeStart': return [];
+    case 'airtimeEnd': return [];
+    case 'wallClingStart': return [cue('climb', { goatId, intensity: .45 })];
+    case 'wallClingEnd': return [];
+    case 'ragdollStart': return [cue('ragdoll-flop', { goatId, intensity: event.reason === 'impact' ? 1 : .6 })];
+    case 'ragdollEnd': return [cue('jump', { goatId, intensity: .23 })];
+    case 'tongueAttach': return [cue('tongue-stick', { goatId, bodyHandle: event.bodyHandle })];
+    case 'tongueDetach':
+      return event.reason === 'replaced' ? [] :
+        [cue(event.reason === 'released' ? 'tongue-reel' : 'tongue-snap', { goatId })];
+    case 'knockedBody':
+      return [cue('headbutt-impact', { goatId, bodyHandle: event.bodyHandle,
+        intensity: clamp(event.impulse / 70) })];
+  }
+}
+export function mapGameplay(event: GameplayAudioEvent): AudioCue[] {
+  const data = event.data;
+  switch (event.type) {
+    case 'style:input': return []; // 'style:scored' is the authoritative single audio trigger.
+    case 'style:scored':
+      return event.data.comboCount >= 2 && event.data.comboCount % 3 === 0 ?
+        [cue('combo', { combo: event.data.comboCount, intensity: clamp(event.data.points / 45) })] : [];
+    case 'combo:ended': return [];
+    case 'size:changed': {
+      const rank = { Kid: 0, Billy: 1, Big: 2, GIGGA: 3 };
+      if (event.data.from === event.data.to) return [];
+      return [cue(rank[event.data.to] > rank[event.data.from] ? 'gigga-grow' : 'gigga-shrink',
+        { size: event.data.targetScale, intensity: .85 })];
+    }
+    case 'ability:used': {
+      const e = event.data;
+      switch (e.name) {
+        case 'headbutt': return [cue('headbutt-charge', { intensity: clamp(e.power ?? .6) })];
+        case 'tongue-attach': return [cue('tongue-shoot')];
+        case 'tongue-fling': return [cue('tongue-snap')];
+        case 'bleat': return [cue('bleat')];
+        case 'flop': return [cue('ragdoll-flop')];
+        case 'flip': return [cue('flip-whoosh')];
+        case 'wall-kick': return [cue('jump')];
+      }
+      return [];
+    }
+    case 'balance:knockdown': return [cue('ragdoll-flop', { intensity: .75 })];
+    case 'balance:recovered': return [cue('jump', { intensity: .22 })];
+    case 'traversal': return [cue('climb', { intensity: clamp(event.data.metres * 2) })];
+    case 'inventory:changed': return event.data.after > event.data.before ?
+      [cue('build-snap', { intensity: .24 })] : [];
+    case 'material:harvested': return [cue('build-snap', { intensity: .35 })];
+    case 'build:placed': return [cue('build-place')];
+    case 'build:edited': return [cue('build-snap')];
+    case 'build:removed': return [cue('build-snap', { intensity: .3 })];
+    case 'build:hit': return [cue('headbutt-impact', { intensity: clamp(event.data.damage / 90) })];
+    case 'build:broken': return [cue('build-collapse', { intensity: .7 })];
+    case 'build:collapsed': return event.data.pieces.length ?
+      [cue('build-collapse', { intensity: clamp(event.data.pieces.length / 9) })] : [];
+    case 'coins:changed': return [cue(event.data.after > event.data.before ? 'coin' : 'ui-back')];
+    case 'unlock:claimed': return [cue('ui-confirm')];
+    case 'challenge:completed': return [cue('gig-success')];
+    case 'challenge:progress': return [];
+    case 'build:requested': return [cue('ui-click', { intensity: .28 })];
+  }
+  void data;
+}
+export function mapChaos(event: ChaosEvent): AudioCue[] {
+  switch (event.type) {
+    case 'enter': return [cue('footstep-water', { bodyHandle: event.bodyHandle, intensity: .3 })];
+    case 'exit': return [];
+    case 'splash': return [cue('splash', {
+      bodyHandle: event.bodyHandle, intensity: clamp(event.impactSpeed / 14 + event.mass / 240),
+    })];
+    case 'destruction': return [cue(event.cause === 'soda' ? 'soda-pop' :
+      event.mass >= 120 ? 'prop-break' : 'crate-break',
+      { bodyHandle: event.bodyHandle, position: event.position, intensity: clamp(event.mass / 180) })];
+    case 'knock': return [cue('domino', { bodyHandle: event.bodyHandle, intensity: .5 })];
+    case 'topple': return [cue('domino', { bodyHandle: event.bodyHandle,
+      intensity: clamp(event.tiltRadians / 1.6) })];
+    case 'sodaPop': return [cue('soda-pop', { bodyHandle: event.bodyHandle, intensity: .85 })];
+    case 'bounce': return [cue('trampoline', { bodyHandle: event.bodyHandle, intensity: clamp(event.speed / 17) })];
+    case 'launch': return [cue('launch-pad', { bodyHandle: event.bodyHandle, intensity: clamp(event.speed / 19) })];
+    case 'conveyorEnter': return [cue('tongue-reel', { bodyHandle: event.bodyHandle, intensity: .24 })];
+    case 'conveyorExit': return [];
+  }
+}
+export function mapMode(event: MatchEvent): AudioCue[] {
+  switch (event.type) {
+    case 'player.joined': return [cue('ui-confirm', { playerId: event.playerId })];
+    case 'player.ready': return [cue('ui-click', { playerId: event.playerId })];
+    case 'phase.changed': return event.to === 'countdown' ?
+      [cue('party-countdown')] : [];
+    case 'countdown': return [cue('party-countdown', { intensity: event.seconds <= 1 ? 1 : .45,
+      pitch: event.seconds <= 1 ? 1.32 : 1 })];
+    case 'tide.warning': return [cue('tide-warning', { intensity: .9 })];
+    case 'tide.rose': return [cue('splash', { intensity: .58 })];
+    case 'goat.eliminated': return [cue('elimination', { playerId: event.playerId })];
+    case 'goat.knockout': return [cue('headbutt-impact', { playerId: event.victimId, intensity: .8 })];
+    case 'peak.contested': return [cue('ui-back', { intensity: .25 })];
+    case 'peak.control': return event.playerId ? [cue('ui-confirm', { playerId: event.playerId })] : [];
+    case 'peak.scored': return [cue('coin', { playerId: event.playerId })];
+    case 'hay.picked': return [cue('tongue-stick', { playerId: event.playerId })];
+    case 'hay.dropped': return [cue('tongue-snap', { playerId: event.playerId })];
+    case 'hay.punted': return [cue('headbutt-impact', { playerId: event.playerId, intensity: .5 })];
+    case 'hay.scored': return [cue('coin', { playerId: event.playerId ?? undefined, intensity: .9 })];
+    case 'match.finished': return [cue('victory', { intensity: 1 })];
+  }
+}
+export function mapGig(event: GigEvent): AudioCue[] {
+  switch (event.type) {
+    case 'board.rotated': return [cue('ui-click', { intensity: .22 })];
+    case 'gig.accepted': return [cue('ui-confirm')];
+    case 'objective.progress': return [cue('ui-click', { intensity: .22 })];
+    case 'gig.failed': return [cue('gig-fail')];
+    case 'gig.abandoned': return [cue('gig-fail', { intensity: .3 })];
+    case 'gig.completed': return [
+      cue('gig-success', { intensity: 1 }),
+      cue(event.award.rating === 'gold' ? 'rating-gold' :
+        event.award.rating === 'silver' ? 'rating-silver' : 'rating-bronze', { intensity: .8 }),
+    ];
+    case 'cosmetic.unlocked': return [cue('ui-confirm', { intensity: .75 })];
+  }
+}
+export function mapLaneEvent(input: LaneAudioEvent): AudioCue[] {
+  switch (input.lane) {
+    case 'physics': return mapPhysics(input.event);
+    case 'gameplay': return mapGameplay(input.event);
+    case 'chaos': return mapChaos(input.event);
+    case 'modes': return mapMode(input.event);
+    case 'gigs': return mapGig(input.event);
+  }
+}
