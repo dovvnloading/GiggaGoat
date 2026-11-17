@@ -139,6 +139,8 @@ export class Game {
     this.off.push(this.breakables.events.on(event => {
       const prop = this.propByBody.get(event.bodyHandle);
       if (prop) {
+        const removed = this.colliders.bodies.get(prop.id);
+        if (removed) this.water.untrack(removed);
         this.destroyedProps.add(prop.id);
         this.colliders.bodies.delete(prop.id);
         this.propByBody.delete(event.bodyHandle);
@@ -366,7 +368,18 @@ export class Game {
     const result = this.physics.step(seconds);
     // WaterSystem.setSeaLevel wakes all tracked Rapier bodies. It must run
     // outside PhysicsWorld's callbacks to avoid re-entering Rapier during step.
-    if (this.party.match) this.water.setSeaLevel(this.party.match.tideLevel);
+    if (this.party.match && this.water.seaLevel !== this.party.match.tideLevel) {
+      // Breakable bodies can be removed by other lanes before water's next
+      // before-step maintenance. Never wake a stale Rapier handle on tide rise.
+      for (const [id, body] of this.colliders.bodies) {
+        if (this.physics.raw.getRigidBody(body.handle)) continue;
+        this.water.untrack(body);
+        this.colliders.bodies.delete(id);
+        this.propByBody.delete(body.handle);
+        this.destroyedProps.add(id);
+      }
+      this.water.setSeaLevel(this.party.match.tideLevel);
+    }
     return result;
   }
 
