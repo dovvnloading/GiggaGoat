@@ -4,6 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData, PropDescriptor } from './types';
 import { gridSample } from './terrain';
 import { publicAssetUrl } from './public-assets';
+import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import { buildArchitecture } from './visual-architecture';
 import { TOON_RAMP } from './visual-props';
 
@@ -366,8 +367,8 @@ function makeSeaCave(island: IslandData, cave: PropDescriptor): THREE.Group {
 }
 
 /** The library's static GLBs are normalized once and repeated as GPU instances. */
-function instantiateLibraryModel(root: THREE.Object3D, placements: readonly Placement[],
-  name: string, rock: boolean): THREE.Group {
+export function instantiateLibraryModel(root: THREE.Object3D, placements: readonly Placement[],
+  name: string, rock: boolean, assetPath: string): THREE.Group {
   root.updateMatrixWorld(true);
   const bounds = new THREE.Box3().setFromObject(root);
   const span = bounds.getSize(new THREE.Vector3());
@@ -375,8 +376,10 @@ function instantiateLibraryModel(root: THREE.Object3D, placements: readonly Plac
     throw new Error('Empty or degenerate library model: ' + name);
   }
   const center = bounds.getCenter(new THREE.Vector3());
+  const authored = isAuthoredLibraryAsset(assetPath);
   const normalize = new THREE.Matrix4()
-    .makeScale(1 / span.x, 1 / span.y, 1 / span.z)
+    .makeScale(authored ? 1 / span.x : 1, authored ? 1 / span.y : 1,
+      authored ? 1 / span.z : 1)
     .multiply(new THREE.Matrix4().makeTranslation(-center.x, -bounds.min.y, -center.z));
   const group = new THREE.Group();
   group.name = name;
@@ -397,9 +400,12 @@ function instantiateLibraryModel(root: THREE.Object3D, placements: readonly Plac
     instanced.receiveShadow = false;
     for (let i = 0; i < placements.length; i++) {
       const p = placements[i]!;
+      const fit = fitLibraryModel(span,
+        new THREE.Vector3(p.width, p.height, p.depth), assetPath);
       dummy.position.set(p.x, p.y, p.z);
-      dummy.rotation.set(p.pitch ?? 0, p.yaw ?? 0, p.roll ?? 0, 'YXZ');
-      dummy.scale.set(p.width, p.height, p.depth);
+      dummy.rotation.set(p.pitch ?? 0, (p.yaw ?? 0) + fit.yaw, p.roll ?? 0, 'YXZ');
+      if (authored) dummy.scale.set(p.width, p.height, p.depth);
+      else dummy.scale.copy(fit.scale);
       dummy.updateMatrix();
       instanced.setMatrixAt(i, dummy.matrix);
     }
@@ -706,7 +712,8 @@ export function buildLighthouseVisuals(island: IslandData): LighthouseVisuals {
       new GLTFLoader().load(url, gltf => {
         if (disposed) return;
         try {
-          const model = instantiateLibraryModel(gltf.scene, placements, name, isRock);
+          const model = instantiateLibraryModel(gltf.scene, placements, name, isRock,
+            'assets/library/' + path);
           if (model.children.length === 0) throw new Error('Empty GLB');
           model.traverse(object => {
             if (!(object instanceof THREE.Mesh)) return;
@@ -756,7 +763,8 @@ export function buildLighthouseVisuals(island: IslandData): LighthouseVisuals {
       new GLTFLoader().load(url, gltf => {
         if (disposed) return;
         try {
-          const model = instantiateLibraryModel(gltf.scene, positions, name, true);
+          const model = instantiateLibraryModel(gltf.scene, positions, name, true,
+            'assets/library/' + path);
           if (!model.children.length) throw new Error('Empty rock GLB');
           group.add(model);
           if (++rocksLoaded === 2) rockFallback.visible = false;

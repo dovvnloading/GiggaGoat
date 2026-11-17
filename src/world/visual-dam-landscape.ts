@@ -7,6 +7,7 @@ import { gridSample } from './terrain';
 import { damChannelAt, DAM_CHANNEL } from './dam-landscape';
 import { getDamPlacement } from './the-dam';
 import { publicAssetUrl } from './public-assets';
+import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 
 interface Placement {
   x: number; y: number; z: number;
@@ -313,12 +314,15 @@ export function instanceDamAsset(
   const bounds = new THREE.Box3().setFromObject(root);
   const dimensions = bounds.getSize(new THREE.Vector3());
   const centre = bounds.getCenter(new THREE.Vector3());
-  const swap = Boolean(set.longAxisX && dimensions.z > dimensions.x);
-  const geometryScale = new THREE.Vector3(
+  const assetPath = 'assets/library/' + set.path;
+  const authored = isAuthoredLibraryAsset(assetPath);
+  // Only authored assets retain the old normalized per-axis envelope.
+  const swap = authored && Boolean(set.longAxisX && dimensions.z > dimensions.x);
+  const geometryScale = authored ? new THREE.Vector3(
     1 / Math.max(swap ? dimensions.z : dimensions.x, 0.001),
     1 / Math.max(dimensions.y, 0.001),
     1 / Math.max(swap ? dimensions.x : dimensions.z, 0.001),
-  );
+  ) : new THREE.Vector3(1, 1, 1);
   const parts = new Map<string, {
     material: THREE.Material; geometries: THREE.BufferGeometry[];
   }>();
@@ -366,9 +370,11 @@ export function instanceDamAsset(
       mesh.castShadow = false;
       mesh.receiveShadow = true;
       set.placements.forEach((p, i) => {
-        quaternion.setFromAxisAngle(up, p.yaw);
+        const fit = fitLibraryModel(dimensions,
+          new THREE.Vector3(p.width, p.height, p.depth), assetPath);
+        quaternion.setFromAxisAngle(up, p.yaw + (authored ? 0 : fit.yaw));
         transform.compose(new THREE.Vector3(p.x, p.y, p.z), quaternion,
-          new THREE.Vector3(p.width, p.height, p.depth));
+          authored ? new THREE.Vector3(p.width, p.height, p.depth) : fit.scale);
         mesh.setMatrixAt(i, transform);
       });
       mesh.instanceMatrix.needsUpdate = true;

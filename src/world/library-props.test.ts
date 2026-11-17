@@ -184,7 +184,7 @@ describe('library geometry batching', () => {
     baked.dispose(); geometry.dispose(); material.dispose();
   });
 
-  it('bakes multiple transformed model parts and their material paint into one unit envelope', () => {
+  it('bakes transformed native model parts centred in X/Z and grounded in Y', () => {
     const source = new THREE.Group();
     const wood = new THREE.Mesh(
       new THREE.BoxGeometry(2, 3, 1),
@@ -205,10 +205,14 @@ describe('library geometry batching', () => {
     expect(geometry!.index).toBeNull();
     expect(positions.count).toBeGreaterThan(36);
     expect(colours.count).toBe(positions.count);
-    for (const axis of ['x', 'y', 'z'] as const) {
-      expect(geometry!.boundingBox!.min[axis]).toBeGreaterThanOrEqual(-0.5);
-      expect(geometry!.boundingBox!.max[axis]).toBeLessThanOrEqual(0.5);
-    }
+    // The non-authored GLB retains its native dimensions: X/Z centred,
+    // Y grounded at zero for a uniform fit at each rendering instance.
+    expect(geometry!.boundingBox!.min.x).toBeCloseTo(-1, 5);
+    expect(geometry!.boundingBox!.max.x).toBeCloseTo(1, 5);
+    expect(geometry!.boundingBox!.min.z).toBeCloseTo(-0.5, 5);
+    expect(geometry!.boundingBox!.max.z).toBeCloseTo(0.5, 5);
+    expect(geometry!.boundingBox!.min.y).toBeCloseTo(0, 5);
+    expect(geometry!.boundingBox!.max.y).toBeGreaterThan(3);
     expect(colours.getX(0)).not.toBeCloseTo(colours.getX(colours.count - 1));
     geometry!.dispose();
     wood.geometry.dispose(); roof.geometry.dispose();

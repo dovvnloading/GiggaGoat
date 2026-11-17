@@ -435,7 +435,8 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
         if (lanterns) group.add(lanterns.group);
         const ranges: BakedPlacement<DowntownModel>[] = [];
         const geometry = bakeLibraryGeometry(staticPlan, models,
-          (placement, start, count) => ranges.push({ placement, start, count }));
+          (placement, start, count) => ranges.push({ placement, start, count }),
+          DOWNTOWN_MODELS);
         if (!geometry && !lanterns) return;
         if (geometry) {
           const lod = await createDistrictLod(island, geometry, ranges, group,
