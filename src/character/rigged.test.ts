@@ -160,8 +160,10 @@ describe('rigged GLB heading matches physical forward', () => {
       alignRiggedSceneForward(clonedScene);
 
       for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-        // This is the same yaw convention used by physics/math.ts.
-        rigModel.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+        // Physics forward(yaw) goes toward +X for +PI/2, whereas a positive
+        // Three.js Y rotation turns local -Z toward -X. The balanced torso
+        // therefore has rotation -yaw for the corresponding travel heading.
+        rigModel.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -yaw);
         rigModel.updateMatrixWorld(true);
         const nose = new THREE.Vector3(0, 0, -1)
           .transformDirection(armature.matrixWorld);
