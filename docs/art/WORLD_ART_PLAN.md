@@ -58,3 +58,35 @@ Rules for every asset:
    cottage uses the white/red variant).
 3. Downtown shopfront recolours (one per storefront in the painting) + awnings and signs.
 4. Baa-ardwalk, Crane Yard, Pines, Lighthouse, in that order, each with its own painting check.
+
+## 5. Scale rules (island QA X-8)
+
+Reference: the goat is about 1.2 m tall. Every visual model must read at its real size next to the goat.
+
+**How models fit their boxes.** Gameplay descriptors are boxes (X width, Y height, Z depth). Generic library GLBs
+keep their proportions and are fitted uniformly inside the box, with an optional quarter turn (`library-fit.ts`).
+Models under `assets/library/custom/` and `assets/library/usdcraft/` are stretched per axis to the box, so they are
+authored in Blender at exactly the box size, or inside invisible anchor triangles at the box corners when the visible
+part is smaller (lamps, balustrades, cables). A custom model and its descriptor box must always agree.
+
+**Buildings.** Kenney-derived buildings (Hoofington houses, Downtown shops and rear houses) share one world scale:
+8 m per Kenney unit, so storeys are about 3.2 m and doors about 2 m on every building. A building's box is its
+model's native size x 8, with the front face on the pavement line.
+
+**Real-world sizes for dressing (box = visual size).**
+
+| Kind | Size (m) | Kind | Size (m) |
+|---|---|---|---|
+| bench | 2.0 x 0.95 x 0.75 | traffic cone | 0.45 x 0.7 x 0.45 (Crane Yard 0.5 x 0.75 x 0.5) |
+| planter | 1.6 x 1.1 x 1.6 | rooftop AC unit | 1.2 x 1.0 x 1.0 |
+| mailbox | 1.3 x 2.2 x 1.0 frame | street lamp | 4.2 m lantern in a 0.72 x 7.8 x 0.72 frame |
+| garden gnome | 0.5 x 0.9 x 0.5 | round hay bale | 2.2 x 1.5 x 2.2 |
+| sea buoy | 1.0 x 1.8 x 1.0 | shipping container | 12.2 x 3.2 x 3.0 |
+| picket fence panel | 9.2 x 1.85 x 0.35 | chain-link panel | 8 x 2.85 x 0.18 |
+| pier balustrade | 1.25 m visible in a 2.65 m frame | jersey barrier | 4.3 x 1.65 x 0.9 |
+| round tree | width 0.72 x height | pine | width 0.35 x height |
+| flowers | width 0.9 x height | mushroom | 0.4-0.9 m tall (one hero mushroom) |
+| windmill | 12.5 x 18 x 7.9 | lighthouse | 9 x 29 x 9 |
+
+New props follow the same rule: measure the real object, build the model at that size in Blender, and set the
+descriptor box to match. Never scale a box up to make a prop "read" from far away.
