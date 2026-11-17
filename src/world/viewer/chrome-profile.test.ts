@@ -228,6 +228,34 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
           JSON.stringify(answer.exceptionDetails));
       }
       const report = answer.result?.value as Report | undefined;
+      // Temporary art QA: capture the real WebGL bookmark 15 against its
+      // reference panel. Removed after human comparison of this PR.
+      try {
+        await send('Runtime.evaluate', {
+          expression: String.raw`(() => {
+            const menu = document.getElementById('bookmark');
+            menu.value = '15';
+            menu.dispatchEvent(new Event('change', { bubbles: true }));
+            window.__worldProfile.pixelRatio(1);
+            window.__worldProfile.measure(3);
+            return true;
+          })()`,
+          returnByValue: true,
+        });
+        await sleep(350);
+        const captured = await send('Page.captureScreenshot', {
+          format: 'jpeg', quality: 68, captureBeyondViewport: false,
+        });
+        if (typeof captured.data === 'string') {
+          const chunks = captured.data.match(/.{1,10000}/g) ?? [];
+          chunks.forEach((chunk: string, index: number) => {
+            console.log('WORLD_LIGHTHOUSE_CAPTURE_' + index + '/' +
+              chunks.length + ':' + chunk);
+          });
+        }
+      } catch (error) {
+        console.warn('Optional lighthouse screenshot unavailable:', error);
+      }
       expect(report?.bookmarks).toHaveLength(ART_BOOKMARKS.length);
       expect(report?.dpr).toBe(1.5);
       expect(report!.crane.noOutlines!.drawCalls)
