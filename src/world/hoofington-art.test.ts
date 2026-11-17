@@ -69,7 +69,8 @@ describe('Hoofington art / building slicing regressions', () => {
   it('keeps facades upright under every authored yaw and preserves untinted glass/roof details', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
     const view = createWorldScene(island);
-    const categories = ['barn', 'house', 'cottage', 'shop', 'booth', 'control-house'];
+    // The Dam control house is now a GLB mesh, not an instanced procedural facade.
+    const categories = ['barn', 'house', 'cottage', 'shop', 'booth'];
     for (const kind of categories) {
       const props = island.props.filter(p => p.kind === kind);
       expect(props.length, kind).toBeGreaterThan(0);

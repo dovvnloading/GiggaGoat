@@ -203,19 +203,11 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       { shape: 'cylinder', color: 0x976744 });
   }
 
-  // The Dam: accessible control hut, shoreline dock, handrails and loose equipment.
-  const dam: PoiId = 'the-dam';
-  at(dam, 'control-house', 21, -7, 11, 9, 11, { color: 0xd4e4d6 });
-  const lake = island.reservoir;
-  place('dock', lake.center.x + 18 * scale, lake.center.z + 5 * scale,
-    17, 1.0, 6, dam, { y: (lake.level + 0.35 * scale), color: 0xac855c });
-  for (let i = 0; i < 16; i++) {
-    at(dam, 'fence', -38 + i * 5, -4, 4.6, 2.1, 0.34, { color: 0xcdd4d8 });
-  }
-  for (let i = 0; i < 14; i++) {
-    at(dam, i % 2 ? 'barrel' : 'crate', rand(-34, 32), rand(-27, 16),
-      1.8, 2, 1.8, { mass: 9, shape: i % 2 ? 'cylinder' : 'cuboid' });
-  }
+  // The Dam's hut, rails, pipes, rocks and loose equipment are authored in
+  // the hero GLB, not duplicated as procedural dressing.
+  // The retired fourteen crates/barrels consumed two RNG samples each.
+  // Preserve the existing lighthouse and secret-relic seed layout.
+  for (let i = 0; i < 28; i++) rng.next();
 
   // Mt. Gigga: alternating green landings, a cave recess and climbable boulder stacks.
   const peak: PoiId = 'mt-gigga';

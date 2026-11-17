@@ -65,7 +65,7 @@ describe('Billy Isle hi-fi environment map', () => {
     const minimum: Record<(typeof POI_IDS)[number], number> = {
       hoofington: 75, 'baa-ardwalk': 65, 'crane-yard': 70,
       'downtown-bleatsville': 90, 'mt-gigga': 60,
-      'whispering-pines': 125, 'the-dam': 35, 'old-lighthouse': 30,
+      'whispering-pines': 125, 'the-dam': 1, 'old-lighthouse': 30,
     };
     for (const id of POI_IDS) {
       expect(island.props.filter(p => p.poiId === id).length).toBeGreaterThanOrEqual(minimum[id]);
@@ -73,7 +73,7 @@ describe('Billy Isle hi-fi environment map', () => {
     const kind = new Set(island.props.map(prop => prop.kind));
     for (const required of ['silo', 'gnome', 'mailbox', 'ferris-wheel', 'bunting', 'cone',
       'container', 'fountain', 'ac-unit', 'water-tower', 'mushroom', 'lookout',
-      'control-house', 'shipwreck', 'cave-mouth', 'grass-tuft', 'bush']) {
+      'shipwreck', 'cave-mouth', 'grass-tuft', 'bush']) {
       expect(kind.has(required as never), required).toBe(true);
     }
   });
@@ -154,7 +154,8 @@ describe('hi-fi renderer and art-comparison viewer', () => {
     expect(view.chunks[0]!.material).toBeInstanceOf(THREE.MeshToonMaterial);
     expect(view.group.getObjectByName('props-lighthouse')).toBeInstanceOf(THREE.InstancedMesh);
     expect(view.group.getObjectByName('puffy-cloud-banks')).toBeInstanceOf(THREE.InstancedMesh);
-    expect(view.group.getObjectByName('dam-spillway-1')).toBeInstanceOf(THREE.Mesh);
+    expect(view.group.getObjectByName('the-dam-hero')).toBeInstanceOf(THREE.Group);
+    expect(view.group.getObjectByName('dam-spillway-1')).toBeUndefined();
     expect(view.group.getObjectByName('road-centre-dashes')).toBeInstanceOf(THREE.InstancedMesh);
     expect(view.sun.castShadow).toBe(true);
     const water = view.water.material as THREE.ShaderMaterial;

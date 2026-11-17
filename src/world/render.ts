@@ -9,6 +9,7 @@ import { buildGroundDetails } from './visual-ground';
 import { buildStreetDetails } from './visual-streets';
 import { buildMeadowScatter } from './visual-meadow';
 import { buildWaterVisuals } from './visual-water';
+import { buildDamVisuals } from './visual-dam';
 import { buildSkyVisuals, type LightingPreset } from './visual-sky';
 
 export interface WorldSceneOptions {
@@ -308,6 +309,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(props.group);
   const waterVisuals = buildWaterVisuals(island);
   group.add(waterVisuals.inland, waterVisuals.sea);
+  const dam = buildDamVisuals(island);
+  group.add(dam.group);
   const sky = buildSkyVisuals();
   group.add(sky.group);
   const sun = new THREE.DirectionalLight(0xffe9c5, 1.65);
@@ -356,6 +359,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     elapsed = Number.isFinite(time) ? Math.max(0, time) : elapsed;
     waterVisuals.update(elapsed, tide);
     props.update(elapsed);
+    dam.update(elapsed);
   }
   function updateCulling(camera: THREE.Camera): boolean {
     camera.updateMatrixWorld();
@@ -379,9 +383,12 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
         mesh.visible = visible;
       }
     }
+    // The async GLB may have arrived since the last shadow-map pass.
+    if (dam.consumeShadowChange()) shadowCastersChanged = true;
     return shadowCastersChanged;
   }
   function dispose(): void {
+    dam.dispose();
     const geometries = new Set<THREE.BufferGeometry>();
     const materials = new Set<THREE.Material>();
     group.traverse(object => {

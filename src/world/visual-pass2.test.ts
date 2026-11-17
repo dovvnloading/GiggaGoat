@@ -19,6 +19,8 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
   it('keeps every prop instance finite, in the right location, and within its descriptor size', () => {
     const grouped = new Map<string, PropDescriptor[]>();
     for (const prop of island.props) {
+      // The Dam Bomb's data-only platform is replaced visually by the GLB.
+      if (prop.id.startsWith('the-dam-compat-')) continue;
       const group = grouped.get(prop.kind) ?? [];
       group.push(prop);
       grouped.set(prop.kind, group);

@@ -3,6 +3,7 @@ import { SeededRandom } from './random';
 import { gridSample, riverAt } from './terrain';
 import { buildBaaardwalk } from './boardwalk';
 import { buildCraneYard } from './crane-yard';
+import { getDamPlacement } from './the-dam';
 
 interface AddOptions {
   yaw?: number;
@@ -179,24 +180,25 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   site(forest, 'platform', 19, -17, 8, 1.1, 7, { lift: 8.5 });
   site(forest, 'sign', -4, 8, 4, 3, 0.5);
 
-  // THE DAM: broad reservoir, conspicuous spillway and terraced access platforms.
-  const dam: PoiId = 'the-dam';
-  const lake = island.reservoir;
-  const wallX = lake.center.x - 16 * scale, wallZ = lake.center.z - 22 * scale;
-  add(dam, 'dam-wall', wallX, wallZ, { x: 31 * scale, y: 17 * scale, z: 4.5 * scale },
-    { absoluteY: lake.level - 2 * scale, color: 0xaaaeb7 });
-  add(dam, 'platform', wallX, wallZ,
-    { x: 33 * scale, y: 1 * scale, z: 7 * scale },
-    { absoluteY: lake.level + 6.6 * scale });
-  site(dam, 'tower', -8, -13, 10, 14, 10, { color: 0xa2b8ce });
-  site(dam, 'ramp', 2, -15, 6, 3, 14);
-  for (let i = 0; i < 10; i++) {
-    site(dam, i % 2 ? 'barrel' : 'crate', rng.range(-24, 20), rng.range(-18, 18),
-      2, 2.2, 2, { dynamicMass: 12, shape: i % 2 ? 'cylinder' : 'cuboid' });
-  }
-  for (let i = 0; i < 5; i++) {
-    site(dam, 'fence', -24 + i * 11, 24, 10, 2.3, 0.3, { breakable: true });
-  }
+  // THE DAM: one non-rendered marker preserves the Dam Bomb gig's walkway
+  // contract. Its upper surface matches the custom GLB deck; the actual
+  // geometry and Rapier boxes are assembled by the world adapters.
+  const dam = getDamPlacement(island);
+  props.push({
+    id: 'the-dam-compat-walkway',
+    kind: 'platform', poiId: 'the-dam',
+    transform: {
+      position: { x: dam.position.x, y: dam.position.y + 18.3 * scale,
+        z: dam.position.z },
+      rotationY: 0,
+    },
+    size: { x: 33 * scale, y: 1 * scale, z: 7 * scale },
+    shape: 'cuboid', body: STATIC, collidable: false,
+    breakable: false, lickable: false, climbable: true,
+  });
+  // The ten removed loose props previously consumed twenty RNG samples.
+  // Keep later POIs' seeded landmarks and collectible positions unchanged.
+  for (let i = 0; i < 20; i++) rng.next();
 
   // OLD LIGHTHOUSE: a rocky cape with a climbable beacon and cliffside secrets.
   const cape: PoiId = 'old-lighthouse';

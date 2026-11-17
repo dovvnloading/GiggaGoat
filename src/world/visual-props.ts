@@ -571,6 +571,9 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
   void chunkSize;
   const buckets = new Map<PropKind, PropDescriptor[]>();
   for (const prop of props) {
+    // The Dam Bomb gig keeps a data-only walkway anchor; the GLB draws
+    // the entire structure, so never instanced-render this old platform.
+    if (prop.id.startsWith('the-dam-compat-')) continue;
     const entries = buckets.get(prop.kind) ?? [];
     entries.push(prop);
     buckets.set(prop.kind, entries);
