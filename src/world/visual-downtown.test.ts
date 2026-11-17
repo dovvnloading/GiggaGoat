@@ -47,6 +47,22 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     expect(DOWNTOWN_MODELS.skylineCrane)
       .toBe('assets/library/custom/crane-yard/skyline-tower-crane.glb');
     expect(DOWNTOWN_MODELS.waterTower).toContain('/city-kit-industrial/');
+    const vegetation = {
+      flowerPink: 'flowers-pink.glb',
+      flowerPurple: 'flowers-purple.glb',
+      flowerSunny: 'flowers-sunny.glb',
+      bushA: 'bush-round-a.glb',
+      bushB: 'bush-round-b.glb',
+      oakA: 'tree-round-a.glb',
+      oakB: 'tree-round-b.glb',
+      oakC: 'tree-round-c.glb',
+    } as const;
+    for (const [model, file] of Object.entries(vegetation)) {
+      const path = 'assets/library/custom/hoofington-props/' + file;
+      expect(DOWNTOWN_MODELS[model as keyof typeof vegetation], model).toBe(path);
+      expect(manifest.find(entry => entry.path === path)?.license, model).toBe('CC0');
+      expect(existsSync('public/' + path), model).toBe(true);
+    }
   });
 
   it('replaces ten storefronts, six parkour houses and the tower without moving colliders', () => {
@@ -95,6 +111,26 @@ describe('Downtown Bleatsville sourced streetscape', () => {
   });
 
 
+  it('cycles authored vegetation variants without changing placement paint', () => {
+    const plan = makeDowntownPlacements(generateIsland({
+      seed: 'billy-isle', resolution: 97,
+    }));
+    const families: readonly (readonly DowntownModel[])[] = [
+      ['flowerPink', 'flowerPurple', 'flowerSunny'],
+      ['bushA', 'bushB'],
+      ['oakA', 'oakB', 'oakC'],
+    ];
+    for (const variants of families) {
+      const placements = plan.filter(p => variants.includes(p.model));
+      expect(placements.length).toBeGreaterThanOrEqual(variants.length);
+      for (const [index, placement] of placements.entries()) {
+        expect(placement.model).toBe(variants[index % variants.length]);
+        expect(placement.wall).toBeUndefined();
+        expect(placement.roof).toBeUndefined();
+      }
+    }
+  });
+
   it('keeps street details, but only two 45%-thickness garlands and no striped overlay', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
     const centre = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
@@ -118,8 +154,8 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     expect(skyline).toHaveLength(1);
     expect(skyline[0]!.wall).toBeUndefined();
     expect(plan.filter(p => p.model === 'retroWindow').length).toBeGreaterThan(10);
-    expect(plan.filter(p => p.model === 'flower').length).toBeGreaterThan(30);
-    for (const model of ['table','chair','trash','cone','bread','produce','clothes','oak'])
+    expect(plan.filter(p => p.model.startsWith('flower')).length).toBeGreaterThan(30);
+    for (const model of ['table','chair','trash','cone','bread','produce','clothes','oakA'])
       expect(plan.some(p => p.model === model), model).toBe(true);
     const furniture = plan.filter(p => ['table','chair','trash','bread',
       'produce','clothes'].includes(p.model));
@@ -224,6 +260,37 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     plaster.geometry.dispose(); cap.geometry.dispose();
     (plaster.material as THREE.Material).dispose();
     (cap.material as THREE.Material).dispose();
+  });
+
+  it('preserves authored vegetation colours even with legacy paint overrides', () => {
+    const variants: DowntownModel[] = [
+      'flowerPink', 'flowerPurple', 'flowerSunny',
+      'bushA', 'bushB', 'oakA', 'oakB', 'oakC',
+    ];
+    const sourceColour = new THREE.Color(0x4c9c68);
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshStandardMaterial({ color: sourceColour }));
+    const prefab = new THREE.Group();
+    prefab.add(mesh);
+    const models = new Map<DowntownModel, THREE.Group>(
+      variants.map(model => [model, prefab] as const));
+    const placements: DowntownPlacement[] = variants.map((model, index) => ({
+      model, position: { x: index * 2, y: 0, z: 0 },
+      size: { x: 1, y: 1, z: 1 }, yaw: 0,
+      wall: 0xff00ff, roof: 0x00ffff,
+    }));
+    const baked = bakeLibraryGeometry(placements, models)!;
+    const colours = baked.getAttribute('color');
+    expect(colours.count).toBe(variants.length *
+      (mesh.geometry.index?.count ?? mesh.geometry.getAttribute('position').count));
+    for (let i = 0; i < colours.count; i++) {
+      expect(colours.getX(i)).toBeCloseTo(sourceColour.r, 6);
+      expect(colours.getY(i)).toBeCloseTo(sourceColour.g, 6);
+      expect(colours.getZ(i)).toBeCloseTo(sourceColour.b, 6);
+    }
+    baked.dispose();
+    mesh.geometry.dispose();
+    mesh.material.dispose();
   });
 
   it('keeps the existing instancing and collider counts in non-browser consumers', () => {

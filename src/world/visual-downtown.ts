@@ -32,9 +32,14 @@ export const DOWNTOWN_MODELS = {
   lamp: 'assets/library/usdcraft/street-lamp-lantern.glb',
   bench: 'assets/library/kenney/furniture-kit/bench.glb',
   planter: 'assets/library/kenney/city-kit-suburban/planter.glb',
-  flower: 'assets/library/kenney/nature-kit/flower_purpleA.glb',
-  bush: 'assets/library/kenney/nature-kit/plant_bushDetailed.glb',
-  oak: 'assets/library/kenney/nature-kit/tree_detailed.glb',
+  flowerPink: 'assets/library/custom/hoofington-props/flowers-pink.glb',
+  flowerPurple: 'assets/library/custom/hoofington-props/flowers-purple.glb',
+  flowerSunny: 'assets/library/custom/hoofington-props/flowers-sunny.glb',
+  bushA: 'assets/library/custom/hoofington-props/bush-round-a.glb',
+  bushB: 'assets/library/custom/hoofington-props/bush-round-b.glb',
+  oakA: 'assets/library/custom/hoofington-props/tree-round-a.glb',
+  oakB: 'assets/library/custom/hoofington-props/tree-round-b.glb',
+  oakC: 'assets/library/custom/hoofington-props/tree-round-c.glb',
   trash: 'assets/library/kenney/furniture-kit/trashcan.glb',
   ac: 'assets/library/kenney/modular-buildings/detail-ac-a.glb',
   waterTower: 'assets/library/kenney/city-kit-industrial/water-tower.glb',
@@ -50,6 +55,10 @@ export const DOWNTOWN_MODELS = {
 } as const;
 export type DowntownModel = keyof typeof DOWNTOWN_MODELS;
 export type DowntownPlacement = HoofPlacement<DowntownModel>;
+
+const FLOWER_VARIANTS = ['flowerPink', 'flowerPurple', 'flowerSunny'] as const;
+const BUSH_VARIANTS = ['bushA', 'bushB'] as const;
+const OAK_VARIANTS = ['oakA', 'oakB', 'oakC'] as const;
 
 /** Fractions of each Blender model's fitted height, measured from its base. */
 export const DOWNTOWN_SIGN_ANCHORS = {
@@ -112,6 +121,7 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
   const centre = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
   const scale = island.size / 600;
   const plan: DowntownPlacement[] = [];
+  let flowerIndex = 0, bushIndex = 0, oakIndex = 0;
   const buildings = island.props.filter(p => p.poiId === 'downtown-bleatsville' &&
     (p.kind === 'shop' || p.kind === 'house'));
   const nearestBuilding = (p: PropDescriptor): PropDescriptor | undefined =>
@@ -156,7 +166,7 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
       case 'lamp': model = 'lamp'; break;
       case 'bench': model = 'bench'; break;
       case 'planter': model = 'planter'; break;
-      case 'flower': model = 'flower'; break;
+      case 'flower': model = FLOWER_VARIANTS[flowerIndex++ % FLOWER_VARIANTS.length]!; break;
       case 'water-tower': model = 'waterTower'; break;
       case 'ac-unit': model = 'ac'; break;
       case 'fountain': model = 'fountain'; break;
@@ -202,7 +212,7 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
         plan.push({ model: 'planter',
           position: { x: x + lateralX, y: y - 0.85 * scale, z: z + lateralZ },
           size: { x: 1.45 * scale, y: 0.48 * scale, z: 0.65 * scale }, yaw });
-        plan.push({ model: 'flower',
+        plan.push({ model: FLOWER_VARIANTS[flowerIndex++ % FLOWER_VARIANTS.length]!,
           position: { x: x + lateralX, y: y - 0.48 * scale, z: z + lateralZ },
           size: { x: 0.9 * scale, y: 0.65 * scale, z: 0.62 * scale }, yaw });
       }
@@ -221,10 +231,12 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
       scatter('chair', side * 13.0, dz + 1.65, 0.82, 1.4, 0.82, -side * 0.3);
     }
     for (const dz of [-34, 5, 32]) {
-      scatter('bush', side * 15, dz, 2.4, 1.6, 2.0);
+      scatter(BUSH_VARIANTS[bushIndex++ % BUSH_VARIANTS.length]!,
+        side * 15, dz, 2.4, 1.6, 2.0);
     }
     for (const dz of [-25, 9, 28]) {
-      scatter('oak', side * 43, dz, 6.8, 13.5, 6.8);
+      scatter(OAK_VARIANTS[oakIndex++ % OAK_VARIANTS.length]!,
+        side * 43, dz, 6.8, 13.5, 6.8);
     }
   }
   scatter('bread', -14.5, 35, 2.7, 2.05, 1.2, Math.PI / 2);
