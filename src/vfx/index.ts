@@ -16,3 +16,12 @@ export {
   LANDING_DEBRIS_COUNT, makeLandingRingBurst, sampleLandingRing, sampleLandingDebris,
   type LandingRingBurst, type LandingRingFrame, type LandingDebrisFrame,
 } from './landingRingMath';
+
+export {
+  HeadbuttImpactStars, createHeadbuttImpactStars,
+  type HeadbuttImpactStarsOptions,
+} from './HeadbuttImpactStars';
+export {
+  HEADBUTT_STAR_COUNT, makeHeadbuttBurst, sampleHeadbuttFlash, sampleHeadbuttStar,
+  type HeadbuttBurst, type HeadbuttFlashFrame, type HeadbuttStarFrame,
+} from './headbuttMath';

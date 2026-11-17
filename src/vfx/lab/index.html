@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#78449a" />
-  <title>GIGGA-GOAT · Dust &amp; Landing Ring VFX Lab</title>
+  <title>GIGGA-GOAT · Dust, Landing &amp; Headbutt VFX Lab</title>
   <style>
     :root { font: 14px/1.48 ui-rounded, system-ui, sans-serif; color: #463151;
       background: #fff6ef; accent-color: #8650a3; }
@@ -40,6 +40,7 @@
     .crop img { display: block; max-width: none; width: 400%; height: auto;
       transform: translateY(-11.4%); }
     .crop--landing img { transform: translate(-25%, -11.4%); }
+    .crop--headbutt img { transform: translate(-50%, -11.4%); }
     .landing-reference { margin-top: 15px; }
     figcaption { color: #7c607d; font-size: 11px; padding-top: 8px; }
     figure { margin: 0; }
@@ -74,16 +75,16 @@
 </head>
 <body>
   <header>
-    <h1><span>GIGGA-GOAT</span> · Dust + Landing Ring</h1>
-    <p>01–02 / GAME VFX LAB · approved visual targets · real Three.js, no added packages</p>
+    <h1><span>GIGGA-GOAT</span> · Dust + Landing + Headbutt</h1>
+    <p>01–03 / GAME VFX LAB · approved visual targets · real Three.js, no added packages</p>
   </header>
   <main>
-    <section class="panel stage" aria-label="Live running goat, dust puffs and landing ring effects">
-      <h2>Live 3D dust + landing ring · drag to orbit / scroll to zoom</h2>
-      <canvas id="stage" tabindex="0" aria-label="Three-dimensional goat with dust puffs and gold landing shockwave rings"></canvas>
+    <section class="panel stage" aria-label="Live goat with dust, landing rings and headbutt impact stars">
+      <h2>Live 3D dust + landing + headbutt · drag to orbit / scroll to zoom</h2>
+      <canvas id="stage" tabindex="0" aria-label="Three-dimensional goat with dust puffs, landing shockwaves and golden headbutt stars"></canvas>
       <div class="overlay">
-        <span id="state" role="status">Running / 0 dust sprites / 0 landing rings</span>
-        <span>Impact → gold ellipse → jagged ring → fade</span>
+        <span id="state" role="status">Running / 0 dust sprites / 0 landing rings / 0 headbutt impacts</span>
+        <span>Headbutt: small flash → large burst → flying gold stars</span>
       </div>
     </section>
     <aside aria-label="Controls and approved VFX comparison">
@@ -104,12 +105,19 @@
             </div>
             <figcaption>02 · Landing Impact Ring: ivory outline → golden jagged shockwave.</figcaption>
           </figure>
+          <figure class="landing-reference">
+            <div class="crop crop--headbutt">
+              <img src="../../../docs/art/hifi/23_vfx_sheet.png"
+                alt="Approved Headbutt Impact Stars panel: goat striking a grey boulder with bright golden flash, expanding sharp yellow burst and three orange-edged yellow stars." />
+            </div>
+            <figcaption>03 · Headbutt Impact Stars: ivory flash → gold starburst → outlined stars.</figcaption>
+          </figure>
         </div>
       </section>
       <section class="panel">
         <h2>Art direction / motion</h2>
         <div class="content">
-          <p>Both reusable Three.js effects run here. Dust trails behind sprinting hooves; a golden impact ring pulses beneath the goat on landings or on demand.</p>
+          <p>Three reusable Three.js effects run here. Dust trails the hooves, a golden ring pulses on landing, and a cream-centered headbutt burst scatters outlined yellow stars beside a faceted target rock.</p>
           <label for="direction">Run direction</label>
           <select id="direction">
             <option value="left" selected>← Left (reference)</option>
@@ -121,18 +129,25 @@
           <label for="impact-strength">Landing impact strength · <output id="impact-strength-value">1.5</output></label>
           <input id="impact-strength" type="range" min="0.25" max="4" step="0.25" value="1.5" />
           <div class="mini"><span>Soft touchdown</span><span>Heavy landing</span></div>
+          <label for="headbutt-power">Headbutt power · <output id="headbutt-power-value">1.5</output></label>
+          <input id="headbutt-power" type="range" min="0.25" max="4" step="0.25" value="1.5" />
+          <div class="mini"><span>Light tap</span><span>Strong collision</span></div>
           <div class="buttons">
             <button id="pause" class="primary" type="button" aria-pressed="false">Pause motion</button>
             <button id="burst" type="button">Single hoof puff</button>
           </div>
           <button id="landing" class="full primary" type="button">Trigger landing impact ring</button>
+          <button id="headbutt" class="full primary" type="button">Trigger headbutt impact stars</button>
           <button id="clear" class="full" type="button">Clear effects</button>
           <div class="phases" aria-label="Landing impact ring progression">
             <span>① Ivory ellipse</span><b>›</b><span>② Gold halo</span><b>›</b><span>③ Jagged shockwave</span><b>›</b><span>④ Fade</span>
           </div>
+          <div class="phases" aria-label="Headbutt impact stars progression">
+            <span>① Ivory spark</span><b>›</b><span>② Sharp gold burst</span><b>›</b><span>③ Three gold stars</span><b>›</b><span>④ Fade</span>
+          </div>
         </div>
       </section>
-      <div class="note">Both effects are cosmetic only: no physics forces, no new runtime dependencies or main-game changes. Auto-landings pulse every 1.65 seconds; pause and trigger a ring to inspect its shape. The approved sheet remains bundled by Vite.</div>
+      <div class="note">All three effects are cosmetic only: no physics forces, new runtime dependencies or main-game changes. Landings pulse every 1.65 seconds and headbutts every 2.75 seconds. Pause and trigger either effect to compare with its approved panel. The original sheet remains bundled by Vite.</div>
     </aside>
   </main>
   <footer>Production lab URL: /src/vfx/lab/index.html · This page is not development-gated.</footer>

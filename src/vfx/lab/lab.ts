@@ -1,8 +1,9 @@
-/** Production-ready visual QA page for running dust and landing impact ring. */
+/** Production-ready art QA for dust, landing rings and headbutt stars. */
 import * as THREE from 'three';
 import { GoatCharacter } from '../../character/GoatCharacter';
 import { RunningDustPuffs } from '../RunningDustPuffs';
 import { LandingImpactRing } from '../LandingImpactRing';
+import { HeadbuttImpactStars } from '../HeadbuttImpactStars';
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -21,6 +22,9 @@ const rateLabel = element<HTMLOutputElement>('rate-value');
 const landingButton = element<HTMLButtonElement>('landing');
 const impactStrengthControl = element<HTMLInputElement>('impact-strength');
 const impactStrengthLabel = element<HTMLOutputElement>('impact-strength-value');
+const headbuttButton = element<HTMLButtonElement>('headbutt');
+const headbuttPowerControl = element<HTMLInputElement>('headbutt-power');
+const headbuttPowerLabel = element<HTMLOutputElement>('headbutt-power-value');
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xfff3ea);
@@ -70,11 +74,24 @@ scene.add(dust.group);
 const landing = new LandingImpactRing({ capacity: 10 });
 scene.add(landing.group);
 
+const headbutt = new HeadbuttImpactStars({ capacity: 10 });
+scene.add(headbutt.group);
+// A static faceted target for QA only; no collider or game physics.
+const rockGeometry = new THREE.DodecahedronGeometry(0.44, 0);
+const rockMaterial = new THREE.MeshToonMaterial({ color: 0x8e8194 });
+const rock = new THREE.Mesh(rockGeometry, rockMaterial);
+rock.name = 'decorative headbutt target rock';
+rock.castShadow = true;
+rock.receiveShadow = true;
+scene.add(rock);
+const headContact = new THREE.Vector3();
+
 let heading = -1;
 let cadence = Number(rateControl.value);
 let paused = false;
 let emissionClock = 0;
 let landingClock = 0;
+let headbuttClock = 0;
 let lastTime = 0;
 let yaw = 0;
 let elevation = 0.19;
@@ -91,8 +108,12 @@ function setDirection(value: string): void {
   goat.root.position.set(heading < 0 ? -0.91 : 0.91, 0, 0);
   dust.clear();
   landing.clear();
+  headbutt.clear();
   emissionClock = 0;
   landingClock = 0;
+  headbuttClock = 0;
+  goat.mountWorldPosition('head', headContact);
+  rock.position.set(headContact.x + heading * 0.58, 0.38, headContact.z - 0.05);
 }
 
 function emitHoof(): void {
@@ -111,13 +132,27 @@ function emitLanding(): void {
   );
 }
 
+function emitHeadbutt(): void {
+  // Preview the same visual headbutt action used by the existing character rig.
+  goat.play('headbutt', 0.45);
+  goat.update(0);
+  goat.mountWorldPosition('head', headContact);
+  headbutt.emit(
+    { x: headContact.x + heading * 0.31, y: headContact.y - 0.08, z: headContact.z + 0.12 },
+    { x: heading, y: 0, z: 0 },
+    Number(headbuttPowerControl.value),
+  );
+}
+
 function refreshUi(): void {
   state.textContent = (paused ? 'Paused' : 'Running') + ' / ' +
-    dust.activeCount + ' dust sprites / ' + landing.activeCount + ' landing rings';
+    dust.activeCount + ' dust sprites / ' + landing.activeCount +
+    ' landing rings / ' + headbutt.activeCount + ' headbutt impacts';
   pauseButton.textContent = paused ? 'Resume motion' : 'Pause motion';
   pauseButton.setAttribute('aria-pressed', String(paused));
   rateLabel.textContent = cadence.toFixed(1) + '/s';
   impactStrengthLabel.textContent = Number(impactStrengthControl.value).toFixed(1);
+  headbuttPowerLabel.textContent = Number(headbuttPowerControl.value).toFixed(1);
 }
 
 directionControl.addEventListener('change', () => {
@@ -130,6 +165,12 @@ rateControl.addEventListener('input', () => {
   refreshUi();
 });
 impactStrengthControl.addEventListener('input', refreshUi);
+headbuttPowerControl.addEventListener('input', refreshUi);
+headbuttButton.addEventListener('click', () => {
+  emitHeadbutt();
+  if (paused) headbutt.update(0.31); // show gold stars in the paused comparison
+  refreshUi();
+});
 landingButton.addEventListener('click', () => {
   emitLanding();
   // Hold a developed shockwave in the pause-to-compare workflow.
@@ -149,8 +190,10 @@ burstButton.addEventListener('click', () => {
 clearButton.addEventListener('click', () => {
   dust.clear();
   landing.clear();
+  headbutt.clear();
   emissionClock = 0;
   landingClock = 0;
+  headbuttClock = 0;
   refreshUi();
 });
 
@@ -204,6 +247,12 @@ function frame(now: number): void {
       emitLanding();
     }
     landing.update(dt);
+    headbuttClock += dt;
+    if (headbuttClock >= 2.75) {
+      headbuttClock %= 2.75;
+      emitHeadbutt();
+    }
+    headbutt.update(dt);
   }
 
   const horizontal = Math.cos(elevation) * distance;
@@ -234,6 +283,8 @@ emitHoof();
 dust.update(0.19);
 emitLanding();
 landing.update(0.19);
+emitHeadbutt();
+headbutt.update(0.27);
 refreshUi();
 requestAnimationFrame(frame);
 
@@ -242,6 +293,9 @@ window.addEventListener('pagehide', () => {
   disposed = true;
   dust.dispose();
   landing.dispose();
+  headbutt.dispose();
+  rockGeometry.dispose();
+  rockMaterial.dispose();
   goat.dispose();
   floor.geometry.dispose();
   (floor.material as THREE.Material).dispose();
