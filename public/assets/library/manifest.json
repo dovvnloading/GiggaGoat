@@ -32934,5 +32934,14 @@
   "license": "CC-BY 3.0",
   "credit": "Poly by Google",
   "url": "https://poly.pizza/m/ctIRaIM3zXu"
+ },
+ {
+  "path": "assets/library/custom/the-dam/the-dam.glb",
+  "name": "The Dam",
+  "source": "custom",
+  "pack": "the-dam",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
  }
 ]
