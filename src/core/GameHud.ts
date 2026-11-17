@@ -10,7 +10,7 @@ const CSS = `
 .gg-ui *{box-sizing:border-box}
 .gg-ui [hidden]{display:none!important}
 .gg-ui img{display:block;object-fit:contain;pointer-events:none;user-select:none}
-.gg-meter,.gg-map-panel,.gg-gig-card,.gg-stamina,.gg-hotbar{filter:drop-shadow(0 5px 2px #281b4890)}
+.gg-meter,.gg-map-panel,.gg-stamina,.gg-hotbar{filter:drop-shadow(0 5px 2px #281b4890)}
 /* Composited panel art stays in its natural proportions. The only painted
    interiors are live state (meter, stamina and charge) over the empty sprites. */
 .gg-meter{position:absolute;left:clamp(12px,1.35vw,25px);top:clamp(10px,1.2vw,21px);width:clamp(365px,31.5vw,535px);height:clamp(150px,11.8vw,205px);background:var(--gg-sizeMeterFrame) center/100% 100% no-repeat}
@@ -45,7 +45,10 @@ const CSS = `
 .gg-map-north{position:absolute;top:1%;left:42%;width:16%;height:16%}
 .gg-compass{width:100%;height:100%}
 .gg-map-location{position:absolute;left:12%;right:12%;bottom:5%;height:13%;display:grid;place-items:center;white-space:nowrap;font-size:clamp(11px,1.25vw,19px);color:#fff5d4;letter-spacing:.1px}
-.gg-gig-card{position:absolute;right:clamp(10px,1.2vw,23px);top:clamp(234px,19vw,316px);width:clamp(280px,23.5vw,390px);height:clamp(150px,12.4vw,208px);background:var(--gg-gigCard) center/100% 100% no-repeat}
+.gg-gig-card{position:absolute;right:clamp(10px,1.2vw,23px);top:clamp(234px,19vw,316px);width:clamp(280px,23.5vw,390px);height:clamp(150px,12.4vw,208px)}
+/* Shadow only the illustrated panel: filtering the card itself rasterizes its
+   live copy and makes the tiny footer glyphs look blurred. */
+.gg-gig-card::before{content:"";position:absolute;inset:0;background:var(--gg-gigCard) center/100% 100% no-repeat;filter:drop-shadow(0 5px 2px #281b4890);pointer-events:none}
 .gg-gig-header{position:absolute;top:9%;left:27%;right:9%;height:19%;display:grid;place-items:center;color:#ffcc43;font-size:clamp(15px,1.4vw,23px);white-space:nowrap;letter-spacing:.3px;-webkit-text-stroke:.6px #623645;text-shadow:2px 3px #583147}
 .gg-gig-clipboard{position:absolute;left:-17%;top:-33%;width:clamp(45px,4vw,67px);height:clamp(48px,4.5vw,72px)}
 .gg-gig-clipboard img{width:100%;height:100%}
@@ -59,10 +62,10 @@ const CSS = `
 .gg-gig-title{flex:0 0 auto;font-size:clamp(9px,.77vw,13px);font-weight:1000;line-height:1.12;text-transform:uppercase;letter-spacing:.2px;color:#a55c30;margin:0;min-width:0;overflow-wrap:anywhere}
 .gg-gig-task{flex:0 1 auto;min-height:0;min-width:0;font-size:clamp(11px,.98vw,16px);line-height:1.13;font-weight:1000;margin:0;overflow-wrap:anywhere}
 .gg-gig-detail{flex:0 0 auto;min-width:0;font-size:clamp(8px,.66vw,11px);line-height:1.12;color:#93543e;overflow-wrap:anywhere;white-space:normal}
-.gg-gig-footer{position:absolute;left:20%;right:12%;bottom:9%;height:10%;display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0;color:#fff2ad;font-size:clamp(8px,.7vw,11px);white-space:nowrap;text-shadow:1px 2px #583147}
+.gg-gig-footer{position:absolute;left:20%;right:12%;bottom:9%;height:10%;display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0;color:#4e312b;font-family:inherit;font-weight:900;font-size:clamp(8px,.7vw,11px);white-space:nowrap;opacity:1;filter:none;transform:none;text-shadow:none}
 .gg-gig-wallet{display:flex;align-items:center;gap:3px;flex-shrink:0;min-width:0}
 .gg-gig-footer [data-mode]{flex-shrink:0;text-align:right}
-.gg-coin{width:clamp(13px,1.25vw,19px);height:clamp(13px,1.25vw,19px);flex-shrink:0}
+.gg-coin{width:18px;height:18px;flex-shrink:0;object-fit:contain;image-rendering:auto;opacity:1;filter:none;transform:none}
 /* Progress is a live masked conic arc painted on top of the illustrated ring. */
 .gg-stamina{position:absolute;left:clamp(11px,1.5vw,29px);bottom:clamp(10px,1.5vw,26px);width:clamp(138px,12.7vw,215px);aspect-ratio:243/252;background:var(--gg-staminaRing) center/100% 100% no-repeat}
 .gg-stamina-progress{position:absolute;inset:8%;border-radius:50%;background:conic-gradient(from -90deg,#9aff33 0 var(--gg-stamina,100%),#3c304c var(--gg-stamina,100%) 100%);-webkit-mask:radial-gradient(farthest-side,transparent 60%,#000 63% 84%,transparent 87%);mask:radial-gradient(farthest-side,transparent 60%,#000 63% 84%,transparent 87%)}
