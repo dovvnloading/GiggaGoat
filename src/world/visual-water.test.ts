@@ -295,10 +295,14 @@ describe('Mt. Gigga cascades and Dam plot exclusion (MG-5, DM-1)', () => {
             0.18 * island.size / 600, 5);
         }
         expect(width, fall.name).toBeCloseTo(original * 2.6, 4);
-        const foam = inland.getObjectByName(
-          fall.name + '-foam') as THREE.InstancedMesh;
-        expect(foam, fall.name).toBeInstanceOf(THREE.InstancedMesh);
-        expect(foam.count, fall.name + ' blob count').toBe(5);
+        const marker = inland.getObjectByName(
+          fall.name + '-foam') as THREE.Group;
+        expect(marker, fall.name).toBeInstanceOf(THREE.Group);
+        const firstInstance = marker.userData['instanceOffset'] as number;
+        const blobCount = marker.userData['instanceCount'] as number;
+        expect(blobCount, fall.name + ' blob count').toBe(5);
+        const foam = inland.getObjectByName('waterfall-foam-batch') as THREE.InstancedMesh;
+        expect(foam).toBeInstanceOf(THREE.InstancedMesh);
         expect(foam.geometry).toBeInstanceOf(THREE.IcosahedronGeometry);
         const mat = foam.material as THREE.MeshBasicMaterial;
         expect(mat.color.getHex()).toBe(0xeaf8ff);
@@ -317,8 +321,8 @@ describe('Mt. Gigga cascades and Dam plot exclusion (MG-5, DM-1)', () => {
           vertices.getX(3) - vertices.getX(2), 0,
           vertices.getZ(3) - vertices.getZ(2)).normalize();
         const locations: THREE.Vector3[] = [];
-        for (let i = 0; i < foam.count; i++) {
-          foam.getMatrixAt(i, transform);
+        for (let i = 0; i < blobCount; i++) {
+          foam.getMatrixAt(firstInstance + i, transform);
           size.setFromMatrixScale(transform);
           // Deterministic, per-blob jitter stays inside +/-15%.
           expect(jitter[i], foam.name).toBeGreaterThanOrEqual(0.85);
@@ -606,10 +610,13 @@ describe('Hoofington backdrop waterfall (HF-10)', () => {
       const foamObjects = visuals.inland.children.filter(object =>
         object.name === fallName + '-foam');
       expect(foamObjects).toHaveLength(1);
-      const foam = foamObjects[0] as THREE.InstancedMesh;
-      expect(foam).toBeInstanceOf(THREE.InstancedMesh);
-      expect(foam.count).toBe(5);
-      expect(foam.geometry).toBeInstanceOf(THREE.IcosahedronGeometry);
+      const foamMarker = foamObjects[0] as THREE.Group;
+      expect(foamMarker).toBeInstanceOf(THREE.Group);
+      expect(foamMarker.userData['instanceCount']).toBe(5);
+      const foamBatch = visuals.inland.getObjectByName('waterfall-foam-batch') as THREE.InstancedMesh;
+      expect(foamBatch).toBeInstanceOf(THREE.InstancedMesh);
+      expect(foamBatch.geometry).toBeInstanceOf(THREE.IcosahedronGeometry);
+      expect(foamBatch.count).toBeGreaterThanOrEqual(5);
       const river = visuals.inland.getObjectByName('rippling-river') as THREE.Mesh;
       expect(fall.material).toBe(river.material);
 
@@ -669,9 +676,11 @@ describe('Hoofington backdrop waterfall (HF-10)', () => {
         expect(Array.from(firstFall.geometry.getAttribute('position').array))
           .toEqual(Array.from(secondFall.geometry.getAttribute('position').array));
         for (const visuals of [first, second]) {
-          const foam = visuals.inland.getObjectByName(fallName + '-foam');
-          expect(foam).toBeInstanceOf(THREE.InstancedMesh);
-          expect((foam as THREE.InstancedMesh).count).toBe(5);
+          const marker = visuals.inland.getObjectByName(fallName + '-foam');
+          expect(marker).toBeInstanceOf(THREE.Group);
+          expect(marker!.userData['instanceCount']).toBe(5);
+          const batch = visuals.inland.getObjectByName('waterfall-foam-batch');
+          expect(batch).toBeInstanceOf(THREE.InstancedMesh);
         }
       } else {
         expect(first.inland.getObjectByName(fallName + '-foam')).toBeUndefined();
