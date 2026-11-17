@@ -4,6 +4,8 @@ import type { GameAudio } from './GameAudio';
 import { saveGame, type GameSettings } from './Persistence';
 import type { ModeId, Difficulty as BotDifficulty } from '../modes';
 import type { PoiId } from '../world';
+import { HUD_SPRITES, hudSpriteImage } from './HudSprites';
+import { MENU_SPRITES, menuSkin, menuSpriteUrl, type MenuSpriteName } from './MenuSprites';
 
 type Screen = 'title' | 'playing' | 'pause' | 'party' | 'settings' |
   'board' | 'gig-results' | 'party-results';
@@ -115,8 +117,19 @@ const CSS = `
 `;
 const esc = (value: unknown): string => String(value).replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
-const menuButton = (action: string, label: string, primary = false): string =>
-  `<button type="button" data-action="${action}" class="${primary ? 'gg-primary' : ''}">${label}</button>`;
+const menuButton = (action: string, label: string, primary = false): string => {
+  const normal = primary ? MENU_SPRITES.yellowNormal : MENU_SPRITES.purpleNormal;
+  const hover = primary ? MENU_SPRITES.yellowHover : MENU_SPRITES.purpleHover;
+  const pressed = primary ? MENU_SPRITES.yellowPressed : MENU_SPRITES.purplePressed;
+  return `<button type="button" data-action="${action}" class="gg-art-button ${primary ? 'gg-primary' : ''}"` +
+    ` ${menuSkin(normal)} data-sprite-normal="${normal}" data-sprite-hover="${hover}"` +
+    ` data-sprite-pressed="${pressed}"><span>${label}</span></button>`;
+};
+const iconButton = (name: MenuSpriteName, label: string): string =>
+  `<button type="button" data-action="back" class="gg-icon-button" aria-label="${label}"` +
+  ` title="${label}" ${menuSkin(name)}><span class="gg-visually-hidden">${label}</span></button>`;
+type SettingsTab = 'controls' | 'video' | 'audio';
+const SETTINGS_TABS: readonly SettingsTab[] = ['controls', 'video', 'audio'];
 const nice = (value: string): string => value.replace(/-/g, ' ').toUpperCase();
 
 export class GameMenu {
@@ -124,6 +137,7 @@ export class GameMenu {
   private readonly style = document.createElement('style');
   private screen: Screen = 'title';
   private settingsReturn: Screen = 'title';
+  private settingsTab: SettingsTab = 'controls';
   private partyReturn: Screen = 'title';
   private boardPoi: PoiId | null = null;
   private mode: ModeId = 'rising-tide';
@@ -138,6 +152,7 @@ export class GameMenu {
   private padMenu = false;
   private readonly keyHandler: (e: KeyboardEvent) => void;
   private readonly pageHide: () => void;
+  private readonly fullscreenChange: () => void;
 
   constructor(private readonly host: HTMLElement, private readonly game: Game,
     private readonly view: GameView, public settings: GameSettings,
@@ -148,8 +163,61 @@ export class GameMenu {
     this.root.setAttribute('aria-label', 'Gigga-Goat menus');
     host.appendChild(this.root);
     this.root.addEventListener('click', event => {
-      const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action]');
+      const target = event.target as HTMLElement;
+      const tab = target.closest<HTMLButtonElement>('[data-tab]');
+      if (tab) {
+        this.settingsTab = tab.dataset.tab as SettingsTab;
+        this.render();
+        this.root.querySelector<HTMLButtonElement>('[data-tab="' + this.settingsTab + '"]')?.focus();
+        return;
+      }
+      const toggle = target.closest<HTMLButtonElement>('[data-setting-toggle]');
+      if (toggle) {
+        this.settings.invertY = !this.settings.invertY;
+        this.view.applySettings(this.settings);
+        this.audio?.queueCue({ sound: 'ui-click' });
+        this.save();
+        this.render();
+        this.root.querySelector<HTMLButtonElement>('[data-setting-toggle]')?.focus();
+        return;
+      }
+      if (target.closest('[data-fullscreen]')) {
+        void this.toggleFullscreen();
+        return;
+      }
+      const button = target.closest<HTMLButtonElement>('[data-action]');
       if (button) this.action(button.dataset.action ?? '');
+    });
+    // Pointer, native keyboard focus, and gamepad .focus() all use the same PNG states.
+    this.root.addEventListener('focusin', event =>
+      this.swapButtonSprite(this.spriteButton(event.target), 'hover'));
+    this.root.addEventListener('focusout', event => {
+      const button = this.spriteButton(event.target);
+      this.swapButtonSprite(button, button?.matches(':hover') ? 'hover' : 'normal');
+    });
+    this.root.addEventListener('pointerover', event =>
+      this.swapButtonSprite(this.spriteButton(event.target), 'hover'));
+    this.root.addEventListener('pointerout', event => {
+      const button = this.spriteButton(event.target);
+      if (button && !button.contains(event.relatedTarget as Node | null))
+        this.swapButtonSprite(button, document.activeElement === button ? 'hover' : 'normal');
+    });
+    this.root.addEventListener('pointerdown', event =>
+      this.swapButtonSprite(this.spriteButton(event.target), 'pressed'));
+    for (const name of ['pointerup', 'pointercancel'] as const) {
+      this.root.addEventListener(name, event => {
+        const button = this.spriteButton(event.target);
+        this.swapButtonSprite(button, button?.matches(':hover') || document.activeElement === button ?
+          'hover' : 'normal');
+      });
+    }
+    this.root.addEventListener('keydown', event => {
+      if (event.code === 'Enter' || event.code === 'Space')
+        this.swapButtonSprite(this.spriteButton(event.target), 'pressed');
+    });
+    this.root.addEventListener('keyup', event => {
+      if (event.code === 'Enter' || event.code === 'Space')
+        this.swapButtonSprite(this.spriteButton(event.target), 'hover');
     });
     this.root.addEventListener('change', event => {
       const element = event.target as HTMLInputElement | HTMLSelectElement;
@@ -164,6 +232,8 @@ export class GameMenu {
     window.addEventListener('keydown', this.keyHandler, true);
     this.pageHide = () => { this.save(); };
     window.addEventListener('pagehide', this.pageHide);
+    this.fullscreenChange = () => this.syncFullscreen();
+    document.addEventListener('fullscreenchange', this.fullscreenChange);
     this.view.onFrame = () => this.frame();
     this.view.onInteract = () => this.interact();
     this.view.applySettings(settings);
