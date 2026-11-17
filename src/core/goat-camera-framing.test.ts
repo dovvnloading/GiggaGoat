@@ -30,7 +30,7 @@ describe('free-roam camera / compact HUD reference framing', () => {
       const characters = new GameCharacters(new THREE.Scene(), game);
       try {
         const yaw = -game.island.spawns[0]!.heading + SPAWN_CAMERA_YAW_OFFSET;
-        for (const size of [.6, 1, 1.6, 3]) {
+        for (const size of [.6, 1, 1.6, 3] as const) {
           game.goat.resize(size);
           characters.update(0, game.physics.alpha);
           const pose = game.goat.torso.translation();
