@@ -12,7 +12,7 @@ export interface ComboPopTextOptions {
 }
 
 interface ComboSlot {
-  readonly sprite: THREE.Sprite<THREE.SpriteMaterial>;
+  readonly sprite: THREE.Sprite;
   readonly frame: ComboPopFrame;
   cue: ComboPopCue | null;
   age: number;
