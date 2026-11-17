@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { IslandData, PropDescriptor, PropKind, Vec3 } from './types';
 import { gridSample } from './terrain';
 import { publicAssetUrl } from './public-assets';
-import { TOON_RAMP } from './visual-props';
+import { createDistrictLod, type BakedPlacement, type DistrictLod } from './district-lod';
 
 /**
  * CC0 models only. The Poly Pizza trampoline is CC-BY and CREDITS.md is
@@ -11,11 +11,13 @@ import { TOON_RAMP } from './visual-props';
  * All URLs are resolved by publicAssetUrl (including the nested World Lab).
  */
 export const HOOFINGTON_MODELS = {
-  pinkHome: 'assets/library/kenney/city-kit-suburban/building-type-a.glb',
-  creamHome: 'assets/library/kenney/city-kit-suburban/building-type-f.glb',
-  yellowHome: 'assets/library/kenney/city-kit-suburban/building-type-d.glb',
-  farmhouse: 'assets/library/quaternius/medieval-village-pack/fantasy-house_BH2XHWUNmF.glb',
-  cottage: 'assets/library/quaternius/medieval-village-pack/fantasy-house_dcPho4SUA3.glb',
+  // One building family (Kenney suburban), recoloured per part in Blender
+  // from the Hoofington painting. See docs/art/WORLD_ART_PLAN.md.
+  pinkHome: 'assets/library/custom/hoofington-houses/house-f-pink.glb',
+  creamHome: 'assets/library/custom/hoofington-houses/house-t-cream.glb',
+  yellowHome: 'assets/library/custom/hoofington-houses/house-e-yellow.glb',
+  farmhouse: 'assets/library/custom/hoofington-houses/house-c-white.glb',
+  cottage: 'assets/library/custom/hoofington-houses/house-r-sky.glb',
   barn: 'assets/library/polypizza/barn/barn_A6UkPq33aZ.glb',
   silo: 'assets/library/quaternius/farm-buildings-bundle/silo_5GhLrv5Ce3.glb',
   windmill: 'assets/library/quaternius/farm-buildings-bundle/tower-windmill_52yaPyaAAG.glb',
@@ -56,6 +58,7 @@ export interface HoofingtonVisuals {
   /** The old whole-kind draws are suppressed even when culling is updated. */
   isFallbackHidden(mesh: THREE.InstancedMesh): boolean;
   consumeShadowChange(): boolean;
+  updateCulling(position: THREE.Vector3, frustum: THREE.Frustum): boolean;
   dispose(): void;
 }
 
@@ -80,13 +83,15 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
     let model: HoofModel | null = null;
     let paint: { wall?: number; roof?: number } = {};
     switch (prop.kind) {
+      // Houses are pre-painted per part (walls, roof, trim, glass, door,
+      // shutters, window boxes) in their GLBs; never repaint them here.
       case 'house':
-        if (dx < 0 && dz > 0) { model = 'pinkHome'; paint = PALETTES.pink; }
-        else if (dx > 0 && dz > 0) { model = 'creamHome'; paint = PALETTES.cream; }
-        else if (dx > 0) { model = 'yellowHome'; paint = PALETTES.yellow; }
-        else { model = 'farmhouse'; paint = PALETTES.red; }
+        if (dx < 0 && dz > 0) model = 'pinkHome';
+        else if (dx > 0 && dz > 0) model = 'creamHome';
+        else if (dx > 0) model = 'yellowHome';
+        else model = 'farmhouse';
         break;
-      case 'cottage': model = 'cottage'; paint = PALETTES.blue; break;
+      case 'cottage': model = 'cottage'; break;
       case 'barn': model = 'barn'; paint = PALETTES.red; break;
       case 'silo': model = 'silo'; paint = { wall: 0xf6ead8, roof: 0xce5648 }; break;
       case 'windmill': model = 'windmill'; paint = { wall: 0xffeedc, roof: 0xc75c48 }; break;
@@ -170,6 +175,7 @@ const sampleUv = new THREE.Vector2();
 export function bakeLibraryGeometry<Model extends string>(
   placements: readonly HoofPlacement<Model>[],
   models: ReadonlyMap<Model, ModelScene>,
+  onPlacement?: (placement: HoofPlacement<Model>, start: number, count: number) => void,
 ): THREE.BufferGeometry | null {
   const coordinates: number[] = [], colours: number[] = [];
   const imageCache = new WeakMap<THREE.Texture, PixelMap | null>();
@@ -202,6 +208,7 @@ export function bakeLibraryGeometry<Model extends string>(
   }
 
   for (const placement of placements) {
+    const start = coordinates.length / 3;
     const root = models.get(placement.model);
     if (!root) continue;
     root.updateMatrixWorld(true);
@@ -316,6 +323,7 @@ export function bakeLibraryGeometry<Model extends string>(
         }
       }
     });
+    onPlacement?.(placement, start, coordinates.length / 3 - start);
   }
   if (!coordinates.length) return null;
   const geometry = new THREE.BufferGeometry();
@@ -451,6 +459,7 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
   group.userData['loadedModels'] = 0;
   const fullyHidden = new Set<PropKind>();
   let shadowChanged = false, disposed = false;
+  let districtLod: DistrictLod | undefined;
   if (typeof document !== 'undefined') {
     const plan = makeHoofingtonPlacements(island);
     // Dynamic hay bales must remain on their existing instanced mesh so the
@@ -463,7 +472,7 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
         loader.load(publicAssetUrl(HOOFINGTON_MODELS[id]),
           gltf => resolve([id, gltf.scene]), undefined, reject);
       });
-    void Promise.allSettled([...required].map(load)).then(results => {
+    void Promise.allSettled([...required].map(load)).then(async results => {
       const models = new Map<HoofModel, ModelScene>();
       for (const result of results) {
         if (result.status === 'fulfilled') models.set(...result.value);
@@ -473,17 +482,14 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
         if (disposed) return;
         // UV-mapped gnomes must not go through the vertex-colour baker.
         const staticPlan = plan.filter(p => p.model !== 'gnome' && models.has(p.model));
-        const geometry = bakeHoofingtonGeometry(staticPlan, models);
+        const ranges: BakedPlacement<HoofModel>[] = [];
+        const geometry = bakeLibraryGeometry(staticPlan, models,
+          (placement, start, count) => ranges.push({ placement, start, count }));
         if (geometry) {
-          const material = new THREE.MeshToonMaterial({
-            color: 0xffffff, vertexColors: true, gradientMap: TOON_RAMP,
-            side: THREE.DoubleSide,
-          });
-          const mesh = new THREE.Mesh(geometry, material);
-          mesh.name = 'hoofington-library-batched';
-          mesh.castShadow = true;
-          mesh.receiveShadow = true;
-          group.add(mesh);
+          const lod = await createDistrictLod(island, geometry, ranges, group,
+            'hoofington-library-batched');
+          if (disposed) { lod.dispose(); return; }
+          districtLod = lod;
         }
         const gnomePlan = plan.filter(p => p.model === 'gnome');
         const gnomeModel = models.get('gnome');
@@ -543,8 +549,12 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
       shadowChanged = false;
       return changed;
     },
+    updateCulling(position, frustum): boolean {
+      return districtLod?.updateCulling(position, frustum) ?? false;
+    },
     dispose(): void {
       disposed = true;
+      districtLod?.dispose();
       group.traverse(object => {
         if (!(object instanceof THREE.Mesh)) return;
         object.geometry.dispose();

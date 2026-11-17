@@ -453,6 +453,12 @@ export class GameView {
     camera.near = 1;
     camera.far = 260;
     camera.updateProjectionMatrix();
+    // ~1.5 shadow texels of normal offset and a single-texel PCF filter:
+    // no self-shadow acne on large flat walls, contact shadows stay attached.
+    const texel = 2 * Math.max(1, preset.shadowDistance) / Math.max(1, preset.shadowMapSize);
+    this.world.sun.shadow.normalBias = texel * 1.5;
+    this.world.sun.shadow.bias = -0.0005;
+    this.world.sun.shadow.radius = 1;
     if (this.scene.fog instanceof THREE.FogExp2) {
       this.scene.fog.density = settings.graphics === 'low' ? .0032 :
         settings.graphics === 'medium' ? .0023 : .0016;

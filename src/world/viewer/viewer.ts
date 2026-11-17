@@ -50,8 +50,10 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 // These static casters/light need one shadow pass per change, not one every frame.
 const shadowCache = createStaticShadowCache(renderer.shadowMap);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
+// Match the game (no tone mapping): ACES at 1.2 exposure bleached the
+// painting's pastels toward cream, so the Lab no longer showed real colours.
+renderer.toneMapping = THREE.NoToneMapping;
+renderer.toneMappingExposure = 1.0;
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 host.appendChild(renderer.domElement);
@@ -459,6 +461,30 @@ if (new URLSearchParams(window.location.search).has('profile')) {
           }
         });
       },
+      /** Debug rendered geometry including instanced copies at the active camera. */
+      meshCosts(): { name: string; triangles: number }[] {
+        worldView.group.updateMatrixWorld(true);
+        const clip = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4()
+          .multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+        const result: { name: string; triangles: number }[] = [];
+        worldView.group.traverse(node => {
+          if (!(node instanceof THREE.Mesh) || !node.visible) return;
+          let ancestor = node.parent;
+          while (ancestor && ancestor !== worldView.group) {
+            if (!ancestor.visible) return;
+            ancestor = ancestor.parent;
+          }
+          if (node.frustumCulled && !clip.intersectsObject(node)) return;
+          const materials = Array.isArray(node.material) ? node.material : [node.material];
+          if (!materials.some(mat => mat.visible)) return;
+          const vertices = node.geometry.index?.count ??
+            node.geometry.getAttribute('position')?.count ?? 0;
+          const instances = node instanceof THREE.InstancedMesh ? node.count : 1;
+          result.push({ name: node.name || node.parent?.name || node.type,
+            triangles: Math.floor(vertices * instances / 3) });
+        });
+        return result.sort((a, b) => b.triangles - a.triangles).slice(0,45);
+      },
       /** Profiling-only QA: confirm the authored Dam is on screen at bookmark 14. */
       damHeroState(): { loaded: boolean; inFrame: boolean;
         reservoirHidden: boolean; camera: number[]; target: number[] } {
@@ -481,8 +507,10 @@ if (new URLSearchParams(window.location.search).has('profile')) {
         return {
           loaded: root?.userData['ready'] === true && batch instanceof THREE.Mesh,
           models: Number(root?.userData['loadedModels'] ?? 0),
-          triangles: batch instanceof THREE.Mesh
-            ? batch.geometry.getAttribute('position').count / 3 : 0,
+          triangles: root?.children.reduce((count, node) =>
+            node instanceof THREE.Mesh && node.name.startsWith('downtown-library-batched')
+              ? count + (node.geometry.index?.count ??
+                node.geometry.getAttribute('position').count) / 3 : count, 0) ?? 0,
           signs: Number(root?.userData['signCount'] ?? 0),
           awnings: Boolean(root?.getObjectByName('downtown-striped-awnings')),
         };
@@ -504,8 +532,10 @@ if (new URLSearchParams(window.location.search).has('profile')) {
         return {
           loaded: root?.userData['ready'] === true && batch instanceof THREE.Mesh,
           models: Number(root?.userData['loadedModels'] ?? 0),
-          triangles: batch instanceof THREE.Mesh
-            ? batch.geometry.getAttribute('position').count / 3 : 0,
+          triangles: root?.children.reduce((count, node) =>
+            node instanceof THREE.Mesh && node.name.startsWith('hoofington-library-batched')
+              ? count + (node.geometry.index?.count ??
+                node.geometry.getAttribute('position').count) / 3 : count, 0) ?? 0,
         };
       },
       measure(frames = 16): {

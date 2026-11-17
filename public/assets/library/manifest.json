@@ -32943,5 +32943,68 @@
   "license": "CC0",
   "credit": "Gigga-Goat (original, built in Blender)",
   "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-houses/house-f-pink.glb",
+  "name": "Hoofington house pink",
+  "source": "custom",
+  "pack": "hoofington-houses",
+  "license": "CC0",
+  "credit": "Kenney city-kit-suburban (CC0), recoloured with shutters and window boxes in Blender for Gigga-Goat",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-houses/house-t-cream.glb",
+  "name": "Hoofington house cream",
+  "source": "custom",
+  "pack": "hoofington-houses",
+  "license": "CC0",
+  "credit": "Kenney city-kit-suburban (CC0), recoloured with shutters and window boxes in Blender for Gigga-Goat",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-houses/house-e-yellow.glb",
+  "name": "Hoofington house yellow",
+  "source": "custom",
+  "pack": "hoofington-houses",
+  "license": "CC0",
+  "credit": "Kenney city-kit-suburban (CC0), recoloured with shutters and window boxes in Blender for Gigga-Goat",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-houses/house-c-white.glb",
+  "name": "Hoofington farmhouse white",
+  "source": "custom",
+  "pack": "hoofington-houses",
+  "license": "CC0",
+  "credit": "Kenney city-kit-suburban (CC0), recoloured with shutters and window boxes in Blender for Gigga-Goat",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-houses/house-r-sky.glb",
+  "name": "Hoofington cottage sky",
+  "source": "custom",
+  "pack": "hoofington-houses",
+  "license": "CC0",
+  "credit": "Kenney city-kit-suburban (CC0), recoloured with shutters and window boxes in Blender for Gigga-Goat",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-houses/house-t-white.glb",
+  "name": "Island house white",
+  "source": "custom",
+  "pack": "hoofington-houses",
+  "license": "CC0",
+  "credit": "Kenney city-kit-suburban (CC0), recoloured with shutters and window boxes in Blender for Gigga-Goat",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-houses/house-f-white.glb",
+  "name": "Island cottage white",
+  "source": "custom",
+  "pack": "hoofington-houses",
+  "license": "CC0",
+  "credit": "Kenney city-kit-suburban (CC0), recoloured with shutters and window boxes in Blender for Gigga-Goat",
+  "url": ""
  }
 ]
