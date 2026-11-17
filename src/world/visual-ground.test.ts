@@ -1,0 +1,184 @@
+import { beforeAll, describe, expect, it } from 'vitest';
+import * as THREE from 'three';
+import { generateIsland } from './island';
+import { gridSample } from './terrain';
+import type { IslandData } from './types';
+import { buildGroundDetails } from './visual-ground';
+
+interface DetailVertex {
+  x: number; y: number; z: number;
+  r: number; g: number; b: number;
+}
+type DetailQuad = [DetailVertex, DetailVertex, DetailVertex, DetailVertex];
+interface GroundDetails {
+  quads: DetailQuad[];
+  vertices: DetailVertex[];
+}
+
+const CONCRETE = new THREE.Color('#A7A3A0');
+const WARM = new THREE.Color('#999493');
+const JOINT = new THREE.Color('#858789');
+const MARKING = new THREE.Color('#EDC350');
+const PUDDLE = new THREE.Color(0x5f7f8f);
+
+// Read the merged geometry, not implementation constants or a screenshot.
+// Each quad is indexed as (0,2,1) (1,2,3); discs are triangle fans.
+function readDetails(island: IslandData): GroundDetails {
+  const group = buildGroundDetails(island);
+  const quads: DetailQuad[] = [];
+  const vertices: DetailVertex[] = [];
+  for (const object of group.children) {
+    if (!(object instanceof THREE.Mesh)) throw new Error('Expected a merged ground mesh');
+    const geometry = object.geometry as THREE.BufferGeometry;
+    const positions = geometry.getAttribute('position');
+    const colors = geometry.getAttribute('color');
+    const index = geometry.index;
+    if (!index) throw new Error('Expected indexed ground geometry');
+    const local: DetailVertex[] = Array.from({ length: positions.count }, (_, i) => ({
+      x: positions.getX(i), y: positions.getY(i), z: positions.getZ(i),
+      r: colors.getX(i), g: colors.getY(i), b: colors.getZ(i),
+    }));
+    vertices.push(...local);
+    for (let i = 0; i < index.count;) {
+      if (i + 5 < index.count &&
+          index.getX(i + 2) === index.getX(i + 3) &&
+          index.getX(i + 1) === index.getX(i + 4)) {
+        quads.push([
+          local[index.getX(i)]!, local[index.getX(i + 2)]!,
+          local[index.getX(i + 1)]!, local[index.getX(i + 5)]!,
+        ]);
+        i += 6;
+      } else {
+        i += 3; // Disc fan triangle, not a slab or painted stripe.
+      }
+    }
+  }
+  return { quads, vertices };
+}
+
+function shadeOf(vertex: DetailVertex, color: THREE.Color, shade: number): boolean {
+  return Math.abs(vertex.r - color.r * shade) < 0.0001 &&
+    Math.abs(vertex.g - color.g * shade) < 0.0001 &&
+    Math.abs(vertex.b - color.b * shade) < 0.0001;
+}
+
+function footprint(quad: DetailQuad, x: number, z: number,
+  width: number, length: number, yaw = 0): boolean {
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const corners = [
+    [-width / 2, -length / 2], [width / 2, -length / 2],
+    [-width / 2, length / 2], [width / 2, length / 2],
+  ] as const;
+  return corners.every(([dx, dz], i) =>
+    Math.abs(quad[i]!.x - (x + c * dx + s * dz)) < 0.001 &&
+    Math.abs(quad[i]!.z - (z - s * dx + c * dz)) < 0.001);
+}
+
+describe('Crane Yard CY-11 ground apron', () => {
+  let island: IslandData;
+  let details: GroundDetails;
+  let yard: { x: number; z: number };
+  let scale: number;
+
+  beforeAll(() => {
+    island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    details = readDetails(island);
+    yard = island.pois.find(p => p.id === 'crane-yard')!.center;
+    scale = island.size / 600;
+  });
+
+  it('covers the same 80 x 72 m apron with exactly 10 x 9 large 7.92 m slabs', () => {
+    const slabs = details.quads.filter(quad =>
+      Math.abs(Math.hypot(quad[1].x - quad[0].x, quad[1].z - quad[0].z)
+        - 7.92 * scale) < 0.001 &&
+      Math.abs(Math.hypot(quad[2].x - quad[0].x, quad[2].z - quad[0].z)
+        - 7.92 * scale) < 0.001);
+    expect(slabs).toHaveLength((80 / 8) * (72 / 8));
+
+    for (let ix = -40; ix < 40; ix += 8) {
+      for (let iz = -36; iz < 36; iz += 8) {
+        const matches = slabs.filter(quad => footprint(quad,
+          yard.x + (ix + 4) * scale, yard.z + (iz + 4) * scale,
+          7.92 * scale, 7.92 * scale));
+        expect(matches, 'slab at ' + ix + ',' + iz).toHaveLength(1);
+
+        const slabX = (ix + 40) / 8, slabZ = (iz + 36) / 8;
+        const shade = 0.97 + 0.03 * ((slabX * 7 + slabZ * 3) % 3) / 2;
+        for (const v of matches[0]!) {
+          // Check every vertex, not just the slab's average tint.
+          for (const channel of ['r', 'g', 'b'] as const) {
+            const ratio = v[channel] / CONCRETE[channel];
+            expect(ratio).toBeGreaterThanOrEqual(0.9699);
+            expect(ratio).toBeLessThanOrEqual(1.0301);
+          }
+          expect(shadeOf(v, CONCRETE, shade)).toBe(true);
+          expect(shadeOf(v, WARM, 1)).toBe(false);
+          expect(shadeOf(v, JOINT, 1)).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('draws exactly three raised dark disc puddles at the requested offsets and radii', () => {
+    const puddleVertices = details.vertices.filter(v => {
+      const shade = v.r / PUDDLE.r;
+      return shade >= 0.92 && shade <= 1.04 &&
+        Math.abs(v.g / PUDDLE.g - shade) < 0.0001 &&
+        Math.abs(v.b / PUDDLE.b - shade) < 0.0001;
+    });
+    expect(puddleVertices).toHaveLength(3 * 29); // 28 rim points + centre per disc
+    const centres = puddleVertices.filter(v => shadeOf(v, PUDDLE, 1.035));
+    expect(centres).toHaveLength(3);
+    for (const [dx, dz, radius] of [
+      [-8, 14, 1.6], [15, -4, 1.1], [-24, -2, 2.0],
+    ] as const) {
+      const x = yard.x + dx * scale, z = yard.z + dz * scale;
+      const centre = centres.find(v =>
+        Math.abs(v.x - x) < 0.001 && Math.abs(v.z - z) < 0.001);
+      expect(centre, 'puddle centre at ' + dx + ',' + dz).toBeDefined();
+      expect(centre!.y - gridSample(island, x, z)).toBeGreaterThan(0.08 * scale);
+      const rim = puddleVertices.filter(v =>
+        !shadeOf(v, PUDDLE, 1.035) &&
+        Math.abs(Math.hypot(v.x - x, v.z - z) - radius * scale) < 0.001);
+      expect(rim, 'puddle radius ' + radius).toHaveLength(28);
+    }
+  });
+
+  it('preserves all 37 yellow markings, including their original exact footprints', () => {
+    const marked = details.quads.filter(quad => shadeOf(quad[0], MARKING, 0.965));
+    const expected: [number, number, number, number, number][] = [];
+    const add = (x: number, z: number, width: number, length: number, yaw = 0): void => {
+      expected.push([x, z, width, length, yaw]);
+    };
+    for (let i = 0; i < 13; i++) add(-28 + i * 4.3, 18.5, 2.2, 0.23);
+    for (const x of [-36, 36]) {
+      for (let i = 0; i < 8; i++) add(x, -28 + i * 7.5, 0.23, 3.1);
+    }
+    for (const z of [-2.5, 2.5]) add(21, -12 + z, 8.4, 0.34);
+    for (let i = 0; i < 6; i++) add(12 + i * 2.2, 29, 1.2, 0.28, -0.62);
+    expect(expected).toHaveLength(37);
+    expect(marked).toHaveLength(37);
+    for (const [dx, dz, width, length, yaw] of expected) {
+      const matches = marked.filter(quad => footprint(quad,
+        yard.x + dx * scale, yard.z + dz * scale,
+        width * scale, length * scale, yaw));
+      expect(matches, 'marking at ' + dx + ',' + dz).toHaveLength(1);
+      const originalVertexShades = [0.965, 0.98, 0.995, 0.965];
+      matches[0]!.forEach((v, i) => {
+        expect(shadeOf(v, MARKING, originalVertexShades[i]!)).toBe(true);
+      });
+    }
+  });
+
+  it('produces finite ground geometry for different seeds and island scales', () => {
+    for (const [seed, size] of [
+      ['cy-11-fog', 400], [0, 600], ['cy-11-coast', 2000],
+    ] as const) {
+      const other = generateIsland({ seed, size, resolution: 65 });
+      const result = readDetails(other);
+      expect(result.vertices.length).toBeGreaterThan(400);
+      expect(result.vertices.every(v =>
+        Object.values(v).every(Number.isFinite))).toBe(true);
+    }
+  });
+});
