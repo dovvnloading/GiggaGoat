@@ -43,7 +43,7 @@ export async function createDistrictLod<Model extends string>(
     if (range.count === 0) continue;
     const p = range.placement;
     const small = isSmallWorldModel(p.model);
-    if (small && completelyOccluded(island, p.position, p.size, p.source)) continue;
+    if (completelyOccluded(island, p.position, p.size, p.source)) continue;
     const x = Math.floor(p.position.x / WORLD_LOD.districtCellSize);
     const z = Math.floor(p.position.z / WORLD_LOD.districtCellSize);
     const key = x + ':' + z + ':' + (small ? 'small' : 'large');
@@ -67,7 +67,8 @@ export async function createDistrictLod<Model extends string>(
     small: boolean;
   }> = [];
   // Largest (usually architectural) cell keeps the historical QA mesh name.
-  const ordered = [...cells.values()].sort((a, b) => b.vertices - a.vertices);
+  const ordered = [...cells.values()].sort((a, b) =>
+    Number(a.small) - Number(b.small) || b.vertices - a.vertices);
   for (let i = 0; i < ordered.length; i++) {
     const cell = ordered[i]!;
     const high = new THREE.BufferGeometry();
