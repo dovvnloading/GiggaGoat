@@ -154,7 +154,8 @@ describe('hi-fi renderer and art-comparison viewer', () => {
     expect(view.chunks[0]!.material).toBeInstanceOf(THREE.MeshToonMaterial);
     expect(view.group.getObjectByName('props-lighthouse')).toBeInstanceOf(THREE.InstancedMesh);
     expect(view.group.getObjectByName('puffy-cloud-banks')).toBeInstanceOf(THREE.InstancedMesh);
-    expect(view.group.getObjectByName('dam-spillway-1')).toBeInstanceOf(THREE.Mesh);
+    expect(view.group.getObjectByName('the-dam-hero')).toBeInstanceOf(THREE.Group);
+    expect(view.group.getObjectByName('dam-spillway-1')).toBeUndefined();
     expect(view.group.getObjectByName('road-centre-dashes')).toBeInstanceOf(THREE.InstancedMesh);
     expect(view.sun.castShadow).toBe(true);
     const water = view.water.material as THREE.ShaderMaterial;
