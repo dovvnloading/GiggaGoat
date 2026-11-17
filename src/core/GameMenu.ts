@@ -49,6 +49,9 @@ const CSS = `
   border:12px solid transparent;border-image:var(--gg-sprite) 52 fill / 12px / 0 stretch;
   background:#302250;accent-color:#ffe248;padding:2px 5px}
 .gg-shell select option{background:#302250;color:#fff4d6}
+.gg-shell label.gg-select-label{position:relative}
+.gg-shell label.gg-select-label::after{content:"▾";position:absolute;right:15px;
+  bottom:12px;color:#ffe257;font-size:17px;pointer-events:none;text-shadow:1px 1px #45243f}
 .gg-shell .gg-range{display:flex;align-items:center;gap:13px}
 .gg-shell input.gg-slider{appearance:none;-webkit-appearance:none;flex:1;min-width:0;
   height:29px;border:3px solid #b87437;border-radius:30px;cursor:pointer;
@@ -89,6 +92,7 @@ const CSS = `
   background:transparent;color:#fff5df;text-shadow:1px 2px #6f3d30;
   font-size:clamp(10px,1.15vw,13px);letter-spacing:.2px}
 .gg-shell .gg-tab[aria-selected="true"]{color:#4c2b1a;text-shadow:0 1px #ffe39c}
+.gg-shell .gg-tab>span{display:block;transform:translateY(8px);pointer-events:none}
 .gg-shell .gg-settings-content{min-height:210px;padding:4px 2px}
 .gg-shell .gg-settings-content>.gg-setting{margin:0 0 20px}
 .gg-shell .gg-setting-row{display:flex;align-items:center;justify-content:space-between;
@@ -510,15 +514,15 @@ export class GameMenu {
     return `<div class="gg-shell-eyebrow">SOLO VS PHYSICS-DRIVEN BOTS</div><h2>START A PARTY</h2>
       <p>Everyone gets the same moves. Outsmart the bots, stay above the tide and claim the top spot.</p>
       <div class="gg-grid">
-      <label>ROUND<select id="gg-mode" ${menuSkin(MENU_SPRITES.stat)}>
+      <label class="gg-select-label">ROUND<select id="gg-mode" ${menuSkin(MENU_SPRITES.stat)}>
         <option value="rising-tide" ${this.mode==='rising-tide'?'selected':''}>Rising Tide · survive</option>
         <option value="king-of-the-peak" ${this.mode==='king-of-the-peak'?'selected':''}>King of the Peak · capture</option>
         <option value="hay-heist" ${this.mode==='hay-heist'?'selected':''}>Hay Heist · steal hay</option>
       </select></label>
-      <label>BOT GOATS<select id="gg-bots" ${menuSkin(MENU_SPRITES.stat)}>
+      <label class="gg-select-label">BOT GOATS<select id="gg-bots" ${menuSkin(MENU_SPRITES.stat)}>
         ${[3,4,5,6,7].map(n=>`<option value="${n}" ${n===this.botCount?'selected':''}>${n} bots</option>`).join('')}
       </select></label>
-      <label>BOT SKILL<select id="gg-difficulty" ${menuSkin(MENU_SPRITES.stat)}>
+      <label class="gg-select-label">BOT SKILL<select id="gg-difficulty" ${menuSkin(MENU_SPRITES.stat)}>
         <option value="easy" ${this.difficulty==='easy'?'selected':''}>Easy · chill</option>
         <option value="normal" ${this.difficulty==='normal'?'selected':''}>Normal · lively</option>
         <option value="hard" ${this.difficulty==='hard'?'selected':''}>Hard · ruthless</option>
@@ -544,7 +548,7 @@ export class GameMenu {
         ` aria-selected="${selected}" aria-controls="gg-settings-panel" class="gg-tab"` +
         ` ${menuSkin(normal)} data-sprite-normal="${normal}"` +
         ` data-sprite-hover="${MENU_SPRITES.tabGold}" data-sprite-pressed="${MENU_SPRITES.tabGold}">` +
-        `${nice(tab)}</button>`;
+        `<span>${nice(tab)}</span></button>`;
     }).join('');
     const controls = slider('mouseSensitivity', 'MOUSE SENSITIVITY', .25, 3, .05,
       s.mouseSensitivity, s.mouseSensitivity.toFixed(2) + '×') +
@@ -554,7 +558,7 @@ export class GameMenu {
       ` ${menuSkin(s.invertY ? MENU_SPRITES.toggleOn : MENU_SPRITES.toggleOff)}>` +
       `<span class="gg-visually-hidden">${s.invertY ? 'On' : 'Off'}</span></button></div>`;
     const video = slider('fov', 'FIELD OF VIEW', 55, 95, 1, s.fov, s.fov + '°') +
-      `<label class="gg-setting">GRAPHICS QUALITY<select id="gg-setting-graphics"` +
+      `<label class="gg-setting gg-select-label">GRAPHICS QUALITY<select id="gg-setting-graphics"` +
       ` ${menuSkin(MENU_SPRITES.stat)}>` +
       (['low', 'medium', 'high'] as const).map(q =>
         `<option value="${q}" ${s.graphics === q ? 'selected' : ''}>${nice(q)}</option>`).join('') +
