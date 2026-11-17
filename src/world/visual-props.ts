@@ -28,7 +28,7 @@ const COLORS: Partial<Record<PropKind, number>> = {
   barn: 0xd84f3d, house: 0xf4da9a, shop: 0x9ed4e8, tower: 0xb6bbc7,
   windmill: 0xf3ead6, lighthouse: 0xf9e5cc, 'ferris-wheel': 0xf5a0c1,
   crane: 0xffc94c, scaffold: 0xd4a667, beam: 0xffc44e, pier: 0xaf845b,
-  deck: 0xb68a66, bumper: 0xdf8bdc, booth: 0xf7a07e,
+  'pier-rail': 0xffffff, deck: 0xb68a66, bumper: 0xdf8bdc, booth: 0xf7a07e,
   'satellite-dish': 0xdce5e8, 'dam-wall': 0xa4b1bc, fence: 0xe5c587,
   'hay-bale': 0xf2c14f, crate: 0xc4915f, barrel: 0xe67d5d,
   rock: 0x8c919e, log: 0x9a6d48, lamp: 0xffe5b7, ramp: 0xe5b974,
@@ -112,18 +112,33 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
         0.16, 0.59, 0.04, 0xf1e6c7, -a);
     }
   } else if (kind === 'ferris-wheel') {
+    // Candy-coloured open wheel: two rims, illuminated bulbs, radial spokes,
+    // individual suspended cabins and an A-frame anchored to the platform.
     for (const z of [-0.09, 0.09]) {
-      append(new THREE.TorusGeometry(0.43, 0.033, 5, 36),
-        0, 0, z, 1, 1, 1, 0xf9b1c4);
-      for (let i = 0; i < 10; i++) {
-        const a = i * Math.PI / 5;
-        box(0, 0, z, 0.021, 0.81, 0.04, 0xffe6c2, a);
-        box(Math.sin(a) * 0.43, -Math.cos(a) * 0.43, z + 0.03,
-          0.11, 0.10, 0.10, [0xff8d9d, 0xffda69, 0x8bd5d0][i % 3]);
+      append(new THREE.TorusGeometry(0.425, 0.023, 5, 40),
+        0, 0, z, 1, 1, 1, z < 0 ? 0xffd0e0 : 0xffb2ce);
+      for (let i = 0; i < 12; i++) {
+        const angle = i * Math.PI / 6;
+        box(0, 0, z, 0.018, 0.82, 0.025, i % 2 ? 0xffe7d0 : 0xf391b6, angle);
+        const x = Math.sin(angle) * 0.425, y = -Math.cos(angle) * 0.425;
+        blob(x, y, z + (z < 0 ? -0.025 : 0.025),
+          0.023, 0.023, 0.024, 0xfff2c6);
       }
     }
-    box(-0.23, -0.29, 0, 0.043, 0.66, 0.075, 0xb9d6dd, -0.36);
-    box(0.23, -0.29, 0, 0.043, 0.66, 0.075, 0xb9d6dd, 0.36);
+    for (let i = 0; i < 10; i++) {
+      const angle = i * Math.PI / 5;
+      const x = Math.sin(angle) * 0.425, y = -Math.cos(angle) * 0.425;
+      const paint = [0xe95f72, 0xffc85b, 0x63c3c6, 0x8b79d3, 0xf18d56][i % 5]!;
+      box(x, y, 0.15, 0.105, 0.092, 0.105, paint);
+      box(x, y + 0.056, 0.15, 0.125, 0.025, 0.115, 0xffecce);
+      box(x, y + 0.004, 0.211, 0.045, 0.04, 0.014, 0xffefc8);
+    }
+    append(new THREE.CylinderGeometry(0.5, 0.5, 1, 14),
+      0, 0, 0, 0.17, 0.17, 0.19, 0xffd16c, 0, Math.PI / 2);
+    for (const side of [-1, 1]) {
+      box(side * 0.18, -0.275, 0, 0.046, 0.64, 0.085,
+        0xc6d7d8, side * 0.4);
+    }
   } else if (kind === 'crane') {
     for (let i = 0; i < 8; i++) {
       box(0, -0.44 + i * 0.13, 0, 0.35, 0.04, 0.35, 0xffd833);
@@ -291,7 +306,22 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
     wedge.setIndex([0,2,1,1,2,3, 2,4,3,3,4,5, 0,1,4,1,5,4, 0,4,2,1,3,5]);
     wedge.computeVertexNormals();
     append(wedge, 0, 0, 0, 1, 1, 1, 0xe3b577);
-  } else if (kind === 'awning' || kind === 'bunting' || kind === 'flag') {
+  } else if (kind === 'bunting') {
+    // Real suspended triangular pennants, not a horizontal striped box.
+    box(0, 0.42, 0, 1, 0.02, 0.06, 0xffeed4);
+    for (let i = 0; i < 9; i++) {
+      const x = -0.44 + i * 0.11;
+      const triangle = new THREE.BufferGeometry();
+      triangle.setAttribute('position', new THREE.Float32BufferAttribute([
+        x - 0.05, 0.4, 0, x + 0.05, 0.4, 0,
+        x, -0.35 + (i % 3) * 0.04, 0,
+      ], 3));
+      triangle.setIndex([0, 1, 2, 2, 1, 0]);
+      triangle.computeVertexNormals();
+      append(triangle, 0, 0, 0, 1, 1, 1,
+        [0xff7794, 0xffd364, 0x5ed3c7, 0x7f9ee7][i % 4]);
+    }
+  } else if (kind === 'awning' || kind === 'flag') {
     if (kind === 'flag') cyl(-0.43, 0, 0, 0.1, 1, 0.1, 0xddd6b8);
     box(kind === 'flag' ? 0.08 : 0, 0.10, 0, 0.96, 0.14, 0.96);
     for (let i = 0; i < 5; i++) box(-0.40 + i * 0.20, -0.07, 0.15,
@@ -313,6 +343,26 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
     box(0, -0.26, 0, 0.80, 0.06, 0.77, 0x68bbd8);
     for (const x of [-0.4, 0.4]) for (const z of [-0.4, 0.4]) {
       cyl(x, 0.09, z, 0.06, 0.79, 0.06, 0xa3a5b2);
+    }
+  } else if (kind === 'pier' || kind === 'deck') {
+    // Transverse planking over a timber beam, readable from the art camera.
+    box(0, -0.055, 0, 1, 0.88, 1, 0xb78760);
+    for (let i = 0; i < 35; i++) {
+      const z = -0.48 + i * (0.96 / 34);
+      box(0, 0.40, z, 1, 0.022, 0.012,
+        i % 4 === 0 ? 0x805538 : 0x9e704b);
+    }
+    for (const x of [-0.34, 0.34]) {
+      box(x, 0.405, 0, 0.012, 0.024, 1, 0xd7aa7b);
+    }
+  } else if (kind === 'pier-rail') {
+    // Cream-white balustrade with visible gaps between its two horizontal rails.
+    for (const x of [-0.48, 0.48]) {
+      box(x, -0.02, 0, 0.065, 0.96, 0.63, 0xfff8ed);
+      box(x, 0.465, 0, 0.10, 0.055, 0.77, 0xffffff);
+    }
+    for (const y of [-0.18, 0.24]) {
+      box(0, y, 0, 0.99, 0.064, 0.25, 0xfff5df);
     }
   } else {
     box(0, 0, 0, 1, 1, 1);
