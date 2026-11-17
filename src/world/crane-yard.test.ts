@@ -109,6 +109,69 @@ describe('Crane Yard concept-art construction site', () => {
     expect(props.length).toBeGreaterThan(85);
   });
 
+  it('anchors the authored site banner without replacing the peak or cape flags', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 129 });
+    const banners = yardProps(island).filter(p => p.kind === 'site-banner');
+    expect(banners).toHaveLength(1);
+    const banner = banners[0]!;
+    expect(rel(island, banner).x).toBeCloseTo(-12.5, 6);
+    expect(rel(island, banner).z).toBeCloseTo(7.15, 6);
+    expect(banner.size).toEqual({ x: 4, y: 3.2, z: 0.15 });
+    const pad = island.pois.find(p => p.id === 'crane-yard')!.center;
+    const padHeight = heightAt(island, pad.x, pad.z);
+    expect(banner.transform.position.y - banner.size.y / 2)
+      .toBeCloseTo(padHeight + 12.4, 6);
+    expect(banner.color).toBe(0xf47a46);
+    expect(banner.collidable).toBe(false);
+    expect(yardProps(island).filter(p => p.kind === 'flag')).toHaveLength(0);
+    expect(island.props.filter(p => p.kind === 'flag' &&
+      (p.poiId === 'mt-gigga' || p.poiId === 'old-lighthouse'))).toHaveLength(2);
+  });
+
+  it('keeps all container and cone coordinates with the corrected collider sizes', () => {
+    const containers = [
+      [-31, -28, 0, 0x4589ba], [-17, -31, 0, 0x367da7],
+      [33, 24, Math.PI / 2, 0xc95241], [33, 7, Math.PI / 2, 0xda6844],
+      [33, -26, Math.PI / 2, 0x4c98ad],
+    ] as const;
+    const conePositions = [
+      [-25, 18], [-19, 18], [-13, 18], [-7, 18], [0, 18], [7, 18],
+      [10, 27], [29, 28], [35, 28], [-31, 11], [-29, 3],
+      [13, -20], [28, -20], [12, 3], [30, -4],
+    ] as const;
+    for (const size of [600, 900]) {
+      const island = generateIsland({ seed: 'billy-isle', size, resolution: 129 });
+      const scale = size / 600;
+      const props = yardProps(island);
+      const cargo = props.filter(p => p.kind === 'container');
+      const cones = props.filter(p => p.kind === 'cone');
+      expect(cargo).toHaveLength(containers.length);
+      expect(cones).toHaveLength(conePositions.length);
+      for (const [i, [x, z, yaw, color]] of containers.entries()) {
+        const prop = cargo[i]!;
+        expect(rel(island, prop).x).toBeCloseTo(x, 6);
+        expect(rel(island, prop).z).toBeCloseTo(z, 6);
+        expect(prop.transform.rotationY).toBeCloseTo(yaw, 6);
+        expect(prop.color).toBe(color);
+        expect(prop.size.x / scale).toBeCloseTo(12.2, 6);
+        expect(prop.size.y / scale).toBeCloseTo(3.2, 6);
+        expect(prop.size.z / scale).toBeCloseTo(3.0, 6);
+      }
+      for (const [i, [x, z]] of conePositions.entries()) {
+        const prop = cones[i]!;
+        expect(rel(island, prop).x).toBeCloseTo(x, 6);
+        expect(rel(island, prop).z).toBeCloseTo(z, 6);
+        expect(prop.size.x / scale).toBeCloseTo(0.5, 6);
+        expect(prop.size.y / scale).toBeCloseTo(0.75, 6);
+        expect(prop.size.z / scale).toBeCloseTo(0.5, 6);
+        expect(prop.body).toEqual({ type: 'dynamic', mass: 2 });
+        expect(prop.shape).toBe('cylinder');
+        expect(prop.climbable).toBe(false);
+        expect(prop.color).toBe(0xff8e21);
+      }
+    }
+  });
+
   it('renders the authored compound construction models and keeps positions scaled', () => {
     for (const size of [450, 900]) {
       const island = generateIsland({ seed: 'other-world', size, resolution: 97 });
@@ -121,7 +184,8 @@ describe('Crane Yard concept-art construction site', () => {
     const scene = createWorldScene(island);
     for (const kind of ['concrete-slab', 'concrete-column', 'yard-scaffold',
       'safety-rail', 'crane-jib', 'crane-cab', 'red-girder',
-      'chain-fence', 'pipe-stack', 'site-barrier'] as const) {
+      'chain-fence', 'pipe-stack', 'site-barrier', 'site-banner', 'bunting',
+      'container'] as const) {
       const visual = scene.group.getObjectByName('props-' + kind);
       expect(visual, kind).toBeInstanceOf(THREE.InstancedMesh);
       expect((visual as THREE.InstancedMesh).geometry.getAttribute('position').count)

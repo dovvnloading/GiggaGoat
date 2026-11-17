@@ -108,7 +108,7 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
   }
   put('bunting', -18.7, 6.9, 20, 1.4, 0.12,
     { bottom: 16, fixedToPad: true, collidable: false });
-  put('flag', -12.5, 7.15, 4, 3.2, 0.15,
+  put('site-banner', -12.5, 7.15, 4, 3.2, 0.15,
     { bottom: 12.4, fixedToPad: true, color: 0xf47a46, collidable: false });
 
   // Main yellow tower crane: a tall solid-footprint lattice mast, horizontal
@@ -173,7 +173,7 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
     [33, 24, Math.PI / 2, 0xc95241], [33, 7, Math.PI / 2, 0xda6844],
     [33, -26, Math.PI / 2, 0x4c98ad],
   ] as const) {
-    put('container', x, z, 12.2, 4.6, 5.3, { yaw, color });
+    put('container', x, z, 12.2, 3.2, 3.0, { yaw, color });
   }
 
   // Deliberate cargo stacks, pipe pyramids, worksite cones and striped blocks.
@@ -206,7 +206,7 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
     [10, 27], [29, 28], [35, 28], [-31, 11], [-29, 3],
     [13, -20], [28, -20], [12, 3], [30, -4],
   ] as const) {
-    put('cone', x, z, 1.0, 1.65, 1.0,
+    put('cone', x, z, 0.5, 0.75, 0.5,
       { color: 0xff8e21, dynamicMass: 2, climbable: false, shape: 'cylinder' });
   }
   return props;
