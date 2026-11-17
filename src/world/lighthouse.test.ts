@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { createWorldScene, generateIsland, heightAt, isSafeCollectiblePosition } from './index';
 import { findBookmark } from './viewer/bookmarks';
 import { instantiateLibraryModel } from './visual-lighthouse';
-import { BUILDING_RAMP } from './visual-props';
+import { BUILDING_RAMP, TOON_RAMP } from './visual-props';
 import { gridSample } from './terrain';
 
 describe('Old Lighthouse painting rebuild', () => {
@@ -127,6 +127,101 @@ describe('Old Lighthouse painting rebuild', () => {
       }
       expect(island.props).toEqual(descriptors);
       expect(island.colliders).toEqual(colliders);
+      view.dispose();
+    }
+  });
+
+  it('batches two sagging rope tiers for every qualifying bridge-post pair on both sides', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    const posts = island.props.filter(prop =>
+      prop.poiId === 'old-lighthouse' && prop.kind === 'rope-rail');
+    expect(posts.length).toBeGreaterThan(2);
+    expect(posts.length % 2).toBe(0);
+    const sides = [
+      posts.filter((_, i) => i % 2 === 0),
+      posts.filter((_, i) => i % 2 === 1),
+    ];
+    expect(sides[0]!.length).toBe(sides[1]!.length);
+    const spansBySide = sides.map(side => side.slice(1).flatMap((end, i) => {
+      const start = side[i]!;
+      const span = Math.hypot(end.transform.position.x - start.transform.position.x,
+        end.transform.position.z - start.transform.position.z);
+      return span < 12 ? [{ start, end, span }] : [];
+    }));
+    for (const spans of spansBySide) expect(spans.length).toBeGreaterThan(0);
+    const spans = spansBySide.flat();
+
+    const view = createWorldScene(island);
+    try {
+      const matches: THREE.Object3D[] = [];
+      view.group.traverse(object => {
+        if (object.name === 'lighthouse-rope-bridge-ropes') matches.push(object);
+      });
+      expect(matches).toHaveLength(1);
+      const ropes = matches[0] as THREE.Mesh;
+      expect(ropes).toBeInstanceOf(THREE.Mesh);
+      expect(ropes).not.toBeInstanceOf(THREE.InstancedMesh);
+      expect(ropes.children).toHaveLength(0);
+      expect(ropes.castShadow).toBe(false);
+      expect(ropes.receiveShadow).toBe(true);
+      const material = ropes.material as THREE.MeshToonMaterial;
+      expect(material).toBeInstanceOf(THREE.MeshToonMaterial);
+      expect(material.color.getHex()).toBe(0xd9c49a);
+      expect(material.gradientMap).toBe(TOON_RAMP);
+
+      const geometry = ropes.geometry;
+      expect(geometry).toBeInstanceOf(THREE.BufferGeometry);
+      expect(geometry.groups).toHaveLength(0);
+      const tubularSegments = 8, radialSegments = 5;
+      const verticesPerRope = (tubularSegments + 1) * (radialSegments + 1);
+      const ropeCount = spans.length * 2;
+      expect(geometry.getAttribute('position').count).toBe(ropeCount * verticesPerRope);
+      expect(geometry.index?.count).toBe(ropeCount * tubularSegments * radialSegments * 6);
+
+      // TubeGeometry has 9 circular rings of 6 vertices each (last radial
+      // vertex repeats the first). Averaging the 5 unique vertices recovers
+      // the rope centreline independently of tube radius and frame orientation.
+      const position = geometry.getAttribute('position');
+      const ringCenter = (ropeIndex: number, segment: number): THREE.Vector3 => {
+        const base = ropeIndex * verticesPerRope + segment * (radialSegments + 1);
+        const center = new THREE.Vector3();
+        for (let r = 0; r < radialSegments; r++) {
+          const i = base + r;
+          center.x += position.getX(i);
+          center.y += position.getY(i);
+          center.z += position.getZ(i);
+        }
+        return center.multiplyScalar(1 / radialSegments);
+      };
+      spans.forEach(({ start, end, span }, spanIndex) => {
+        for (const [tier, drop] of [0.25, 1.2].entries()) {
+          const ropeIndex = spanIndex * 2 + tier;
+          const a = ringCenter(ropeIndex, 0);
+          const mid = ringCenter(ropeIndex, tubularSegments / 2);
+          const b = ringCenter(ropeIndex, tubularSegments);
+          expect(Math.hypot(a.x - start.transform.position.x,
+            a.z - start.transform.position.z)).toBeLessThan(0.05);
+          expect(Math.hypot(b.x - end.transform.position.x,
+            b.z - end.transform.position.z)).toBeLessThan(0.05);
+          expect(a.y).toBeCloseTo(start.transform.position.y + start.size.y / 2 - drop, 2);
+          expect(b.y).toBeCloseTo(end.transform.position.y + end.size.y / 2 - drop, 2);
+          expect(Math.abs((a.y + b.y) / 2 - mid.y - 0.04 * span)).toBeLessThan(0.02);
+        }
+      });
+    } finally {
+      view.dispose();
+    }
+  });
+
+  it('does not create ropes or throw when a seed has no lighthouse bridge posts', () => {
+    const generated = generateIsland({ seed: 'without-lighthouse-bridge', resolution: 65 });
+    // Simulate a seed whose lighthouse road never crossed water.
+    const island = { ...generated, props: generated.props.filter(prop =>
+      prop.poiId !== 'old-lighthouse' || prop.kind !== 'rope-rail') };
+    const view = createWorldScene(island);
+    try {
+      expect(view.group.getObjectByName('lighthouse-rope-bridge-ropes')).toBeUndefined();
+    } finally {
       view.dispose();
     }
   });
