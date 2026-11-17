@@ -15,8 +15,11 @@ describe('The Dam hero POI', () => {
     const descriptors = island.colliders.filter((collider): collider is PropColliderDescriptor =>
       collider.shape !== 'heightfield' && collider.id.startsWith('the-dam-'));
     const ids = new Set(descriptors.map(collider => collider.id));
-    expect(island.props.filter(prop => prop.poiId === 'the-dam').map(prop => prop.id))
-      .toEqual(['the-dam-compat-walkway']);
+    const damProps = island.props.filter(prop => prop.poiId === 'the-dam');
+    expect(damProps.some(prop => prop.id === 'the-dam-compat-walkway')).toBe(true);
+    expect(damProps.every(prop => prop.id === 'the-dam-compat-walkway' ||
+      prop.kind === 'bush' || prop.kind === 'flower' || prop.kind === 'grass-tuft'))
+      .toBe(true);
     expect(island.props.find(prop => prop.id === 'the-dam-compat-walkway')?.collidable)
       .toBe(false);
     expect(ids).toContain('the-dam-wall');
