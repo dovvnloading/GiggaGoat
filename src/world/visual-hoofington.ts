@@ -4,7 +4,7 @@ import type { IslandData, PropDescriptor, PropKind, Vec3 } from './types';
 import { gridSample } from './terrain';
 import { publicAssetUrl } from './public-assets';
 import { createDistrictLod, type BakedPlacement, type DistrictLod } from './district-lod';
-import { WORLD_LOD } from './lod';
+import { WORLD_LOD, simplifiedWorldGeometry } from './lod';
 
 /**
  * CC0 models only. The Poly Pizza trampoline is CC-BY and CREDITS.md is
@@ -413,10 +413,10 @@ export function createTexturedGnomeInstances(
 
 
 /**
- * The USDCraft lamp is authored at real-world scale, with its base at y=0.
- * Keep every GLB primitive's original StandardMaterial (including its emissive
- * lantern glass) in a material-specific InstancedMesh. Never vertex-bake or
- * apply a per-prop colour to these meshes.
+ * Preserve the native materials and authored geometry of every USDCraft lamp.
+ * Compact visible instances into shared near/far meshes per GLB primitive,
+ * avoiding a separate material draw for every street cell. Far meshes use the
+ * existing geometric LOD simplifier, never vertex-colour baking or paint.
  */
 export interface LanternLampBatch {
   group: THREE.Group;
@@ -424,98 +424,106 @@ export interface LanternLampBatch {
   dispose(): void;
 }
 
-export function createLanternLampInstances<Model extends string>(
+export async function createLanternLampInstances<Model extends string>(
   placements: readonly HoofPlacement<Model>[], model: THREE.Group, islandSize: number,
-): LanternLampBatch | null {
+): Promise<LanternLampBatch | null> {
   if (!placements.length) return null;
   model.updateMatrixWorld(true);
   const bounds = new THREE.Box3().setFromObject(model);
   if (bounds.isEmpty()) return null;
   const span = bounds.getSize(new THREE.Vector3());
-  const parts: Array<{ geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[] }> = [];
+  const parts: Array<{
+    high: THREE.BufferGeometry; low: THREE.BufferGeometry;
+    material: THREE.Material | THREE.Material[];
+  }> = [];
+  const meshes: THREE.Mesh[] = [];
   model.traverse(object => {
-    if (!(object instanceof THREE.Mesh)) return;
-    const geometry = object.geometry.clone();
-    geometry.applyMatrix4(object.matrixWorld);
-    const material = Array.isArray(object.material)
-      ? object.material.map(source => source.clone()) : object.material.clone();
-    parts.push({ geometry, material });
+    if (object instanceof THREE.Mesh) meshes.push(object);
   });
+  for (const source of meshes) {
+    const high = source.geometry.clone();
+    high.applyMatrix4(source.matrixWorld);
+    // A GLTF primitive normally has one material. Keep grouped multi-material
+    // geometry at full detail if simplifying would discard its group indices.
+    const low = Array.isArray(source.material) && source.material.length > 1
+      ? high : await simplifiedWorldGeometry(await simplifiedWorldGeometry(high));
+    const material = Array.isArray(source.material)
+      ? source.material.map(m => m.clone()) : source.material.clone();
+    parts.push({ high, low, material });
+  }
   if (!parts.length) return null;
 
-  // Use the same spatial cell size and small-prop culling distance as the
-  // district LOD baker, without ever changing the lamp's authored materials.
-  const cells = new Map<string, HoofPlacement<Model>[]>();
-  for (const placement of placements) {
-    const key = Math.floor(placement.position.x / WORLD_LOD.districtCellSize) +
-      ':' + Math.floor(placement.position.z / WORLD_LOD.districtCellSize);
-    const cell = cells.get(key) ?? [];
-    cell.push(placement);
-    cells.set(key, cell);
-  }
   const group = new THREE.Group();
   group.name = 'usdcraft-lantern-lamps';
-  const entries: Array<{ meshes: THREE.InstancedMesh[]; sphere: THREE.Sphere }> = [];
-  const dummy = new THREE.Object3D();
-  const footprint = Math.hypot(span.x, span.z) / 2;
-  for (const cell of cells.values()) {
-    const cellBounds = new THREE.Box3();
-    const meshes: THREE.InstancedMesh[] = [];
-    for (const placement of cell) {
-      const baseY = placement.position.y - placement.size.y / 2;
-      cellBounds.expandByPoint(new THREE.Vector3(
-        placement.position.x - footprint, baseY, placement.position.z - footprint));
-      cellBounds.expandByPoint(new THREE.Vector3(
-        placement.position.x + footprint, baseY + span.y, placement.position.z + footprint));
+  const nearMeshes: THREE.InstancedMesh[] = [], farMeshes: THREE.InstancedMesh[] = [];
+  for (const { high, low, material } of parts) {
+    const near = new THREE.InstancedMesh(high, material, placements.length);
+    const far = new THREE.InstancedMesh(low, material, placements.length);
+    near.name = 'usdcraft-lantern-near';
+    far.name = 'usdcraft-lantern-far';
+    for (const batch of [near, far]) {
+      batch.count = 0;
+      batch.castShadow = true;
+      batch.receiveShadow = true;
+      batch.frustumCulled = false; // visible instances are compacted below
+      group.add(batch);
     }
-    for (const { geometry, material } of parts) {
-      const mesh = new THREE.InstancedMesh(geometry, material, cell.length);
-      mesh.name = 'usdcraft-lantern-lamps-part';
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      mesh.frustumCulled = false; // frustum checks are per spatial cell below
-      for (let i = 0; i < cell.length; i++) {
-        const placement = cell[i]!;
-        dummy.position.set(placement.position.x,
-          placement.position.y - placement.size.y / 2 - bounds.min.y,
-          placement.position.z);
-        dummy.rotation.set(0, placement.yaw, 0);
-        dummy.scale.set(1, 1, 1); // authored GLB scale; no collider-height stretch
-        dummy.updateMatrix();
-        mesh.setMatrixAt(i, dummy.matrix);
-      }
-      mesh.instanceMatrix.needsUpdate = true;
-      mesh.computeBoundingSphere();
-      group.add(mesh);
-      meshes.push(mesh);
-    }
-    entries.push({ meshes, sphere: cellBounds.getBoundingSphere(new THREE.Sphere()) });
+    nearMeshes.push(near);
+    farMeshes.push(far);
   }
-  let disposed = false;
+
+  const matrices: THREE.Matrix4[] = [], spheres: THREE.Sphere[] = [];
+  const dummy = new THREE.Object3D();
+  const radius = Math.hypot(span.x, span.y, span.z) / 2;
+  for (const placement of placements) {
+    const baseY = placement.position.y - placement.size.y / 2;
+    dummy.position.set(placement.position.x, baseY - bounds.min.y, placement.position.z);
+    dummy.rotation.set(0, placement.yaw, 0);
+    dummy.scale.set(1, 1, 1); // native asset scale, not collider dimensions
+    dummy.updateMatrix();
+    matrices.push(dummy.matrix.clone());
+    spheres.push(new THREE.Sphere(new THREE.Vector3(
+      placement.position.x, baseY - bounds.min.y + bounds.getCenter(new THREE.Vector3()).y,
+      placement.position.z), radius));
+  }
+  let previousNear: number[] = [], previousFar: number[] = [], disposed = false;
+  function same(a: readonly number[], b: readonly number[]): boolean {
+    return a.length === b.length && a.every((value, index) => value === b[index]);
+  }
+  function compact(batches: readonly THREE.InstancedMesh[], indices: readonly number[]): void {
+    for (const batch of batches) {
+      for (let i = 0; i < indices.length; i++)
+        batch.setMatrixAt(i, matrices[indices[i]!]!);
+      batch.count = indices.length;
+      batch.instanceMatrix.needsUpdate = true;
+      if (indices.length) batch.computeBoundingSphere();
+    }
+  }
   return {
     group,
     updateCulling(position, frustum): boolean {
       if (disposed) return false;
-      let changed = false;
-      for (const { meshes, sphere } of entries) {
+      const near: number[] = [], far: number[] = [];
+      for (let i = 0; i < placements.length; i++) {
+        const sphere = spheres[i]!;
         const distance = position.distanceTo(sphere.center);
-        const visible = frustum.intersectsSphere(sphere) &&
-          distance - sphere.radius <= islandSize * 1.4 &&
-          distance - Math.min(sphere.radius, 12) < WORLD_LOD.smallPropDistance;
-        for (const mesh of meshes) {
-          if (mesh.visible !== visible && mesh.castShadow) changed = true;
-          mesh.visible = visible;
-        }
+        if (distance - sphere.radius > Math.min(WORLD_LOD.smallPropDistance, islandSize * 1.4) ||
+          !frustum.intersectsSphere(sphere)) continue;
+        (distance > WORLD_LOD.detailedDistance ? far : near).push(i);
       }
-      return changed;
+      const nearChanged = !same(previousNear, near), farChanged = !same(previousFar, far);
+      if (nearChanged) { compact(nearMeshes, near); previousNear = near; }
+      if (farChanged) { compact(farMeshes, far); previousFar = far; }
+      return nearChanged || farChanged;
     },
     dispose(): void {
       if (disposed) return;
       disposed = true;
       group.clear();
       group.removeFromParent();
-      for (const { geometry, material } of parts) {
-        geometry.dispose();
+      for (const { high, low, material } of parts) {
+        high.dispose();
+        if (low !== high) low.dispose();
         for (const m of Array.isArray(material) ? material : [material]) m.dispose();
       }
     },
@@ -626,10 +634,11 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
           console.warn('Hoofington gnome GLB needs one UV-mapped, textured mesh');
         const lampPlan = plan.filter(p => p.model === 'lamp');
         const lampModel = models.get('lamp');
-        lanterns = lampModel ? createLanternLampInstances(lampPlan, lampModel, island.size) : null;
+        lanterns = lampModel ? await createLanternLampInstances(lampPlan, lampModel, island.size) : null;
+        if (disposed) { lanterns?.dispose(); return; }
         if (lanterns) group.add(lanterns.group);
         if (geometry || gnomes || lanterns) {
-          const drawn = [...staticPlan, ...(gnomes ? gnomePlan : []),
+          const drawn = [...(geometry ? staticPlan : []), ...(gnomes ? gnomePlan : []),
             ...(lanterns ? lampPlan : [])];
           suppressOldArt(island, oldProps, new Set(drawn.map(p => p.model)),
             drawn, fullyHidden);

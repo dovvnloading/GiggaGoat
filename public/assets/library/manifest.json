@@ -33026,6 +33026,96 @@
   "url": ""
  },
  {
+  "path": "assets/library/custom/hoofington-props/flowers-pink.glb",
+  "name": "Hoofington flowers-pink",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-props/flowers-purple.glb",
+  "name": "Hoofington flowers-purple",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-props/flowers-sunny.glb",
+  "name": "Hoofington flowers-sunny",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-props/silo.glb",
+  "name": "Hoofington silo",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Quaternius farm buildings (CC0), repainted in Blender for Gigga-Goat",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-props/windmill.glb",
+  "name": "Hoofington windmill",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Quaternius farm buildings (CC0), repainted in Blender for Gigga-Goat",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-props/tree-round-a.glb",
+  "name": "Hoofington tree-round-a",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-props/tree-round-b.glb",
+  "name": "Hoofington tree-round-b",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-props/tree-round-c.glb",
+  "name": "Hoofington tree-round-c",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-props/bush-round-a.glb",
+  "name": "Hoofington bush-round-a",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-props/bush-round-b.glb",
+  "name": "Hoofington bush-round-b",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
   "path": "assets/library/usdcraft/street-lamp-lantern.glb",
   "name": "street-lamp-lantern",
   "source": "NVIDIA USDCraft-10K",

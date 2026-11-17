@@ -456,8 +456,9 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
         const visible = plan.filter(p => models.has(p.model));
         const staticPlan = visible.filter(p => p.model !== 'lamp');
         const lampModel = models.get('lamp');
-        lanterns = lampModel ? createLanternLampInstances(
+        lanterns = lampModel ? await createLanternLampInstances(
           visible.filter(p => p.model === 'lamp'), lampModel, island.size) : null;
+        if (disposed) { lanterns?.dispose(); return; }
         if (lanterns) group.add(lanterns.group);
         const ranges: BakedPlacement<DowntownModel>[] = [];
         const geometry = bakeLibraryGeometry(staticPlan, models,

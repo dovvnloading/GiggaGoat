@@ -109,7 +109,7 @@ describe('Hoofington sourced village model integration', () => {
     originalMaterial.dispose();
   });
 
-  it('instances the authored lantern parts without tint, paint or height stretch', () => {
+  it('instances the authored lantern parts without tint, paint or height stretch', async () => {
     const source = new THREE.Group();
     const names = ['painted_cast_iron', 'lantern_glass', 'opal_globe', 'brass_burner'];
     for (const name of names) {
@@ -128,9 +128,13 @@ describe('Hoofington sourced village model integration', () => {
       { model: 'lamp', position: { x: 12, y: 14, z: 4 },
         size: { x: 0.6, y: 8, z: 0.6 }, yaw: 0.5 },
     ];
-    const batch = createLanternLampInstances(placements, source, 600)!;
-    const instances = batch.group.children as THREE.InstancedMesh[];
+    const batch = (await createLanternLampInstances(placements, source, 600))!;
+    batch.updateCulling(new THREE.Vector3(10, 12, 3),
+      { intersectsSphere: () => true } as THREE.Frustum);
+    const instances = batch.group.children.filter(mesh =>
+      mesh.name === 'usdcraft-lantern-near') as THREE.InstancedMesh[];
     expect(instances).toHaveLength(4);
+    expect(batch.group.children).toHaveLength(8);
     for (const mesh of instances) {
       expect(mesh).toBeInstanceOf(THREE.InstancedMesh);
       expect(mesh.count).toBe(2);

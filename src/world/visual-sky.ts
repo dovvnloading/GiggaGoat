@@ -1,5 +1,18 @@
 import * as THREE from 'three';
-import { TOON_RAMP } from './visual-props';
+// Clouds need a brighter, gentler shade than the shared prop toon ramp.
+const CLOUD_RAMP = new THREE.DataTexture(
+  new Uint8Array([
+    214, 214, 214, 255,
+    232, 232, 232, 255,
+    246, 246, 246, 255,
+    255, 255, 255, 255,
+  ]),
+  4, 1, THREE.RGBAFormat,
+);
+CLOUD_RAMP.magFilter = THREE.NearestFilter;
+CLOUD_RAMP.minFilter = THREE.NearestFilter;
+CLOUD_RAMP.generateMipmaps = false;
+CLOUD_RAMP.needsUpdate = true;
 
 export type LightingPreset = 'day' | 'golden-hour' | 'night';
 
@@ -50,11 +63,12 @@ export function buildSkyVisuals(): SkyVisuals {
 
   // One cloud draw call; deterministic ellipsoid clusters rather than flat billboards.
   const cloudMaterial = new THREE.MeshToonMaterial({
-    color: 0xfff6eb, gradientMap: TOON_RAMP,
+    color: 0xffffff, gradientMap: CLOUD_RAMP,
+    emissive: 0xdfe9f7, emissiveIntensity: 0.18,
     transparent: true, opacity: 0.94, depthWrite: false,
   });
   const cloudCount = 72;
-  const clouds = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1),
+  const clouds = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 2),
     cloudMaterial, cloudCount);
   clouds.name = 'puffy-cloud-banks';
   const matrix = new THREE.Matrix4();
@@ -70,10 +84,10 @@ export function buildSkyVisuals(): SkyVisuals {
     const breadth = 28 + rand() * 28;
     for (let j = 0; j < 3; j++) {
       matrix.compose(
-        new THREE.Vector3(x + (j - 1) * breadth * 0.63, y + (j === 1 ? 7 : 0),
-          z + (j % 2 ? 9 : -9)),
+        new THREE.Vector3(x + (j - 1) * breadth * 0.63 * 1.25, y + (j === 1 ? 7 : 0),
+          z + (j % 2 ? 9 : -9) * 1.25),
         new THREE.Quaternion(),
-        new THREE.Vector3(breadth * (j === 1 ? 1.35 : 1), 20 + rand() * 10,
+        new THREE.Vector3(breadth * (j === 1 ? 1.35 : 1), (20 + rand() * 10) * 0.62,
           24 + rand() * 13),
       );
       clouds.setMatrixAt(i * 3 + j, matrix);
@@ -121,7 +135,7 @@ export function buildSkyVisuals(): SkyVisuals {
     sun.position.copy(direction).multiplyScalar(900);
     sun.visible = altitude > -0.07;
     cloudMaterial.opacity = 0.18 + daylight * 0.76;
-    cloudMaterial.color.setHex(golden > 0.32 ? 0xffcdb6 : 0xfff6eb);
+    cloudMaterial.color.setHex(golden > 0.32 ? 0xffcdb6 : 0xffffff);
     starMaterial.opacity = (1 - daylight) * 0.94;
     stars.visible = daylight < 0.7;
     return { daylight, altitude, direction };
