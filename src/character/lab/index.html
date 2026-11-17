@@ -3,122 +3,133 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Gigga-Goat | Character Art Lab</title>
+  <title>Gigga-Goat | Rigged Character Lab</title>
   <style>
-    :root {
-      font: 14px/1.48 ui-rounded, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-      color: #342341;
-      background: #fff6f0;
-      accent-color: #783d9b;
-    }
+    :root { font: 14px/1.48 system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #322a46; background: #f3f8fc; accent-color: #74449e; }
     * { box-sizing: border-box; }
     body { margin: 0; }
-    button { font: inherit; cursor: pointer; border: 1px solid #d2bacf; background: white; color: #50305d; border-radius: 9px; padding: 9px 12px; }
-    button:hover { border-color: #86519d; background: #fbf1ff; }
-    button[aria-pressed="true"] { background: #673682; border-color: #673682; color: white; }
-    button:focus-visible, canvas:focus-visible { outline: 3px solid #efa21a; outline-offset: 3px; }
-    header { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; flex-wrap: wrap;
-      background: linear-gradient(100deg,#59317e,#8753a3); color: #fff; padding: 16px 25px;
-      border-bottom: 5px solid #f5a31a; }
-    h1 { margin: 0; font-size: clamp(24px,3vw,37px); font-weight: 950; letter-spacing: -.035em; }
-    h1 em { color: #ffd351; font-style: normal; text-shadow: 1px 2px #5a3262; }
-    header p { margin: 0; color: #f9e4fb; font-size: 13px; }
-    main { display: grid; grid-template-columns: minmax(200px,240px) minmax(340px,1.1fr) minmax(340px,1fr);
-      gap: 14px; padding: 14px; max-width: 2000px; margin: auto; }
-    .panel { border-radius: 16px; border: 1px solid #d7c0cc; background: #fffaf5; overflow: hidden;
-      box-shadow: 0 8px 24px #4d36530e; }
-    .panel h2 { font-size: 16px; margin: 0; color: white; background: #6b4188; padding: 10px 16px; }
-    .controls { padding: 14px; }
-    .controls p { margin: 5px 0 14px; font-size: 12px; color: #795b75; }
-    .eyebrow { font: 800 11px/1.2 system-ui; text-transform: uppercase; letter-spacing: .15em;
-      color: #875d88; margin: 16px 0 9px; }
-    .choices { display: grid; gap: 6px; }
-    #tierButtons { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    button { font: inherit; font-weight: 650; cursor: pointer; border: 1px solid #bbc9dc;
+      background: #fff; color: #4f3869; border-radius: 9px; padding: 9px 12px; }
+    button:hover { border-color: #8155a5; background: #f9f2ff; }
+    button[aria-pressed="true"] { background: #64388c; color: #fff; border-color: #64388c; }
+    button:focus-visible, canvas:focus-visible { outline: 3px solid #e9a223; outline-offset: 3px; }
+    header { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: baseline;
+      justify-content: space-between; background: linear-gradient(115deg,#4f3177,#8061a9);
+      color: #fff; padding: 16px 26px; border-bottom: 4px solid #f7b73f; }
+    h1 { margin: 0; font-size: clamp(22px,3vw,35px); font-weight: 900; letter-spacing: -.04em; }
+    h1 em { font-style: normal; color: #ffda74; }
+    header p { margin: 0; color: #e9dff6; font-size: 13px; }
+    main { max-width: 1850px; margin: auto; padding: 14px; display: grid;
+      grid-template-columns: 224px minmax(380px,1fr) 325px; gap: 14px; }
+    .panel { min-width: 0; overflow: hidden; border: 1px solid #ccdae8;
+      border-radius: 15px; background: #fff; box-shadow: 0 8px 26px #455b7b10; }
+    h2 { font-size: 14px; font-weight: 850; margin: 0; color: white;
+      background: #604285; padding: 11px 15px; letter-spacing: .035em; }
+    .controls { padding: 15px; }
+    .controls p { color: #64677c; font-size: 12px; margin: 3px 0 13px; }
+    .eyebrow { margin: 17px 0 7px; color: #735688; font-size: 11px;
+      text-transform: uppercase; letter-spacing: .12em; font-weight: 850; }
+    .choices { display: grid; gap: 7px; }
+    #tierButtons { grid-template-columns: 1fr 1fr; }
     #poseButtons { grid-template-columns: 1fr; }
-    #poseButtons button { text-align: left; font-weight: 720; display: flex; justify-content: space-between; align-items: center; }
-    .choices button { padding: 8px 10px; }
-    .subtle { font-size: 11px; color: #806b7c; }
-    .controls .help { background: #f7eef3; border-radius: 12px; padding: 11px; margin-top: 18px;
-      color: #553b5e; font-size: 12px; }
-    .display { min-width: 0; display: flex; flex-direction: column; }
-    #stage { width: 100%; flex: 1; min-height: 460px; display: block; background: #f0e6df;
-      cursor: grab; touch-action: none; }
+    #poseButtons button { text-align: left; }
+    .help { margin-top: 16px; padding: 12px; border-radius: 10px;
+      background: #f7f1ff; color: #5c4a6f; font-size: 12px; }
+    .display { display: flex; flex-direction: column; }
+    #stage { width: 100%; min-height: 495px; flex: 1; display: block;
+      cursor: grab; touch-action: none; background: #d1e1ec; }
     #stage.dragging { cursor: grabbing; }
-    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; align-items: center; background: #fffaf5; }
-    .toolbar button { flex: 1; min-width: 122px; font-weight: 780; }
-    #status { margin-left: auto; color: #62476b; font-size: 12px; min-width: 175px; text-align: right; }
-    .reference { padding: 11px; }
-    .reference img { display: block; max-width: 100%; width: 100%; border-radius: 10px; border: 1px solid #ddd0db; }
-    figure { margin: 0 0 12px; }
-    figcaption { color: #6e536f; font-size: 12px; padding: 6px 2px; }
-    .reference .hint { padding: 9px; font-size: 12px; background: #f7eee7; border-radius: 10px; }
-    .reference a { color: #673b82; text-underline-offset: 3px; }
-    footer { padding: 0 24px 22px; max-width: 2000px; margin: auto; font-size: 12px; color: #7b6178; }
-    @media(max-width:1250px) { main { grid-template-columns: 240px minmax(0,1fr); }
-      .reference { grid-column: 1 / -1; } .reference .images { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } }
-    @media(max-width:700px) { main { display: flex; flex-direction: column; padding: 8px; gap: 8px; }
-      .choices#poseButtons { grid-template-columns: repeat(3,minmax(0,1fr)); }
-      #poseButtons button { padding: 8px 5px; justify-content: center; font-size: 11px; }
-      .display { min-height: 440px; } #stage { min-height: 355px; }
-      .reference .images { display: block; } header { padding: 12px; } }
+    .variant-strip { display: grid; grid-template-columns: repeat(3,minmax(0,1fr));
+      background: #eef5fa; border-top: 1px solid #d3e0eb; text-align: center; }
+    .variant-strip div { padding: 9px 3px; border-right: 1px solid #d3e0eb;
+      font-size: 11px; font-weight: 850; color: #5b4a71; letter-spacing: .04em; }
+    .variant-strip div:last-child { border: 0; }
+    .variant-strip span { display: block; color: #69778e; font-size: 10px;
+      font-weight: 500; letter-spacing: 0; }
+    .toolbar { display: flex; gap: 7px; flex-wrap: wrap; padding: 11px;
+      align-items: center; background: #fff; }
+    .toolbar button { flex: 1; white-space: nowrap; }
+    #status { width: 100%; color: #71637f; font-size: 12px; text-align: center; }
+    .reference { padding: 12px; }
+    .reference img { width: 100%; display: block; border-radius: 10px;
+      background: #d1e1ec; border: 1px solid #c5d4df; }
+    figcaption { font-size: 12px; color: #687589; margin-top: 7px; }
+    figure { margin: 0 0 15px; }
+    .reference p { color: #677185; font-size: 12px; }
+    .reference strong { color: #5d4b75; }
+    .hint { padding: 11px; background: #f0f4fa; border-radius: 10px; }
+    footer { max-width: 1850px; margin: auto; padding: 6px 18px 22px;
+      color: #728098; font-size: 12px; }
+    @media(max-width:1270px) {
+      main { grid-template-columns: 225px minmax(0,1fr); }
+      .reference-panel { grid-column: 1 / -1; }
+      .reference { display: flex; align-items: flex-start; gap: 16px; }
+      .reference figure { max-width: 55%; flex: 1; margin: 0; }
+      .reference .notes { flex: 1; }
+    }
+    @media(max-width:740px) {
+      main { display: flex; flex-direction: column; padding: 8px; gap: 8px; }
+      .controls { padding: 10px; }
+      #poseButtons { grid-template-columns: repeat(3,minmax(0,1fr)); }
+      #poseButtons button { font-size: 10px; padding: 8px 5px; text-align: center; }
+      #stage { min-height: 350px; }
+      .reference { display: block; }
+      .reference figure { max-width: none; margin-bottom: 12px; }
+      header { padding: 12px; }
+    }
   </style>
 </head>
 <body>
   <header>
-    <h1><em>GIGGA-GOAT</em> Character Lab 🐐</h1>
-    <p>Real Three.js character · 4 physical size tiers · 9 poses · approved art side by side</p>
+    <h1><em>GIGGA-GOAT</em> · Rigged Character Lab 🐐</h1>
+    <p>3 original GLBs · 6 baked 30 fps clips · 4 physics size tiers</p>
   </header>
   <main>
-    <section class="panel">
-      <h2>ART DIRECTOR CONTROLS</h2>
+    <section class="panel" aria-label="Animation controls">
+      <h2>CLIP / SIZE CONTROLS</h2>
       <div class="controls">
-        <p>Preview the full procedural model against the approved model sheet. Drag on the 3D stage to orbit; scroll to zoom.</p>
+        <p>All three goats play the same selected animation. Drag to orbit, scroll to zoom, or enter live Rapier mode to test the hero.</p>
         <div class="eyebrow">Size tier</div>
         <div id="tierButtons" class="choices" aria-label="Goat size tiers"></div>
-        <div class="eyebrow">Action / expression</div>
-        <div id="poseButtons" class="choices" aria-label="Pose gallery"></div>
-        <div class="help">
-          <strong>Checks:</strong> cream layered wool, cloven dark hooves,
-          huge banded golden curls, square horizontal pupils, expressive brows,
-          beard, pink ears and animated orange scarf.
-          GIGGA has an oversized horn spiral and violet glow.
-        </div>
+        <div class="eyebrow">GLB animation clip</div>
+        <div id="poseButtons" class="choices" aria-label="Six rigged clips"></div>
+        <div class="help">Walk is authored for 1.2 m/s and Run for 3.5 m/s. In Rapier mode their weights and speed respond to the real torso velocity. The old seven-part sculpt stays visible until each GLB loads.</div>
       </div>
     </section>
 
-    <section class="panel display" aria-label="Live procedural Three.js model">
-      <h2>LIVE 3D SCULPT</h2>
-      <canvas id="stage" aria-label="Orbitable animated goat model" tabindex="0"></canvas>
+    <section class="panel display" aria-label="Three live skinned goat models">
+      <h2>LIVE SIDE-BY-SIDE 3D RIGS</h2>
+      <canvas id="stage" aria-label="Orbitable three goat animation comparison" tabindex="0"></canvas>
+      <div class="variant-strip" aria-label="Variants from left to right">
+        <div>CHARCOAL + BELL<span>goat_alt_bell.glb</span></div>
+        <div>CREAM HERO<span>goat_hero.glb</span></div>
+        <div>BLUE BANDANA<span>goat_alt_bandana.glb</span></div>
+      </div>
       <div class="toolbar">
         <button id="mode" type="button" aria-pressed="false">Enter real Rapier mode</button>
         <button id="pause" type="button" aria-pressed="false">Pause animation</button>
         <button id="reset" type="button">Reset camera</button>
-        <span id="status" role="status">Preview · BILLY · STAND</span>
+        <span id="status" role="status" aria-live="polite">Loading rigged goats…</span>
       </div>
     </section>
 
-    <section class="panel">
-      <h2>APPROVED VISUAL TARGETS</h2>
+    <section class="panel reference-panel">
+      <h2>ORIGINAL MODEL LINEUP</h2>
       <div class="reference">
-        <div class="images">
-          <figure>
-            <img src="/docs/art/hifi/21_goat_model_sheet.png" alt="Approved goat model sheet with four turnaround views, KID/BILLY/BIG/GIGGA sizes and gameplay poses." />
-            <figcaption>21 · Goat model sheet · proportions, coloring, expression and poses</figcaption>
-          </figure>
-          <figure>
-            <img src="/docs/art/hifi/07_key_art.png" alt="Approved colorful alpine farm key art featuring the ram-horned cream goat and orange scarf." />
-            <figcaption>07 · Key art · daylight toon shading, saturated scarf and storybook silhouette</figcaption>
-          </figure>
+        <figure>
+          <img id="lineup-image" alt="Source lineup showing charcoal goat with green bell, cream goat with orange scarf, and brown goat with blue bandana." />
+          <figcaption>The reference image supplied with the three rigged GLBs.</figcaption>
+        </figure>
+        <div class="notes">
+          <p><strong>Self-review checklist:</strong> silhouette and embedded colors match the reference; skinned ears, legs, jaw and fleece move; hooves remain at ground level; all variants switch clips together; mount points follow head/neck/back bones.</p>
+          <p class="hint">In Rapier mode the center hero reads interpolated torso transforms. Use <b>WASD</b> to move, <b>Shift</b> to run, <b>Space</b> to jump, <b>E</b> to bleat, <b>Q</b> to flop, <b>T</b> for tongue tether, and <b>1–4</b> for size.</p>
+          <p>Return to the three-variant view to compare each action again.</p>
         </div>
-        <p class="hint">In Rapier mode, the actual seven rigid bodies drive the sculpt. Use
-          <b>WASD</b> to move, <b>Shift</b> sprint, <b>Space</b> jump/flip,
-          <b>Q</b> flop, <b>E</b> bleat and <b>T</b> tongue toggle.
-          Pose selections preview accents; only physics decides the final body transforms.
-          <a href="../../physics/lab/index.html">Open physics lab</a>.</p>
       </div>
     </section>
   </main>
-  <footer>Dev-only page: /src/character/lab/index.html. The legacy core placeholder intentionally remains untouched while the core team integrates this new character renderer.</footer>
+  <footer>Character lane visual QA · all model files and textures are served from public/assets/characters/goat/. No changes to physics or core are required.</footer>
   <script type="module" src="./lab.ts"></script>
 </body>
 </html>
