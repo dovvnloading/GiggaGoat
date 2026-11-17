@@ -122,8 +122,9 @@ describe('The Dam downstream scenery', () => {
   it('uses the painted custom buoy at its 1.0 x 1.8 x 1.0 metre scale', () => {
     expect(DAM_BUOY_MODEL).toBe('custom/props/buoy.glb');
     expect(DAM_BUOY_SIZE).toEqual({ width: 1, height: 1.8, depth: 1 });
-    const manifest = JSON.parse(readFileSync('public/assets/library/manifest.json', 'utf8'))
-      as Array<{ path: string; license: string }>;
+    const manifest = JSON.parse(
+      readFileSync('public/assets/library/manifest.json', 'utf8'),
+    ) as Array<{ path: string; license: string }>;
     const path = 'assets/library/' + DAM_BUOY_MODEL;
     expect(manifest.find(asset => asset.path === path)?.license).toBe('CC0');
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
