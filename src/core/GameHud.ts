@@ -100,7 +100,7 @@ const CSS = `
 .gg-stamina{left:10px;bottom:164px;width:105px;border-width:4px}.gg-stamina-inner{border-width:3px}.gg-stamina-label{font-size:12px}.gg-stamina-value{font-size:8px}
 .gg-hotbar{width:calc(100% - 18px);bottom:9px;padding:7px 6px;border-width:3px;border-radius:20px}.gg-hotbar-header{top:-29px;padding:0 15px;border-width:3px;font-size:17px}.gg-hotbar-header:before,.gg-hotbar-header:after{font-size:16px}
 .gg-hotbar-slots{gap:3px}.gg-slot{height:clamp(59px,13vw,82px);border-width:2px;border-radius:12px}.gg-slot-key{top:-6px;left:-4px;padding:0 5px;border-width:1px;font-size:11px}.gg-slot-count{font-size:12px}.gg-slot-name{font-size:7px}.gg-hotbar-foot{font-size:8px;margin:6px 1px 0}.gg-hotbar-charge{margin:4px 2px 0}
-.gg-board-hint{bottom:210px;font-size:9px;padding:5px 8px;border-width:2px;white-space:normal;text-align:center;max-width:50vw}
+.gg-board-hint{top:40%;bottom:auto;font-size:9px;padding:5px 8px;border-width:2px;white-space:normal;text-align:center;max-width:50vw}
 .gg-debug{top:270px;left:7px;font-size:9px}
 }
 @media (max-height:680px) and (min-width:760px){
@@ -346,6 +346,7 @@ export class GameHud {
       const rect = layout.prompts.get(id);
       element.style.visibility = rect ? 'visible' : 'hidden';
       if (rect) {
+        element.style.bottom = 'auto';
         element.style.left = ((rect.left + rect.right) / 2 - viewport.left) + 'px';
         element.style.top = (rect.top - viewport.top) + 'px';
       }
