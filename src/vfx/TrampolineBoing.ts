@@ -79,7 +79,7 @@ function makeRaysGeometry(): THREE.BufferGeometry {
     const k = i % 7;
     const x = side * (0.20 + k * 0.13);
     const z = -0.30 + (k % 3) * 0.20;
-    const y = TRAMPOLINE_MAT_Y + 0.035;
+    const y = 0.035; // geometry is positioned at the rim's height below
     const tipX = x + side * (0.09 + k * 0.075);
     const tipY = y + 0.36 + (k % 4) * 0.16 + (k === 3 ? 0.17 : 0);
     const width = 0.065 + (k % 3) * 0.012;
@@ -160,7 +160,8 @@ export class TrampolineBoing {
   private readonly boxGeometry = new THREE.BoxGeometry(1, 1, 1);
   private readonly cylinderGeometry = new THREE.CylinderGeometry(0.085, 0.122, 0.48, 8);
   private readonly footGeometry = new THREE.CylinderGeometry(0.16, 0.19, 0.075, 9);
-  private readonly bodyGeometry = new THREE.CylinderGeometry(0.955, 0.91, 0.13, 48);
+  // Hollow sidewall: a capped cylinder would hide the mat as it dips down.
+  private readonly bodyGeometry = new THREE.CylinderGeometry(0.955, 0.91, 0.13, 48, 1, true);
   private readonly purpleGeometry = new THREE.TorusGeometry(0.965, 0.103, 8, 64);
   private readonly blueGeometry = new THREE.TorusGeometry(0.97, 0.031, 6, 64);
   private readonly innerRimGeometry = new THREE.TorusGeometry(0.88, 0.032, 6, 64);
@@ -248,6 +249,7 @@ export class TrampolineBoing {
 
       const rays = new THREE.Mesh(this.raysGeometry, trailMaterial(0xffffff, true));
       rays.name = 'gold rim rebound speed-line fan';
+      rays.position.y = TRAMPOLINE_MAT_Y; // scale the fan from the rim, not from ground
       rays.renderOrder = 9;
       root.add(rays);
       const arcs = new THREE.Mesh(this.arcsGeometry, trailMaterial(0xffffff, true));
