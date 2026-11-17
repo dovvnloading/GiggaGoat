@@ -283,7 +283,9 @@ export function bakeHoofingtonGeometry(
           } else if (placement.model === 'pine') {
             tint.setHex(height > 0.23 ? 0x478f62 : 0x8d694b);
           } else if (placement.model === 'bush') {
-            tint.setHex(/flower|petal|blossom/.test(hint) ? 0xe6a4dd : 0x6db85b);
+            // Many bundled shrubs use 'flower' in the name for every leaf
+            // mesh. Keep the canopy green; separate flower GLBs add blossoms.
+            tint.setHex(0x6db85b);
           } else if (placement.model === 'flower') {
             tint.setHex(height > 0.38 ? 0xc68ee6 : 0x6ba955);
           }
