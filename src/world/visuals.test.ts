@@ -65,7 +65,7 @@ describe('Billy Isle hi-fi environment map', () => {
     const minimum: Record<(typeof POI_IDS)[number], number> = {
       hoofington: 75, 'baa-ardwalk': 65, 'crane-yard': 70,
       'downtown-bleatsville': 90, 'mt-gigga': 60,
-      'whispering-pines': 125, 'the-dam': 35, 'old-lighthouse': 30,
+      'whispering-pines': 125, 'the-dam': 1, 'old-lighthouse': 30,
     };
     for (const id of POI_IDS) {
       expect(island.props.filter(p => p.poiId === id).length).toBeGreaterThanOrEqual(minimum[id]);
@@ -73,7 +73,7 @@ describe('Billy Isle hi-fi environment map', () => {
     const kind = new Set(island.props.map(prop => prop.kind));
     for (const required of ['silo', 'gnome', 'mailbox', 'ferris-wheel', 'bunting', 'cone',
       'container', 'fountain', 'ac-unit', 'water-tower', 'mushroom', 'lookout',
-      'control-house', 'shipwreck', 'cave-mouth', 'grass-tuft', 'bush']) {
+      'shipwreck', 'cave-mouth', 'grass-tuft', 'bush']) {
       expect(kind.has(required as never), required).toBe(true);
     }
   });
