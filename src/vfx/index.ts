@@ -34,3 +34,13 @@ export {
   WATER_DROPLET_COUNT, makeWaterSplashBurst, sampleWaterSplash, sampleWaterDroplet,
   type WaterSplashBurst, type WaterSplashFrame, type WaterDropletFrame,
 } from './waterSplashMath';
+
+export {
+  CrateBreakDebris, createCrateBreakDebris,
+  type CrateBreakDebrisOptions,
+} from './CrateBreakDebris';
+export {
+  CRATE_PLANK_COUNT, CRATE_CHIP_COUNT, CRATE_DUST_COUNT,
+  makeCrateBreakBurst, sampleCrateBreak, sampleCrateFragment, sampleCrateDust,
+  type CrateBreakBurst, type CrateBreakFrame, type CrateFragmentFrame, type CrateDustFrame,
+} from './crateDebrisMath';
