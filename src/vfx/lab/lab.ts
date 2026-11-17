@@ -1,10 +1,11 @@
-/** Production-ready art QA for dust, landing, headbutt and water splash. */
+/** Production-ready art QA for the first five approved VFX panels. */
 import * as THREE from 'three';
 import { GoatCharacter } from '../../character/GoatCharacter';
 import { RunningDustPuffs } from '../RunningDustPuffs';
 import { LandingImpactRing } from '../LandingImpactRing';
 import { HeadbuttImpactStars } from '../HeadbuttImpactStars';
 import { WaterSplash } from '../WaterSplash';
+import { CrateBreakDebris } from '../CrateBreakDebris';
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -31,6 +32,9 @@ const waterSpeedControl = element<HTMLInputElement>('water-speed');
 const waterSpeedLabel = element<HTMLOutputElement>('water-speed-value');
 const waterMassControl = element<HTMLInputElement>('water-mass');
 const waterMassLabel = element<HTMLOutputElement>('water-mass-value');
+const crateButton = element<HTMLButtonElement>('crate');
+const crateSizeControl = element<HTMLInputElement>('crate-size');
+const crateSizeLabel = element<HTMLOutputElement>('crate-size-value');
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xfff3ea);
@@ -84,6 +88,8 @@ const headbutt = new HeadbuttImpactStars({ capacity: 10 });
 scene.add(headbutt.group);
 const water = new WaterSplash({ capacity: 10 });
 scene.add(water.group);
+const crate = new CrateBreakDebris({ capacity: 8 });
+scene.add(crate.group);
 // A static faceted target for QA only; no collider or game physics.
 const rockGeometry = new THREE.DodecahedronGeometry(0.44, 0);
 const rockMaterial = new THREE.MeshToonMaterial({ color: 0x8e8194 });
@@ -101,6 +107,7 @@ let emissionClock = 0;
 let landingClock = 0;
 let headbuttClock = 0;
 let waterClock = 0;
+let crateClock = 0;
 let lastTime = 0;
 let yaw = 0;
 let elevation = 0.19;
@@ -119,10 +126,12 @@ function setDirection(value: string): void {
   landing.clear();
   headbutt.clear();
   water.clear();
+  crate.clear();
   emissionClock = 0;
   landingClock = 0;
   headbuttClock = 0;
   waterClock = 0;
+  crateClock = 0;
   goat.mountWorldPosition('head', headContact);
   rock.position.set(headContact.x + heading * 0.58, 0.38, headContact.z - 0.05);
 }
@@ -163,11 +172,21 @@ function emitWater(): void {
   );
 }
 
+function emitCrate(): void {
+  // Standalone break preview next to the goat, not a gameplay collider.
+  crate.emit(
+    { x: goat.root.position.x - heading * 1.24, y: 0, z: -0.85 },
+    { x: heading, y: 0, z: 0 },
+    Number(crateSizeControl.value),
+  );
+}
+
 function refreshUi(): void {
   state.textContent = (paused ? 'Paused' : 'Running') + ' / ' +
     dust.activeCount + ' dust sprites / ' + landing.activeCount +
     ' landing rings / ' + headbutt.activeCount + ' headbutt impacts / ' +
-    water.activeCount + ' water splashes';
+    water.activeCount + ' water splashes / ' +
+    crate.activeCount + ' crate breaks';
   pauseButton.textContent = paused ? 'Resume motion' : 'Pause motion';
   pauseButton.setAttribute('aria-pressed', String(paused));
   rateLabel.textContent = cadence.toFixed(1) + '/s';
@@ -175,6 +194,7 @@ function refreshUi(): void {
   headbuttPowerLabel.textContent = Number(headbuttPowerControl.value).toFixed(1);
   waterSpeedLabel.textContent = Number(waterSpeedControl.value).toFixed(1);
   waterMassLabel.textContent = Number(waterMassControl.value).toFixed(1);
+  crateSizeLabel.textContent = Number(crateSizeControl.value).toFixed(2);
 }
 
 directionControl.addEventListener('change', () => {
@@ -190,6 +210,12 @@ impactStrengthControl.addEventListener('input', refreshUi);
 headbuttPowerControl.addEventListener('input', refreshUi);
 waterSpeedControl.addEventListener('input', refreshUi);
 waterMassControl.addEventListener('input', refreshUi);
+crateSizeControl.addEventListener('input', refreshUi);
+crateButton.addEventListener('click', () => {
+  emitCrate();
+  if (paused) crate.update(0.31); // show flying planks in paused art review
+  refreshUi();
+});
 waterButton.addEventListener('click', () => {
   emitWater();
   if (paused) water.update(0.37); // hold a tall cyan crown for art review
@@ -221,10 +247,12 @@ clearButton.addEventListener('click', () => {
   landing.clear();
   headbutt.clear();
   water.clear();
+  crate.clear();
   emissionClock = 0;
   landingClock = 0;
   headbuttClock = 0;
   waterClock = 0;
+  crateClock = 0;
   refreshUi();
 });
 
@@ -290,6 +318,12 @@ function frame(now: number): void {
       emitWater();
     }
     water.update(dt);
+    crateClock += dt;
+    if (crateClock >= 3.85) {
+      crateClock %= 3.85;
+      emitCrate();
+    }
+    crate.update(dt);
   }
 
   const horizontal = Math.cos(elevation) * distance;
@@ -324,6 +358,8 @@ emitHeadbutt();
 headbutt.update(0.27);
 emitWater();
 water.update(0.37);
+emitCrate();
+crate.update(0.34);
 refreshUi();
 requestAnimationFrame(frame);
 
@@ -334,6 +370,7 @@ window.addEventListener('pagehide', () => {
   landing.dispose();
   headbutt.dispose();
   water.dispose();
+  crate.dispose();
   rockGeometry.dispose();
   rockMaterial.dispose();
   goat.dispose();
