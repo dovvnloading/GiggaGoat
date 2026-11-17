@@ -12,6 +12,7 @@ import { buildWaterVisuals } from './visual-water';
 import { buildDamVisuals } from './visual-dam';
 import { buildLighthouseVisuals } from './visual-lighthouse';
 import { buildHoofingtonVisuals } from './visual-hoofington';
+import { buildDowntownVisuals } from './visual-downtown';
 import { buildSkyVisuals, type LightingPreset } from './visual-sky';
 
 export interface WorldSceneOptions {
@@ -328,6 +329,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(props.group);
   const hoofington = buildHoofingtonVisuals(island, props.group);
   group.add(hoofington.group);
+  const downtown = buildDowntownVisuals(island, props.group);
+  group.add(downtown.group);
   const waterVisuals = buildWaterVisuals(island);
   group.add(waterVisuals.inland, waterVisuals.sea);
   const dam = buildDamVisuals(island);
@@ -403,7 +406,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
       const visible = distance < (batch.nearOnly ? island.size * 0.32 : cullingDistance) +
         batch.sphere.radius && frustum.intersectsSphere(batch.sphere);
       for (const mesh of batch.meshes) {
-        const show = visible && !hoofington.isFallbackHidden(mesh);
+        const show = visible && !hoofington.isFallbackHidden(mesh) &&
+          !downtown.isFallbackHidden(mesh);
         if (mesh.castShadow && mesh.visible !== show) shadowCastersChanged = true;
         mesh.visible = show;
       }
@@ -412,6 +416,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     // on success, but retain it in the graph for disposal; it remains visible
     // if the model fails and the procedural fallback is needed.
     if (hoofington.consumeShadowChange()) shadowCastersChanged = true;
+    if (downtown.consumeShadowChange()) shadowCastersChanged = true;
     if (dam.consumeShadowChange()) {
       const reservoir = waterVisuals.inland.getObjectByName('dam-reservoir');
       if (reservoir) reservoir.visible = false;
@@ -421,6 +426,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   }
   function dispose(): void {
     hoofington.dispose();
+    downtown.dispose();
     dam.dispose();
     lighthouse.dispose();
     const geometries = new Set<THREE.BufferGeometry>();
