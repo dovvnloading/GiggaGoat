@@ -661,6 +661,17 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
   island?: IslandData): PropVisuals {
   const group = new THREE.Group();
   group.name = 'handcrafted-props';
+  // A full-detail far batch uses the near mesh. Preserve existing far-name
+  // lookups (including lookups through ancestor groups) without a second draw.
+  const mergedFarMeshes = new Map<string, THREE.InstancedMesh>();
+  const findObject = group.getObjectByProperty.bind(group);
+  group.getObjectByProperty = (name: string, value: unknown): THREE.Object3D | undefined => {
+    if (name === 'name' && typeof value === 'string') {
+      const merged = mergedFarMeshes.get(value);
+      if (merged) return merged;
+    }
+    return findObject(name, value);
+  };
   const batches: PropBatch[] = [];
   // One instanced draw per kind rather than one draw per kind *per spatial cell*.
   // Chunk-level visibility is still handled by the terrain and ground detail.
@@ -902,10 +913,11 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
           // no zero-scale or out-of-frustum instance reaches the GPU.
           const near = new THREE.InstancedMesh(libraryGeometry, job.mesh.material,
             job.entries.length);
-          const far = new THREE.InstancedMesh(distantGeometry, job.mesh.material,
-            job.entries.length);
-          for (const [copy, name] of [[near, 'near'], [far, 'far']] as const) {
-            copy.name = 'render-' + name + '-' + job.kind;
+          const far = distantGeometry === libraryGeometry ? near :
+            new THREE.InstancedMesh(distantGeometry, job.mesh.material, job.entries.length);
+          const copies = near === far ? [near] : [near, far];
+          for (const [index, copy] of copies.entries()) {
+            copy.name = 'render-' + (index === 0 ? 'near' : 'far') + '-' + job.kind;
             copy.count = 0;
             copy.castShadow = job.mesh.castShadow;
             copy.receiveShadow = job.mesh.receiveShadow;
@@ -913,9 +925,10 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
             copy.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
             group.add(copy);
           }
+          if (near === far) mergedFarMeshes.set('render-far-' + job.kind, near);
           job.near = near;
           job.far = far;
-          job.batch.meshes.splice(0, job.batch.meshes.length, near, far);
+          job.batch.meshes.splice(0, job.batch.meshes.length, ...copies);
           job.mesh.visible = false;
           original.dispose();
           group.userData['libraryLoaded'] = (group.userData['libraryLoaded'] as number) + 1;
@@ -987,24 +1000,35 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
         const changed = version !== job.originalVersion ||
           !same(job.nearIndices, nearIndices) || !same(job.farIndices, farIndices);
         if (changed) {
-          const compact = (mesh: THREE.InstancedMesh, indices: readonly number[]): void => {
+          const compact = (mesh: THREE.InstancedMesh, indices: readonly number[],
+            offset = 0): void => {
             for (let at = 0; at < indices.length; at++) {
               const index = indices[at]!;
               job.mesh.getMatrixAt(index, matrix);
               const adjustment = job.adjustments?.[index];
               if (adjustment) matrix.multiply(adjustment);
-              mesh.setMatrixAt(at, matrix);
+              mesh.setMatrixAt(offset + at, matrix);
               if (job.mesh.instanceColor) {
                 job.mesh.getColorAt(index, colour);
-                mesh.setColorAt(at, colour);
+                mesh.setColorAt(offset + at, colour);
               }
             }
-            mesh.count = indices.length;
+          };
+          const finish = (mesh: THREE.InstancedMesh, count: number): void => {
+            mesh.count = count;
             mesh.instanceMatrix.needsUpdate = true;
             if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
           };
           compact(job.near, nearIndices);
-          compact(job.far, farIndices);
+          if (job.near === job.far) {
+            // One geometry/material draw: near descriptors first, then far.
+            compact(job.near, farIndices, nearIndices.length);
+            finish(job.near, nearIndices.length + farIndices.length);
+          } else {
+            compact(job.far, farIndices);
+            finish(job.near, nearIndices.length);
+            finish(job.far, farIndices.length);
+          }
           job.nearIndices = nearIndices;
           job.farIndices = farIndices;
           job.originalVersion = version;
