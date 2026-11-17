@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData, RiverPoint } from './types';
 import { gridSample } from './terrain';
 
@@ -324,14 +325,61 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
   upstream.name = 'rippling-river';
   const forestOutflow = riverMesh(island.river.slice(11), stream.material);
   forestOutflow.name = 'forest-river-after-dam';
-  inland.add(upstream, forestOutflow);
+  // Both reaches use the same animated shader. Merge their disconnected
+  // index buffers into one draw so the new shoreline foam costs no extra
+  // scene mesh. The Dam plunge pool remains an intentional gap between them.
+  const riverGeometry = mergeGeometries([upstream.geometry, forestOutflow.geometry]);
+  if (riverGeometry) {
+    upstream.geometry.dispose();
+    forestOutflow.geometry.dispose();
+    upstream.geometry = riverGeometry;
+    inland.add(upstream);
+  } else {
+    inland.add(upstream, forestOutflow);
+  }
   const lake = island.reservoir;
-  const reservoir = new THREE.Mesh(new THREE.CircleGeometry(1, 64), stream.material);
+  const scale = island.size / 600;
+  const reservoirHeight = lake.level - 1.5 * scale; // Visual only; gameplay lake.level stays fixed.
+  const reservoirGeometry = new THREE.CircleGeometry(1, 64);
+  const positions = reservoirGeometry.getAttribute('position');
+  const colours: number[] = [];
+  const deep = new THREE.Color(0x2a8fc0), shore = new THREE.Color(0x48c9c9);
+  const paint = new THREE.Color();
+  for (let i = 0; i < positions.count; i++) {
+    paint.copy(deep).lerp(shore, Math.min(1,
+      Math.hypot(positions.getX(i), positions.getY(i))));
+    colours.push(paint.r, paint.g, paint.b);
+  }
+  reservoirGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3));
+  // Only the reservoir shader reads the radial paint. Rivers and waterfalls
+  // keep their existing animated water material, and both share the uTime clock.
+  const reservoirMaterial = stream.material.clone();
+  reservoirMaterial.uniforms['uTime'] = stream.material.uniforms['uTime']!;
+  reservoirMaterial.vertexShader = stream.material.vertexShader
+    .replace('varying vec2 vUv; varying vec3 vWorld;',
+      'attribute vec3 color; varying vec3 vReservoirColor; varying vec2 vUv; varying vec3 vWorld;')
+    .replace('  vUv = uv;', '  vUv = uv; vReservoirColor = color;');
+  reservoirMaterial.fragmentShader = stream.material.fragmentShader
+    .replace('uniform float uTime; varying vec2 vUv; varying vec3 vWorld;',
+      'uniform float uTime; varying vec3 vReservoirColor; varying vec2 vUv; varying vec3 vWorld;')
+    .replace('  gl_FragColor = vec4(col, 0.91);',
+      '  gl_FragColor = vec4(mix(vReservoirColor, col, 0.18), 0.91);');
+  const reservoir = new THREE.Mesh(reservoirGeometry, reservoirMaterial);
   reservoir.name = 'dam-reservoir';
   reservoir.rotation.x = -Math.PI / 2;
-  reservoir.position.set(lake.center.x, lake.level + 0.12, lake.center.z);
+  reservoir.position.set(lake.center.x, reservoirHeight, lake.center.z);
   reservoir.scale.set(lake.radiusX, lake.radiusZ, 1);
-  inland.add(reservoir);
+
+  const foam = new THREE.Mesh(new THREE.RingGeometry(0.96, 1.02, 64),
+    new THREE.MeshBasicMaterial({
+      color: 0xf2fbff, opacity: 0.7, transparent: true,
+      depthWrite: false, side: THREE.DoubleSide,
+    }));
+  foam.name = 'dam-reservoir-foam';
+  foam.rotation.x = -Math.PI / 2;
+  foam.position.set(lake.center.x, reservoirHeight + 0.05 * scale, lake.center.z);
+  foam.scale.set(lake.radiusX, lake.radiusZ, 1);
+  inland.add(reservoir, foam);
   // Cascades wherever a river segment descends across a mountain terrace.
   // Never overlay the bespoke Dam plot with a diagonal cyan sheet.
   const damPlot = island.plots.find(plot => plot.poiId === 'the-dam');
@@ -349,7 +397,6 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
         z + (b.z - a.z) * 0.18), (a.width + b.width) * 0.4,
       'mountain-waterfall-' + i);
   }
-  const scale = island.size / 600;
   // Visible terrace cascades on the southeast face. The northern stream's
   // waterfalls are on the opposite side of Mt. Gigga from bookmark 12.
   // Anchor each curtain to the sampled terraced slope, rather than projecting

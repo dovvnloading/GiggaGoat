@@ -388,6 +388,8 @@ export function instanceDamAsset(
   return group;
 }
 
+const DAM_SIGN_SIZE = { width: 3.3, height: 2.2, depth: 0.37 } as const;
+
 function signLabel(group: THREE.Group, x: number, y: number, z: number, yaw: number): void {
   if (typeof document === 'undefined') return;
   const canvas = document.createElement('canvas');
@@ -414,15 +416,18 @@ function signLabel(group: THREE.Group, x: number, y: number, z: number, yaw: num
   ctx.stroke();
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  const board = new THREE.Mesh(new THREE.PlaneGeometry(3.9, 1.7),
+  // Fit the separate lettering within the Blender signboard's 3.3 m frame.
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(3.1, 1.35),
     new THREE.MeshBasicMaterial({
       map: texture, transparent: true, side: THREE.DoubleSide,
       depthWrite: false,
     }));
   board.name = 'dam-wooden-arrow-sign-label';
   board.rotation.y = yaw;
-  board.position.set(x + Math.sin(yaw) * 0.45,
-    y + 2.7, z + Math.cos(yaw) * 0.45);
+  const frontOffset = DAM_SIGN_SIZE.depth / 2 + 0.04;
+  board.position.set(x + Math.sin(yaw) * frontOffset,
+    y + DAM_SIGN_SIZE.height * 0.68,
+    z + Math.cos(yaw) * frontOffset);
   group.add(board);
 }
 
@@ -583,11 +588,11 @@ export function buildDamLandscape(
       path: 'kenney/nature-kit/fence_simple.glb', placements: fence,
       longAxisX: true, tint: 0xb27c4e },
     { name: 'dam-wooden-direction-sign',
-      path: 'kenney/survival-kit/signpost-single.glb',
+      path: 'custom/props/signpost.glb',
       placements: [{
         x: sign.x, z: sign.z, y: signY,
-        width: 3.7, height: 4.6, depth: 1.0, yaw: sign.yaw,
-      }], tint: 0x9c6a3f },
+        ...DAM_SIGN_SIZE, yaw: sign.yaw,
+      }] },
     { name: 'dam-two-orange-buoys',
       path: DAM_BUOY_MODEL, placements: buoys,
       onReady: () => {

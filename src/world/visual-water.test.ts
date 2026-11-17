@@ -165,6 +165,98 @@ describe('island sea, shoreline and horizon', () => {
 
 });
 
+describe('Dam reservoir gradient, shoreline and visual-only level (DM-3 / DM-6)', () => {
+  it.each([400, 600, 900])('tints the animated disc radially and keeps water physics unchanged at %i m',
+    size => {
+      const island = generateIsland({ seed: 'billy-isle', resolution: 97, size });
+      const lake = island.reservoir;
+      const originalLevel = lake.level;
+      const originalLake = { ...lake, center: { ...lake.center } };
+      const scale = size / 600;
+      const { sea, inland, update } = buildWaterVisuals(island);
+      try {
+        const water = inland.getObjectByName('dam-reservoir') as THREE.Mesh;
+        const foam = inland.getObjectByName('dam-reservoir-foam') as THREE.Mesh;
+        expect(water).toBeInstanceOf(THREE.Mesh);
+        expect(foam).toBeInstanceOf(THREE.Mesh);
+        expect(water.geometry).toBeInstanceOf(THREE.CircleGeometry);
+        expect(water.position.x).toBe(lake.center.x);
+        expect(water.position.z).toBe(lake.center.z);
+        expect(water.position.y).toBeCloseTo(originalLevel - 1.5 * scale, 6);
+        expect(water.scale.x).toBe(lake.radiusX);
+        expect(water.scale.y).toBe(lake.radiusZ);
+        expect(water.rotation.x).toBeCloseTo(-Math.PI / 2, 6);
+
+        const positions = water.geometry.getAttribute('position');
+        const colors = water.geometry.getAttribute('color');
+        expect(colors).toBeDefined();
+        expect(colors.count).toBe(positions.count);
+        expect(positions.count).toBeGreaterThan(60);
+        const deep = new THREE.Color(0x2a8fc0);
+        const shore = new THREE.Color(0x48c9c9);
+        const expectColour = (index: number, desired: THREE.Color): void => {
+          expect(colors.getX(index)).toBeCloseTo(desired.r, 6);
+          expect(colors.getY(index)).toBeCloseTo(desired.g, 6);
+          expect(colors.getZ(index)).toBeCloseTo(desired.b, 6);
+        };
+        expect(Math.hypot(positions.getX(0), positions.getY(0))).toBeCloseTo(0, 6);
+        expectColour(0, deep);
+        for (const i of [1, 16, 32, 48, 64]) {
+          expect(Math.hypot(positions.getX(i), positions.getY(i)))
+            .toBeCloseTo(1, 6);
+          expectColour(i, shore);
+        }
+
+        const animated = water.material as THREE.ShaderMaterial;
+        const river = inland.getObjectByName('rippling-river') as THREE.Mesh;
+        const riverMat = river.material as THREE.ShaderMaterial;
+        // Preserve the original separated upstream/downstream vertices and
+        // animation but batch both reaches into one draw alongside the new foam.
+        expect(inland.getObjectByName('forest-river-after-dam')).toBeUndefined();
+        const riverTriangles = (5 - 1) + (island.river.length - 11 - 1);
+        expect(river.geometry.index?.count).toBe(riverTriangles * 6);
+        expect(animated).toBeInstanceOf(THREE.ShaderMaterial);
+        expect(animated.vertexShader).toContain('vReservoirColor = color');
+        expect(animated.fragmentShader).toContain('mix(vReservoirColor, col, 0.18)');
+        expect(animated.fragmentShader).toContain('uTime');
+        expect(animated.uniforms['uTime']).toBe(riverMat.uniforms['uTime']);
+        update(4.25, originalLevel);
+        expect(animated.uniforms['uTime']!.value).toBe(4.25);
+        expect(lake).toEqual(originalLake);
+        expect(lake.level).toBe(originalLevel);
+
+        const ring = foam.geometry as THREE.RingGeometry;
+        expect(ring).toBeInstanceOf(THREE.RingGeometry);
+        expect(ring.parameters.innerRadius).toBeCloseTo(0.96, 6);
+        expect(ring.parameters.outerRadius).toBeCloseTo(1.02, 6);
+        expect(foam.scale.x).toBe(lake.radiusX);
+        expect(foam.scale.y).toBe(lake.radiusZ);
+        expect(foam.position.x).toBe(lake.center.x);
+        expect(foam.position.z).toBe(lake.center.z);
+        expect(foam.position.y).toBeCloseTo(water.position.y + 0.05 * scale, 6);
+        expect(foam.rotation.x).toBeCloseTo(-Math.PI / 2, 6);
+        const foamPaint = foam.material as THREE.MeshBasicMaterial;
+        expect(foamPaint.color.getHex()).toBe(0xf2fbff);
+        expect(foamPaint.opacity).toBe(0.7);
+        expect(foamPaint.transparent).toBe(true);
+        expect(foamPaint.depthWrite).toBe(false);
+      } finally {
+        sea.geometry.dispose();
+        (sea.material as THREE.Material).dispose();
+        const geometries = new Set<THREE.BufferGeometry>();
+        const materials = new Set<THREE.Material>();
+        inland.traverse(object => {
+          if (!(object instanceof THREE.Mesh)) return;
+          geometries.add(object.geometry);
+          const own = Array.isArray(object.material) ? object.material : [object.material];
+          own.forEach(mat => materials.add(mat));
+        });
+        geometries.forEach(geometry => geometry.dispose());
+        materials.forEach(material => material.dispose());
+      }
+    });
+});
+
 describe('Mt. Gigga cascades and Dam plot exclusion (MG-5, DM-1)', () => {
   it('widens both waterfall families by 2.6 and sinks five translucent foam flecks per cascade', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
