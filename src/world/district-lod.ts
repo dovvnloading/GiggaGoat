@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import type { IslandData } from './types';
 import type { HoofPlacement } from './visual-hoofington';
+import { TOON_RAMP } from './visual-props';
 import {
   WORLD_LOD, completelyOccluded, isSmallWorldModel,
-  simplifiedWorldGeometry, triangleCount,
+  simplifiedWorldGeometry,
 } from './lod';
 
 export interface DistrictLod {
@@ -86,8 +87,7 @@ export async function createDistrictLod<Model extends string>(
     const low = await simplifiedWorldGeometry(high);
     const mesh = new THREE.Mesh(high, new THREE.MeshToonMaterial({
       color: 0xffffff, vertexColors: true,
-      // The same shared four-step ramp is installed by the caller.
-      side: THREE.DoubleSide,
+      gradientMap: TOON_RAMP, side: THREE.DoubleSide,
     }));
     mesh.name = i === 0 ? meshName : meshName + '-cell-' + i;
     mesh.castShadow = !cell.small;
