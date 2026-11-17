@@ -186,6 +186,15 @@ panels from the *existing* reference sheet (bundled by Vite from
 `docs/art/hifi`). Headbutt hits replay every 2.75 seconds, and paused
 single-hit triggering freezes a representative gold-star frame.
 
+The live preview is held in a **16:9 wrapper** instead of allowing the canvas
+or the taller reference column to dictate its height. The pure
+`lab/viewport.ts` helper derives the drawing-buffer's logical dimensions from
+the wrapper width alone; a ResizeObserver, window resize handler and per-frame
+device-pixel-ratio check keep the camera projection and retina resolution in
+sync without a height feedback loop. All five seeded previews play immediately
+and replay on their existing timers while motion is unpaused. The sizing helper
+has headless Vitest coverage in `lab/viewport.test.ts`.
+
 ## Art-direction self-review
 
 ### Running Dust Puffs
