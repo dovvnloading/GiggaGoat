@@ -73,12 +73,14 @@ describe('live free-roam HUD DOM', () => {
       // Filtering the whole combo re-paints its caption 7px lower, like a second label.
       expect(dropShadowSelectors).not.toContain('.gg-combo');
 
-      // The mockup's score pill, two gold chevrons and idle combo tag stay intact.
+      // The starburst PNG already contains the score ribbon and gold chevrons:
+      // do not repaint CSS duplicates over the art.
       expect(root.querySelector('.gg-score-ribbon')).not.toBeNull();
       expect(root.querySelector<ElementStub>('[data-score]')?.textContent).toBe('0');
       expect(root.querySelector<ElementStub>('[data-combo-count]')?.textContent)
         .toBe('START A COMBO!');
-      expect(css).toContain('.gg-score-ribbon:before,.gg-score-ribbon:after{content:"❯";color:#ffc64d');
+      expect(css).toContain('background:var(--gg-scoreStarburst)');
+      expect(css).not.toContain('.gg-score-ribbon:before');
     } finally {
       hud.dispose();
     }
