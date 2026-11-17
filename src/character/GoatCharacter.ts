@@ -196,6 +196,7 @@ export class GoatCharacter {
     this.mesh.headFur.position.y = motion.bodyBob;
     this.mesh.headFur.rotation.x = motion.bodyLean;
     this.mesh.jaw.position.y = -.186 - motion.jawOpen * .077;
+    this.mesh.mouthOpening.scale.y = .020 + motion.jawOpen * .105;
     this.mesh.jaw.rotation.x = motion.jawOpen * .15;
     for (let index = 0; index < 2; index++) {
       const sign = index === 0 ? -1 : 1;
@@ -236,7 +237,8 @@ export class GoatCharacter {
     this.target.copy(MOUTH);
     if (tethered && goat?.interactions.tongueBody) {
       const targetBody = goat.interactions.tongueBody;
-      this.tip.copy(targetBody.translation() as THREE.Vector3);
+      const point = targetBody.translation();
+      this.tip.set(point.x, point.y, point.z);
       this.tip.sub(head.position).applyQuaternion(head.quaternion.clone().invert())
         .divideScalar(size);
     } else {
