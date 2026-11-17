@@ -76,6 +76,11 @@ describe('island sea, shoreline and horizon', () => {
     expect(material.transparent).toBe(true);
     expect(material.depthWrite).toBe(false);
     expect(material.fog).toBe(true);
+    // Real Chrome used to throw in refreshFogUniforms when these were absent.
+    for (const key of ['fogColor', 'fogNear', 'fogFar', 'fogDensity']) {
+      expect(material.uniforms[key], key + ' missing for ShaderMaterial fog')
+        .toHaveProperty('value');
+    }
     expect(material.uniforms['uShallow']!.value.getHex()).toBe(0x48c9c9);
     expect(material.uniforms['uDeep']!.value.getHex()).toBe(0x2a8fc0);
     for (const chunk of ['fog_pars_vertex', 'fog_vertex']) {

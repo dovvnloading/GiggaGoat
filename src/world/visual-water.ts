@@ -89,6 +89,9 @@ function seaMaterial(island: IslandData): { material: THREE.ShaderMaterial;
   };
   const material = new THREE.ShaderMaterial({
     uniforms: {
+      // ShaderMaterial does not inject fog uniforms automatically. Include the
+      // standard set so refreshFogUniforms works in real WebGL scenes.
+      ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
       ...uniforms,
       uTerrain: { value: atlas },
       uSize: { value: island.size },
