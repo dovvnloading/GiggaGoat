@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { loadLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
+import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import type { PropDescriptor, PropKind } from './types';
 import { buildArchitecture, isArchitecturalKind } from './visual-architecture';
 import type { IslandData } from './types';
@@ -651,6 +652,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     far?: THREE.InstancedMesh;
     nearIndices: number[];
     farIndices: number[];
+    /** Visual-only transforms, multiplied after the unchanged physics matrices. */
+    adjustments?: THREE.Matrix4[];
     originalVersion: number;
     occluded: boolean[];
   }
@@ -805,6 +808,24 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
             return;
           }
           const original = job.mesh.geometry;
+          // The descriptor matrices remain the authoritative physics bindings.
+          // Only near/far rendering copies get an extra local-space fit.
+          if (!isAuthoredLibraryAsset(path)) {
+            const native = libraryGeometry.boundingBox!.getSize(new THREE.Vector3());
+            job.adjustments = job.entries.map(entry => {
+              const box = new THREE.Vector3(entry.size.x, entry.size.y, entry.size.z);
+              const fit = fitLibraryModel(native, box, path);
+              return new THREE.Matrix4().makeTranslation(0, -0.5, 0)
+                .multiply(new THREE.Matrix4().makeScale(
+                  1 / Math.max(box.x, 0.001),
+                  1 / Math.max(box.y, 0.001),
+                  1 / Math.max(box.z, 0.001),
+                ))
+                .multiply(new THREE.Matrix4().makeRotationY(fit.yaw))
+                .multiply(new THREE.Matrix4().makeScale(
+                  fit.scale.x, fit.scale.y, fit.scale.z));
+            });
+          }
           job.mesh.geometry = libraryGeometry;
           // Daisies and crane-yard models keep their authored paint exactly;
           // other props retain mild per-descriptor colour variation.
@@ -923,6 +944,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
             for (let at = 0; at < indices.length; at++) {
               const index = indices[at]!;
               job.mesh.getMatrixAt(index, matrix);
+              const adjustment = job.adjustments?.[index];
+              if (adjustment) matrix.multiply(adjustment);
               mesh.setMatrixAt(at, matrix);
               if (job.mesh.instanceColor) {
                 job.mesh.getColorAt(index, colour);

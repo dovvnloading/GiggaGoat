@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { PropKind } from './types';
 import { publicAssetUrl } from './public-assets';
+import { isAuthoredLibraryAsset } from './library-fit';
 
 /**
  * Every procedural prop has a sourced CC0 replacement. All paths are checked
@@ -128,6 +129,7 @@ export function bakeLibraryPropGeometry(
   if (bounds.isEmpty()) return null;
   const span = bounds.getSize(new THREE.Vector3());
   const centre = bounds.getCenter(new THREE.Vector3());
+  const authored = isAuthoredLibraryAsset(PROP_LIBRARY_MODELS[kind]);
   const scale = new THREE.Vector3(
     0.98 / Math.max(0.001, span.x),
     0.98 / Math.max(0.001, span.y),
@@ -164,10 +166,12 @@ export function bakeLibraryPropGeometry(
         vertex.fromBufferAttribute(coordinates as THREE.BufferAttribute, index);
         if (object instanceof THREE.SkinnedMesh) object.applyBoneTransform(index, vertex);
         vertex.applyMatrix4(object.matrixWorld);
+        // Authored anchor-frame assets retain their legacy per-axis envelope.
+        // Other GLBs keep native dimensions for a uniform per-instance fit.
         positions.push(
-          (vertex.x - centre.x) * scale.x,
-          (vertex.y - centre.y) * scale.y,
-          (vertex.z - centre.z) * scale.z,
+          authored ? (vertex.x - centre.x) * scale.x : vertex.x - centre.x,
+          authored ? (vertex.y - centre.y) * scale.y : vertex.y - bounds.min.y,
+          authored ? (vertex.z - centre.z) * scale.z : vertex.z - centre.z,
         );
         const height = (vertex.y - bounds.min.y) / Math.max(0.001, span.y);
         const base = (material as THREE.MeshStandardMaterial).color;

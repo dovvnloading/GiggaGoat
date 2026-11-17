@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { IslandData, PropDescriptor, PropKind, Vec3 } from './types';
 import { gridSample } from './terrain';
 import { publicAssetUrl } from './public-assets';
+import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import { createDistrictLod, type BakedPlacement, type DistrictLod } from './district-lod';
 import { WORLD_LOD, simplifiedWorldGeometry } from './lod';
 
@@ -182,6 +183,7 @@ export function bakeLibraryGeometry<Model extends string>(
   placements: readonly HoofPlacement<Model>[],
   models: ReadonlyMap<Model, ModelScene>,
   onPlacement?: (placement: HoofPlacement<Model>, start: number, count: number) => void,
+  modelPaths?: Readonly<Partial<Record<Model, string>>>,
 ): THREE.BufferGeometry | null {
   const coordinates: number[] = [], colours: number[] = [];
   const imageCache = new WeakMap<THREE.Texture, PixelMap | null>();
@@ -222,6 +224,12 @@ export function bakeLibraryGeometry<Model extends string>(
     if (bounds.isEmpty()) continue;
     const span = bounds.getSize(new THREE.Vector3());
     if (Math.min(span.x, span.y, span.z) <= 0.00001) continue;
+    const path = modelPaths?.[placement.model] ??
+      HOOFINGTON_MODELS[placement.model as HoofModel] ?? '';
+    const authored = isAuthoredLibraryAsset(path);
+    const fit = fitLibraryModel(span,
+      new THREE.Vector3(placement.size.x, placement.size.y, placement.size.z), path);
+    const centre = bounds.getCenter(new THREE.Vector3());
     // Only the legacy alpha-cutout pine needs height-based paint. The new
     // round trees, bushes and flower clumps retain their authored materials.
     const foliageModel = placement.model === 'pine';
@@ -230,7 +238,7 @@ export function bakeLibraryGeometry<Model extends string>(
       ? null : body.setHex(placement.wall).clone();
     const roofColor = !allowPaint || placement.roof === undefined
       ? null : roof.setHex(placement.roof).clone();
-    quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), placement.yaw);
+    quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), placement.yaw + fit.yaw);
     root.traverse(object => {
       if (!(object instanceof THREE.Mesh)) return;
       const mesh = object;
@@ -257,9 +265,18 @@ export function bakeLibraryGeometry<Model extends string>(
           const height = (vertex.y - bounds.min.y) / span.y;
           const normalizedX = (vertex.x - bounds.min.x) / span.x - 0.5;
           const normalizedZ = (vertex.z - bounds.min.z) / span.z - 0.5;
-          local.set(normalizedX * placement.size.x * 0.96,
-            (height - 0.5) * placement.size.y * 0.98,
-            normalizedZ * placement.size.z * 0.96).applyQuaternion(quat);
+          if (authored) {
+            // Preserve the anchor frame's existing axis-by-axis fit.
+            local.set(normalizedX * placement.size.x * 0.96,
+              (height - 0.5) * placement.size.y * 0.98,
+              normalizedZ * placement.size.z * 0.96);
+          } else {
+            // Native X/Z centre and source floor become box centre and floor.
+            local.set((vertex.x - centre.x) * fit.scale.x,
+              (vertex.y - bounds.min.y) * fit.scale.y - placement.size.y / 2,
+              (vertex.z - centre.z) * fit.scale.z);
+          }
+          local.applyQuaternion(quat);
           coordinates.push(placement.position.x + local.x,
             placement.position.y + local.y, placement.position.z + local.z);
 
