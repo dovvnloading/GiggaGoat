@@ -17,7 +17,13 @@ import { CAMERA_TARGET_HEIGHT, SPAWN_CAMERA_PITCH, SPAWN_CAMERA_YAW_OFFSET,
 import { GameHud, type FramePerformance } from './GameHud';
 import { projectGoatScreenBox, visibleGoatBounds } from './HudOcclusion';
 
-interface PropVisual { mesh: THREE.InstancedMesh; index: number; prop: PropDescriptor }
+interface PropVisual {
+  mesh: THREE.InstancedMesh;
+  index: number;
+  prop: PropDescriptor;
+  wasSleeping?: boolean;
+  wasHidden?: boolean;
+}
 const MATERIALS: Record<PieceType, number> = {
   floor: 0xf2c14f, wall: 0xe8aa57, ramp: 0xc9924f, 'launch-pad': 0xff891e,
 };
@@ -191,10 +197,17 @@ export class GameView {
   private updateProps(alpha: number): void {
     const changed = this.changedPropMeshes;
     changed.clear();
-    for (const { mesh, index, prop } of this.propVisuals) {
+    for (const visual of this.propVisuals) {
+      const { mesh, index, prop } = visual;
       const body = this.game.colliders.bodies.get(prop.id);
       const live = body && this.game.physics.raw.getRigidBody(body.handle);
-      if (live && !this.game.destroyedProps.has(prop.id)) {
+      const hidden = !live || this.game.destroyedProps.has(prop.id);
+      if (hidden && visual.wasHidden) continue;
+      // Rapier sleepers do not need an interpolated transform or GPU upload.
+      if (!hidden && live?.isSleeping() && visual.wasSleeping && !visual.wasHidden) continue;
+      visual.wasHidden = hidden;
+      visual.wasSleeping = !!live?.isSleeping();
+      if (live && !hidden) {
         const pose = this.game.physics.getInterpolatedTransform(live, alpha);
         this.dummy.position.set(pose.translation.x, pose.translation.y, pose.translation.z);
         this.dummy.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);

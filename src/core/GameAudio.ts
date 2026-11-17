@@ -40,6 +40,17 @@ export class GameAudio {
   private readonly gameplay: GameplayAudioEvent[] = [];
   private readonly cues: AudioCue[] = [];
   private readonly off: Array<() => void> = [];
+  private readonly positions = new Map<string, Vec3>();
+  private readonly sizes = new Map<string, number>();
+  // Stable lookup closures avoid allocating three callbacks for every audio tick.
+  private readonly positionForGoat = (id: string): Vec3 | undefined => this.positions.get(id);
+  private readonly sizeForGoat = (id: string): number | undefined => this.sizes.get(id);
+  private readonly positionForBody = (handle: number): Vec3 | undefined => {
+    const body = this.game.physics.raw.getRigidBody(handle);
+    if (!body) return undefined;
+    const p = body.translation();
+    return { x: p.x, y: p.y, z: p.z };
+  };
   private charging = false;
   private paused = true;
   private wasUnlocked = false;
@@ -95,12 +106,18 @@ export class GameAudio {
     // Catches an AudioContext first unlocked by a gesture while a menu is open.
     this.syncContext();
     const match = this.game.party.match;
-    const goats = [
-      observeGoat(this.game, this.game.goat),
-      ...[...this.game.party.bots.values()].map(bot => observeGoat(this.game, bot.goat)),
-    ];
-    const positions = new Map(goats.map(goat => [goat.id, goat.position] as const));
-    const sizes = new Map(goats.map(goat => [goat.id, goat.size] as const));
+    const goats = [observeGoat(this.game, this.game.goat)];
+    const physics = this.game.goat.events.drain();
+    for (const bot of this.game.party.bots.values()) {
+      goats.push(observeGoat(this.game, bot.goat));
+      physics.push(...bot.goat.events.drain());
+    }
+    this.positions.clear();
+    this.sizes.clear();
+    for (const goat of goats) {
+      this.positions.set(goat.id, goat.position);
+      this.sizes.set(goat.id, goat.size);
+    }
     const player = goats[0]!;
     const zone = zoneAt(this.game.island, player.position.x, player.position.z);
     const poi = zone ?? this.game.island.pois.find(site =>
@@ -122,10 +139,7 @@ export class GameAudio {
         meter: this.game.rules.style.meter,
         tide, poi, night,
       },
-      physics: [
-        ...this.game.goat.events.drain(),
-        ...[...this.game.party.bots.values()].flatMap(bot => bot.goat.events.drain()),
-      ],
+      physics,
       chaos: [
         ...this.game.water.events.drain(),
         ...this.game.breakables.events.drain(),
@@ -138,12 +152,9 @@ export class GameAudio {
       cues: this.cues.splice(0),
       goats,
       goatPosition: player.position,
-      positionForGoat: id => positions.get(id),
-      positionForBody: handle => {
-        const body = this.game.physics.raw.getRigidBody(handle);
-        return body ? { ...body.translation() } : undefined;
-      },
-      sizeForGoat: id => sizes.get(id),
+      positionForGoat: this.positionForGoat,
+      positionForBody: this.positionForBody,
+      sizeForGoat: this.sizeForGoat,
     });
   }
 
@@ -151,5 +162,7 @@ export class GameAudio {
     for (const unsubscribe of this.off.splice(0)) unsubscribe();
     this.gameplay.length = 0;
     this.cues.length = 0;
+    this.positions.clear();
+    this.sizes.clear();
   }
 }
