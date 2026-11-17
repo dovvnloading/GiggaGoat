@@ -33224,15 +33224,6 @@
   "url": ""
  },
  {
-<<<<<<< HEAD
-  "path": "assets/library/usdcraft/street-lamp-lantern.glb",
-  "name": "street-lamp-lantern",
-  "source": "NVIDIA USDCraft-10K",
-  "pack": "usdcraft",
-  "license": "Apache-2.0",
-  "credit": "NVIDIA USDCraft-10K (ds_R500_03, Apache-2.0)",
-  "url": "https://huggingface.co/datasets/nvidia/USDCraft-10K"
-=======
   "path": "assets/library/custom/crane-yard/crane-cab.glb",
   "name": "Crane Yard crane-cab",
   "source": "custom",
@@ -33285,6 +33276,14 @@
   "license": "CC0",
   "credit": "Gigga-Goat (original, built in Blender)",
   "url": ""
->>>>>>> origin/main
+ },
+ {
+  "path": "assets/library/usdcraft/street-lamp-lantern.glb",
+  "name": "street-lamp-lantern",
+  "source": "NVIDIA USDCraft-10K",
+  "pack": "usdcraft",
+  "license": "Apache-2.0",
+  "credit": "NVIDIA USDCraft-10K (ds_R500_03, Apache-2.0)",
+  "url": "https://huggingface.co/datasets/nvidia/USDCraft-10K"
  }
 ]
