@@ -18,3 +18,11 @@ Each file is built at its gameplay collider box (glTF X = length, Y = up, Z = de
 | beach-ball.glb | 2.4 x 2.3 x 2.4 | kind `bumper` (red/blue/yellow/white beach ball) | own |
 
 Triangles: 120 (awning) to 5.1k (wheel, 1 instance). CC0.
+
+## Named kiosk signs (QA pass 2, BW-14)
+
+Five painted variants of the 4.6 x 1.4 x 0.3 m kiosk sign, each with an icon roundel and lettering on both faces
+(the back face reads correctly too), cream board, timber frame and a coloured top cap:
+`kiosk-sign-icecream.glb` (pink), `kiosk-sign-popcorn.glb` (red), `kiosk-sign-games.glb` (blue),
+`kiosk-sign-prizes.glb` (purple), `kiosk-sign-candy.glb` (green). 1.5k-4.2k triangles each (lettering).
+Own colours, no tint.

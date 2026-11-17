@@ -33699,5 +33699,59 @@
   "license": "CC0",
   "credit": "Gigga-Goat (original, built in Blender)",
   "url": ""
+ },
+ {
+  "path": "assets/library/custom/baaardwalk/kiosk-sign-icecream.glb",
+  "name": "baaardwalk kiosk-sign-icecream",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/baaardwalk/kiosk-sign-popcorn.glb",
+  "name": "baaardwalk kiosk-sign-popcorn",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/baaardwalk/kiosk-sign-games.glb",
+  "name": "baaardwalk kiosk-sign-games",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/baaardwalk/kiosk-sign-prizes.glb",
+  "name": "baaardwalk kiosk-sign-prizes",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/baaardwalk/kiosk-sign-candy.glb",
+  "name": "baaardwalk kiosk-sign-candy",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/town/water-tower-timber.glb",
+  "name": "town water-tower-timber",
+  "source": "custom",
+  "pack": "town",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
  }
 ]

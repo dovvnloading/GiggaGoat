@@ -12,3 +12,5 @@ Built at real-world size (glTF X, Y up, Z); the descriptor boxes should be set t
 | downtown-tower.glb | 8 x 27 x 8 | Downtown `highrise` / the 8 x 27 x 8 `tower` (warm yellow townhouse tower, shopfront and teal awning on +Z, seven storeys, terracotta cornice, roof water tank) |
 
 Own colours, no tint. CC0.
+
+| water-tower-timber.glb | 4.5 x 7.6 x 4.5 | Downtown rooftop water tower (QA pass 2, DT-15): timber barrel tank with iron hoops, conical lid, four braced legs, front ladder (+Z); built at the existing water-tower box |
