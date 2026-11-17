@@ -293,6 +293,10 @@ export function bakeLibraryGeometry<Model extends string>(
             // Sourced planters use an alpha atlas with black padding at the
             // leaf tips; keep the pot terracotta and the leaves lively green.
             tint.setHex(height > 0.58 ? 0x73b65c : 0xbd8865);
+          } else if (placement.model === 'retroWindow') {
+            // Decorative upper windows should read as reflective blue glass,
+            // not as black alpha-atlas voids in the sunny concept painting.
+            tint.lerp(new THREE.Color(0x9bc8e5), 0.86);
           } else if (placement.model === 'lights') {
             // Holiday-kit bulbs are tiny on the atlas; UV vertex samples can
             // otherwise read the transparent black padding instead of bulbs.
