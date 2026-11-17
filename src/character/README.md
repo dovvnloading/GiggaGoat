@@ -19,7 +19,13 @@ Source assets (and their conventions) are described in
 
 All six baked clips have identical names in each file: **Idle, Walk, Run,
 Jump, Headbutt, Bleat**. They are 30 fps, in-place, with forward at -Z and
-hooves at y=0. `SkeletonUtils.clone` creates one skinned instance per goat;
+hooves at y=0. The mesh is authored for local -Z, but the exported `purebind_armature` root in
+all three GLBs includes a 180° Y rotation, which reverses that direction after
+loading. `alignRiggedSceneForward` cancels this baked rotation on each cloned
+scene (not on the GLB template or physics torso), so the visible nose follows
+`forward(yaw)` at every heading while physical pitch and roll remain intact.
+
+`SkeletonUtils.clone` creates one skinned instance per goat;
 each instance owns one `AnimationMixer` while model templates and embedded
 materials/textures are shared and cached per variant. A failed load leaves the
 legacy goat visible and may be retried.
@@ -96,7 +102,11 @@ four size buttons use the real physics tiers. Orbit, zoom, and pause work
 without affecting the simulation. The original lineup is displayed for
 side-by-side visual review. In **real Rapier mode**, the center hero alone binds
 to a real goat; WASD, Shift, Space, E, Q, T and 1–4 exercise movement and
-one-shot animation. The lab is also usable in a built GitHub Pages deployment.
+one-shot animation. The **Walk circle · nose first** button runs a
+1.2 m/s Billy-sized circular preview: x = -r cos(yaw), z = -r sin(yaw),
+so the model's -Z axis must lead along the path tangent at every yaw. Pause
+or orbit to visually check all directions, then stop the circle to restore
+the lineup. The lab is also usable in a built GitHub Pages deployment.
 
 Self-review checklist: check initial loading/fallback, side-by-side ordering,
 material colors and silhouettes, all six clips, hooves grounded, size scaling,
@@ -109,4 +119,6 @@ to three-variant preview. The supplied GLBs are not changed by this lane.
 `motion.test.ts` still tests the original sculpt and Rapier event/resize
 binding (now via `LegacyGoatCharacter`). `rigged.test.ts` exercises variant
 selection, speed blending, action-to-clip mapping and the headless legacy
-fallback. The existing `src/core` tests remain untouched.
+fallback, plus a four-cardinal-yaw forward-alignment test using the actual
+exported armature-root rotations in each checked-in GLB. The existing
+`src/core` tests remain untouched.
