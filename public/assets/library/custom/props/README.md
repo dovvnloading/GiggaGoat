@@ -18,3 +18,9 @@ Own colours, no tint. CC0.
 | life-ring.glb | 0.9 x 0.9 x 0.2 | red/white life rings for pier rails and the lighthouse jetty (paintings 09, 15), facing +Z |
 | cable-spool.glb | 2.0 x 1.6 x 1.6 | Crane Yard cable reel lying on its side, axle along X (painting 10) |
 | pallet-stack.glb | 1.4 x 0.8 x 1.2 | Crane Yard stack of four timber pallets (painting 10) |
+
+## Waterfall (QA pass 2, MG-5 / WP-4)
+
+| File | Built at (m) | For |
+|---|---|---|
+| cascade.glb | 6.6 x 10.5 x 9.2 bounds (lip at the back top, pool at the front bottom) | stylised three-step waterfall over rock ledges into a round splash pool with a foam ring, splash puffs and rim stones; water flows toward glTF +Z. Place on a real riser: scale Y to the drop, keep X/Z near 1. Own colours. |
