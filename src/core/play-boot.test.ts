@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { forward, rotate, V } from '../physics';
+import { forward, rotate, V, RAPIER } from '../physics';
 import type { Game } from './Game';
 import { bootGame } from './boot';
 
@@ -69,6 +69,9 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('production title-screen PLAY boot', () => {
   it('keeps the real KID ragdoll upright for eight seconds after the PLAY click', async () => {
+    // Rapier's compat WASM must boot with Node globals *before* installing
+    // the minimal browser-shell test doubles for GameMenu and GameInput.
+    await RAPIER.init();
     const head = new ElementStub();
     const documentStub = {
       head, pointerLockElement: null,
