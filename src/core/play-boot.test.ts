@@ -1,0 +1,133 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { forward, rotate, V } from '../physics';
+import type { Game } from './Game';
+import { bootGame } from './boot';
+
+/**
+ * Vite's real bootGame and the real GameMenu need a small DOM in Node.
+ * Only WebGL presentation is replaced: Game, GameInput, title-button routing,
+ * the fixed-step clock and all seven Rapier bodies are production code.
+ */
+class ElementStub {
+  readonly style = { cssText: '', display: '' };
+  readonly dataset: Record<string, string> = {};
+  className = '';
+  textContent = '';
+  innerHTML = '';
+  hidden = false;
+  readonly children: ElementStub[] = [];
+  private readonly listeners = new Map<string, Array<(event: { target: unknown }) => void>>();
+
+  appendChild(child: ElementStub): ElementStub { this.children.push(child); return child; }
+  remove(): void { /* detached test DOM node */ }
+  setAttribute(_key: string, _value: string): void {}
+  focus(): void {}
+  addEventListener(type: string, listener: (event: { target: unknown }) => void): void {
+    const entries = this.listeners.get(type) ?? [];
+    entries.push(listener);
+    this.listeners.set(type, entries);
+  }
+  removeEventListener(type: string, listener: (event: { target: unknown }) => void): void {
+    this.listeners.set(type, (this.listeners.get(type) ?? []).filter(fn => fn !== listener));
+  }
+  querySelector(selector: string): ElementStub | null {
+    return selector === 'button' && this.innerHTML.includes('<button') ? new ElementStub() : null;
+  }
+  requestPointerLock(): Promise<void> { return Promise.resolve(); }
+  clickAction(action: string): void {
+    // Assert the actual title menu rendered this button before dispatching its
+    // same delegated click handler (no direct GameMenu.action() shortcut).
+    expect(this.innerHTML).toContain('data-action="' + action + '"');
+    const target = { closest: (selector: string) =>
+      selector === '[data-action]' ? { dataset: { action } } : null };
+    for (const listener of this.listeners.get('click') ?? []) listener({ target });
+  }
+}
+
+vi.mock('./GameView', async () => {
+  const { GameInput } = await import('./GameInput');
+  const { SPAWN_CAMERA_YAW_OFFSET } = await import('./GoatCamera');
+  return {
+    GameView: class {
+      readonly renderer = { domElement: document.createElement('canvas') };
+      readonly input: InstanceType<typeof GameInput>;
+      readonly hud = { setVisible(_visible: boolean): void {} };
+      paused = false;
+      onFrame: (() => void) | null = null;
+      onInteract: (() => boolean) | null = null;
+      constructor(_host: HTMLElement, game: Game) {
+        this.input = new GameInput(this.renderer.domElement,
+          -game.island.spawns[0]!.heading + SPAWN_CAMERA_YAW_OFFSET);
+      }
+      applySettings(_settings: unknown): void {}
+      dispose(): void { this.input.dispose(); }
+    },
+  };
+});
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe('production title-screen PLAY boot', () => {
+  it('keeps the real KID ragdoll upright for eight seconds after the PLAY click', async () => {
+    const head = new ElementStub();
+    const documentStub = {
+      head, pointerLockElement: null,
+      createElement: (_tag: string) => new ElementStub(),
+      addEventListener: () => {}, removeEventListener: () => {},
+      exitPointerLock: () => {},
+    };
+    const windowStub = { addEventListener: () => {}, removeEventListener: () => {} };
+    vi.stubGlobal('document', documentStub);
+    vi.stubGlobal('window', windowStub);
+    vi.stubGlobal('navigator', { getGamepads: () => [] });
+
+    const host = new ElementStub();
+    const app = await bootGame(host as unknown as HTMLElement);
+    try {
+      const { game, menu, view } = app;
+      expect(game.island.seed).toBe('billy-isle');
+      expect(game.island.resolution).toBe(193);
+      expect(game.physics.stepCount).toBe(0);
+      expect(view.paused).toBe(true);
+      (menu.root as unknown as ElementStub).clickAction('play');
+      expect(view.paused).toBe(false);
+      expect(menu.root.hidden).toBe(true);
+
+      const facing = rotate(game.goat.torso.rotation(), V(0, 0, -1));
+      const intended = forward(game.goat.locomotion.heading);
+      const headingAlignment = facing.x * intended.x + facing.z * intended.z;
+      const observations: Array<{ second: number; up: number; torsoY: number;
+        headY: number; legY: number; ragdoll: boolean }> = [];
+
+      // Same production path as GameView.frame(): sample the real GameInput
+      // and send its intent to Game.advance on each elapsed render frame.
+      for (let frame = 1; frame <= 480; frame++) {
+        const dt = 1 / 60;
+        game.advance(dt, view.input.sample(dt, game.buildMode));
+        if (frame % 60 === 0) {
+          const torso = game.goat.torso;
+          const q = torso.rotation();
+          observations.push({
+            second: frame / 60,
+            up: 1 - 2 * (q.x ** 2 + q.z ** 2),
+            torsoY: torso.translation().y,
+            headY: game.goat.head.translation().y,
+            legY: game.goat.legs.reduce((sum, leg) => sum + leg.translation().y, 0) / 4,
+            ragdoll: game.goat.isRagdoll,
+          });
+        }
+      }
+      expect(game.physics.stepCount).toBe(480);
+      // The heading used by the balance/locomotion controller must agree with
+      // the actual facing of the assembled rigid body from its first frame.
+      expect(headingAlignment, JSON.stringify({ headingAlignment, observations })).toBeGreaterThan(.99);
+      for (const state of observations.filter(state => state.second >= 2)) {
+        expect(state.up, JSON.stringify({ headingAlignment, observations })).toBeGreaterThan(.75);
+        expect(state.ragdoll, JSON.stringify(state)).toBe(false);
+        expect(state.headY, JSON.stringify(state)).toBeGreaterThan(state.legY);
+      }
+    } finally {
+      app.dispose();
+    }
+  });
+});
