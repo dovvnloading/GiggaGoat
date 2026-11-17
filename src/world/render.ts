@@ -264,6 +264,28 @@ function buildTerrain(island: IslandData, segments: number): Chunk[] {
   }
   return chunks;
 }
+/**
+ * The POI road network and the authored Downtown high street both terminate
+ * at the same city centre. Rendering every inter-POI endpoint over the local
+ * street produces fanned, vertically tilted road planks in the shop corridor.
+ *
+ * Suppress only those redundant VISUAL pieces inside the main-street plot.
+ * The actual island roads, graded terrain, collision and connected graph are
+ * deliberately unchanged; the continuous local street remains visible.
+ */
+export function isDowntownRoadOverlay(
+  island: IslandData, roadId: string,
+  a: { x: number; z: number }, b: { x: number; z: number },
+): boolean {
+  if (!roadId.includes('--')) return false;
+  const centre = island.pois.find(p => p.id === 'downtown-bleatsville')?.center;
+  if (!centre) return false;
+  const scale = island.size / 600;
+  const x = (a.x + b.x) / 2 - centre.x;
+  const z = (a.z + b.z) / 2 - centre.z;
+  return Math.abs(x) < 21 * scale && Math.abs(z) < 42 * scale;
+}
+
 function buildRoads(island: IslandData): THREE.Group {
   const group = new THREE.Group();
   group.name = 'graded-ring-road-and-trails';
@@ -273,7 +295,10 @@ function buildRoads(island: IslandData): THREE.Group {
   for (const type of ['road', 'trail'] as const) {
     const segments = [...island.roads, ...makeLocalStreets(island)].filter(r => r.type === type)
       .flatMap(r => r.points.slice(1).map((b, i) =>
-        ({ a: r.points[i]!, b, width: r.width })));
+        ({ a: r.points[i]!, b, width: r.width, roadId: r.id }))
+        .filter(segment => !isDowntownRoadOverlay(
+          island, segment.roadId, segment.a, segment.b,
+        )));
     const material = new THREE.MeshToonMaterial({
       color: type === 'road' ? 0x727e8a : 0xc3a06c, gradientMap: TOON_RAMP,
     });
