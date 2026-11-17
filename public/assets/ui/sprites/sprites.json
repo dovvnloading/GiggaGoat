@@ -1,0 +1,368 @@
+{
+ "hud/size_meter_frame": {
+  "file": "assets/ui/sprites/hud/size_meter_frame.png",
+  "w": 542,
+  "h": 272,
+  "sheet": "01_panels"
+ },
+ "hud/score_starburst": {
+  "file": "assets/ui/sprites/hud/score_starburst.png",
+  "w": 563,
+  "h": 263,
+  "sheet": "01_panels"
+ },
+ "hud/minimap_ring": {
+  "file": "assets/ui/sprites/hud/minimap_ring.png",
+  "w": 311,
+  "h": 337,
+  "sheet": "01_panels"
+ },
+ "hud/gig_card": {
+  "file": "assets/ui/sprites/hud/gig_card.png",
+  "w": 457,
+  "h": 228,
+  "sheet": "01_panels"
+ },
+ "hud/stamina_ring": {
+  "file": "assets/ui/sprites/hud/stamina_ring.png",
+  "w": 243,
+  "h": 252,
+  "sheet": "01_panels"
+ },
+ "hud/hotbar_tray": {
+  "file": "assets/ui/sprites/hud/hotbar_tray.png",
+  "w": 738,
+  "h": 233,
+  "sheet": "01_panels"
+ },
+ "hud/hotbar_slot_selected": {
+  "file": "assets/ui/sprites/hud/hotbar_slot_selected.png",
+  "w": 197,
+  "h": 194,
+  "sheet": "01_panels"
+ },
+ "hud/hotbar_slot": {
+  "file": "assets/ui/sprites/hud/hotbar_slot.png",
+  "w": 176,
+  "h": 176,
+  "sheet": "01_panels"
+ },
+ "hud/key_badge": {
+  "file": "assets/ui/sprites/hud/key_badge.png",
+  "w": 103,
+  "h": 105,
+  "sheet": "01_panels"
+ },
+ "hud/prompt_pill": {
+  "file": "assets/ui/sprites/hud/prompt_pill.png",
+  "w": 282,
+  "h": 105,
+  "sheet": "01_panels"
+ },
+ "hud/banner_purple": {
+  "file": "assets/ui/sprites/hud/banner_purple.png",
+  "w": 533,
+  "h": 115,
+  "sheet": "01_panels"
+ },
+ "hud/banner_brown": {
+  "file": "assets/ui/sprites/hud/banner_brown.png",
+  "w": 467,
+  "h": 103,
+  "sheet": "01_panels"
+ },
+ "hud/banner_gold": {
+  "file": "assets/ui/sprites/hud/banner_gold.png",
+  "w": 356,
+  "h": 95,
+  "sheet": "01_panels"
+ },
+ "hud/tab_pill_blue": {
+  "file": "assets/ui/sprites/hud/tab_pill_blue.png",
+  "w": 161,
+  "h": 76,
+  "sheet": "01_panels"
+ },
+ "hud/tab_pill_purple": {
+  "file": "assets/ui/sprites/hud/tab_pill_purple.png",
+  "w": 153,
+  "h": 73,
+  "sheet": "01_panels"
+ },
+ "hud/tab_pill_brown": {
+  "file": "assets/ui/sprites/hud/tab_pill_brown.png",
+  "w": 146,
+  "h": 72,
+  "sheet": "01_panels"
+ },
+ "hud/tab_pill_gold": {
+  "file": "assets/ui/sprites/hud/tab_pill_gold.png",
+  "w": 144,
+  "h": 72,
+  "sheet": "01_panels"
+ },
+ "hud/wheat_divider": {
+  "file": "assets/ui/sprites/hud/wheat_divider.png",
+  "w": 288,
+  "h": 78,
+  "sheet": "01_panels"
+ },
+ "hud/hammer_badge": {
+  "file": "assets/ui/sprites/hud/hammer_badge.png",
+  "w": 111,
+  "h": 97,
+  "sheet": "01_panels"
+ },
+ "hud/arrow_left": {
+  "file": "assets/ui/sprites/hud/arrow_left.png",
+  "w": 80,
+  "h": 77,
+  "sheet": "01_panels"
+ },
+ "hud/arrow_right": {
+  "file": "assets/ui/sprites/hud/arrow_right.png",
+  "w": 81,
+  "h": 77,
+  "sheet": "01_panels"
+ },
+ "hud/spark_rays": {
+  "file": "assets/ui/sprites/hud/spark_rays.png",
+  "w": 100,
+  "h": 63,
+  "sheet": "01_panels"
+ },
+ "icons/goat_kid": {
+  "file": "assets/ui/sprites/icons/goat_kid.png",
+  "w": 164,
+  "h": 174,
+  "sheet": "02_icons"
+ },
+ "icons/goat_billy": {
+  "file": "assets/ui/sprites/icons/goat_billy.png",
+  "w": 205,
+  "h": 213,
+  "sheet": "02_icons"
+ },
+ "icons/goat_big": {
+  "file": "assets/ui/sprites/icons/goat_big.png",
+  "w": 247,
+  "h": 240,
+  "sheet": "02_icons"
+ },
+ "icons/goat_gigga": {
+  "file": "assets/ui/sprites/icons/goat_gigga.png",
+  "w": 350,
+  "h": 283,
+  "sheet": "02_icons"
+ },
+ "icons/stamina_hooves": {
+  "file": "assets/ui/sprites/icons/stamina_hooves.png",
+  "w": 218,
+  "h": 205,
+  "sheet": "02_icons"
+ },
+ "icons/hay_floor": {
+  "file": "assets/ui/sprites/icons/hay_floor.png",
+  "w": 276,
+  "h": 246,
+  "sheet": "02_icons"
+ },
+ "icons/fence_wall": {
+  "file": "assets/ui/sprites/icons/fence_wall.png",
+  "w": 264,
+  "h": 223,
+  "sheet": "02_icons"
+ },
+ "icons/hay_ramp": {
+  "file": "assets/ui/sprites/icons/hay_ramp.png",
+  "w": 273,
+  "h": 231,
+  "sheet": "02_icons"
+ },
+ "icons/launch_pad": {
+  "file": "assets/ui/sprites/icons/launch_pad.png",
+  "w": 246,
+  "h": 224,
+  "sheet": "02_icons"
+ },
+ "icons/supplies_crate": {
+  "file": "assets/ui/sprites/icons/supplies_crate.png",
+  "w": 248,
+  "h": 238,
+  "sheet": "02_icons"
+ },
+ "icons/gig_clipboard": {
+  "file": "assets/ui/sprites/icons/gig_clipboard.png",
+  "w": 222,
+  "h": 248,
+  "sheet": "02_icons"
+ },
+ "icons/cud_coin": {
+  "file": "assets/ui/sprites/icons/cud_coin.png",
+  "w": 236,
+  "h": 242,
+  "sheet": "02_icons"
+ },
+ "icons/combo_star": {
+  "file": "assets/ui/sprites/icons/combo_star.png",
+  "w": 308,
+  "h": 253,
+  "sheet": "02_icons"
+ },
+ "icons/compass_n": {
+  "file": "assets/ui/sprites/icons/compass_n.png",
+  "w": 218,
+  "h": 220,
+  "sheet": "02_icons"
+ },
+ "icons/map_pin": {
+  "file": "assets/ui/sprites/icons/map_pin.png",
+  "w": 192,
+  "h": 241,
+  "sheet": "02_icons"
+ },
+ "icons/marker_barn": {
+  "file": "assets/ui/sprites/icons/marker_barn.png",
+  "w": 247,
+  "h": 203,
+  "sheet": "02_icons"
+ },
+ "icons/marker_house_blue": {
+  "file": "assets/ui/sprites/icons/marker_house_blue.png",
+  "w": 230,
+  "h": 210,
+  "sheet": "02_icons"
+ },
+ "icons/marker_house_pink": {
+  "file": "assets/ui/sprites/icons/marker_house_pink.png",
+  "w": 224,
+  "h": 210,
+  "sheet": "02_icons"
+ },
+ "icons/marker_tree_round": {
+  "file": "assets/ui/sprites/icons/marker_tree_round.png",
+  "w": 229,
+  "h": 231,
+  "sheet": "02_icons"
+ },
+ "icons/marker_tree_pine": {
+  "file": "assets/ui/sprites/icons/marker_tree_pine.png",
+  "w": 192,
+  "h": 239,
+  "sheet": "02_icons"
+ },
+ "icons/marker_tree_apple": {
+  "file": "assets/ui/sprites/icons/marker_tree_apple.png",
+  "w": 229,
+  "h": 231,
+  "sheet": "02_icons"
+ },
+ "menu/button_yellow_normal": {
+  "file": "assets/ui/sprites/menu/button_yellow_normal.png",
+  "w": 326,
+  "h": 136,
+  "sheet": "03_menus"
+ },
+ "menu/button_yellow_hover": {
+  "file": "assets/ui/sprites/menu/button_yellow_hover.png",
+  "w": 326,
+  "h": 144,
+  "sheet": "03_menus"
+ },
+ "menu/button_yellow_pressed": {
+  "file": "assets/ui/sprites/menu/button_yellow_pressed.png",
+  "w": 321,
+  "h": 144,
+  "sheet": "03_menus"
+ },
+ "menu/button_purple_normal": {
+  "file": "assets/ui/sprites/menu/button_purple_normal.png",
+  "w": 323,
+  "h": 126,
+  "sheet": "03_menus"
+ },
+ "menu/button_purple_hover": {
+  "file": "assets/ui/sprites/menu/button_purple_hover.png",
+  "w": 317,
+  "h": 128,
+  "sheet": "03_menus"
+ },
+ "menu/button_purple_pressed": {
+  "file": "assets/ui/sprites/menu/button_purple_pressed.png",
+  "w": 319,
+  "h": 126,
+  "sheet": "03_menus"
+ },
+ "menu/panel_tall": {
+  "file": "assets/ui/sprites/menu/panel_tall.png",
+  "w": 540,
+  "h": 796,
+  "sheet": "03_menus"
+ },
+ "menu/stat_card": {
+  "file": "assets/ui/sprites/menu/stat_card.png",
+  "w": 431,
+  "h": 191,
+  "sheet": "03_menus"
+ },
+ "menu/toggle_off": {
+  "file": "assets/ui/sprites/menu/toggle_off.png",
+  "w": 235,
+  "h": 124,
+  "sheet": "03_menus"
+ },
+ "menu/toggle_on": {
+  "file": "assets/ui/sprites/menu/toggle_on.png",
+  "w": 240,
+  "h": 124,
+  "sheet": "03_menus"
+ },
+ "menu/slider": {
+  "file": "assets/ui/sprites/menu/slider.png",
+  "w": 903,
+  "h": 99,
+  "sheet": "03_menus"
+ },
+ "menu/checkbox_empty": {
+  "file": "assets/ui/sprites/menu/checkbox_empty.png",
+  "w": 122,
+  "h": 124,
+  "sheet": "03_menus"
+ },
+ "menu/checkbox_checked": {
+  "file": "assets/ui/sprites/menu/checkbox_checked.png",
+  "w": 122,
+  "h": 123,
+  "sheet": "03_menus"
+ },
+ "menu/button_close": {
+  "file": "assets/ui/sprites/menu/button_close.png",
+  "w": 150,
+  "h": 151,
+  "sheet": "03_menus"
+ },
+ "menu/button_back": {
+  "file": "assets/ui/sprites/menu/button_back.png",
+  "w": 152,
+  "h": 153,
+  "sheet": "03_menus"
+ },
+ "menu/tab_brown": {
+  "file": "assets/ui/sprites/menu/tab_brown.png",
+  "w": 447,
+  "h": 165,
+  "sheet": "03_menus"
+ },
+ "menu/tab_gold_active": {
+  "file": "assets/ui/sprites/menu/tab_gold_active.png",
+  "w": 447,
+  "h": 174,
+  "sheet": "03_menus"
+ },
+ "menu/tab_purple": {
+  "file": "assets/ui/sprites/menu/tab_purple.png",
+  "w": 458,
+  "h": 165,
+  "sheet": "03_menus"
+ }
+}
