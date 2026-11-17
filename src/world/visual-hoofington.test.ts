@@ -109,7 +109,7 @@ describe('Hoofington sourced village model integration', () => {
     originalMaterial.dispose();
   });
 
-  it('instances native 3.5m lantern parts without tint, wall/roof paint or height stretch', () => {
+  it('instances the authored lantern parts without tint, paint or height stretch', () => {
     const source = new THREE.Group();
     const names = ['painted_cast_iron', 'lantern_glass', 'opal_globe', 'brass_burner'];
     for (const name of names) {

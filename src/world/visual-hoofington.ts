@@ -480,7 +480,7 @@ export function createLanternLampInstances<Model extends string>(
           placement.position.y - placement.size.y / 2 - bounds.min.y,
           placement.position.z);
         dummy.rotation.set(0, placement.yaw, 0);
-        dummy.scale.set(1, 1, 1); // 3.5m high; no collider-height stretch
+        dummy.scale.set(1, 1, 1); // authored GLB scale; no collider-height stretch
         dummy.updateMatrix();
         mesh.setMatrixAt(i, dummy.matrix);
       }

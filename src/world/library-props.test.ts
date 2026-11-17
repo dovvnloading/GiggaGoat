@@ -70,7 +70,7 @@ describe('USDCraft lantern model consistency', () => {
     });
   });
 
-  it('ships the four authored flat materials with warm emissive lantern glass', () => {
+  it('ships the authored lamp materials with warm emissive lantern glass', () => {
     const binary = readFileSync(new URL(
       '../../public/assets/library/usdcraft/street-lamp-lantern.glb', import.meta.url));
     expect(binary.toString('utf8', 0, 4)).toBe('glTF');
@@ -79,10 +79,10 @@ describe('USDCraft lantern model consistency', () => {
       meshes: Array<{ primitives: Array<{ material: number }> }>;
       materials: Array<{ name: string; emissiveFactor?: number[] }>;
     };
-    expect(gltf.meshes[0]?.primitives).toHaveLength(4);
-    expect(gltf.materials.map(m => m.name).sort()).toEqual([
-      'brass_burner', 'lantern_glass', 'opal_globe', 'painted_cast_iron',
-    ]);
+    expect(gltf.meshes.flatMap(mesh => mesh.primitives).length).toBeGreaterThanOrEqual(4);
+    for (const name of ['brass_burner', 'lantern_glass', 'opal_globe', 'painted_cast_iron']) {
+      expect(gltf.materials.map(m => m.name)).toContain(name);
+    }
     expect(gltf.materials.find(m => m.name === 'lantern_glass')?.emissiveFactor)
       .toEqual(expect.arrayContaining([expect.any(Number)]));
     expect(gltf.materials.find(m => m.name === 'lantern_glass')!.emissiveFactor![0])

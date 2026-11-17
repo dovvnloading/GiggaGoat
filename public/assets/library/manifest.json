@@ -33008,6 +33008,24 @@
   "url": ""
  },
  {
+  "path": "assets/library/custom/hoofington-props/picket-fence.glb",
+  "name": "Hoofington picket fence",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-props/mailbox.glb",
+  "name": "Hoofington mailbox",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
   "path": "assets/library/usdcraft/street-lamp-lantern.glb",
   "name": "street-lamp-lantern",
   "source": "NVIDIA USDCraft-10K",
