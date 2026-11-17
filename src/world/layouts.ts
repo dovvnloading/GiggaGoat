@@ -3,6 +3,7 @@ import { SeededRandom } from './random';
 import { gridSample, riverAt } from './terrain';
 import { buildBaaardwalk } from './boardwalk';
 import { buildCraneYard } from './crane-yard';
+import { DOWNTOWN_BUILDING_SIZES, SHOP_FRONTS, downtownRearHouseModel } from './visual-downtown';
 import { getDamPlacement } from './the-dam';
 
 interface AddOptions {
@@ -97,9 +98,13 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   // (the mission selects y-rotated roofs at z = -19, 0 and +19).
   const city: PoiId = 'downtown-bleatsville';
   for (let row = 0; row < 5; row++) for (const side of [-1, 1]) {
-    const x = side * 20, z = (row - 2) * 19;
-    const height = 9 + ((row * 2 + (side + 1) / 2) % 4) * 2.3;
-    site(city, 'shop', x, z, 11.0, height, 11.4, {
+    const z = (row - 2) * 19;
+    const model = SHOP_FRONTS[side < 0 ? 0 : 1]![row]!.model;
+    const size = DOWNTOWN_BUILDING_SIZES[model];
+    // A y-rotated building's +Z facade faces the street. Keep its old
+    // pavement plane at |X| = 20 - 11.4/2, moving only the back wall.
+    const x = side * (20 + (size.z - 11.4) / 2);
+    site(city, 'shop', x, z, size.x, size.y, size.z, {
       yaw: -side * Math.PI / 2,
       color: [0x91c9ed, 0xffa27e, 0xf2d47e, 0xb39adf][(row * 2 + (side + 1) / 2) % 4],
     });
@@ -112,7 +117,10 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   // townhouse behind each near-side shop in rows -19, 0 and +19.
   // Rear houses enrich the skyline without obstructing main-street sightlines.
   for (const z of [-19, 0, 19]) for (const side of [-1, 1]) {
-    site(city, 'house', side * 36, z, 10, 15 + (z === 0 ? 3 : 0), 11.5, {
+    const size = DOWNTOWN_BUILDING_SIZES[downtownRearHouseModel(z)];
+    // Rear facades stay at the original |X| = 36 - 11.5/2 plane.
+    const x = side * (36 + (size.z - 11.5) / 2);
+    site(city, 'house', x, z, size.x, size.y, size.z, {
       yaw: -side * Math.PI / 2,
       color: z === 0 ? 0xe4b5a1 : 0xc3d0ed,
     });

@@ -79,6 +79,27 @@ export const DOWNTOWN_SIGN_ANCHORS = {
 }>>;
 type DowntownBuildingModel = keyof typeof DOWNTOWN_SIGN_ANCHORS;
 
+/** DT-4: native Blender dimensions × one shared 8 m per model unit.
+ * Highrise uses its separately authored 8 × 27 × 8 m tower box.
+ */
+export const DOWNTOWN_BUILDING_SIZES = {
+  cornerShop: { x: 7.76, y: 10.43, z: 9.50 }, // shop-b-pink
+  kayShop: { x: 7.12, y: 7.24, z: 10.30 }, // shop-c-yellow
+  cinema: { x: 6.72, y: 10.43, z: 8.70 }, // shop-d-mint
+  cafe: { x: 13.12, y: 7.24, z: 9.82 }, // shop-e-peach
+  market: { x: 7.76, y: 13.63, z: 8.70 }, // shop-g-yellow
+  bakery: { x: 7.07, y: 10.43, z: 9.32 }, // shop-h-pink
+  boutique: { x: 17.12, y: 13.63, z: 12.30 }, // shop-j-cream
+  arcade: { x: 16.67, y: 11.85, z: 8.79 }, // shop-k-lavender
+  townhouse: { x: 11.36, y: 18.25, z: 12.71 }, // shop-l-peach
+  brickHouse: { x: 9.92, y: 25.29, z: 11.51 }, // shop-m-pink
+  kayHouse: { x: 6.72, y: 13.63, z: 9.50 }, // shop-f-lavender
+} as const satisfies Record<Exclude<DowntownBuildingModel, 'highrise'>, Vec3>;
+
+export function downtownRearHouseModel(dz: number): 'townhouse' | 'kayHouse' | 'brickHouse' {
+  return dz > 0 ? 'townhouse' : dz < 0 ? 'kayHouse' : 'brickHouse';
+}
+
 export interface DowntownSign {
   source: PropDescriptor;
   model: DowntownBuildingModel;
@@ -95,8 +116,8 @@ export interface DowntownVisuals {
   dispose(): void;
 }
 
-const SHOP_FRONTS: readonly (readonly {
-  model: DowntownBuildingModel; title: string;
+export const SHOP_FRONTS: readonly (readonly {
+  model: keyof typeof DOWNTOWN_BUILDING_SIZES; title: string;
 }[])[] = [
   // Looking from bookmark 11 toward -Z: pink bakery and purple arcade left.
   [
@@ -116,7 +137,7 @@ const SHOP_FRONTS: readonly (readonly {
   ],
 ];
 
-/** No RNG is consumed and no gameplay prop/collider/rooftop is moved. */
+/** Reads authored placements without consuming RNG or mutating descriptors. */
 export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] {
   const centre = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
   const scale = island.size / 600;
@@ -136,7 +157,7 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
         break;
       }
       case 'house':
-        model = dz > 0 ? 'townhouse' : dz < 0 ? 'kayHouse' : 'brickHouse';
+        model = downtownRearHouseModel(dz);
         break;
       case 'tower':
         model = 'highrise'; break;
