@@ -146,7 +146,25 @@ function inside(inner: Rect, outer: Rect, tolerance = 1): boolean {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('live gig card text box geometry (headless browser DOM)', () => {
-  it.each([[1280, 720], [1600, 900], [1920, 1080]])(
+  it.each([[1280, 720], [1512, 797], [1920, 1080]])(
+    'keeps YOUR NEXT GIG clear of the painted ribbon at %ix%i', (width, height) => {
+      const g = measureHud(width, height, false, false);
+      const { card, paper, title, task, detail, footer } = g.boxes;
+      // The PNG ribbon extends to about 43% of the card, beyond the shorter
+      // .gg-gig-header text box. Compare against the actual artwork boundary,
+      // rather than only header.bottom (which let the original clipping pass).
+      const ribbonBottom = card.top + card.height * .43;
+      expect(title.top - ribbonBottom).toBeGreaterThanOrEqual(6);
+      expect(inside(title, paper)).toBe(true);
+      expect(task.top).toBeGreaterThanOrEqual(title.bottom - 1);
+      expect(detail.top).toBeGreaterThanOrEqual(task.bottom - 1);
+      expect(footer.top).toBeGreaterThanOrEqual(detail.bottom + 1);
+      expect(g.paperFits && g.taskFits && g.detailFits && g.footerFits).toBe(true);
+    },
+    20_000,
+  );
+
+  it.each([[1280, 720], [1512, 797], [1600, 900], [1920, 1080]])(
     'keeps the idle free-roam card within the cream area at %ix%i', (width, height) => {
       const g = measureHud(width, height, false, false);
       const { card, header, title, task, detail, footer, wallet, mode } = g.boxes;
@@ -169,7 +187,7 @@ describe('live gig card text box geometry (headless browser DOM)', () => {
     20_000,
   );
 
-  it.each([[1280, 720], [1600, 900], [1920, 1080]])(
+  it.each([[1280, 720], [1512, 797], [1600, 900], [1920, 1080]])(
     'wraps a long active objective beside its checkbox at %ix%i', (width, height) => {
       const g = measureHud(width, height, true, true);
       const { card, header, title, task, detail, footer, wallet, mode, checkbox } = g.boxes;
