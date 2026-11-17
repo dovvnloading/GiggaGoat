@@ -35,10 +35,12 @@ describe('Game scene uses the approved src/character goat, not proxy primitives'
       expectApprovedSculpt(characters.player);
       const root = characters.player.root;
       expect(scene.children).toEqual([root]);
-      const before = game.bodyCount;
+      // The first game tick can independently spawn dynamic island props.
+      // Compare body counts around the render update, not across physics.
       game.step();
+      const bodiesAfterPhysics = game.bodyCount;
       characters.update(1 / 60, game.physics.alpha);
-      expect(game.bodyCount).toBe(before);
+      expect(game.bodyCount).toBe(bodiesAfterPhysics);
       const torso = root.getObjectByName('ragdoll torso')!;
       const pose = game.physics.getInterpolatedTransform(game.goat.torso, game.physics.alpha);
       expect(torso.position.y).toBeCloseTo(pose.translation.y, 5);
