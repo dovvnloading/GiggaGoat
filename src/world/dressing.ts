@@ -205,6 +205,9 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
 
   // The Dam's hut, rails, pipes, rocks and loose equipment are authored in
   // the hero GLB, not duplicated as procedural dressing.
+  // The retired fourteen crates/barrels consumed two RNG samples each.
+  // Preserve the existing lighthouse and secret-relic seed layout.
+  for (let i = 0; i < 28; i++) rng.next();
 
   // Mt. Gigga: alternating green landings, a cave recess and climbable boulder stacks.
   const peak: PoiId = 'mt-gigga';
