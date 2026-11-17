@@ -157,6 +157,8 @@ export class GameMenu {
   private readonly keyHandler: (e: KeyboardEvent) => void;
   private readonly pageHide: () => void;
   private readonly fullscreenChange: () => void;
+  private readonly pointerLockChange: () => void;
+  private wasPointerLocked = false;
 
   constructor(private readonly host: HTMLElement, private readonly game: Game,
     private readonly view: GameView, public settings: GameSettings,
@@ -238,6 +240,16 @@ export class GameMenu {
     window.addEventListener('pagehide', this.pageHide);
     this.fullscreenChange = () => this.syncFullscreen();
     document.addEventListener('fullscreenchange', this.fullscreenChange);
+    // Escape is consumed by Chrome when it first releases pointer lock, so its
+    // keydown event may never reach onKey. Still pause when the player unlocks.
+    this.pointerLockChange = () => {
+      const locked = document.pointerLockElement === this.view.renderer.domElement;
+      if (this.wasPointerLocked && !locked && this.screen === 'playing') {
+        this.setScreen('pause');
+      }
+      this.wasPointerLocked = locked;
+    };
+    document.addEventListener('pointerlockchange', this.pointerLockChange);
     this.view.onFrame = () => this.frame();
     this.view.onInteract = () => this.interact();
     this.view.applySettings(settings);
@@ -656,6 +668,7 @@ export class GameMenu {
     window.removeEventListener('keydown', this.keyHandler, true);
     window.removeEventListener('pagehide', this.pageHide);
     document.removeEventListener('fullscreenchange', this.fullscreenChange);
+    document.removeEventListener('pointerlockchange', this.pointerLockChange);
     this.root.remove(); this.style.remove();
     this.view.onFrame = null; this.view.onInteract = null;
   }
