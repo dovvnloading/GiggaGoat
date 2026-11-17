@@ -383,8 +383,12 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
         mesh.visible = visible;
       }
     }
-    // The async GLB may have arrived since the last shadow-map pass.
-    if (dam.consumeShadowChange()) shadowCastersChanged = true;
+    // The GLB supplies its own reservoir surface. Keep the procedural one
+    // for loading/failure fallback, but avoid overlapping water on success.
+    if (dam.consumeShadowChange()) {
+      waterVisuals.inland.getObjectByName('dam-reservoir')?.removeFromParent();
+      shadowCastersChanged = true;
+    }
     return shadowCastersChanged;
   }
   function dispose(): void {

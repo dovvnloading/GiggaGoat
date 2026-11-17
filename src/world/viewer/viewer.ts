@@ -457,13 +457,14 @@ if (new URLSearchParams(window.location.search).has('profile')) {
       },
       /** Profiling-only QA: confirm the authored Dam is on screen at bookmark 14. */
       damHeroState(): { loaded: boolean; inFrame: boolean;
-        camera: number[]; target: number[] } {
+        reservoirRemoved: boolean; camera: number[]; target: number[] } {
         const model = worldView.group.getObjectByName('the-dam-model');
         const clip = model?.getWorldPosition(new THREE.Vector3()).project(camera);
         return {
           loaded: Boolean(model),
           inFrame: Boolean(clip && clip.z >= -1 && clip.z <= 1 &&
             Math.abs(clip.x) < 1 && Math.abs(clip.y) < 1),
+          reservoirRemoved: !worldView.group.getObjectByName('dam-reservoir'),
           camera: camera.position.toArray(),
           target: orbit.target.toArray(),
         };
