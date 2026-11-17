@@ -10,9 +10,9 @@ interface ChunkBuffer {
 }
 
 const DIRT = new THREE.Color('#B99262');
-const GARDEN = new THREE.Color('#6F8549');
 /** Hoofington front gardens (painting 08): dark soil beds and pale stone paths. */
-const FLOWER_BED = new THREE.Color('#7B5A3A');
+const SOIL = new THREE.Color(0x7b5a3a);
+const CROP_ROW = new THREE.Color(0x6fb34a);
 const STONE_PATH = new THREE.Color('#DDD3C2');
 const STONE = new THREE.Color('#D8C7A7');
 const TILE = new THREE.Color('#C2B6A2');
@@ -54,7 +54,7 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Gr
     return index;
   }
   function quad(x: number, z: number, width: number, length: number,
-    color: THREE.Color, yaw = 0, shade?: number): void {
+    color: THREE.Color, yaw = 0, shade?: number, lift = 0): void {
     const bucket = verticesAt(x, z);
     const c = Math.cos(yaw), s = Math.sin(yaw);
     const corners: [number, number][] = [
@@ -63,7 +63,7 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Gr
     ];
     const v = corners.map(([dx, dz], i) => addVertex(
       bucket, x + c * dx + s * dz, z - s * dx + c * dz,
-      color, shade ?? (0.965 + (i % 3) * 0.015),
+      color, shade ?? (0.965 + (i % 3) * 0.015), lift,
     ));
     bucket.indices.push(v[0]!, v[2]!, v[1]!, v[1]!, v[2]!, v[3]!);
   }
@@ -131,14 +131,20 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Gr
     for (let i = 0; i < 13; i += 3) {
       const z = farm.z + (-34 + i * 5.5) * scale;
       quad(farm.x + side * 15.2 * scale, z,
-        3.2 * scale, 2.0 * scale, FLOWER_BED);
+        3.2 * scale, 2.0 * scale, SOIL);
     }
     for (const dz of [-19, -9, 11, 12, 29]) {
       quad(farm.x + side * 12.5 * scale, farm.z + dz * scale,
         5.8 * scale, 1.6 * scale, STONE_PATH, Math.PI / 2);
     }
-    quad(farm.x + side * 27 * scale, farm.z + 30 * scale,
-      11 * scale, 8 * scale, GARDEN);
+    const patchX = farm.x + side * 27 * scale;
+    const patchZ = farm.z + 30 * scale;
+    quad(patchX, patchZ, 11 * scale, 8 * scale, SOIL);
+    // Five rows along the 11 m axis, lifted 2 cm above the soil decal.
+    for (const dz of [-3, -1.5, 0, 1.5, 3]) {
+      quad(patchX, patchZ + dz * scale,
+        10 * scale, 0.75 * scale, CROP_ROW, 0, undefined, 0.02);
+    }
   }
   // The actual central street is already rendered by buildRoads, while
   // these compact sidewalk tiles make both rows accessible and inviting.
