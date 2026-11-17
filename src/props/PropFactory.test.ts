@@ -127,6 +127,10 @@ describe('library model loader', () => {
     expect(urls.length).toBe(3); // spring, arrow, large box
     expect(new Set(urls).size).toBe(3);
     expect(urls.filter(url => url.includes('/spring.glb'))).toHaveLength(1);
+    const arrowSlot = b.children.find(child => child.name === 'library-slot' &&
+      child.userData.assetPath === LIBRARY_MODELS.arrow);
+    // Kenney's arrow points up local +Y; launch-pad graphics need it flat in XZ.
+    expect(arrowSlot?.children[0]?.children[0]?.rotation.x).toBeCloseTo(-Math.PI / 2);
     expect([a, b, c].every(x => x.userData.assetStatus === 'ready')).toBe(true);
     f.dispose();
   });
