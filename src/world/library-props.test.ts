@@ -113,7 +113,11 @@ describe('library geometry batching', () => {
       expected.scale.set(prop.size.x, prop.size.y, prop.size.z);
       expected.updateMatrix();
       mesh.getMatrixAt(i, got);
-      expect(got.elements).toEqual(expected.matrix.elements);
+      // InstancedMesh stores each matrix in Float32Array; allow GPU precision.
+      for (let j = 0; j < 16; j++) {
+        expect(got.elements[j]!, prop.id + ' matrix element ' + j)
+          .toBeCloseTo(expected.matrix.elements[j]!, 5);
+      }
     }
     visuals.dispose();
     mesh.geometry.dispose();
