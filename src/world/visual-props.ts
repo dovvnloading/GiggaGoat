@@ -781,7 +781,11 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
         try {
           const libraryGeometry = await pending;
           const distantGeometry = await simplifiedWorldGeometry(libraryGeometry);
-          if (disposed) return;
+          if (disposed) {
+            if (distantGeometry !== libraryGeometry) distantGeometry.dispose();
+            libraryGeometry.dispose();
+            return;
+          }
           const original = job.mesh.geometry;
           job.mesh.geometry = libraryGeometry;
           // Retain mild per-descriptor colour variation without tinting the
