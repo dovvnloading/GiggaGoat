@@ -45,7 +45,7 @@ const COLORS: Partial<Record<PropKind, number>> = {
 };
 const foliage = new Set<PropKind>([
   'tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'mushroom',
-  'gnome', 'ferris-wheel', 'lighthouse',
+  'gnome', 'ferris-wheel', 'lighthouse', 'bunting',
 ]);
 
 /** Build one reusable, genuinely compound silhouette per prop kind. */
