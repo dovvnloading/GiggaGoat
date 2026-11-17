@@ -336,9 +336,9 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   // only random logs/rocks and forest-detail stones/fungi which overlap its
   // footprint, without removing any prop, changing its dimensions or using RNG.
   // The crane/pier/other-district descriptors remain completely untouched.
-  const bridge = result.find(p => p.poiId === forest && p.kind === 'log-bridge')!;
+  const logBridge = result.find(p => p.poiId === forest && p.kind === 'log-bridge')!;
   const forestProps = [...island.props, ...result].filter(p =>
-    p.poiId === forest && p !== bridge && p.collidable);
+    p.poiId === forest && p !== logBridge && p.collidable);
   const aabbHalf = (p: PropDescriptor): { x: number; z: number } => {
     const c = Math.abs(Math.cos(p.transform.rotationY));
     const s = Math.abs(Math.sin(p.transform.rotationY));
@@ -353,7 +353,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
         aa.z + bb.z - 1e-5;
   };
   for (const prop of forestProps) {
-    if (!overlaps(bridge, prop)) continue;
+    if (!overlaps(logBridge, prop)) continue;
     const original = { ...prop.transform.position };
     let cleared = false;
     // Slide along the river (perpendicular to the bridge), alternating banks.
@@ -367,7 +367,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
         if (h <= crossing.level + 0.3 * scale) continue;
         prop.transform.position.x = x;
         prop.transform.position.z = z;
-        if (overlaps(bridge, prop) ||
+        if (overlaps(logBridge, prop) ||
           forestProps.some(other => other !== prop && overlaps(prop, other))) continue;
         prop.transform.position.y = original.y + h -
           gridSample(island, original.x, original.z);
