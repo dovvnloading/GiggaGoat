@@ -185,6 +185,75 @@ describe('09 reusable Three.js aura and bounded pulse pool (headless)', () => {
     }
   });
 
+  it('uses only the purple palette with strong normal-blended opacity at every pulse peak', () => {
+    const aura = new GiggaGrowthPurpleAura({ capacity: 1 });
+    try {
+      aura.triggerGrow(0); // Kid has no pulse by design.
+      expect(aura.activeCount).toBe(0);
+
+      for (const tier of [1, 2, 3] as const) {
+        aura.clear();
+        aura.triggerGrow(tier);
+        aura.update(GROWTH_BURST_SECONDS[tier] * 0.55);
+        const rig = object(aura.group, 'growth aura pooled pulse 0');
+        expect(rig.visible).toBe(true);
+        let checkedColors = 0;
+        let normalLayers = 0;
+        let additiveLayers = 0;
+        rig.traverse(part => {
+          if (!(part instanceof THREE.Mesh || part instanceof THREE.Sprite)) return;
+          const material = part.material;
+          expect(material instanceof THREE.MeshBasicMaterial ||
+            material instanceof THREE.SpriteMaterial).toBe(true);
+          if (!(material instanceof THREE.MeshBasicMaterial ||
+                material instanceof THREE.SpriteMaterial)) return;
+          const hsl = material.color.getHSL({ h: 0, s: 0, l: 0 });
+          // Include the pale pink-white cores, whose hue must still be lilac.
+          expect(hsl.h).toBeGreaterThanOrEqual(0.70);
+          expect(hsl.h).toBeLessThanOrEqual(0.92);
+          expect(hsl.s).toBeGreaterThan(0.35);
+          expect(material.opacity).toBeGreaterThanOrEqual(0);
+          expect(material.opacity).toBeLessThanOrEqual(1);
+          if (material.blending === THREE.NormalBlending) normalLayers++;
+          else if (material.blending === THREE.AdditiveBlending) additiveLayers++;
+          else throw new Error('Aura has an unsupported blend mode');
+          checkedColors++;
+        });
+        expect(checkedColors).toBeGreaterThan(45);
+        expect(normalLayers).toBeGreaterThan(additiveLayers * 3);
+
+        const opacity = (name: string): number =>
+          (mesh(rig, name).material as THREE.MeshBasicMaterial).opacity;
+        expect(opacity('soft magenta hoof halo')).toBeGreaterThanOrEqual(0.80);
+        expect(opacity('saturated violet ground bloom')).toBeGreaterThanOrEqual(0.68);
+        expect(opacity('violet light pillar 0')).toBeGreaterThanOrEqual(0.80);
+        expect(opacity('white-hot pillar core 0')).toBeGreaterThanOrEqual(0.78);
+        expect(opacity('helical violet ribbon 0')).toBeGreaterThanOrEqual(0.85);
+        expect(opacity('white-hot spiral core 0')).toBeGreaterThanOrEqual(0.85);
+        expect(opacity('soft additive violet ground glow')).toBeGreaterThanOrEqual(0.25);
+        expect((mesh(rig, 'soft magenta hoof halo').material as THREE.MeshBasicMaterial)
+          .blending).toBe(THREE.NormalBlending);
+        expect((mesh(rig, 'helical violet ribbon 0').material as THREE.MeshBasicMaterial)
+          .blending).toBe(THREE.NormalBlending);
+        expect((mesh(rig, 'soft additive violet ground glow').material as THREE.MeshBasicMaterial)
+          .blending).toBe(THREE.AdditiveBlending);
+
+        const flareBody = object(rig, 'GIGGA saturated purple flare body') as THREE.Sprite;
+        const flareStar = object(rig, 'GIGGA bright purple flare') as THREE.Sprite;
+        expect(flareBody.visible).toBe(tier === 3);
+        expect(flareStar.visible).toBe(tier === 3);
+        if (tier === 3) {
+          expect(flareBody.material.opacity).toBeGreaterThanOrEqual(0.85);
+          expect(flareBody.material.blending).toBe(THREE.NormalBlending);
+          expect(flareStar.material.opacity).toBeGreaterThanOrEqual(0.70);
+          expect(flareStar.material.blending).toBe(THREE.AdditiveBlending);
+        }
+      }
+    } finally {
+      aura.dispose();
+    }
+  });
+
   it('gives identical motion for one step versus many, validates dt and disposal', () => {
     const a = new GiggaGrowthPurpleAura({ capacity: 1 });
     const b = new GiggaGrowthPurpleAura({ capacity: 1 });
