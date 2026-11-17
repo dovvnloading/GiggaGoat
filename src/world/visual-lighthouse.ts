@@ -132,8 +132,12 @@ function makeCottage(prop: PropDescriptor): THREE.Group {
   const red = new THREE.Color(0xbc483b), tile = new THREE.Color(0xe36c51);
   for (let i = 0; i < color.count; i++) {
     const actual = new THREE.Color(color.getX(i), color.getY(i), color.getZ(i));
-    if (actual.distanceTo(oldRoof) < 0.004) color.setXYZ(i, red.r, red.g, red.b);
-    if (actual.distanceTo(oldHighlight) < 0.004) color.setXYZ(i, tile.r, tile.g, tile.b);
+    const roofDelta = Math.abs(actual.r - oldRoof.r) +
+      Math.abs(actual.g - oldRoof.g) + Math.abs(actual.b - oldRoof.b);
+    const tileDelta = Math.abs(actual.r - oldHighlight.r) +
+      Math.abs(actual.g - oldHighlight.g) + Math.abs(actual.b - oldHighlight.b);
+    if (roofDelta < 0.004) color.setXYZ(i, red.r, red.g, red.b);
+    if (tileDelta < 0.004) color.setXYZ(i, tile.r, tile.g, tile.b);
   }
   color.needsUpdate = true;
   const cottage = new THREE.Group();
