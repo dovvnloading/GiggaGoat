@@ -69,6 +69,7 @@ const art = characters[1]!;
 let clip: GoatClip = 'Idle';
 let tier: GoatTier = 'BILLY';
 let physicsMode = false;
+let demoMotion: 'Idle' | 'Walk' | 'Run' = 'Idle';
 let paused = false;
 let yaw = -.48;
 let pitch = .16;
@@ -150,13 +151,9 @@ function selectClip(name: GoatClip): void {
   } else {
     switch (name) {
       case 'Idle':
-        goat.locomotion.setInput({ z: 0, x: 0, sprint: false });
-        break;
       case 'Walk':
-        goat.locomotion.setInput({ z: 1, sprint: false });
-        break;
       case 'Run':
-        goat.locomotion.setInput({ z: 1, sprint: true });
+        demoMotion = name;
         break;
       case 'Jump':
         goat.locomotion.requestJump();
@@ -177,6 +174,7 @@ function selectClip(name: GoatClip): void {
 
 modeButton.addEventListener('click', () => {
   physicsMode = !physicsMode;
+  demoMotion = 'Idle';
   held.clear();
   goat.locomotion.setInput({ z: 0, x: 0, sprint: false });
   if (physicsMode) {
@@ -240,11 +238,14 @@ function frame(now: number): void {
   lastFrame = now;
   const size = TIER_PROFILES[tier].physicsScale;
   if (physicsMode) {
+    const keyboardZ = Number(held.has('KeyW')) - Number(held.has('KeyS'));
+    const keyboardX = Number(held.has('KeyD')) - Number(held.has('KeyA'));
     goat.locomotion.setInput({
-      x: Number(held.has('KeyD')) - Number(held.has('KeyA')),
-      z: Number(held.has('KeyW')) - Number(held.has('KeyS')),
+      x: keyboardX,
+      z: keyboardZ || (keyboardX ? 0 : demoMotion === 'Idle' ? 0 : 1),
       cameraYaw: 0,
-      sprint: held.has('ShiftLeft') || held.has('ShiftRight'),
+      sprint: held.has('ShiftLeft') || held.has('ShiftRight') ||
+        (keyboardX === 0 && keyboardZ === 0 && demoMotion === 'Run'),
     });
     if (!paused) {
       const step = physics.step(dt);
