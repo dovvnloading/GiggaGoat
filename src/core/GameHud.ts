@@ -82,9 +82,11 @@ const CSS = `
 .gg-hotbar-charge{position:absolute;left:16%;right:16%;bottom:4.5%;height:3px;border-radius:6px;background:#442742;overflow:hidden}
 .gg-hotbar-charge>div{height:100%;width:0;background:linear-gradient(90deg,#f6a32c,#fff071);transition:width .12s linear}
 /* The prompt, key badge and slot art are genuine nine-slice border images. */
-.gg-board-hint,.gg-hint{position:absolute;left:50%;top:clamp(184px,14.5vw,232px);transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:6px;min-height:37px;padding:1px 11px;border:13px solid transparent;border-image:var(--gg-promptPill) 37 fill / 13px / 0 stretch;text-align:center;color:#5a352c;font-size:clamp(11px,.88vw,14px);line-height:1.15;text-shadow:none;white-space:nowrap;max-width:82vw}
+.gg-board-hint,.gg-hint{position:absolute;left:50%;top:clamp(184px,14.5vw,232px);transform:translateX(-50%);display:flex;flex-wrap:nowrap;align-items:center;justify-content:center;gap:6px;width:max-content;max-width:82vw;min-height:37px;padding:1px 11px;border:13px solid transparent;border-image:var(--gg-promptPill) 37 fill / 13px / 0 stretch;text-align:center;color:#5a352c;font-size:clamp(11px,.88vw,14px);line-height:1.15;text-shadow:none;white-space:nowrap}
 .gg-board-hint{top:clamp(219px,17vw,275px)}
-.gg-prompt-key{display:grid;place-items:center;min-width:28px;height:26px;padding:0 5px;border:7px solid transparent;border-image:var(--gg-keyBadge) 31 fill / 7px / 0 stretch;color:#603827;text-shadow:none}
+.gg-prompt-key{display:grid;place-items:center;flex:0 0 auto;min-width:28px;height:26px;padding:0 5px;border:7px solid transparent;border-image:var(--gg-keyBadge) 31 fill / 7px / 0 stretch;color:#603827;text-shadow:none}
+.gg-prompt-copy{flex:0 0 auto;white-space:nowrap}
+.gg-prompt-mouse{font-family:"Segoe UI Symbol","Apple Color Emoji",system-ui,sans-serif;font-size:13px;line-height:1}
 .gg-debug{position:absolute;left:20px;top:230px;background:#192542e8;border:2px solid #b7dfbc;border-radius:12px;padding:10px;font:12px/1.5 monospace;white-space:pre;color:#d7ffc9;text-shadow:none}
 @media(max-width:1380px){
  .gg-meter{left:12px;top:13px}
@@ -117,7 +119,8 @@ const CSS = `
  .gg-slot{border-width:7px;border-image-width:7px}
  .gg-slot-key{width:21px;height:23px;font-size:10px;border-width:5px;border-image-width:5px}
  .gg-slot-count{font-size:10px}.gg-slot-name{font-size:6px}
- .gg-board-hint,.gg-hint{top:164px;font-size:9px;white-space:normal;max-width:54vw;padding:0 5px}
+ .gg-board-hint,.gg-hint{top:164px;font-size:9px;white-space:normal;max-width:54vw;padding:0 5px;width:auto;flex-wrap:wrap}
+ .gg-prompt-copy{flex:0 1 auto;white-space:normal}
  .gg-board-hint{top:208px}.gg-prompt-key{min-width:22px;height:22px}
  .gg-debug{top:280px;left:5px;font-size:9px}
 }
@@ -257,10 +260,11 @@ export class GameHud {
       '<strong data-materials></strong></div><div class="gg-hotbar-charge"><div data-charge></div></div></section>' +
       '<div class="gg-board-hint" data-sprite="' + HUD_SPRITES.promptPill +
       '" data-board-hint hidden><span class="gg-prompt-key" data-sprite="' +
-      HUD_SPRITES.keyBadge + '">E</span>GOAT GIGS · GAMEPAD X</div>' +
+      HUD_SPRITES.keyBadge + '">E</span><span class="gg-prompt-copy">GOAT GIGS · GAMEPAD X</span></div>' +
       '<div class="gg-hint" data-sprite="' + HUD_SPRITES.promptPill +
-      '" data-hint><span class="gg-prompt-key" data-sprite="' +
-      HUD_SPRITES.keyBadge + '">CLICK</span>TO PLAY · MOUSE TO LOOK</div>' +
+      '" data-hint><span class="gg-prompt-key gg-prompt-mouse" data-sprite="' +
+      HUD_SPRITES.keyBadge + '" aria-hidden="true">🖱</span>' +
+      '<span class="gg-prompt-copy" data-hint-copy>CLICK TO PLAY · MOUSE TO LOOK</span></div>' +
       '<div class="gg-debug" data-debug hidden></div>';
     host.appendChild(this.root);
     const get = (name: string): HTMLElement => {
@@ -491,7 +495,7 @@ export class GameHud {
       this.gigLayoutKey = gigLayoutKey;
     }
     this.board.hidden = !game.gigs.nearBoard();
-    this.hint.style.display = pointerLocked ? 'none' : 'block';
+    this.setPointerLockHint(pointerLocked);
     this.debug.hidden = !debugVisible;
     if (debugVisible) this.debug.textContent = 'F3 · PERFORMANCE\n' +
       'FPS: ' + (perf?.fps ?? fps).toFixed(0) + '\n' +
@@ -506,6 +510,9 @@ export class GameHud {
       'TICK: ' + game.physics.stepCount;
     this.clearGoat(goatScreenBox);
   }
+
+  /** Preserve the CSS flex row when unlocked; hidden hides it under pointer lock. */
+  setPointerLockHint(pointerLocked: boolean): void { this.hint.hidden = pointerLocked; }
 
   setVisible(visible: boolean): void { this.root.style.display = visible ? 'block' : 'none'; }
   dispose(): void { this.root.remove(); this.styles.remove(); }
