@@ -10,6 +10,7 @@ import { buildStreetDetails } from './visual-streets';
 import { buildMeadowScatter } from './visual-meadow';
 import { buildWaterVisuals } from './visual-water';
 import { buildDamVisuals } from './visual-dam';
+import { buildLighthouseVisuals } from './visual-lighthouse';
 import { buildSkyVisuals, type LightingPreset } from './visual-sky';
 
 export interface WorldSceneOptions {
@@ -325,6 +326,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(waterVisuals.inland, waterVisuals.sea);
   const dam = buildDamVisuals(island);
   group.add(dam.group);
+  const lighthouse = buildLighthouseVisuals(island);
+  group.add(lighthouse.group);
   const sky = buildSkyVisuals();
   group.add(sky.group);
   const sun = new THREE.DirectionalLight(0xffe9c5, 1.65);
@@ -374,6 +377,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     waterVisuals.update(elapsed, tide);
     props.update(elapsed);
     dam.update(elapsed);
+    lighthouse.update(elapsed);
   }
   function updateCulling(camera: THREE.Camera): boolean {
     camera.updateMatrixWorld();
@@ -409,6 +413,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   }
   function dispose(): void {
     dam.dispose();
+    lighthouse.dispose();
     const geometries = new Set<THREE.BufferGeometry>();
     const materials = new Set<THREE.Material>();
     group.traverse(object => {
