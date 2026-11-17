@@ -137,10 +137,10 @@ describe('Hoofington sourced village model integration', () => {
       expect(mesh.geometry.getAttribute('color')).toBeUndefined();
       expect(mesh.instanceColor).toBeNull();
       const material = mesh.material as THREE.MeshStandardMaterial;
-      const original = (source.children.find(part =>
-        (part as THREE.Mesh).material instanceof THREE.MeshStandardMaterial &&
-        ((part as THREE.Mesh).material as THREE.Material).name === material.name)
-        as THREE.Mesh).material as THREE.MeshStandardMaterial;
+      const originalPart = source.children.find(part =>
+        ((part as THREE.Mesh).material as THREE.Material).name === material.name);
+      expect(originalPart).toBeDefined();
+      const original = (originalPart as THREE.Mesh).material as THREE.MeshStandardMaterial;
       expect(material.color.getHex()).toBe(original.color.getHex());
       expect(material.emissive.getHex()).toBe(original.emissive.getHex());
       expect(material).not.toBe(original);
