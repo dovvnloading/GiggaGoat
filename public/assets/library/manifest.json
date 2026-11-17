@@ -33557,6 +33557,51 @@
   "url": ""
  },
  {
+  "path": "assets/library/custom/town/ac-unit.glb",
+  "name": "town ac-unit",
+  "source": "custom",
+  "pack": "town",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/town/planter.glb",
+  "name": "town planter",
+  "source": "custom",
+  "pack": "town",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/town/park-bench.glb",
+  "name": "town park-bench",
+  "source": "custom",
+  "pack": "town",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/town/gnome.glb",
+  "name": "town gnome",
+  "source": "custom",
+  "pack": "town",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/town/downtown-tower.glb",
+  "name": "town downtown-tower",
+  "source": "custom",
+  "pack": "town",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
   "path": "assets/library/custom/hoofington-props/hay-bale.glb",
   "name": "Hoofington hay-bale",
   "source": "custom",
