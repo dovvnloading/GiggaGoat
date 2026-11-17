@@ -173,7 +173,7 @@ describe('Mt. Gigga cascades and Dam plot exclusion (MG-5, DM-1)', () => {
       const falls = inland.children.filter(o =>
         o.name.startsWith('mountain-waterfall-') ||
         o.name.startsWith('front-terrace-waterfall-'));
-      const cascades = falls.filter(o => !o.name.includes('-foam-')) as THREE.Mesh[];
+      const cascades = falls.filter(o => !o.name.endsWith('-foam')) as THREE.Mesh[];
       expect(cascades.length).toBeGreaterThanOrEqual(2);
       expect(cascades.some(o => o.name.startsWith('front-terrace-waterfall-')))
         .toBe(true);
@@ -256,7 +256,7 @@ describe('Mt. Gigga cascades and Dam plot exclusion (MG-5, DM-1)', () => {
     try {
       for (const mesh of first.inland.children) {
         if (!mesh.name.startsWith('mountain-waterfall-') ||
-            mesh.name.includes('-foam-')) continue;
+            mesh.name.endsWith('-foam')) continue;
         const pos = (mesh as THREE.Mesh).geometry.getAttribute('position');
         expect(topInside((pos.getX(0) + pos.getX(1)) / 2,
           (pos.getZ(0) + pos.getZ(1)) / 2), mesh.name).toBe(false);
