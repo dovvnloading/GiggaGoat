@@ -267,18 +267,23 @@ function makeFalls(group: THREE.Group, material: THREE.Material,
   const fall = new THREE.Mesh(g, material);
   fall.name = id;
   group.add(fall);
-  // Three overlapping foam blobs, but one draw call per cascade (not three).
+  // Five shallow, partly submerged foam flecks share one draw per cascade.
+  // Fixed size variations keep the silhouettes organic without consuming RNG.
+  const offsets = [-0.4, -0.2, 0, 0.2, 0.4] as const;
+  const sizeJitter = [0.94, 1.11, 0.89, 1.07, 0.97] as const;
   const foam = new THREE.InstancedMesh(
     new THREE.IcosahedronGeometry(1, 1),
     new THREE.MeshBasicMaterial({
-      color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false,
-    }), 3);
+      color: 0xeaf8ff, transparent: true, opacity: 0.6, depthWrite: false,
+    }), offsets.length);
   foam.name = id + '-foam';
   const sideways = side.clone().normalize();
   const dummy = new THREE.Object3D();
-  for (const [index, offset] of [-0.28, 0, 0.28].entries()) {
+  for (const [index, offset] of offsets.entries()) {
     dummy.position.copy(b).addScaledVector(sideways, offset * newWidth);
-    dummy.scale.set(newWidth * 0.45, newWidth * 0.3, newWidth * 0.45);
+    dummy.position.y -= newWidth * 0.03; // sink the centre below the pool surface
+    const fleckWidth = newWidth * sizeJitter[index]!;
+    dummy.scale.set(fleckWidth * 0.16, fleckWidth * 0.07, fleckWidth * 0.16);
     dummy.updateMatrix();
     foam.setMatrixAt(index, dummy.matrix);
   }
