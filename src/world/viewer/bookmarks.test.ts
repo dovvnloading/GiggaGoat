@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { generateIsland, heightAt } from '../index';
-import { riverAt } from '../terrain';
+import { gridSample, riverAt } from '../terrain';
 import type { PropDescriptor, Vec3 } from '../types';
 import { findBookmark } from './bookmarks';
 
@@ -21,9 +21,11 @@ function projectBookmark(id: string, points: Record<string, Vec3>): void {
   camera.position.set(bookmark.camera.x, bookmark.camera.y, bookmark.camera.z);
   camera.lookAt(bookmark.target.x, bookmark.target.y, bookmark.target.z);
   camera.updateMatrixWorld();
-  expect(bookmark.camera.y -
-    heightAt(island, bookmark.camera.x, bookmark.camera.z), id + ' camera ground clearance')
-    .toBeGreaterThan(2);
+  if (id !== '09') {
+    expect(bookmark.camera.y -
+      heightAt(island, bookmark.camera.x, bookmark.camera.z), id + ' camera ground clearance')
+      .toBeGreaterThan(2);
+  }
   for (const [name, point] of Object.entries(points)) {
     const ndc = new THREE.Vector3(point.x, point.y, point.z).project(camera);
     expect(Math.abs(ndc.x), id + ': ' + name + ' screen X').toBeLessThan(0.94);
@@ -67,33 +69,63 @@ describe('painting bookmark recompositions (default billy-isle)', () => {
     });
   });
 
-  it('09 frames first kiosk, wheel, and pier landward end from the beach', () => {
+  it('09 frames the first kiosk, wheel, pier entrance and beach palms from the sand', () => {
     const bookmark = findBookmark('09')!;
     const pier = props('baa-ardwalk', 'pier')[0]!;
     const wheel = props('baa-ardwalk', 'ferris-wheel')[0]!;
     const kiosk = props('baa-ardwalk', 'booth')[0]!;
     const landEnd = pier.transform.position.z - pier.size.z / 2;
-    const cameraX = pier.transform.position.x - 7, cameraZ = landEnd - 14;
+    const cameraX = pier.transform.position.x - 6;
+    let shoreZ = landEnd;
+    while (shoreZ > -island.size / 2 &&
+      gridSample(island, cameraX, shoreZ) <= island.seaLevel + 0.6) {
+      shoreZ -= 1;
+    }
+    expect(gridSample(island, cameraX, shoreZ), '09 shore reaches dry sand')
+      .toBeGreaterThan(island.seaLevel + 0.6);
+    const cameraZ = shoreZ - 5;
     expect(bookmark.camera).toEqual(rounded({
-      x: cameraX, y: heightAt(island, cameraX, cameraZ) + 4.5, z: cameraZ,
+      x: cameraX, y: gridSample(island, cameraX, cameraZ) + 2.2, z: cameraZ,
     }));
     expect(bookmark.target).toEqual(rounded({
       x: wheel.transform.position.x,
-      y: wheel.transform.position.y + 2,
+      y: wheel.transform.position.y + 1,
       z: wheel.transform.position.z,
     }));
     expect(bookmark.camera).toEqual({ x: 49, y: 9, z: 240 });
-    expect(bookmark.target).toEqual({ x: 56.5, y: 21.5, z: 347 });
-    expect(bookmark.fov).toBe(58);
+    expect(bookmark.target).toEqual({ x: 56.5, y: 20.5, z: 347 });
+    expect(bookmark.fov).toBe(62);
     expect(bookmark.day).toBe(0.29);
+
+    const ground = gridSample(island, bookmark.camera.x, bookmark.camera.z);
+    expect(ground, '09 camera stands on dry sand')
+      .toBeGreaterThan(island.seaLevel + 0.6);
+    expect(bookmark.camera.y - ground, '09 goat-eye ground clearance')
+      .toBeGreaterThan(0);
+    expect(bookmark.camera.y - ground, '09 goat-eye ground clearance')
+      .toBeLessThanOrEqual(2.5);
+
+    const camera = new THREE.PerspectiveCamera(bookmark.fov, 16 / 9, 0.25, 4000);
+    camera.position.set(bookmark.camera.x, bookmark.camera.y, bookmark.camera.z);
+    camera.lookAt(bookmark.target.x, bookmark.target.y, bookmark.target.z);
+    camera.updateMatrixWorld();
+    const visiblePalms = props('baa-ardwalk', 'palm-tree').filter(palm => {
+      const point = palm.transform.position;
+      const ndc = new THREE.Vector3(point.x, point.y, point.z).project(camera);
+      return Math.abs(ndc.x) < 0.94 && Math.abs(ndc.y) < 0.94 && ndc.z < 1;
+    });
+    expect(visiblePalms.length, '09 beach palms visible on screen')
+      .toBeGreaterThanOrEqual(2);
     projectBookmark('09', {
       firstKiosk: kiosk.transform.position,
-      wheel: wheel.transform.position,
+      wheelCentre: wheel.transform.position,
       pierLandEnd: {
         x: pier.transform.position.x,
         y: pier.transform.position.y + pier.size.y / 2,
         z: landEnd,
       },
+      ...Object.fromEntries(visiblePalms.slice(0, 2).map((palm, i) =>
+        ['beachPalm' + (i + 1), palm.transform.position])),
     });
   });
 
