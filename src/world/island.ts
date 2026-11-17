@@ -136,8 +136,8 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   }
   const lighthouse = island.pois.find(p => p.id === 'old-lighthouse')!;
   sculptLighthouseSeaCave(island, {
-    x: lighthouse.center.x - 19 * scale,
-    z: lighthouse.center.z + 13 * scale,
+    x: lighthouse.center.x + 2 * scale,
+    z: lighthouse.center.z + 23 * scale,
   });
   island.roads = makeRoads(island, rng);
   island.props = populateProps(island, rng);
