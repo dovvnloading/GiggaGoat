@@ -45,7 +45,10 @@ export class PartySession {
     if (!Number.isInteger(count) || count < 3 || count > 7) throw new RangeError('Choose 3–7 bots');
     if (!['easy', 'normal', 'hard'].includes(difficulty)) throw new RangeError('Invalid bot difficulty');
     this.game.gigs.abandon();
-    this.returnPosition = { ...this.game.goat.torso.translation() };
+    const before = this.game.goat.torso.translation();
+    // Game.teleport accepts foot-ground coordinates, not the torso centre.
+    this.returnPosition = { x: before.x,
+      y: before.y - .92 * this.game.goat.size, z: before.z };
     const arena = arenaFromBillyIsle(this.game.island, { heightAt, landAreaAtTideLevel });
     const match = new PartyMatch({ mode, seed: 217, config }, arena);
     match.join({ id: 'player', name: 'YOU', teamId: mode === 'hay-heist' ? 'red' : undefined });
