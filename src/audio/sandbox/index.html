@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gigga-Goat • Procedural Audio Lab</title>
+  <style>
+    :root{font:15px/1.5 system-ui,Segoe UI,sans-serif;color:#f4f2ea;background:#111c26}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 10% 0%,#284653 0,#111c26 62%);min-height:100vh}
+    .wrap{max-width:1400px;margin:auto;padding:36px 24px 72px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:30px;flex-wrap:wrap;margin-bottom:25px}
+    h1{font-size:clamp(30px,5vw,55px);line-height:1.05;letter-spacing:-.06em;margin:0}
+    h1 span{color:#e6c46d}h2{font-size:19px;margin:0 0 16px;letter-spacing:-.02em}
+    p{color:#b7c9c6;margin:8px 0}.sub{max-width:600px}
+    .grid{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(310px,1fr);gap:22px}
+    @media(max-width:930px){.grid{grid-template-columns:1fr}}
+    .panel{border:1px solid #37545d;background:rgba(22,36,45,.96);border-radius:20px;padding:22px;box-shadow:0 16px 35px #07121b66}
+    .panel+.panel{margin-top:22px}.buttons{display:flex;flex-wrap:wrap;gap:8px}
+    button,select{color:#fdf5de;background:#345563;border:1px solid #63818b;border-radius:10px;padding:9px 12px;font:inherit}
+    button{cursor:pointer;transition:background .15s,transform .15s}
+    button:hover{background:#496e72;transform:translateY(-1px)}
+    button:active{transform:scale(.97)}
+    button.play{background:#e7c16e;color:#14232e;font-weight:800;border:0;padding:12px 19px}
+    button.play:hover{background:#f0d693}
+    .sound{font-size:12px;background:#253b48;padding:8px 12px}
+    .group{margin:18px 0}.group h3{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:#81ced0}
+    label{display:flex;justify-content:space-between;align-items:center;gap:13px;margin:10px 0;color:#d6e4e1}
+    input[type=range]{accent-color:#e8bc5f;flex:1;min-width:60px}
+    input[type=checkbox]{accent-color:#e8bc5f;width:18px;height:18px}
+    .control{display:grid;grid-template-columns:100px 1fr 48px;align-items:center;gap:9px;margin:13px 0}
+    .control output{text-align:right;color:#e7c16e;font-variant-numeric:tabular-nums}
+    .inline{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0}
+    .inline label{margin:0}.orbit{width:220px;height:220px;border:1px dashed #8ea7a6;border-radius:50%;margin:15px auto;position:relative;background:radial-gradient(circle,#25464a 1px,transparent 1px);background-size:24px 24px}
+    .orbit:before,.orbit:after{content:'';position:absolute;background:#5d777a}
+    .orbit:before{height:1px;width:100%;left:0;top:50%}.orbit:after{height:100%;width:1px;left:50%;top:0}
+    .listener{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#e9c771;color:#202a32;padding:5px 9px;border-radius:20px;font-weight:800;z-index:2}
+    .source{position:absolute;width:20px;height:20px;border-radius:50%;background:#70dbd8;box-shadow:0 0 20px #70dbd8;transform:translate(-50%,-50%);z-index:2}
+    .north{position:absolute;top:2px;left:50%;transform:translateX(-50%);color:#9cd1cc;font-size:11px}
+    .status{padding:10px 14px;border:1px solid #50736c;border-radius:12px;color:#9cd7b5;font-weight:600;min-width:150px;text-align:center}
+    .side .panel{margin-bottom:20px}.hint{font-size:12px;color:#92b2b4}
+    footer{color:#8ba9ab;font-size:12px;padding-top:28px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div><h1>GIGGA<span>•</span>GOAT 🔊</h1>
+        <p class="sub">Sound Lab / No samples. No downloads. Just oscillators, noise and pure goat chaos.</p>
+      </div>
+      <div class="inline"><button id="unlock" class="play">▶ Unlock Audio</button><div id="status" class="status">Audio locked</div></div>
+    </header>
+    <div class="grid">
+      <main>
+        <section class="panel">
+          <h2>Full procedural SFX board</h2>
+          <p class="hint">Every catalog patch has its own button. Repeated clicks are seeded variations; try listening at different goat sizes.</p>
+          <div class="inline">
+            <label>Goat size <select id="goat-size"><option value="0.6">Kid / 0.6×</option><option value="1" selected>Billy / 1×</option><option value="1.6">Big / 1.6×</option><option value="3">GIGGA / 3×</option></select></label>
+            <label>Bleat character <select id="goat-voice"><option value="hero">Hero</option><option value="raspy">Raspy</option><option value="goofy">Goofy</option><option value="robot">Robot</option></select></label>
+          </div>
+          <div id="sfx-groups"></div>
+        </section>
+      </main>
+      <aside class="side">
+        <section class="panel">
+          <h2>Reactive music</h2>
+          <div class="inline"><label>Mode <select id="mode"><option value="free">Free roam</option><option value="party">Party / tide</option></select></label></div>
+          <div class="inline"><label>Location <select id="poi"></select></label></div>
+          <div id="music-controls"></div>
+          <label><span>Night mood</span><input id="night" type="checkbox"></label>
+          <p id="music-status" class="hint">112 BPM · chords</p>
+        </section>
+        <section class="panel">
+          <h2>3D position demo</h2>
+          <p class="hint">Put on headphones. The cyan goat circles your stationary ears in the island's X/Z plane.</p>
+          <div class="orbit" id="orbit"><div class="north">FRONT</div><span class="listener">👂</span><span id="source" class="source"></span></div>
+          <div class="inline"><button id="orbit-toggle" class="play">▶ Orbit bleats</button><button id="orbit-tap">Single positional bleat</button></div>
+          <label>Distance <input id="orbit-distance" type="range" min="2" max="270" value="18"><output id="orbit-metres">18 m</output></label>
+          <p class="hint">Listener at world origin; culling after 275 metres. The source moves continuously while each emitted sound has a fixed start position.</p>
+        </section>
+        <section class="panel">
+          <h2>Mixer</h2><div id="mixer-controls"></div>
+          <label>Mute all <input id="muted" type="checkbox"></label>
+        </section>
+      </aside>
+    </div>
+    <footer>Developer-only Web Audio playground — src/audio/sandbox, outside the production entry. All audible material is generated at runtime.</footer>
+  </div>
+  <script type="module" src="./sandbox.ts"></script>
+</body>
+</html>
