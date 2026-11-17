@@ -188,10 +188,11 @@ export class GoatCharacter {
   private animateSecondary(motion: MotionFrame, action: CharacterAction,
     goat: GoatRagdoll | null): void {
     // Stretch fluffy skin, not ragdoll bones. A landing compresses the barrel.
+    const fleece = TIER_PROFILES[this.tierValue].woolLayers;
     this.mesh.torsoFur.scale.set(
-      1 + motion.squash * .30,
+      fleece * (1 + motion.squash * .30),
       1 - motion.squash,
-      1 + motion.squash * .22);
+      fleece * (1 + motion.squash * .22));
     this.mesh.torsoFur.position.y = -motion.squash * .055;
     this.mesh.headFur.position.y = motion.bodyBob;
     this.mesh.headFur.rotation.x = motion.bodyLean;
