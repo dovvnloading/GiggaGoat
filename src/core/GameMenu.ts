@@ -157,6 +157,9 @@ export class GameMenu {
   private readonly keyHandler: (e: KeyboardEvent) => void;
   private readonly pageHide: () => void;
   private readonly fullscreenChange: () => void;
+  private readonly pointerLockChange: () => void;
+  private wasPointerLocked = false;
+  private pointerLockNeedsCanvasClick = false;
 
   constructor(private readonly host: HTMLElement, private readonly game: Game,
     private readonly view: GameView, public settings: GameSettings,
@@ -238,6 +241,24 @@ export class GameMenu {
     window.addEventListener('pagehide', this.pageHide);
     this.fullscreenChange = () => this.syncFullscreen();
     document.addEventListener('fullscreenchange', this.fullscreenChange);
+    // Escape is consumed by Chrome when it first releases pointer lock, so its
+    // keydown event may never reach onKey. Still pause when the player unlocks.
+    this.pointerLockChange = () => {
+      // Remember locks acquired during gameplay only. An asynchronous unlock
+      // from the gig board or another overlay must never pause a newly resumed game.
+      if (this.screen !== 'playing') {
+        this.wasPointerLocked = false;
+        return;
+      }
+      const locked = document.pointerLockElement === this.view.renderer.domElement;
+      if (this.wasPointerLocked && !locked) {
+        this.pointerLockNeedsCanvasClick = true;
+        this.setScreen('pause');
+      }
+      if (locked) this.pointerLockNeedsCanvasClick = false;
+      this.wasPointerLocked = locked;
+    };
+    document.addEventListener('pointerlockchange', this.pointerLockChange);
     this.view.onFrame = () => this.frame();
     this.view.onInteract = () => this.interact();
     this.view.applySettings(settings);
@@ -248,6 +269,14 @@ export class GameMenu {
   private save(): void { saveGame(this.game, this.settings); }
   private setScreen(next: Screen): void {
     this.screen = next;
+    // Leaving gameplay intentionally can asynchronously release pointer lock.
+    // Forget that lock before a later menu action resumes the game.
+    if (next !== 'playing') {
+      this.wasPointerLocked = false;
+      if (document.pointerLockElement === this.view.renderer.domElement) {
+        this.pointerLockNeedsCanvasClick = true;
+      }
+    }
     this.view.paused = next !== 'playing';
     this.audio?.setPaused(this.view.paused || !!document.hidden);
     if (next !== 'playing') this.view.input.reset();
@@ -260,8 +289,12 @@ export class GameMenu {
   private resume(): void {
     this.view.input.reset();
     this.setScreen('playing');
-    // This is invoked from a real menu button/key interaction.
-    void this.view.renderer.domElement.requestPointerLock?.();
+    // Chrome rejects immediate pointer-lock reacquisition after Escape with a
+    // SecurityError. Resume playable movement without it; the next explicit
+    // canvas click requests the lock via GameInput's mousedown handler.
+    if (!this.pointerLockNeedsCanvasClick) {
+      void this.view.renderer.domElement.requestPointerLock?.();
+    }
   }
   private action(key: string): void {
     if (key !== 'back') this.audio?.queueCue({ sound: key === 'pause' ? 'ui-back' : 'ui-confirm' });
@@ -656,6 +689,7 @@ export class GameMenu {
     window.removeEventListener('keydown', this.keyHandler, true);
     window.removeEventListener('pagehide', this.pageHide);
     document.removeEventListener('fullscreenchange', this.fullscreenChange);
+    document.removeEventListener('pointerlockchange', this.pointerLockChange);
     this.root.remove(); this.style.remove();
     this.view.onFrame = null; this.view.onInteract = null;
   }

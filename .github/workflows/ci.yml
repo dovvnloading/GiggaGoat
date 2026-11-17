@@ -18,5 +18,9 @@ jobs:
         run: npm run typecheck
       - name: Test
         run: npm test
+      # The World Lab profiler and HUD geometry tests also launch Chrome.
+      # Run production smoke in its own step to avoid Chromium startup contention.
+      - name: Production browser smoke
+        run: BROWSER_SMOKE=1 npm test -- src/core/browser-smoke.test.ts
       - name: Build
         run: npm run build
