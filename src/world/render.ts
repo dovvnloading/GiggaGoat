@@ -384,7 +384,9 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   sun.shadow.normalBias = 0.6;
   sun.shadow.radius = 1.0;
   group.add(sun, sun.target);
-  const fill = new THREE.HemisphereLight(0xc8eaff, 0x667956, 1.1);
+  // Warm sandy bounce instead of dark olive: shaded walls stay clean painted
+  // pastels (painting style) rather than greenish grey.
+  const fill = new THREE.HemisphereLight(0xc8eaff, 0xd6c4a2, 1.1);
   fill.name = 'cool-sky-fill';
   group.add(fill);
   group.add(new THREE.AmbientLight(0xb5d4eb, 0.15));
