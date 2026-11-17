@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { GameView } from './GameView';
 
-function selectCasters(group: THREE.Group, graphics: 'medium' | 'high' = 'high'): void {
+function selectCasters(group: THREE.Group, graphics: 'medium' | 'high' = 'high'): () => void {
   // Exercise the real selection method without constructing a WebGL renderer or DOM.
   const view = Object.create(GameView.prototype) as GameView;
   Object.assign(view, {
@@ -11,7 +11,10 @@ function selectCasters(group: THREE.Group, graphics: 'medium' | 'high' = 'high')
     cameraTarget: new THREE.Vector3(),
     shadowDefaults: new WeakMap<THREE.Mesh, boolean>(),
   });
-  (view as unknown as { refreshShadowCasters(): void }).refreshShadowCasters();
+  const refresh = () =>
+    (view as unknown as { refreshShadowCasters(): void }).refreshShadowCasters();
+  refresh();
+  return refresh;
 }
 
 describe('GameView shadow caster selection', () => {
@@ -53,7 +56,7 @@ describe('GameView shadow caster selection', () => {
     const empty = makeBatch(0);
     empty.count = 0;
 
-    selectCasters(group);
+    const refresh = selectCasters(group);
 
     expect(overlapping.castShadow).toBe(true);
     expect(outside.castShadow).toBe(false);
@@ -62,7 +65,7 @@ describe('GameView shadow caster selection', () => {
     // Recompaction must not reuse the previous instance bounding sphere.
     overlapping.setMatrixAt(0, new THREE.Matrix4().makeTranslation(200, 0, 0));
     outside.setMatrixAt(0, new THREE.Matrix4().makeTranslation(2, 0, 0));
-    selectCasters(group);
+    refresh();
     expect(overlapping.castShadow).toBe(false);
     expect(outside.castShadow).toBe(true);
   });
