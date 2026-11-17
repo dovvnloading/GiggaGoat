@@ -86,4 +86,6 @@ Garden gnome (`assets/library/meshy/garden-gnome/garden-gnome.glb`) is "Gartenzw
 
 Street lamp (`assets/library/meshy/street-lamp/street-lamp.glb`) is "lamp" by MKHORIZON on Meshy, CC0: https://www.meshy.ai/posts/lamp-01a16feb-a816-745e-b34e-a4aa78be53fc
 
+Models in `assets/library/scenario/` are AI-generated assets from the Scenario 3D Collection (https://huggingface.co/datasets/scenario-labs/3d-collection), CC BY 4.0, credit: Scenario.
+
 All other models are CC0 / public domain: Kenney (kenney.nl), KayKit by Kay Lousberg, Quaternius (quaternius.com) and public-domain Poly Pizza uploads. Credit is appreciated but not required.
