@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Game, FIXED_DT } from './Game';
 import { heightAt } from '../world';
 import { GROUND_QUERY_GROUPS, V } from '../physics';
-import { loadSave, saveGame, SAVE_KEY, type GameSave } from './Persistence';
+import { DEFAULT_SETTINGS, loadSave, saveGame, SAVE_KEY, type GameSave } from './Persistence';
 
 const create = (): Promise<Game> => Game.create({ seed: 'full-loop-core-test', resolution: 97 });
 function ticks(game: Game, n: number, input: Parameters<Game['step']>[0] = {}): void {
@@ -55,6 +55,22 @@ describe('Core game loop — production adapters on real Rapier ticks', () => {
       expect(game.gigs.director.personalBests.some(b => b.gigId === 'mow-down')).toBe(true);
       ticks(game, 75);
       expect(game.rules.wallet.coins - coinsBefore).toBe(finished.payout);
+      let raw = '';
+      const storage = {
+        setItem: (_key: string, value: string): void => { raw = value; },
+        getItem: (_key: string): string | null => raw,
+      };
+      expect(saveGame(game, { ...DEFAULT_SETTINGS }, storage)).toBe(true);
+      const copy = loadSave(storage)!;
+      const loaded = await Game.create({ seed: 'full-loop-core-test', resolution: 97,
+        progress: copy.progress });
+      try {
+        expect(loaded.rules.wallet.coins).toBe(game.rules.wallet.coins);
+        expect(loaded.gigs.director.personalBests).toEqual(game.gigs.director.personalBests);
+        expect(loaded.gigs.director.ownedCosmetics).toEqual(game.gigs.director.ownedCosmetics);
+        ticks(loaded, 25);
+        expect(loaded.rules.wallet.coins).toBe(game.rules.wallet.coins);
+      } finally { loaded.dispose(); }
     } finally { game.dispose(); }
   });
 
@@ -91,6 +107,30 @@ describe('Core game loop — production adapters on real Rapier ticks', () => {
     } finally { game.dispose(); }
   });
 
+  it('supports seven bots without proxy bodies and disposes all 49 extra rigid bodies', async () => {
+    const game = await create();
+    try {
+      const before = game.bodyCount;
+      const match = game.party.start('king-of-the-peak', 7, 'easy', {
+        countdownTicks: 0, durationTicks: 110, overtimeTicks: 15,
+      });
+      expect(match.players).toHaveLength(8);
+      expect(game.party.bots.size).toBe(7);
+      expect(game.bodyCount - before).toBe(49);
+      const starting = new Map([...game.party.bots].map(([id, bot]) =>
+        [id, { ...bot.goat.torso.translation() }]));
+      ticks(game, 85);
+      const moved = [...game.party.bots].filter(([id, bot]) => {
+        const p = bot.goat.torso.translation(), was = starting.get(id)!;
+        return Math.hypot(p.x - was.x, p.z - was.z) > .10;
+      }).length;
+      expect(moved).toBeGreaterThanOrEqual(4);
+      const withBots = game.bodyCount;
+      game.party.returnToFreeRoam();
+      expect(withBots - game.bodyCount).toBe(49);
+    } finally { game.dispose(); }
+  });
+
   it('launches the other two playable party rules with shared physical bot inputs', async () => {
     const game = await create();
     try {
@@ -116,16 +156,19 @@ describe('Core game loop — production adapters on real Rapier ticks', () => {
     };
     try {
       game.rules.wallet.credit(267, 'core-test');
+      expect(game.rules.unlocks.purchase('glide')).toEqual({ ok: true });
+      const walletBeforeSave = game.rules.wallet.coins;
       const settings = { mouseSensitivity: 1.75, invertY: true, fov: 81,
         graphics: 'medium' as const, volume: .35 };
       expect(saveGame(game, settings, storage)).toBe(true);
       const restored = loadSave(storage)!;
       expect(restored.settings).toEqual(settings);
-      expect(restored.progress.gameplay.wallet.coins).toBe(267);
+      expect(restored.progress.gameplay.wallet.coins).toBe(walletBeforeSave);
       const again = await Game.create({ seed: 'full-loop-core-test', resolution: 97,
         progress: restored.progress });
       try {
-        expect(again.rules.wallet.coins).toBe(267);
+        expect(again.rules.wallet.coins).toBe(walletBeforeSave);
+        expect(again.rules.unlocks.isUnlocked('glide')).toBe(true);
         expect(again.rules.unlocks.toJSON()).toEqual(game.rules.unlocks.toJSON());
         expect(again.gigs.director.personalBests).toEqual(game.gigs.director.personalBests);
         expect(again.exportProgress().gameplay.wallet).toEqual(game.rules.wallet.toJSON());
