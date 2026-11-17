@@ -6,6 +6,7 @@ import { gridCoordinate, gridIndex } from './terrain';
 import { makeLocalStreets } from './roads';
 import { buildPropVisuals, TOON_RAMP } from './visual-props';
 import { buildGroundDetails } from './visual-ground';
+import { buildStreetDetails } from './visual-streets';
 import { buildWaterVisuals } from './visual-water';
 import { buildSkyVisuals, type LightingPreset } from './visual-sky';
 
@@ -159,8 +160,16 @@ function terrainGeometry(
       sample(gx + 1, gz) + sample(gx - 1, gz) +
       sample(gx, gz + 1) + sample(gx, gz - 1)) * 0.25 - h);
     const ambient = 1 - clamp(depression * 0.07, 0, 0.16);
-    const variation = 0.987 + Math.sin(x * 0.06 + z * 0.08) *
-      Math.cos(z * 0.09 - x * 0.04) * 0.012;
+    const broad = Math.sin(x * 0.071 + Math.cos(z * 0.039) * 1.4) *
+      Math.cos(z * 0.092 - Math.sin(x * 0.047));
+    const fine = Math.sin(x * 0.36 + z * 0.17) *
+      Math.cos(z * 0.29 - x * 0.21);
+    const meadow = biome === 'meadow' || biome === 'farmland' || biome === 'town';
+    if (meadow && cliff < 0.4 && mountain < 0.1) {
+      color.lerp(COLORS.dirt, Math.max(0, -broad - 0.3) * 0.12);
+      color.lerp(COLORS.pine, Math.max(0, broad - 0.1) * 0.09);
+    }
+    const variation = 0.968 + broad * 0.038 + fine * 0.022;
     color.multiplyScalar(ambient * variation);
     colors.push(color.r, color.g, color.b);
   }
@@ -291,6 +300,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const chunks = buildTerrain(island, segments);
   for (const chunk of chunks) group.add(chunk.mesh);
   group.add(buildRoads(island));
+  group.add(buildStreetDetails(island));
   group.add(buildGroundDetails(island));
   const props = buildPropVisuals(island.props, options.propChunkSize ?? 96);
   group.add(props.group);
