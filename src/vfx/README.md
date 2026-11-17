@@ -1,4 +1,4 @@
-# VFX lane · Approved effects 01–06 (dust, landing, headbutt, water, crate, trampoline)
+# VFX lane · Approved effects 01–07 (dust, landing, headbutt, water, crate, trampoline, launch pad)
 
 The top-left **RUNNING DUST PUFFS** and adjacent **LANDING IMPACT RING** panels
 of the approved [`23_vfx_sheet.png`](../../docs/art/hifi/23_vfx_sheet.png)
@@ -215,14 +215,61 @@ offset used only in the lab. Gameplay must apply its own physical vertical
 impulse and move its own goat; the effect never owns or modifies a collider,
 game character, simulation, renderer, canvas or event listener.
 
+
+## Launch pad burst · call from gameplay (panel 07)
+
+```ts
+import { createLaunchPadBurst } from '../vfx';
+
+const launch = createLaunchPadBurst({ capacity: 6 });
+scene.add(launch.group);
+
+// The pad's ground center, horizontal travel direction and visual power:
+launch.emit(padGroundCenter, goatLaunchDirection, 1.5);
+launch.update(dt); // seconds per render frame
+launch.clear();    // optional: reset without reallocating
+launch.dispose();  // owning scene teardown
+```
+
+`position` and `direction` accept `THREE.Vector3` or plain
+`{x,y,z}` values. +Y is up; supply the **ground center** of the pad,
+not the goat's torso. The launch direction is projected onto XZ,
+normalized and used to rotate the whole visual; zero horizontal heading
+uses +X. Non-finite coordinates, directions, negative/non-finite strengths
+are rejected. Zero strength does nothing; positive strength is capped at
+4, increasing flight distance/height and a roughly 1.5–1.6 second lifespan.
+
+The cue follows the seventh approved panel: a low grey beveled steel
+plinth with four riveted corner plates, amber/gold inset and three bright
+directional chevrons; a lemon/yellow/orange jagged spike fountain; then
+four long tapered golden flight ribbons and small gold glints rising
+toward the implied airborne goat. The pad is visible through its active
+burst and disappears when that burst ends; gameplay owns any persistent
+launch-pad prop and collision geometry.
+
+`makeLaunchPadBurstCue`, `makeLaunchPadBurstFrame` and
+`sampleLaunchPadBurst` are deterministic, absolute-age sampled math.
+The caller owns the reusable output frame, including local +X
+`goatX/goatY/goatPitch` **lab-only** flight pose. Gameplay must launch
+and move its actual goat with its own physics: this effect is a
+directional visual path, **not** a live tether to the body.
+
+All static steel/arrow/fountain/glint geometry and opaque materials are
+shared across slots. Per-slot transparency materials and a single
+preallocated dynamic flight-ribbon vertex buffer allow overlapping
+launches without *any* per-frame mesh, material, vector, array or GPU
+allocation. The oldest burst is recycled when the pool is full.
+`launchPadBurst.test.ts` covers stages, validation, heading, strength,
+frame rate independence, recycling and headless Three.js lifecycle.
+
 ## Production art-review lab
 
 `/src/vfx/lab/index.html` works under `npm run dev` and in the **production
 Vite build / GitHub Pages**. The repo's existing lab-page discovery in
 `vite.config.ts` includes it automatically. The lab includes a running
-Three.js goat, a studio floor, dust, landing, headbutt, water, crate and trampoline triggers, a small
+Three.js goat, a studio floor, dust, landing, headbutt, water, crate, trampoline and launch pad triggers, a small
 faceted decorative target rock, pause/direction/speed controls, landing
-strength, headbutt power, water speed and relative mass sliders, and crops of **all six** approved
+strength, headbutt power, water speed and relative mass sliders, and crops of **all seven** approved
 panels from the *existing* reference sheet (bundled by Vite from
 `docs/art/hifi`). Headbutt hits replay every 2.75 seconds, and paused
 single-hit triggering freezes a representative gold-star frame.
@@ -232,12 +279,16 @@ or the taller reference column to dictate its height. The pure
 `lab/viewport.ts` helper derives the drawing-buffer's logical dimensions from
 the wrapper width alone; a ResizeObserver, window resize handler and per-frame
 device-pixel-ratio check keep the camera projection and retina resolution in
-sync without a height feedback loop. The centered 06 trampoline preview loops immediately by default with a standing/
-airborne goat above the deforming mat; the 01–05 showcase remains selectable
-with its original effect triggers and timer cadence. The sixth-panel crop is
-sourced from the lower middle of the same existing sheet (no new image file).
-Both the trampoline's scale and its rebound strength are adjustable. The sizing helper
-has headless Vitest coverage in `lab/viewport.test.ts`.
+sync without a height feedback loop. The centered **07 launch pad burst** now loops by default: lit
+chevrons, spiky gold fountain, an airborne in-repo goat and sweeping
+gold flight trails. Its reference is cropped from the **lower-right
+panel of the existing sheet**, with no new image asset required.
+The **06 trampoline preview** remains selectable with its red/cream
+mat, violet arcs, scale and rebound strength controls. The **01–05
+showcase** remains selectable with original triggers and cadence.
+Effect 07 has a launch-strength slider and retrigger button.
+The viewport sizing helper still has headless Vitest coverage in
+`lab/viewport.test.ts`.
 
 ## Art-direction self-review
 
@@ -334,3 +385,18 @@ has headless Vitest coverage in `lab/viewport.test.ts`.
   the lab applies the sampled goat offset for comparison only. Real goat
   velocity, collisions and trampoline gameplay remain in their owning lanes.
   All edits for effect 06 are within `src/vfx/`.
+
+### Launch Pad Burst
+
+- **Matches:** a low grey bolted pad with orange/amber inset and
+  glowing gold arrow heads, a sharp upward fan of jagged lemon-yellow
+  spikes, and sweeping yellow/amber motion lines following the airborne
+  goat. Early charging, strong eruption, full trailing flight and
+  shrinking fade are readable as distinct stages.
+- **Intentional approximation:** the reference's painterly glow,
+  metallic highlights and stretched flying pose are simplified into
+  reusable toon beveled solids, flat gold triangles, curved ribbons,
+  and the existing low-poly sprinting goat.
+- **Scope boundary:** visual-only, transient at each trigger. The
+  game's collider, launch impulse and physical goat are untouched.
+  All changes for 07 are in `src/vfx/`.

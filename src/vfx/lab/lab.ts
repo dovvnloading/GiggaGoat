@@ -11,6 +11,11 @@ import {
   TRAMPOLINE_MAT_Y, makeTrampolineBoingBurst, makeTrampolineBoingFrame,
   sampleTrampolineBoing, type TrampolineBoingBurst,
 } from '../trampolineBoingMath';
+import { LaunchPadBurst } from '../LaunchPadBurst';
+import {
+  LAUNCH_PAD_TOP_Y, makeLaunchPadBurstCue, makeLaunchPadBurstFrame,
+  sampleLaunchPadBurst, type LaunchPadBurstCue,
+} from '../launchPadMath';
 import { getViewportSize } from './viewport';
 
 function element<T extends HTMLElement>(id: string): T {
@@ -50,6 +55,11 @@ const trampolineScaleControl = element<HTMLInputElement>('trampoline-scale');
 const trampolineScaleLabel = element<HTMLOutputElement>('trampoline-scale-value');
 const trampolineStrengthControl = element<HTMLInputElement>('trampoline-strength');
 const trampolineStrengthLabel = element<HTMLOutputElement>('trampoline-strength-value');
+const launchButton = element<HTMLButtonElement>('launch');
+const launchStrengthControl = element<HTMLInputElement>('launch-strength');
+const launchStrengthLabel = element<HTMLOutputElement>('launch-strength-value');
+const launchControls = element<HTMLElement>('launch-controls');
+const trampolineControls = element<HTMLElement>('trampoline-controls');
 const previewTitle = element<HTMLElement>('preview-title');
 const poseHint = element<HTMLElement>('pose-hint');
 
@@ -108,6 +118,8 @@ const crate = new CrateBreakDebris({ capacity: 8 });
 scene.add(crate.group);
 const trampoline = new TrampolineBoing({ capacity: 3 });
 scene.add(trampoline.group);
+const launchPad = new LaunchPadBurst({ capacity: 3 });
+scene.add(launchPad.group);
 // A static faceted target for QA only; no collider or game physics.
 const rockGeometry = new THREE.DodecahedronGeometry(0.44, 0);
 const rockMaterial = new THREE.MeshToonMaterial({ color: 0x8e8194 });
@@ -127,10 +139,15 @@ let headbuttClock = 0;
 let waterClock = 0;
 let crateClock = 0;
 let trampolineClock = 0;
-let previewMode: 'trampoline' | 'showcase' = 'trampoline';
+let launchClock = 0;
+let previewMode: 'launch' | 'trampoline' | 'showcase' = 'launch';
 let trampolineBurst: TrampolineBoingBurst | null = null;
 const trampolinePreviewFrame = makeTrampolineBoingFrame();
 const trampolineContact = { x: 0, y: 0, z: 0 };
+const launchContact = { x: -1.50, y: 0, z: 0 };
+const launchDirection = { x: 1, y: 0, z: 0 };
+let launchCue: LaunchPadBurstCue | null = null;
+const launchFrame = makeLaunchPadBurstFrame();
 let lastTime = 0;
 let yaw = 0;
 let elevation = 0.19;
@@ -152,38 +169,55 @@ function setDirection(value: string): void {
   water.clear();
   crate.clear();
   trampoline.clear();
+  launchPad.clear();
   emissionClock = 0;
   landingClock = 0;
   headbuttClock = 0;
   waterClock = 0;
   crateClock = 0;
   trampolineClock = 0;
+  launchClock = 0;
   trampolineBurst = null;
+  launchCue = null;
   goat.mountWorldPosition('head', headContact);
   rock.position.set(headContact.x + heading * 0.58, 0.38, headContact.z - 0.05);
+
   const showcase = previewMode === 'showcase';
+  const boing = previewMode === 'trampoline';
   for (const effect of [dust, landing, headbutt, water, crate]) {
     effect.group.visible = showcase;
   }
-  trampoline.group.visible = !showcase;
+  trampoline.group.visible = boing;
+  launchPad.group.visible = previewMode === 'launch';
   rock.visible = showcase;
   showcaseControls.hidden = !showcase;
   showcaseTriggers.hidden = !showcase;
+  trampolineControls.hidden = !boing;
+  launchControls.hidden = previewMode !== 'launch';
   burstButton.disabled = !showcase;
+
   previewTitle.textContent = showcase
-    ? 'Live 3D dust + landing + headbutt + water + crate · drag to orbit'
-    : '06 · Trampoline boing · squash → snap → flight · drag to orbit';
+    ? '01–05 · Dust + landing + headbutt + water + crate · drag to orbit'
+    : boing
+      ? '06 · Trampoline boing · squash → snap → flight · drag to orbit'
+      : '07 · Launch pad burst · lit arrows → gold spikes → flight trails · drag to orbit';
   poseHint.textContent = showcase
     ? '01–05 · Five looping legacy effects'
-    : '06 · Downward dip → golden fan → violet launch arcs';
-  lookAt.set(showcase ? -0.35 : 0, showcase ? 0.83 : 1.70, 0);
-  distance = showcase ? 5.1 : 7.7;
+    : boing
+      ? '06 · Downward dip → golden fan → violet launch arcs'
+      : '07 · Glowing steel pad → gold fountain → long golden goat trail';
+  lookAt.set(showcase ? -0.35 : boing ? 0 : 0.22,
+    showcase ? 0.83 : boing ? 1.70 : 1.63, 0);
+  distance = showcase ? 5.1 : boing ? 7.7 : 8.9;
   goat.root.rotation.z = 0;
-  goat.setPreview(showcase ? 'sprint' : 'stand', 'BILLY');
-  if (!showcase) {
+  goat.setPreview(showcase ? 'sprint' : boing ? 'stand' : 'sprint', 'BILLY');
+  if (boing) {
     goat.root.rotation.y = -Math.PI / 2;
     emitTrampoline();
     poseTrampolineGoat();
+  } else if (!showcase) {
+    emitLaunch();
+    poseLaunchGoat();
   }
 }
 
@@ -239,6 +273,21 @@ function poseTrampolineGoat(): void {
   goat.root.rotation.z = -0.12 * Math.min(1, Math.max(0, lift / 1.5));
 }
 
+function emitLaunch(): void {
+  const strength = Number(launchStrengthControl.value);
+  launchCue = makeLaunchPadBurstCue(launchContact, launchDirection, strength);
+  launchClock = 0;
+  launchPad.emit(launchContact, launchDirection, strength);
+}
+
+function poseLaunchGoat(): void {
+  const frame = launchCue && sampleLaunchPadBurst(launchCue, launchClock, launchFrame);
+  goat.root.position.set(launchContact.x + (frame?.goatX ?? 0),
+    launchContact.y + (frame?.goatY ?? LAUNCH_PAD_TOP_Y + 0.17), 0);
+  goat.root.rotation.y = -Math.PI / 2;
+  goat.root.rotation.z = frame?.goatPitch ?? 0;
+}
+
 function emitCrate(): void {
   // Standalone break preview next to the goat, not a gameplay collider.
   crate.emit(
@@ -249,14 +298,17 @@ function emitCrate(): void {
 }
 
 function refreshUi(): void {
-  state.textContent = previewMode === 'trampoline'
-    ? (paused ? 'Paused' : 'Running') + ' / ' + trampoline.activeCount +
-      ' trampoline bounce / target mat + speed rays + launch arcs'
-    : (paused ? 'Paused' : 'Running') + ' / ' +
-    dust.activeCount + ' dust sprites / ' + landing.activeCount +
-    ' landing rings / ' + headbutt.activeCount + ' headbutt impacts / ' +
-    water.activeCount + ' water splashes / ' +
-    crate.activeCount + ' crate breaks';
+  state.textContent = previewMode === 'launch'
+    ? (paused ? 'Paused' : 'Running') + ' / ' + launchPad.activeCount +
+      ' gold launch / lit arrows + spike fountain + golden flight trails'
+    : previewMode === 'trampoline'
+      ? (paused ? 'Paused' : 'Running') + ' / ' + trampoline.activeCount +
+        ' trampoline bounce / target mat + speed rays + launch arcs'
+      : (paused ? 'Paused' : 'Running') + ' / ' +
+        dust.activeCount + ' dust sprites / ' + landing.activeCount +
+        ' landing rings / ' + headbutt.activeCount + ' headbutt impacts / ' +
+        water.activeCount + ' water splashes / ' +
+        crate.activeCount + ' crate breaks';
   pauseButton.textContent = paused ? 'Resume motion' : 'Pause motion';
   pauseButton.setAttribute('aria-pressed', String(paused));
   rateLabel.textContent = cadence.toFixed(1) + '/s';
@@ -267,10 +319,12 @@ function refreshUi(): void {
   crateSizeLabel.textContent = Number(crateSizeControl.value).toFixed(2);
   trampolineScaleLabel.textContent = Number(trampolineScaleControl.value).toFixed(2);
   trampolineStrengthLabel.textContent = Number(trampolineStrengthControl.value).toFixed(1);
+  launchStrengthLabel.textContent = Number(launchStrengthControl.value).toFixed(1);
 }
 
 previewModeControl.addEventListener('change', () => {
-  previewMode = previewModeControl.value === 'showcase' ? 'showcase' : 'trampoline';
+  previewMode = previewModeControl.value === 'showcase' ? 'showcase' :
+    previewModeControl.value === 'trampoline' ? 'trampoline' : 'launch';
   setDirection(directionControl.value);
   if (previewMode === 'showcase') {
     emitHoof(); dust.update(0.19);
@@ -299,6 +353,27 @@ waterMassControl.addEventListener('input', refreshUi);
 crateSizeControl.addEventListener('input', refreshUi);
 trampolineScaleControl.addEventListener('input', () => { emitTrampoline(); poseTrampolineGoat(); refreshUi(); });
 trampolineStrengthControl.addEventListener('input', () => { emitTrampoline(); poseTrampolineGoat(); refreshUi(); });
+launchStrengthControl.addEventListener('input', () => {
+  if (previewMode === 'launch') { launchPad.clear(); emitLaunch(); poseLaunchGoat(); }
+  refreshUi();
+});
+launchButton.addEventListener('click', () => {
+  if (previewMode !== 'launch') {
+    previewMode = 'launch';
+    previewModeControl.value = 'launch';
+    setDirection(directionControl.value);
+  } else {
+    launchPad.clear();
+    emitLaunch();
+  }
+  if (paused && launchCue) {
+    const seek = launchCue.lifetime * 0.61;
+    launchPad.update(seek);
+    launchClock = seek;
+    poseLaunchGoat();
+  }
+  refreshUi();
+});
 trampolineButton.addEventListener('click', () => {
   if (previewMode !== 'trampoline') {
     previewMode = 'trampoline';
@@ -353,14 +428,19 @@ clearButton.addEventListener('click', () => {
   water.clear();
   crate.clear();
   trampoline.clear();
+  launchPad.clear();
   emissionClock = 0;
   landingClock = 0;
   headbuttClock = 0;
   waterClock = 0;
   crateClock = 0;
   trampolineClock = 0;
+  launchClock = 0;
   trampolineBurst = null;
-  goat.root.position.y = previewMode === 'trampoline' ? TRAMPOLINE_MAT_Y : 0;
+  launchCue = null;
+  if (previewMode === 'trampoline') poseTrampolineGoat();
+  else if (previewMode === 'launch') poseLaunchGoat();
+  else goat.root.position.y = 0;
   refreshUi();
 });
 
@@ -417,7 +497,12 @@ function frame(now: number): void {
   lastTime = now;
   if (!paused) {
     goat.update(dt);
-    if (previewMode === 'trampoline') {
+    if (previewMode === 'launch') {
+      launchClock += dt;
+      launchPad.update(dt);
+      if (!launchCue || launchClock >= launchCue.lifetime) emitLaunch();
+      poseLaunchGoat();
+    } else if (previewMode === 'trampoline') {
       trampolineClock += dt;
       trampoline.update(dt);
       if (!trampolineBurst || trampolineClock >= trampolineBurst.lifetime) {
@@ -481,16 +566,15 @@ function frame(now: number): void {
 
 setDirection(directionControl.value);
 goat.update(0);
-// Start the main viewport on the airborne sixth-panel beat, with the target
-// below the goat. The other five seeded previews remain available in showcase.
-const initialTrampoline = makeTrampolineBoingBurst(
-  trampolineContact, Number(trampolineScaleControl.value),
-  Number(trampolineStrengthControl.value),
+// Start the centered seventh-panel loop mid-flight, with pad, spikes and
+// sweeping gold ribbons visible. The other six previews remain selectable.
+const initialLaunch = makeLaunchPadBurstCue(
+  launchContact, launchDirection, Number(launchStrengthControl.value),
 );
-if (initialTrampoline) {
-  trampolineClock = initialTrampoline.lifetime * 0.62;
-  trampoline.update(trampolineClock);
-  poseTrampolineGoat();
+if (initialLaunch) {
+  launchClock = initialLaunch.lifetime * 0.60;
+  launchPad.update(launchClock);
+  poseLaunchGoat();
 }
 refreshUi();
 resizeViewport();
@@ -507,6 +591,7 @@ window.addEventListener('pagehide', () => {
   water.dispose();
   crate.dispose();
   trampoline.dispose();
+  launchPad.dispose();
   rockGeometry.dispose();
   rockMaterial.dispose();
   goat.dispose();
