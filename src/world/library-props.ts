@@ -68,7 +68,7 @@ export const PROP_LIBRARY_MODELS = {
   'cave-mouth': 'assets/library/kenney/nature-kit/cliff_cave_rock.glb',
   'bush': 'assets/library/custom/hoofington-props/bush-round-a.glb',
   'flower': 'assets/library/custom/hoofington-props/flowers-pink.glb',
-  'grass-tuft': 'assets/library/kenney/nature-kit/grass_large.glb',
+  'grass-tuft': 'assets/library/custom/hoofington-props/daisies.glb',
   'rope-rail': 'assets/library/kenney/platformer-kit/fence-rope.glb',
   'stepping-stone': 'assets/library/kenney/nature-kit/rock_smallFlatA.glb',
   'chimney': 'assets/library/kenney/city-kit-industrial/chimney-small.glb',
@@ -139,7 +139,7 @@ export function bakeLibraryPropGeometry(
   const white = new THREE.Color(0xffffff);
   const imageCache = new Map<THREE.Texture, PixelMap | null>();
   const paintedFoliage = new Set<PropKind>([
-    'tree-pine', 'grass-tuft', 'planter',
+    'tree-pine', 'planter',
   ]);
 
   root.traverse(object => {
@@ -178,8 +178,8 @@ export function bakeLibraryPropGeometry(
           colour.b *= vertexColours.getZ(index);
         }
         const map = (material as THREE.MeshStandardMaterial).map;
-        // The legacy pine/grass/planter foliage needs painted colours in
-        // place of alpha-atlas padding. Blender props retain source paint.
+        // Legacy pine/planter foliage needs painted colours in place of
+        // alpha-atlas padding. Blender props retain source paint.
         if (!paintedFoliage.has(kind) && map && textureCoords && textureCoords.itemSize >= 2) {
           const image = pixels(map, imageCache);
           if (image) {
@@ -202,7 +202,6 @@ export function bakeLibraryPropGeometry(
           }
         }
         if (kind === 'tree-pine') colour.setHex(height > 0.23 ? 0x478f62 : 0x856346);
-        else if (kind === 'grass-tuft') colour.setHex(0x88c366);
         else if (kind === 'planter') colour.setHex(height > 0.57 ? 0x77b65f : 0xbb8967);
         colours.push(colour.r, colour.g, colour.b);
       }

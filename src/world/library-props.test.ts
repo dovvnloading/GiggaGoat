@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PropDescriptor, PropKind } from './types';
 import { bakeLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
@@ -41,6 +42,7 @@ describe('CC0 library prop catalog', () => {
       'tree-pine': 'nature-kit/tree_pineTallA.glb',
       bush: 'custom/hoofington-props/bush-round-a.glb',
       flower: 'custom/hoofington-props/flowers-pink.glb',
+      'grass-tuft': 'custom/hoofington-props/daisies.glb',
       lamp: 'city-kit-roads/light-curved.glb',
       bench: 'retro-urban-kit/detail-bench.glb',
       fence: 'custom/hoofington-props/picket-fence.glb',
@@ -60,7 +62,7 @@ describe('CC0 library prop catalog', () => {
 });
 
 describe('library geometry batching', () => {
-  it.each(['tree-oak', 'bush', 'flower', 'fence', 'mailbox',
+  it.each(['tree-oak', 'bush', 'flower', 'grass-tuft', 'fence', 'mailbox',
     'silo', 'windmill'] as const)(
     'preserves authored material and vertex colours for %s', kind => {
       const geometry = new THREE.BoxGeometry(1, 1, 1);
@@ -85,7 +87,6 @@ describe('library geometry batching', () => {
 
   it.each([
     ['tree-pine', 0x478f62],
-    ['grass-tuft', 0x88c366],
     ['planter', 0x77b65f],
   ] as const)('keeps the existing %s foliage paint', (kind, hex) => {
     const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
@@ -172,6 +173,77 @@ describe('library geometry batching', () => {
     visuals.dispose();
     mesh.geometry.dispose();
     (mesh.material as THREE.Material).dispose();
+  });
+});
+
+describe('authored daisy grass-tuft instances', () => {
+  it('keeps GLB paint and white instance tints through near/far LOD', async () => {
+    // Source colours are already final; intentionally conflicting descriptor
+    // colours must never multiply the white blooms or green leaves.
+    const source = new THREE.Group();
+    source.add(new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.72, 0.65),
+      new THREE.MeshStandardMaterial({ color: 0x56955e })));
+    const load = vi.spyOn(GLTFLoader.prototype, 'loadAsync')
+      .mockResolvedValue({ scene: source } as Awaited<ReturnType<GLTFLoader['loadAsync']>>);
+    vi.stubGlobal('document', {});
+    const props: PropDescriptor[] = Array.from({ length: 2 }, (_, i): PropDescriptor => ({
+      id: 'daisy-' + i, kind: 'grass-tuft',
+      transform: { position: { x: i ? 2 : -2, y: 0.36, z: 0 }, rotationY: i * 0.5 },
+      size: { x: 0.65, y: 0.72, z: 0.65 },
+      body: { type: 'static' }, shape: 'cuboid',
+      collidable: false, breakable: false, lickable: false, climbable: false,
+      color: i ? 0xff0000 : 0x0000ff,
+    }));
+    const visuals = buildPropVisuals(props);
+    try {
+      await vi.waitFor(() => expect(visuals.group.userData['libraryReady']).toBe(true));
+      expect(visuals.group.userData['libraryFailed']).toBe(0);
+      expect(load).toHaveBeenCalledExactlyOnceWith(publicAssetUrl(
+        PROP_LIBRARY_MODELS['grass-tuft']));
+      const original = visuals.group.getObjectByName('props-grass-tuft') as THREE.InstancedMesh;
+      expect(original.count).toBe(props.length);
+      const colours = original.geometry.getAttribute('color');
+      const paint = new THREE.Color(0x56955e);
+      expect(colours.getX(0)).toBeCloseTo(paint.r, 5);
+      expect(colours.getY(0)).toBeCloseTo(paint.g, 5);
+      expect(colours.getZ(0)).toBeCloseTo(paint.b, 5);
+      const actual = new THREE.Color();
+      const expectWhite = (mesh: THREE.InstancedMesh, count: number): void => {
+        expect(mesh.count).toBe(count);
+        for (let i = 0; i < count; i++) {
+          mesh.getColorAt(i, actual);
+          expect(actual.getHex()).toBe(0xffffff);
+        }
+      };
+      expectWhite(original, props.length);
+
+      const camera = new THREE.PerspectiveCamera(80, 1, 0.1, 500);
+      const frustum = new THREE.Frustum();
+      const cullFrom = (distance: number): void => {
+        camera.position.set(0, 1, distance);
+        camera.lookAt(0, 0, 0);
+        camera.updateMatrixWorld();
+        frustum.setFromProjectionMatrix(new THREE.Matrix4()
+          .multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+        visuals.updateCulling(camera.position, frustum, 500, () => false);
+      };
+      const near = visuals.group.getObjectByName('render-near-grass-tuft') as THREE.InstancedMesh;
+      const far = visuals.group.getObjectByName('render-far-grass-tuft') as THREE.InstancedMesh;
+      cullFrom(20);
+      expectWhite(near, props.length);
+      cullFrom(90);
+      expectWhite(far, props.length);
+      cullFrom(160);
+      expect(near.count).toBe(0);
+      expect(far.count).toBe(0);
+    } finally {
+      const mesh = visuals.group.getObjectByName('props-grass-tuft') as THREE.InstancedMesh;
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+      visuals.dispose();
+      load.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 });
 
