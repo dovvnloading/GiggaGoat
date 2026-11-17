@@ -480,8 +480,10 @@ function makeFlowers(island: IslandData, center: { x: number; z: number }): THRE
  */
 function suppressOldArt(island: IslandData, oldProps: THREE.Group,
   fullyHidden: Set<PropKind>): void {
+  // The tower itself is NOT replaced: the generic 'lighthouse' prop is the
+  // striped custom/lighthouse model (QA LH-1), and only the glow is added here.
   const replacedKinds: readonly PropKind[] = [
-    'lighthouse', 'cottage', 'shipwreck', 'dock', 'cave-mouth',
+    'cottage', 'shipwreck', 'dock', 'cave-mouth',
   ];
   const zero = new THREE.Matrix4().makeScale(0, 0, 0);
   for (const kind of replacedKinds) {

@@ -75,6 +75,8 @@ const authoredCraneYardKinds = new Set<PropKind>([
   'crane', 'crane-jib', 'crane-cab', 'crane-cable', 'red-girder',
   'concrete-slab', 'concrete-column', 'yard-scaffold', 'safety-rail',
   'chain-fence', 'pipe-stack', 'site-barrier', 'site-banner', 'bunting',
+  // Painted custom landmark (QA LH-1): keeps its own red/white bands.
+  'lighthouse',
 ]);
 const foliage = new Set<PropKind>([
   'tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'mushroom',

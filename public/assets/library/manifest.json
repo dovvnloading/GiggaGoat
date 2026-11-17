@@ -33458,6 +33458,15 @@
   "url": ""
  },
  {
+  "path": "assets/library/custom/lighthouse/lighthouse.glb",
+  "name": "Old Lighthouse striped tower",
+  "source": "custom",
+  "pack": "lighthouse",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
   "path": "assets/library/custom/mt-gigga/satellite-dish.glb",
   "name": "mt-gigga satellite-dish",
   "source": "custom",
