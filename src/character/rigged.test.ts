@@ -117,6 +117,17 @@ describe('checked-in GLB animation contract', () => {
       skins?: { joints?: number[] }[];
       animations?: { name?: string }[];
     };
+    // Temporary scene-transform probe to verify the shipped GLB's root convention.
+    const sceneGraph = gltf as typeof gltf & {
+      scene?: number;
+      scenes?: { nodes?: number[] }[];
+      nodes?: { name?: string; rotation?: number[]; matrix?: number[];
+        translation?: number[]; scale?: number[]; children?: number[] }[];
+    };
+    const roots = sceneGraph.scenes?.[sceneGraph.scene ?? 0]?.nodes ?? [];
+    console.info('GLB_SCENE_ORIENTATION', variant, JSON.stringify({
+      roots, nodes: roots.map(index => sceneGraph.nodes?.[index]),
+    }));
     expect(gltf.nodes?.length).toBeGreaterThan(0);
     expect(gltf.skins?.some(skin => (skin.joints?.length ?? 0) > 0)).toBe(true);
     expect(new Set(gltf.animations?.map(animation => animation.name)))
