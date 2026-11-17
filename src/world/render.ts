@@ -387,7 +387,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   for (const chunk of chunks) group.add(chunk.mesh);
   group.add(buildRoads(island));
   group.add(buildStreetDetails(island));
-  group.add(buildGroundDetails(island));
+  // Coalesce unchanged ground decals to keep the extra zebra mesh within the draw budget.
+  group.add(buildGroundDetails(island, 192));
   group.add(buildMeadowScatter(island));
   const props = buildPropVisuals(island.props, options.propChunkSize ?? 96, island);
   group.add(props.group);
