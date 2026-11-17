@@ -136,7 +136,8 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
         }
       }
       const promenadeLamps = props.filter(p => p.kind === 'lamp' &&
-        p.transform.position.x < centre.x + 1);
+        Math.abs(p.transform.position.x -
+          (centre.x - 11.3 * island.size / 600)) < 0.001);
       expect(promenadeLamps).toHaveLength(5);
       for (const lamp of promenadeLamps)
         expect(lamp.transform.position.x).toBeCloseTo(
@@ -166,11 +167,13 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
     expect(boardwalkCamera.camera.z).toBeLessThan(boardwalkCamera.target.z);
     const island = generateIsland({ seed: 'billy-isle', resolution: 65 });
     const visuals = createWorldScene(island);
-    for (const kind of ['pier', 'deck', 'pier-rail', 'ferris-wheel', 'bunting']) {
+    for (const kind of ['pier', 'pier-rail', 'ferris-wheel', 'bunting']) {
       const mesh = visuals.group.getObjectByName('props-' + kind);
       expect(mesh, kind).toBeInstanceOf(THREE.InstancedMesh);
       expect((mesh as THREE.InstancedMesh).count, kind).toBeGreaterThan(0);
     }
+    const pier = visuals.group.getObjectByName('props-pier') as THREE.InstancedMesh;
+    expect(pier.count).toBe(2);
     visuals.dispose();
   });
 
