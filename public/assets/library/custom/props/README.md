@@ -7,3 +7,4 @@
 | bridge-deck.glb | 9 x 0.7 x 12 | kind `bridge` (flat timber road-bridge segment, planks across, edge beams; QA IS-9) |
 
 Own colours, no tint. CC0.
+| buoy.glb | 1.0 x 1.8 x 1.0 | kind `buoy` and the Dam buoys (red/white float, cage, warm lamp; QA BW-13, DM-5) |
