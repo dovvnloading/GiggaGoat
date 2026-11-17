@@ -30,6 +30,10 @@ describe('Player spawn pose and approved goat silhouette', () => {
       for (let i = 0; i < 120; i++) game.step();
       expect(torsoUp(game)).toBeGreaterThan(.78);
       expect(game.goat.isRagdoll).toBe(false);
+      console.log('goat pose after 120 ticks', {
+        torso: game.goat.torso.translation(), head: game.goat.head.translation(),
+        neck: game.goat.neck.translation(), up: torsoUp(game), pose: game.goat.pose,
+      });
       expect(game.goat.head.translation().y).toBeGreaterThan(
         game.goat.torso.translation().y + .05 * size);
       expect(game.goat.torso.translation().y - ground).toBeGreaterThan(.35 * size);
@@ -56,7 +60,7 @@ describe('Player spawn pose and approved goat silhouette', () => {
     try {
       characters.update(0, game.physics.alpha);
       const root = characters.player.root;
-      const yaw = game.island.spawns[0]!.heading + SPAWN_CAMERA_YAW_OFFSET;
+      const yaw = -game.island.spawns[0]!.heading + SPAWN_CAMERA_YAW_OFFSET;
       const size = game.goat.size;
       const p = game.goat.torso.translation();
       const target = new THREE.Vector3(p.x, p.y + CAMERA_TARGET_HEIGHT * size, p.z);
@@ -67,7 +71,9 @@ describe('Player spawn pose and approved goat silhouette', () => {
       camera.updateMatrixWorld(true);
       root.updateWorldMatrix(true, true);
 
-      const facing = forward(game.island.spawns[0]!.heading);
+      // Camera must face the actual rigid body's -Z axis, not the locomotion
+      // heading (the physics lane currently gives these opposite yaw signs).
+      const facing = forward(-game.island.spawns[0]!.heading);
       const toCamera = camera.position.clone().sub(target).setY(0).normalize();
       expect(toCamera.dot(new THREE.Vector3(facing.x, 0, facing.z))).toBeGreaterThan(.65);
 
@@ -97,6 +103,8 @@ describe('Player spawn pose and approved goat silhouette', () => {
       expect(horns).toHaveLength(2);
       const hornScreens = horns.map(h =>
         h.getWorldPosition(new THREE.Vector3()).project(camera));
+      console.log('opening camera horns', { yaw, offset,
+        hornScreens: hornScreens.map(p => ({ x: p.x, y: p.y, z: p.z })) });
       expect(Math.abs(hornScreens[0]!.x - hornScreens[1]!.x)).toBeGreaterThan(.025);
     } finally {
       characters.dispose();
