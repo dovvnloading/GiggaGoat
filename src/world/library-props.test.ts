@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PropDescriptor, PropKind } from './types';
 import { bakeLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
-import { bakeLibraryGeometry } from './visual-hoofington';
+import { bakeLibraryGeometry, HOOFINGTON_MODELS } from './visual-hoofington';
+import { DOWNTOWN_MODELS } from './visual-downtown';
 import { buildPropVisuals } from './visual-props';
 import { publicAssetUrl } from './public-assets';
 
@@ -18,8 +19,8 @@ const assets = JSON.parse(
 const byPath = new Map(assets.map(entry => [entry.path, entry]));
 const mapped = Object.entries(PROP_LIBRARY_MODELS) as [PropKind, string][];
 
-describe('CC0 library prop catalog', () => {
-  it('covers every PropKind and every path exists locally with a CC0 licence', () => {
+describe('library prop catalog', () => {
+  it('covers every PropKind and every path exists locally with the right licence', () => {
     // The satisfies Record<PropKind, string> declaration enforces exhaustive
     // coverage at typecheck time, including any newly added descriptor kind.
     expect(mapped).toHaveLength(72);
@@ -27,7 +28,9 @@ describe('CC0 library prop catalog', () => {
     for (const [kind, path] of mapped) {
       const entry = byPath.get(path);
       expect(entry, kind + ': missing from the library manifest').toBeDefined();
-      expect(entry?.license, kind + ': only CC0 assets are allowed').toBe('CC0');
+      const expectedLicense = path.startsWith('assets/library/usdcraft/')
+        ? 'Apache-2.0' : 'CC0';
+      expect(entry?.license, kind + ': unexpected asset licence').toBe(expectedLicense);
       expect(existsSync(new URL('../../public/' + path, import.meta.url)),
         kind + ': missing file ' + path).toBe(true);
       expect(publicAssetUrl(path, '/GiggaGoat/src/world/viewer/index.html', './'),
@@ -41,7 +44,7 @@ describe('CC0 library prop catalog', () => {
       'tree-pine': 'nature-kit/tree_pineTallA.glb',
       bush: 'nature-kit/plant_bushDetailed.glb',
       flower: 'nature-kit/flower_purpleA.glb',
-      lamp: 'city-kit-roads/light-curved.glb',
+      lamp: 'usdcraft/street-lamp-lantern.glb',
       bench: 'retro-urban-kit/detail-bench.glb',
       fence: 'city-kit-suburban/fence.glb',
       crate: 'platformer-kit/crate.glb',
@@ -53,6 +56,37 @@ describe('CC0 library prop catalog', () => {
     };
     for (const [kind, suffix] of Object.entries(expected))
       expect(PROP_LIBRARY_MODELS[kind as PropKind], kind).toContain(suffix);
+  });
+});
+
+describe('USDCraft lantern model consistency', () => {
+  it('maps all three street-lamp tables to the prepared Apache-2.0 asset', () => {
+    const path = 'assets/library/usdcraft/street-lamp-lantern.glb';
+    expect(HOOFINGTON_MODELS.lamp).toBe(path);
+    expect(DOWNTOWN_MODELS.lamp).toBe(path);
+    expect(PROP_LIBRARY_MODELS.lamp).toBe(path);
+    expect(byPath.get(path)).toMatchObject({
+      source: 'NVIDIA USDCraft-10K', license: 'Apache-2.0', pack: 'usdcraft',
+    });
+  });
+
+  it('ships the four authored flat materials with warm emissive lantern glass', () => {
+    const binary = readFileSync(new URL(
+      '../../public/assets/library/usdcraft/street-lamp-lantern.glb', import.meta.url));
+    expect(binary.toString('utf8', 0, 4)).toBe('glTF');
+    const jsonLength = binary.readUInt32LE(12);
+    const gltf = JSON.parse(binary.toString('utf8', 20, 20 + jsonLength)) as {
+      meshes: Array<{ primitives: Array<{ material: number }> }>;
+      materials: Array<{ name: string; emissiveFactor?: number[] }>;
+    };
+    expect(gltf.meshes[0]?.primitives).toHaveLength(4);
+    expect(gltf.materials.map(m => m.name).sort()).toEqual([
+      'brass_burner', 'lantern_glass', 'opal_globe', 'painted_cast_iron',
+    ]);
+    expect(gltf.materials.find(m => m.name === 'lantern_glass')?.emissiveFactor)
+      .toEqual(expect.arrayContaining([expect.any(Number)]));
+    expect(gltf.materials.find(m => m.name === 'lantern_glass')!.emissiveFactor![0])
+      .toBeGreaterThan(0.5);
   });
 });
 

@@ -37,7 +37,7 @@ export const PROP_LIBRARY_MODELS = {
   'tree-oak': 'assets/library/kenney/nature-kit/tree_oak.glb',
   'rock': 'assets/library/kenney/nature-kit/rock_largeB.glb',
   'log': 'assets/library/kenney/nature-kit/log.glb',
-  'lamp': 'assets/library/kenney/city-kit-roads/light-curved.glb',
+  'lamp': 'assets/library/usdcraft/street-lamp-lantern.glb',
   'ramp': 'assets/library/kenney/platformer-kit/platform-ramp.glb',
   'ledge': 'assets/library/kenney/nature-kit/cliff_half_rock.glb',
   'bridge': 'assets/library/kenney/nature-kit/bridge_wood.glb',

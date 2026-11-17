@@ -5,7 +5,7 @@ import { createWorldScene, generateIsland } from './index';
 import { gridSample } from './terrain';
 import {
   GNOME_STATUE_HEIGHT, HOOFINGTON_MODELS, bakeHoofingtonGeometry,
-  createTexturedGnomeInstances, makeHoofingtonPlacements,
+  createTexturedGnomeInstances, createLanternLampInstances, makeHoofingtonPlacements,
   type HoofModel, type HoofPlacement,
 } from './visual-hoofington';
 
@@ -21,13 +21,15 @@ describe('Hoofington sourced village model integration', () => {
         expect(readFileSync('public/assets/library/meshy/garden-gnome/README.md', 'utf8'))
           .toContain('CC0');
       } else {
-        expect(manifest.find(entry => entry.path === path)?.license, model).toBe('CC0');
+        expect(manifest.find(entry => entry.path === path)?.license, model)
+          .toBe(model === 'lamp' ? 'Apache-2.0' : 'CC0');
       }
     }
     // One building family: painting-palette Kenney suburban houses.
     for (const home of ['pinkHome', 'creamHome', 'yellowHome', 'farmhouse', 'cottage'] as const) {
       expect(HOOFINGTON_MODELS[home], home).toContain('custom/hoofington-houses/');
     }
+    expect(HOOFINGTON_MODELS.lamp).toBe('assets/library/usdcraft/street-lamp-lantern.glb');
     expect(HOOFINGTON_MODELS.windmill).toContain('farm-buildings-bundle');
     expect(HOOFINGTON_MODELS.bush).toContain('stylized-nature-megakit');
   });
@@ -107,6 +109,56 @@ describe('Hoofington sourced village model integration', () => {
     originalMaterial.dispose();
   });
 
+  it('instances native 3.5m lantern parts without tint, wall/roof paint or height stretch', () => {
+    const source = new THREE.Group();
+    const names = ['painted_cast_iron', 'lantern_glass', 'opal_globe', 'brass_burner'];
+    for (const name of names) {
+      const geometry = new THREE.BoxGeometry(0.45, 3.5, 0.45);
+      geometry.translate(0, 1.75, 0);
+      const material = new THREE.MeshStandardMaterial({
+        color: name === 'painted_cast_iron' ? 0x121315 : 0xffcc66,
+        emissive: name === 'lantern_glass' ? 0xffa944 : 0x000000,
+      });
+      material.name = name;
+      source.add(new THREE.Mesh(geometry, material));
+    }
+    const placements: HoofPlacement[] = [
+      { model: 'lamp', position: { x: 10, y: 12, z: 2 },
+        size: { x: 0.6, y: 8, z: 0.6 }, yaw: 0, wall: 0xff0000, roof: 0x00ff00 },
+      { model: 'lamp', position: { x: 12, y: 14, z: 4 },
+        size: { x: 0.6, y: 8, z: 0.6 }, yaw: 0.5 },
+    ];
+    const batch = createLanternLampInstances(placements, source, 600)!;
+    const instances = batch.group.children as THREE.InstancedMesh[];
+    expect(instances).toHaveLength(4);
+    for (const mesh of instances) {
+      expect(mesh).toBeInstanceOf(THREE.InstancedMesh);
+      expect(mesh.count).toBe(2);
+      expect(mesh.geometry.getAttribute('color')).toBeUndefined();
+      expect(mesh.instanceColor).toBeNull();
+      const material = mesh.material as THREE.MeshStandardMaterial;
+      const original = (source.children.find(part =>
+        (part as THREE.Mesh).material instanceof THREE.MeshStandardMaterial &&
+        ((part as THREE.Mesh).material as THREE.Material).name === material.name)
+        as THREE.Mesh).material as THREE.MeshStandardMaterial;
+      expect(material.color.getHex()).toBe(original.color.getHex());
+      expect(material.emissive.getHex()).toBe(original.emissive.getHex());
+      expect(material).not.toBe(original);
+      const transform = new THREE.Matrix4();
+      mesh.getMatrixAt(0, transform);
+      expect(new THREE.Vector3().setFromMatrixPosition(transform).y).toBe(8);
+      expect(new THREE.Vector3().setFromMatrixScale(transform))
+        .toEqual(new THREE.Vector3(1, 1, 1));
+    }
+    batch.dispose();
+    expect(batch.group.children).toHaveLength(0);
+    source.traverse(object => {
+      if (!(object instanceof THREE.Mesh)) return;
+      object.geometry.dispose();
+      (object.material as THREE.Material).dispose();
+    });
+  });
+
   it('maps the painting\'s foreground colours and rear landmarks to the same colliders', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
     const plan = makeHoofingtonPlacements(island);
@@ -115,6 +167,10 @@ describe('Hoofington sourced village model integration', () => {
     for (const kind of ['house', 'cottage', 'barn', 'silo', 'windmill',
       'fence', 'mailbox', 'gnome', 'trampoline', 'bench', 'lamp']) {
       expect(kinds.has(kind as never), kind).toBe(true);
+    }
+    for (const lamp of linked.filter(p => p.model === 'lamp')) {
+      expect(lamp.wall).toBeUndefined();
+      expect(lamp.roof).toBeUndefined();
     }
     const homes = linked.filter(p => p.source!.kind === 'house');
     expect(homes.length).toBeGreaterThanOrEqual(5);

@@ -17,7 +17,8 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     for (const [name, path] of Object.entries(DOWNTOWN_MODELS)) {
       expect(path.startsWith('assets/library/'), name).toBe(true);
       expect(/\.(glb|gltf)$/.test(path), name).toBe(true);
-      expect(manifest.find(entry => entry.path === path)?.license, name).toBe('CC0');
+      expect(manifest.find(entry => entry.path === path)?.license, name)
+        .toBe(name === 'lamp' ? 'Apache-2.0' : 'CC0');
     }
     for (const pack of ['city-kit-commercial', 'retro-urban-kit',
       'modular-buildings', 'city-builder-bits', 'city-kit-roads',
@@ -25,6 +26,7 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       expect(Object.values(DOWNTOWN_MODELS).some(path =>
         path.includes('/' + pack + '/')), pack).toBe(true);
     }
+    expect(DOWNTOWN_MODELS.lamp).toBe('assets/library/usdcraft/street-lamp-lantern.glb');
     expect(DOWNTOWN_MODELS.skylineCrane).toContain('/factory-kit/');
     expect(DOWNTOWN_MODELS.waterTower).toContain('/city-kit-industrial/');
   });
@@ -59,6 +61,11 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     for (const kind of ['lamp', 'bench', 'planter', 'flower', 'awning',
       'ac-unit', 'water-tower', 'fountain']) {
       expect(linked.some(p => p.source!.kind === kind), kind).toBe(true);
+    }
+    for (const lamp of linked.filter(p => p.model === 'lamp')) {
+      expect(lamp.wall).toBeUndefined();
+      expect(lamp.roof).toBeUndefined();
+      expect(lamp.position).toBe(lamp.source!.transform.position);
     }
     expect(island.props.map(p => ({
       id: p.id, kind: p.kind, transform: p.transform, size: p.size,

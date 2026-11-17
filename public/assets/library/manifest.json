@@ -33006,5 +33006,14 @@
   "license": "CC0",
   "credit": "Kenney city-kit-suburban (CC0), recoloured with shutters and window boxes in Blender for Gigga-Goat",
   "url": ""
+ },
+ {
+  "path": "assets/library/usdcraft/street-lamp-lantern.glb",
+  "name": "street-lamp-lantern",
+  "source": "NVIDIA USDCraft-10K",
+  "pack": "usdcraft",
+  "license": "Apache-2.0",
+  "credit": "NVIDIA USDCraft-10K (ds_R500_03, Apache-2.0)",
+  "url": "https://huggingface.co/datasets/nvidia/USDCraft-10K"
  }
 ]

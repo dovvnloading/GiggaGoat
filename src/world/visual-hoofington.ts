@@ -4,6 +4,7 @@ import type { IslandData, PropDescriptor, PropKind, Vec3 } from './types';
 import { gridSample } from './terrain';
 import { publicAssetUrl } from './public-assets';
 import { createDistrictLod, type BakedPlacement, type DistrictLod } from './district-lod';
+import { WORLD_LOD } from './lod';
 
 /**
  * CC0 models only. The Poly Pizza trampoline is CC-BY and CREDITS.md is
@@ -26,7 +27,7 @@ export const HOOFINGTON_MODELS = {
   bench: 'assets/library/quaternius/medieval-village-pack/bench_7uSlZo3n9Y.glb',
   gnome: 'assets/library/meshy/garden-gnome/garden-gnome.glb',
   playPad: 'assets/library/kenney/platformer-kit/spring.glb',
-  lamp: 'assets/library/kenney/city-kit-roads/light-curved.glb',
+  lamp: 'assets/library/usdcraft/street-lamp-lantern.glb',
   banner: 'assets/library/kenney/fantasy-town-kit/banner-red.glb',
   planter: 'assets/library/kenney/city-kit-suburban/planter.glb',
   flower: 'assets/library/kenney/nature-kit/flower_purpleA.glb',
@@ -410,6 +411,117 @@ export function createTexturedGnomeInstances(
   return batch;
 }
 
+
+/**
+ * The USDCraft lamp is authored at real-world scale, with its base at y=0.
+ * Keep every GLB primitive's original StandardMaterial (including its emissive
+ * lantern glass) in a material-specific InstancedMesh. Never vertex-bake or
+ * apply a per-prop colour to these meshes.
+ */
+export interface LanternLampBatch {
+  group: THREE.Group;
+  updateCulling(position: THREE.Vector3, frustum: THREE.Frustum): boolean;
+  dispose(): void;
+}
+
+export function createLanternLampInstances<Model extends string>(
+  placements: readonly HoofPlacement<Model>[], model: THREE.Group, islandSize: number,
+): LanternLampBatch | null {
+  if (!placements.length) return null;
+  model.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(model);
+  if (bounds.isEmpty()) return null;
+  const span = bounds.getSize(new THREE.Vector3());
+  const parts: Array<{ geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[] }> = [];
+  model.traverse(object => {
+    if (!(object instanceof THREE.Mesh)) return;
+    const geometry = object.geometry.clone();
+    geometry.applyMatrix4(object.matrixWorld);
+    const material = Array.isArray(object.material)
+      ? object.material.map(source => source.clone()) : object.material.clone();
+    parts.push({ geometry, material });
+  });
+  if (!parts.length) return null;
+
+  // Use the same spatial cell size and small-prop culling distance as the
+  // district LOD baker, without ever changing the lamp's authored materials.
+  const cells = new Map<string, HoofPlacement<Model>[]>();
+  for (const placement of placements) {
+    const key = Math.floor(placement.position.x / WORLD_LOD.districtCellSize) +
+      ':' + Math.floor(placement.position.z / WORLD_LOD.districtCellSize);
+    const cell = cells.get(key) ?? [];
+    cell.push(placement);
+    cells.set(key, cell);
+  }
+  const group = new THREE.Group();
+  group.name = 'usdcraft-lantern-lamps';
+  const entries: Array<{ meshes: THREE.InstancedMesh[]; sphere: THREE.Sphere }> = [];
+  const dummy = new THREE.Object3D();
+  const footprint = Math.hypot(span.x, span.z) / 2;
+  for (const cell of cells.values()) {
+    const cellBounds = new THREE.Box3();
+    const meshes: THREE.InstancedMesh[] = [];
+    for (const placement of cell) {
+      const baseY = placement.position.y - placement.size.y / 2;
+      cellBounds.expandByPoint(new THREE.Vector3(
+        placement.position.x - footprint, baseY, placement.position.z - footprint));
+      cellBounds.expandByPoint(new THREE.Vector3(
+        placement.position.x + footprint, baseY + span.y, placement.position.z + footprint));
+    }
+    for (const { geometry, material } of parts) {
+      const mesh = new THREE.InstancedMesh(geometry, material, cell.length);
+      mesh.name = 'usdcraft-lantern-lamps-part';
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.frustumCulled = false; // frustum checks are per spatial cell below
+      for (let i = 0; i < cell.length; i++) {
+        const placement = cell[i]!;
+        dummy.position.set(placement.position.x,
+          placement.position.y - placement.size.y / 2 - bounds.min.y,
+          placement.position.z);
+        dummy.rotation.set(0, placement.yaw, 0);
+        dummy.scale.set(1, 1, 1); // 3.5m high; no collider-height stretch
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingSphere();
+      group.add(mesh);
+      meshes.push(mesh);
+    }
+    entries.push({ meshes, sphere: cellBounds.getBoundingSphere(new THREE.Sphere()) });
+  }
+  let disposed = false;
+  return {
+    group,
+    updateCulling(position, frustum): boolean {
+      if (disposed) return false;
+      let changed = false;
+      for (const { meshes, sphere } of entries) {
+        const distance = position.distanceTo(sphere.center);
+        const visible = frustum.intersectsSphere(sphere) &&
+          distance - sphere.radius <= islandSize * 1.4 &&
+          distance - Math.min(sphere.radius, 12) < WORLD_LOD.smallPropDistance;
+        for (const mesh of meshes) {
+          if (mesh.visible !== visible && mesh.castShadow) changed = true;
+          mesh.visible = visible;
+        }
+      }
+      return changed;
+    },
+    dispose(): void {
+      if (disposed) return;
+      disposed = true;
+      group.clear();
+      group.removeFromParent();
+      for (const { geometry, material } of parts) {
+        geometry.dispose();
+        for (const m of Array.isArray(material) ? material : [material]) m.dispose();
+      }
+    },
+  };
+}
+
 /** Keep the exact original descriptor order, physics and dynamic hay updates. */
 function suppressOldArt(
   island: IslandData, oldProps: THREE.Group,
@@ -460,8 +572,18 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
   const fullyHidden = new Set<PropKind>();
   let shadowChanged = false, disposed = false;
   let districtLod: DistrictLod | undefined;
+  let lanterns: LanternLampBatch | null = null;
   if (typeof document !== 'undefined') {
-    const plan = makeHoofingtonPlacements(island);
+    const villagePlan = makeHoofingtonPlacements(island);
+    // Hoofington owns lamps on roads and the Baa-ardwalk too. Downtown owns
+    // its own district lamps; all positions and collider descriptors stay put.
+    const roadLamps: HoofPlacement[] = island.props.filter(p =>
+      p.kind === 'lamp' && p.poiId !== 'hoofington' &&
+      p.poiId !== 'downtown-bleatsville').map(source => ({
+        model: 'lamp', source, position: source.transform.position,
+        size: source.size, yaw: source.transform.rotationY,
+      }));
+    const plan = [...villagePlan, ...roadLamps];
     // Dynamic hay bales must remain on their existing instanced mesh so the
     // game integrator can continue moving them after Rapier collisions.
     const required = new Set(plan.map(p => p.model));
@@ -480,8 +602,9 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
       }
       try {
         if (disposed) return;
-        // UV-mapped gnomes must not go through the vertex-colour baker.
-        const staticPlan = plan.filter(p => p.model !== 'gnome' && models.has(p.model));
+        // Gnomes and material-authored lamps must never be vertex-colour baked.
+        const staticPlan = plan.filter(p => p.model !== 'gnome' &&
+          p.model !== 'lamp' && models.has(p.model));
         const ranges: BakedPlacement<HoofModel>[] = [];
         const geometry = bakeLibraryGeometry(staticPlan, models,
           (placement, start, count) => ranges.push({ placement, start, count }));
@@ -501,8 +624,13 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
         if (gnomes) group.add(gnomes);
         else if (gnomeModel && gnomePlan.length)
           console.warn('Hoofington gnome GLB needs one UV-mapped, textured mesh');
-        if (geometry || gnomes) {
-          const drawn = gnomes ? [...staticPlan, ...gnomePlan] : staticPlan;
+        const lampPlan = plan.filter(p => p.model === 'lamp');
+        const lampModel = models.get('lamp');
+        lanterns = lampModel ? createLanternLampInstances(lampPlan, lampModel, island.size) : null;
+        if (lanterns) group.add(lanterns.group);
+        if (geometry || gnomes || lanterns) {
+          const drawn = [...staticPlan, ...(gnomes ? gnomePlan : []),
+            ...(lanterns ? lampPlan : [])];
           suppressOldArt(island, oldProps, new Set(drawn.map(p => p.model)),
             drawn, fullyHidden);
           shadowChanged = true;
@@ -550,11 +678,13 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
       return changed;
     },
     updateCulling(position, frustum): boolean {
-      return districtLod?.updateCulling(position, frustum) ?? false;
+      const districtChanged = districtLod?.updateCulling(position, frustum) ?? false;
+      return (lanterns?.updateCulling(position, frustum) ?? false) || districtChanged;
     },
     dispose(): void {
       disposed = true;
       districtLod?.dispose();
+      lanterns?.dispose();
       group.traverse(object => {
         if (!(object instanceof THREE.Mesh)) return;
         object.geometry.dispose();
