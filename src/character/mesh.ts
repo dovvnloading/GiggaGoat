@@ -7,6 +7,7 @@ export interface Ribbon {
   readonly length: number;
   readonly width: number;
   readonly offset: number;
+  readonly tassels: readonly THREE.Mesh[];
 }
 export interface GoatMesh {
   readonly root: THREE.Group;
@@ -305,6 +306,19 @@ export function sculptGoat(): GoatMesh {
     }
     attr.needsUpdate = true;
     geometry.computeVertexNormals();
+    // Inverted-hull ink also rims the complex spiral, not just the fleece blobs.
+    const outline = geometry.clone();
+    const outlinePos = outline.getAttribute('position') as THREE.BufferAttribute;
+    const outlineNormal = outline.getAttribute('normal') as THREE.BufferAttribute;
+    for (let v = 0; v < outlinePos.count; v++) {
+      outlinePos.setXYZ(v,
+        outlinePos.getX(v) + outlineNormal.getX(v) * .009,
+        outlinePos.getY(v) + outlineNormal.getY(v) * .009,
+        outlinePos.getZ(v) + outlineNormal.getZ(v) * .009);
+    }
+    outlinePos.needsUpdate = true;
+    const hornInk = attach(pivot, outline, ink, 'horn spiral ink outline');
+    hornInk.castShadow = false;
     attach(pivot, geometry, hornTan, 'heavy tapered spiral horn');
     // Fine circumferential ridges like the approved golden, banded ram horns.
     for (let i = 1; i <= 16; i++) {
@@ -363,13 +377,14 @@ export function sculptGoat(): GoatMesh {
     const material = toon(0xffffff, { vertexColors: true, side: THREE.DoubleSide });
     const ribbon = attach(neck, geometry, material, 'wind-swept scarf ribbon');
     ribbon.frustumCulled = false;
-    ribbons.push({ geometry, length, width, offset });
-    // Open, pointed tassels at the fabric ends.
+    const tassels: THREE.Mesh[] = [];
+    ribbons.push({ geometry, length, width, offset, tassels });
+    // Tassels remain attached to the animated fabric tip every render frame.
     for (const j of [-1, 0, 1]) {
       const tassel = blob(neck, 'yellow scarf fringe', gold,
-        [offset + j * width * .36, .13, .23 + length],
+        [offset + j * width * .36, .29, .23 + length],
         [.018, .032, .065]);
-      tassel.rotation.x = -.35;
+      tassels.push(tassel);
     }
   };
   makeRibbon(.07, .86, .16);
@@ -467,4 +482,13 @@ export function animateRibbon(ribbon: Ribbon, time: number, airflow = 0): void {
   }
   p.needsUpdate = true;
   ribbon.geometry.computeVertexNormals();
+  const sway = Math.sin(time * 7.2 - 4.6 + ribbon.offset * 4);
+  const wave = Math.sin(time * 5 - 7.8);
+  const tipX = ribbon.offset + .13 + sway * (.075 + airflow * .10);
+  const tipY = .29 + wave * (.06 + airflow * .05);
+  ribbon.tassels.forEach((tassel, index) => {
+    tassel.position.set(tipX + (index - 1) * ribbon.width * .35,
+      tipY + .012, .23 + ribbon.length + .027);
+    tassel.rotation.x = -.35 + .17 * Math.sin(time * 6 + index * .5);
+  });
 }
