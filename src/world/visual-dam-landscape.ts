@@ -19,6 +19,8 @@ interface AssetSet {
   longAxisX?: boolean;
   orange?: boolean;
   stone?: boolean;
+  /** Toon override for CC0 kit pieces whose source material renders too dark. */
+  tint?: number;
   onReady?: () => void;
 }
 export interface DamLandscapeVisuals {
@@ -356,7 +358,9 @@ export function instanceDamAsset(
       const material = set.orange
         ? new THREE.MeshToonMaterial({ color: 0xff861f }) :
         set.stone ? new THREE.MeshToonMaterial({ color: 0xa9b1b3 }) :
-          bucket.material;
+          set.tint !== undefined ? new THREE.MeshToonMaterial({
+            color: set.tint, side: THREE.DoubleSide,
+          }) : bucket.material;
       const mesh = new THREE.InstancedMesh(geo, material, set.placements.length);
       mesh.name = set.name + '-batch-' + index + '-' + part;
       mesh.castShadow = false;
@@ -553,20 +557,22 @@ export function buildDamLandscape(
       placements: fullPines },
     { name: 'dam-grassy-bank-shrubs',
       path: 'kenney/nature-kit/plant_bushDetailed.glb',
-      placements: shrubs },
+      placements: shrubs, tint: 0x72ad55 },
     { name: 'dam-kenney-purple-wildflowers',
-      path: 'kenney/nature-kit/flower_purpleA.glb', placements: flowers },
+      path: 'kenney/nature-kit/flower_purpleA.glb',
+      placements: flowers, tint: 0xc59ae8 },
     { name: 'dam-kenney-yellow-wildflowers',
-      path: 'kenney/nature-kit/flower_yellowB.glb', placements: yellowFlowers },
+      path: 'kenney/nature-kit/flower_yellowB.glb',
+      placements: yellowFlowers, tint: 0xf5cb66 },
     { name: 'dam-kenney-post-and-rail-fence',
       path: 'kenney/nature-kit/fence_simple.glb', placements: fence,
-      longAxisX: true },
+      longAxisX: true, tint: 0xb27c4e },
     { name: 'dam-wooden-direction-sign',
       path: 'kenney/survival-kit/signpost-single.glb',
       placements: [{
         x: sign.x, z: sign.z, y: signY,
         width: 3.7, height: 4.6, depth: 1.0, yaw: sign.yaw,
-      }] },
+      }], tint: 0x9c6a3f },
     { name: 'dam-two-orange-survival-barrels',
       path: 'kenney/survival-kit/barrel.glb', placements: buoys, orange: true,
       onReady: () => {
