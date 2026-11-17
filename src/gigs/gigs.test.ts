@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { generateIsland, heightAt } from '../world';
+import { DOWNTOWN_INFILL } from '../world/visual-downtown';
 import { ChallengeTracker, CudWallet, EventBus } from '../gameplay';
 import { BOARD_CYCLE_TICKS, GigCatalog, GIG_INFO } from './catalog';
 import { GigDirector } from './engine';
@@ -212,7 +213,10 @@ describe('Gig boards and real world integration', () => {
     const city = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
     const roofs = island.props.filter(p => p.poiId === 'downtown-bleatsville' &&
       (p.kind === 'shop' || p.kind === 'house'));
-    expect(roofs).toHaveLength(16);
+    expect(roofs).toHaveLength(16 + DOWNTOWN_INFILL.length);
+    // DT-14 infills sit between the gig rows, not within 3 metres of them.
+    expect(roofs.filter(p => [-19, 0, 19].some(dz =>
+      Math.abs(p.transform.position.z - city.z - dz) < 3))).toHaveLength(12);
     for (const dz of [-19, 0, 19]) {
       const row = roofs.filter(p => Math.abs(p.transform.position.z - city.z - dz) < 3);
       expect(row, 'Rooftop Express row ' + dz).toHaveLength(4);

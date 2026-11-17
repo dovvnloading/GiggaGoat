@@ -3,6 +3,13 @@ import { SeededRandom } from './random';
 import { gridSample, riverAt, stampPlot } from './terrain';
 import { getDamPlacement } from './the-dam';
 import { damChannelAt } from './dam-landscape';
+import { isInsideDowntownInfillFootprint } from './visual-downtown';
+
+// Extra art and physical scenery must not intersect the authored shop infills.
+const INFILL_SCENERY_KINDS = new Set<PropKind>([
+  'tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft',
+  'planter', 'bench', 'sign', 'signboard',
+]);
 
 interface DetailOptions {
   yaw?: number;
@@ -43,7 +50,8 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       climbable: options.mass === undefined && sy > 1.5,
       ...(options.color === undefined ? {} : { color: options.color }),
     };
-    result.push(prop);
+    if (!(INFILL_SCENERY_KINDS.has(kind) &&
+      isInsideDowntownInfillFootprint(island, x, z))) result.push(prop);
     return prop;
   }
   function at(
@@ -206,8 +214,12 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   // (local +Z), not a fixed world +Z direction. The +/- X-facing rows now
   // display their shop fronts to pedestrians in the central street.
   const city: PoiId = 'downtown-bleatsville';
+  const cityX = sites.get(city)!.x;
+  // The five infills already carry shop windows/signs in their authored GLBs.
+  // Keep the original 10 shops + 6 rear houses as the only facade decorators.
   const buildings = island.props.filter(p => p.poiId === city &&
-    (p.kind === 'house' || p.kind === 'shop'));
+    (p.kind === 'shop' || (p.kind === 'house' &&
+      Math.abs(p.transform.position.x - cityX) >= 30 * scale)));
   for (let i = 0; i < buildings.length; i++) {
     const building = buildings[i]!;
     const x = building.transform.position.x;
@@ -439,7 +451,8 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       (kind === 'flower' || kind === 'bush' || kind.startsWith('tree-'))
       ? clearHoofingtonFoliage(x, z, width * scale, yaw) : { x, z };
     if (onBoardwalkDeck(position.x, position.z) ||
-        inCraneYard(position.x, position.z)) continue;
+        inCraneYard(position.x, position.z) ||
+        isInsideDowntownInfillFootprint(island, position.x, position.z)) continue;
     place(kind, position.x, position.z, width, height, width, near?.id,
       { shape: 'cylinder', yaw });
     accepted++;

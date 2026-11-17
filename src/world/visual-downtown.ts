@@ -59,6 +59,9 @@ export type DowntownPlacement = HoofPlacement<DowntownModel>;
 const FLOWER_VARIANTS = ['flowerPink', 'flowerPurple', 'flowerSunny'] as const;
 const BUSH_VARIANTS = ['bushA', 'bushB'] as const;
 const OAK_VARIANTS = ['oakA', 'oakB', 'oakC'] as const;
+const SCENERY_MODELS = new Set<DowntownModel>([
+  ...FLOWER_VARIANTS, ...BUSH_VARIANTS, ...OAK_VARIANTS, 'planter', 'bench',
+]);
 
 /** Fractions of each Blender model's fitted height, measured from its base. */
 export const DOWNTOWN_SIGN_ANCHORS = {
@@ -137,6 +140,56 @@ export const SHOP_FRONTS: readonly (readonly {
   ],
 ];
 
+type DowntownInfillModel = 'cornerShop' | 'bakery' | 'kayShop' | 'cinema' | 'kayHouse';
+export interface DowntownInfill {
+  side: -1 | 1;
+  /** Centre along the street, in unscaled metres relative to the Downtown POI. */
+  z: number;
+  model: DowntownInfillModel;
+}
+const INFILL_MODELS: readonly DowntownInfillModel[] = [
+  'cornerShop', 'bakery', 'kayShop', 'cinema', 'kayHouse',
+];
+
+/** DT-14: select the widest fitting model in each real shop side-wall gap.
+ * Leave at least 0.4 m clear per side and avoid repeating neighbours where possible.
+ */
+export const DOWNTOWN_INFILL: readonly DowntownInfill[] = (() => {
+  const result: DowntownInfill[] = [];
+  for (const side of [-1, 1] as const) {
+    const shops = SHOP_FRONTS[side < 0 ? 0 : 1]!;
+    for (let row = 0; row < shops.length - 1; row++) {
+      const left = shops[row]!.model, right = shops[row + 1]!.model;
+      // Shop local X runs along world Z after its +/-90 degree rotation.
+      const leftEdge = (row - 2) * 19 + DOWNTOWN_BUILDING_SIZES[left].x / 2;
+      const rightEdge = (row - 1) * 19 - DOWNTOWN_BUILDING_SIZES[right].x / 2;
+      const fitting = INFILL_MODELS.filter(model =>
+        DOWNTOWN_BUILDING_SIZES[model].x <= rightEdge - leftEdge - 0.8)
+        .sort((a, b) => DOWNTOWN_BUILDING_SIZES[b].x -
+          DOWNTOWN_BUILDING_SIZES[a].x);
+      const model = fitting.find(choice => choice !== left && choice !== right)
+        ?? fitting[0];
+      if (model) result.push({ side, z: (leftEdge + rightEdge) / 2, model });
+    }
+  }
+  return result;
+})();
+
+/** Test a scenery centre against every infill box, expanded by 0.3 blueprint metres. */
+export function isInsideDowntownInfillFootprint(
+  island: IslandData, x: number, z: number,
+): boolean {
+  const centre = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
+  const scale = island.size / 600;
+  return DOWNTOWN_INFILL.some(infill => {
+    const size = DOWNTOWN_BUILDING_SIZES[infill.model];
+    const cx = centre.x + infill.side * (20 - 11.4 / 2 + size.z / 2) * scale;
+    const cz = centre.z + infill.z * scale;
+    return Math.abs(x - cx) <= (size.z / 2 + 0.3) * scale &&
+      Math.abs(z - cz) <= (size.x / 2 + 0.3) * scale;
+  });
+}
+
 /** Reads authored placements without consuming RNG or mutating descriptors. */
 export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] {
   const centre = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
@@ -157,7 +210,15 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
         break;
       }
       case 'house':
-        model = downtownRearHouseModel(dz);
+        if (Math.abs(position.x - centre.x) < 30 * scale) {
+          const infillSide = position.x < centre.x ? -1 : 1;
+          const infill = DOWNTOWN_INFILL.find(item =>
+            item.side === infillSide && Math.abs(item.z - dz) < 0.001);
+          if (!infill) throw new Error('No Downtown infill model for ' + source.id);
+          model = infill.model;
+        } else {
+          model = downtownRearHouseModel(dz);
+        }
         break;
       case 'tower':
         model = 'highrise'; break;
@@ -180,6 +241,8 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
     sx: number, sy: number, sz: number, yaw = 0,
     y?: number, wall?: number): void {
     const x = centre.x + dx * scale, z = centre.z + dz * scale;
+    if (SCENERY_MODELS.has(model) &&
+        isInsideDowntownInfillFootprint(island, x, z)) return;
     const h = sy * scale;
     plan.push({
       model, position: { x, y: y ?? gridSample(island, x, z) + h / 2, z },
