@@ -32,7 +32,7 @@ const CSS = `
 /* The star, rays, purple combo badge and brown score ribbon are one sprite. */
 .gg-combo{position:absolute;left:50%;top:clamp(4px,.7vw,12px);transform:translateX(-50%);width:clamp(377px,32.3vw,545px);height:clamp(155px,12.7vw,217px);background:var(--gg-scoreStarburst) center/100% 100% no-repeat;text-align:center}
 .gg-combo-title{position:absolute;left:8%;top:19%;width:64%;height:47%;display:flex;align-items:center;justify-content:center;overflow:hidden;overflow-wrap:anywhere;line-height:.93;transform:rotate(-5deg);font-style:italic;letter-spacing:-.7px;color:#ffcd36;font-size:clamp(22px,2.35vw,39px);-webkit-text-stroke:1.2px #802847;text-shadow:2px 3px 0 #682a46,4px 4px 0 #fff2a4,5px 6px 0 #4d2c61}
-.gg-combo-count{position:absolute;left:73%;top:24%;width:22%;height:37%;display:grid;place-items:center;transform:rotate(-7deg);color:#fff8e3;font-size:clamp(9px,1.05vw,17px);line-height:1.1;white-space:pre-line;overflow-wrap:anywhere;text-shadow:1px 2px #4a2358}
+.gg-combo-count{position:absolute;left:73%;top:22%;width:22%;height:38%;display:grid;place-items:center;transform:rotate(-7deg);color:#fff8e3;font-size:clamp(10px,1.12vw,17px);line-height:1.12;white-space:pre-line;overflow-wrap:normal;text-shadow:1px 2px #4a2358}
 .gg-score-ribbon{position:absolute;left:11%;right:21%;bottom:6%;height:28%;display:grid;place-items:center}
 .gg-score{font-variant-numeric:tabular-nums;font-size:clamp(27px,2.55vw,44px);letter-spacing:1px;color:#fff8df;text-shadow:2px 3px #3d203c}
 .gg-score-caption{position:absolute;left:32%;right:34%;bottom:1%;font-size:clamp(7px,.58vw,10px);letter-spacing:.4px;color:#fff0ba;white-space:nowrap}
@@ -45,14 +45,14 @@ const CSS = `
 .gg-compass{width:100%;height:100%}
 .gg-map-location{position:absolute;left:12%;right:12%;bottom:5%;height:13%;display:grid;place-items:center;white-space:nowrap;font-size:clamp(11px,1.25vw,19px);color:#fff5d4;letter-spacing:.1px}
 .gg-gig-card{position:absolute;right:clamp(10px,1.2vw,23px);top:clamp(234px,19vw,316px);width:clamp(280px,23.5vw,390px);height:clamp(150px,12.4vw,208px);background:var(--gg-gigCard) center/100% 100% no-repeat}
-.gg-gig-header{position:absolute;top:9%;left:26%;right:5%;height:19%;display:grid;place-items:center;color:#ffcc43;font-size:clamp(16px,1.55vw,25px);white-space:nowrap;letter-spacing:.3px;-webkit-text-stroke:.6px #623645;text-shadow:2px 3px #583147}
-.gg-gig-clipboard{position:absolute;left:-28%;top:-33%;width:clamp(45px,4vw,67px);height:clamp(48px,4.5vw,72px)}
+.gg-gig-header{position:absolute;top:9%;left:27%;right:9%;height:19%;display:grid;place-items:center;color:#ffcc43;font-size:clamp(15px,1.4vw,23px);white-space:nowrap;letter-spacing:.3px;-webkit-text-stroke:.6px #623645;text-shadow:2px 3px #583147}
+.gg-gig-clipboard{position:absolute;left:-17%;top:-33%;width:clamp(45px,4vw,67px);height:clamp(48px,4.5vw,72px)}
 .gg-gig-clipboard img{width:100%;height:100%}
 .gg-gig-paper{position:absolute;left:19%;right:6%;top:39%;bottom:16%;display:flex;flex-direction:column;justify-content:center;overflow:hidden;color:#4e312b;text-shadow:none}
 .gg-gig-title{font-size:clamp(9px,.77vw,13px);font-weight:1000;line-height:1.15;text-transform:uppercase;letter-spacing:.4px;color:#a55c30;margin:0 0 3px}
 .gg-gig-task{font-size:clamp(12px,1.04vw,17px);line-height:1.15;font-weight:1000;margin:0;overflow-wrap:break-word;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .gg-gig-detail{font-size:clamp(8px,.68vw,11px);line-height:1.1;color:#93543e;margin-top:5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.gg-gig-footer{position:absolute;left:20%;right:7%;bottom:6%;height:11%;display:flex;align-items:center;justify-content:space-between;gap:5px;color:#fff2ad;font-size:clamp(8px,.75vw,11px);white-space:nowrap;text-shadow:1px 2px #583147}
+.gg-gig-footer{position:absolute;left:20%;right:7%;bottom:11%;height:11%;display:flex;align-items:center;justify-content:space-between;gap:5px;color:#fff2ad;font-size:clamp(8px,.75vw,11px);white-space:nowrap;text-shadow:1px 2px #583147}
 .gg-gig-wallet{display:flex;gap:3px;align-items:center}
 .gg-coin{width:clamp(13px,1.25vw,19px);height:clamp(13px,1.25vw,19px)}
 /* Progress is a live masked conic arc painted on top of the illustrated ring. */
@@ -63,7 +63,7 @@ const CSS = `
 .gg-stamina-label{margin-top:2px;color:#ffe8ad;font-size:clamp(13px,1.2vw,20px);line-height:1.1;transform:rotate(6deg);text-shadow:2px 2px #4b2840}
 .gg-stamina-value{font-size:clamp(8px,.72vw,12px);color:#fff7c9;margin-top:2px}
 .gg-hotbar{position:absolute;left:50%;bottom:clamp(3px,.6vw,10px);transform:translateX(-50%);width:clamp(500px,40vw,665px);height:clamp(126px,10.35vw,186px);background:var(--gg-hotbarTray) center/100% 100% no-repeat}
-.gg-hotbar-header{position:absolute;left:29%;right:28%;top:9%;height:23%;display:grid;place-items:center;color:#ffe4a3;font-size:clamp(17px,1.55vw,26px);line-height:1;white-space:nowrap;letter-spacing:.5px;text-shadow:2px 3px #5b2e42}
+.gg-hotbar-header{position:absolute;left:30%;right:24%;top:9%;height:23%;display:grid;place-items:center;padding-left:38px;color:#ffe4a3;font-size:clamp(17px,1.42vw,24px);line-height:1;white-space:nowrap;letter-spacing:.5px;text-shadow:2px 3px #5b2e42}
 .gg-hotbar-slots{position:absolute;left:11%;right:11%;top:37%;height:54%;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1.8%}
 .gg-slot{position:relative;min-width:0;min-height:0;border:11px solid transparent;border-image:var(--gg-hotbarSlot) 44 fill / 11px / 0 stretch}
 .gg-slot.is-selected{border-image-source:var(--gg-hotbarSlotSelected);z-index:1;filter:drop-shadow(0 0 4px #ffe450)}
@@ -71,8 +71,8 @@ const CSS = `
 .gg-slot-key{position:absolute;z-index:4;left:-14%;top:-16%;width:clamp(23px,2vw,34px);height:clamp(24px,2.1vw,36px);display:grid;place-items:center;border:8px solid transparent;border-image:var(--gg-keyBadge) 32 fill / 8px / 0 stretch;color:#633c26;font-size:clamp(11px,.94vw,16px);line-height:1;text-shadow:none}
 .gg-piece-art{position:absolute;width:74%;height:76%;left:13%;top:9%;filter:drop-shadow(0 3px 2px #3d2528a0)}
 .gg-slot-count{position:absolute;right:3%;bottom:0;z-index:3;font-size:clamp(12px,1.04vw,18px);line-height:1;color:#fff7da;text-shadow:2px 2px #33243e}
-.gg-slot-name{position:absolute;left:3%;bottom:0;z-index:2;max-width:63%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#ffe7aa;font-size:clamp(7px,.58vw,9px);text-shadow:1px 1px #513243}
-.gg-hotbar-foot{position:absolute;left:13%;right:13%;top:101%;display:flex;justify-content:space-between;gap:8px;font-size:clamp(8px,.67vw,10px);color:#fff0bc;white-space:nowrap}
+.gg-slot-name{position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden;white-space:nowrap}
+.gg-hotbar-foot{position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden;white-space:nowrap}
 .gg-hotbar-charge{position:absolute;left:16%;right:16%;bottom:4.5%;height:3px;border-radius:6px;background:#442742;overflow:hidden}
 .gg-hotbar-charge>div{height:100%;width:0;background:linear-gradient(90deg,#f6a32c,#fff071);transition:width .12s linear}
 /* The prompt, key badge and slot art are genuine nine-slice border images. */
@@ -419,7 +419,7 @@ export class GameHud {
       element.classList.toggle('is-active', label === state.tier);
     }
     this.comboTitle.textContent = state.comboTitle;
-    this.comboCount.textContent = state.comboCount ? '×' + state.comboCount + ' COMBO!' : 'START A COMBO!';
+    this.comboCount.textContent = state.comboCount ? '×' + state.comboCount + '\nCOMBO!' : 'START A COMBO!';
     this.comboInfo.textContent = state.comboCount ?
       '+' + state.comboPoints + ' COMBO POINTS · STYLE SCORE' : 'STYLE SCORE';
     this.score.textContent = state.score;
