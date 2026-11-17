@@ -19,6 +19,7 @@ const poseButtons = element('poseButtons');
 const tierButtons = element('tierButtons');
 const status = element('status');
 const modeButton = element('mode') as HTMLButtonElement;
+const circleButton = element('circle') as HTMLButtonElement;
 const pauseButton = element('pause') as HTMLButtonElement;
 const resetButton = element('reset') as HTMLButtonElement;
 const reference = element('lineup-image') as HTMLImageElement;
@@ -69,6 +70,8 @@ const art = characters[1]!;
 let clip: GoatClip = 'Idle';
 let tier: GoatTier = 'BILLY';
 let physicsMode = false;
+let circleMode = false;
+let circleSeconds = 0;
 let demoMotion: 'Idle' | 'Walk' | 'Run' = 'Idle';
 let paused = false;
 let yaw = -.48;
@@ -113,8 +116,12 @@ for (const name of TIERS) {
 function syncLineup(): void {
   const scale = TIER_PROFILES[tier].physicsScale;
   for (const [index, character] of characters.entries()) {
-    character.root.visible = !physicsMode || character === art;
-    character.root.position.x = physicsMode ? 0 : (index - 1) * 2.75 * scale;
+    character.root.visible = circleMode ? character === art :
+      !physicsMode || character === art;
+    if (!circleMode) {
+      character.root.position.set(physicsMode ? 0 : (index - 1) * 2.75 * scale, 0, 0);
+      character.root.rotation.y = 0;
+    }
   }
   pedestal.scale.setScalar(scale);
 }
@@ -127,11 +134,14 @@ function refreshPanel(): void {
     button.setAttribute('aria-pressed', String(name === tier));
   }
   modeButton.setAttribute('aria-pressed', String(physicsMode));
+  circleButton.setAttribute('aria-pressed', String(circleMode));
   pauseButton.setAttribute('aria-pressed', String(paused));
   modeButton.textContent = physicsMode ? 'Show three variants' : 'Enter real Rapier mode';
+  circleButton.textContent = circleMode ? 'Stop circle walk' : 'Walk circle · nose first';
   pauseButton.textContent = paused ? 'Resume animation' : 'Pause animation';
   const ready = characters.filter(character => character.isReady).length;
-  status.textContent = (physicsMode ? 'Rapier hero / ' + art.action.toUpperCase() :
+  status.textContent = (circleMode ? 'Walk circle / nose leads along tangent' :
+    physicsMode ? 'Rapier hero / ' + art.action.toUpperCase() :
     'Lineup / ' + clip.toUpperCase()) + ' · ' + tier +
     ' · ' + ready + '/3 GLBs loaded';
 }
@@ -139,12 +149,17 @@ function refreshPanel(): void {
 function selectTier(name: GoatTier): void {
   tier = name;
   if (physicsMode) goat.resize(TIER_PROFILES[name].physicsScale);
-  else for (const character of characters) character.setPreviewClip(clip, tier);
+  else for (const character of characters)
+    character.setPreviewClip(circleMode ? 'Walk' : clip, tier);
   syncLineup();
   refreshPanel();
 }
 
 function selectClip(name: GoatClip): void {
+  if (circleMode) {
+    circleMode = false;
+    syncLineup();
+  }
   clip = name;
   if (!physicsMode) {
     for (const character of characters) character.setPreviewClip(name, tier);
@@ -174,6 +189,7 @@ function selectClip(name: GoatClip): void {
 
 modeButton.addEventListener('click', () => {
   physicsMode = !physicsMode;
+  circleMode = false;
   demoMotion = 'Idle';
   held.clear();
   goat.locomotion.setInput({ z: 0, x: 0, sprint: false });
@@ -184,6 +200,20 @@ modeButton.addEventListener('click', () => {
     art.bind(null);
     for (const character of characters) character.setPreviewClip(clip, tier);
   }
+  syncLineup();
+  refreshPanel();
+});
+circleButton.addEventListener('click', () => {
+  if (physicsMode) {
+    physicsMode = false;
+    held.clear();
+    goat.locomotion.setInput({ z: 0, x: 0, sprint: false });
+    art.bind(null);
+  }
+  circleMode = !circleMode;
+  if (circleMode) circleSeconds = 0;
+  for (const character of characters)
+    character.setPreviewClip(circleMode ? 'Walk' : clip, tier);
   syncLineup();
   refreshPanel();
 });
@@ -252,6 +282,16 @@ function frame(now: number): void {
       art.update(dt, step.alpha);
     } else art.update(0);
   } else {
+    if (circleMode) {
+      // Integrate physics forward(yaw) = (sin(yaw), 0, -cos(yaw)):
+      // x = -r cos(yaw), z = -r sin(yaw). The nose leads the tangent
+      // at every point, with 1.6 m × 0.75 rad/s = 1.2 m/s at Billy size.
+      if (!paused) circleSeconds += dt;
+      const heading = circleSeconds * .75;
+      const radius = 1.6 * size;
+      art.root.position.set(-radius * Math.cos(heading), 0, -radius * Math.sin(heading));
+      art.root.rotation.y = heading;
+    }
     for (const character of characters) character.update(paused ? 0 : dt);
   }
   if (Math.floor(now / 350) !== Math.floor((now - dt * 1000) / 350)) refreshPanel();
