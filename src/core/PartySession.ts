@@ -161,6 +161,14 @@ export class PartySession {
         this.game.physics.raw.removeImpulseJoint(joint, true);
       }
     }
+    // Rapier's body remover iterates attached collider handles while mutating
+    // collider sets. In crowded jointed scenes pre-removing those colliders
+    // avoids a WASM nested-mutable-borrow (removeRigidBody/numColliders).
+    const colliders = [...this.bots.values()].flatMap(bot =>
+      bot.goat.bodies.flatMap(body =>
+        Array.from({ length: body.numColliders() }, (_, i) => body.collider(i))
+          .filter(collider => collider !== null)));
+    for (const collider of colliders) this.game.physics.raw.removeCollider(collider, true);
     for (const bot of this.bots.values()) {
       this.game.water.untrack(bot.goat.torso);
       bot.goat.dispose();
