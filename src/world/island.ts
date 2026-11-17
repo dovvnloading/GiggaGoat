@@ -48,6 +48,8 @@ function gradeBuildingFootprints(island: IslandData, props: readonly PropDescrip
   const scale = island.size / 600;
   for (const prop of props) {
     if (!buildings.has(prop.kind) || prop.body.type !== 'static') continue;
+    // Stalls above the pier must not stamp sand into the deck or drop to ground Y.
+    if (prop.poiId === 'baa-ardwalk' && prop.kind === 'booth') continue;
     // A bounding circle covers every corner even when the facade is rotated.
     const radius = Math.hypot(prop.size.x, prop.size.z) * 0.5 + 5 * scale;
     stampPlot(island, {
@@ -59,6 +61,8 @@ function gradeBuildingFootprints(island: IslandData, props: readonly PropDescrip
   }
   for (const prop of props) {
     if (!buildings.has(prop.kind) || prop.body.type !== 'static') continue;
+    // Stalls above the pier must not stamp sand into the deck or drop to ground Y.
+    if (prop.poiId === 'baa-ardwalk' && prop.kind === 'booth') continue;
     const pos = prop.transform.position;
     pos.y = gridSample(island, pos.x, pos.z) + prop.size.y * 0.5;
   }
