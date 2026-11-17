@@ -38,9 +38,10 @@ export class GameView {
   private readonly botMuzzleMaterial = new THREE.MeshToonMaterial({ color: 0xfff5df });
   private readonly boardMarkers = new THREE.Group();
   private readonly gigMarkers = new THREE.Group();
+  private readonly partyMarkers = new THREE.Group();
   private readonly gigProps = new Map<string, THREE.Mesh>();
   private readonly heistBales = new Map<string, THREE.Mesh>();
-  private readonly textTextures: THREE.Texture[] = [];
+  private readonly textTextures = new Set<THREE.Texture>();
   private displayedGig = -1;
   private displayedMode: string | null = null;
   private currentSettings: GameSettings = { mouseSensitivity: 1, invertY: false, fov: 67,
@@ -95,6 +96,7 @@ export class GameView {
     this.createSurfaceMarkers();
     this.createBoardMarkers();
     this.scene.add(this.gigMarkers);
+    this.scene.add(this.partyMarkers);
     const p = vec(game.goat.torso.translation());
     this.cameraTarget.copy(p);
     this.cameraPosition.copy(p).add(new THREE.Vector3(0, 3.3, 7));
@@ -323,7 +325,7 @@ export class GameView {
       ctx.fillText(label.slice(0, 20), 256, 67, 475);
     }
     const texture = new THREE.CanvasTexture(canvas);
-    this.textTextures.push(texture);
+    this.textTextures.add(texture);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
       map: texture, transparent: true, depthWrite: false,
     }));
@@ -339,6 +341,8 @@ export class GameView {
           if (Array.isArray(object.material)) object.material.forEach(m => m.dispose());
           else object.material.dispose();
         } else if (object instanceof THREE.Sprite) {
+          const map = object.material.map;
+          if (map) { map.dispose(); this.textTextures.delete(map); }
           object.material.dispose();
         }
       });
@@ -473,6 +477,42 @@ export class GameView {
         mesh.removeFromParent();
       }
       this.heistBales.clear(); this.displayedMode = mode;
+      this.clearGroup(this.partyMarkers);
+      if (match?.mode === 'king-of-the-peak') {
+        const summit = match.view().arena.summit;
+        const radius = match.view().config.peakRadius;
+        const zone = new THREE.Group();
+        zone.position.copy(vec(summit));
+        const ring = new THREE.Mesh(new THREE.RingGeometry(radius - .35, radius, 64),
+          new THREE.MeshBasicMaterial({ color: 0xffd833, side: THREE.DoubleSide,
+            transparent: true, opacity: .8, depthWrite: false }));
+        ring.rotation.x = -Math.PI / 2;
+        zone.add(ring);
+        zone.add(this.textSprite('HOLD THE PEAK!', 6, 1.3, 4));
+        this.partyMarkers.add(zone);
+      } else if (match?.mode === 'hay-heist') {
+        for (const barn of match.view().arena.barns) {
+          const zone = new THREE.Group();
+          zone.position.copy(vec(barn.position));
+          const color = barn.teamId === 'red' ? 0xff7890 : 0x68cdff;
+          const ring = new THREE.Mesh(new THREE.RingGeometry(3.7, 4.2, 36),
+            new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide,
+              transparent: true, opacity: .8, depthWrite: false }));
+          ring.rotation.x = -Math.PI / 2;
+          zone.add(ring);
+          zone.add(this.textSprite(barn.teamId.toUpperCase() + ' GOAL', 4.7, 1.1, 3.6));
+          this.partyMarkers.add(zone);
+        }
+      }
+    }
+    if (match?.mode === 'king-of-the-peak') {
+      const zone = this.partyMarkers.children[0]?.children[0];
+      if (zone instanceof THREE.Mesh && zone.material instanceof THREE.MeshBasicMaterial) {
+        const peak = match.toJSON().peak;
+        zone.material.color.setHex(peak?.contested ? 0xff7590 :
+          peak?.ownerId === 'player' ? 0x79ffd1 : 0xffd833);
+        zone.material.opacity = .62 + .28 * Math.sin(this.game.physics.time * 3);
+      }
     }
     if (match?.mode === 'hay-heist') {
       for (const bale of match.bales) {
@@ -677,6 +717,7 @@ export class GameView {
     this.botMuzzleMaterial.dispose();
     this.clearGroup(this.boardMarkers);
     this.clearGroup(this.gigMarkers);
+    this.clearGroup(this.partyMarkers);
     for (const mesh of this.gigProps.values()) {
       mesh.removeFromParent(); mesh.geometry.dispose(); (mesh.material as THREE.Material).dispose();
     }
