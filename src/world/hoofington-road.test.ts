@@ -42,7 +42,28 @@ describe('Hoofington E1: road surface and painted crossing', () => {
       const view = createWorldScene(island);
       try {
         const intrusions: string[] = [];
-        for (const name of ['paths-trail', 'paved-village-sidewalks', 'raised-stone-curbs']) {
+        const inspectTriangles = (mesh: THREE.Mesh): void => {
+          const positions = mesh.geometry.getAttribute('position');
+          const triangles = mesh.geometry.getIndex()!;
+          for (let i = 0; i < triangles.count; i += 3) {
+            const a = triangles.getX(i), b = triangles.getX(i + 1);
+            const c = triangles.getX(i + 2);
+            const footprint = {
+              minX: Math.min(positions.getX(a), positions.getX(b), positions.getX(c)),
+              maxX: Math.max(positions.getX(a), positions.getX(b), positions.getX(c)),
+              minZ: Math.min(positions.getZ(a), positions.getZ(b), positions.getZ(c)),
+              maxZ: Math.max(positions.getZ(a), positions.getZ(b), positions.getZ(c)),
+            };
+            if (overlaps(footprint)) intrusions.push(mesh.name + '[' + i / 3 + ']');
+          }
+        };
+
+        // Trail ribbons are one indexed mesh; the remaining art uses instances.
+        const trail = view.group.getObjectByName('paths-trail') as THREE.Mesh;
+        expect(trail).toBeInstanceOf(THREE.Mesh);
+        expect(trail).not.toBeInstanceOf(THREE.InstancedMesh);
+        inspectTriangles(trail);
+        for (const name of ['paved-village-sidewalks', 'raised-stone-curbs']) {
           const mesh = view.group.getObjectByName(name) as THREE.InstancedMesh;
           expect(mesh, name).toBeInstanceOf(THREE.InstancedMesh);
           for (let i = 0; i < mesh.count; i++) {
@@ -54,19 +75,7 @@ describe('Hoofington E1: road surface and painted crossing', () => {
         const details = view.group.getObjectByName('merged-ground-details') as THREE.Group;
         expect(details).toBeInstanceOf(THREE.Group);
         for (const item of details.children) {
-          if (!(item instanceof THREE.Mesh)) continue;
-          const positions = item.geometry.getAttribute('position');
-          const triangles = item.geometry.getIndex()!;
-          for (let i = 0; i < triangles.count; i += 3) {
-            const a = triangles.getX(i), b = triangles.getX(i + 1), c = triangles.getX(i + 2);
-            const footprint = {
-              minX: Math.min(positions.getX(a), positions.getX(b), positions.getX(c)),
-              maxX: Math.max(positions.getX(a), positions.getX(b), positions.getX(c)),
-              minZ: Math.min(positions.getZ(a), positions.getZ(b), positions.getZ(c)),
-              maxZ: Math.max(positions.getZ(a), positions.getZ(b), positions.getZ(c)),
-            };
-            if (overlaps(footprint)) intrusions.push(item.name + '[' + i / 3 + ']');
-          }
+          if (item instanceof THREE.Mesh) inspectTriangles(item);
         }
 
         // The authored flat/large props must stay on the neighbouring lawns.

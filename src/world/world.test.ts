@@ -163,7 +163,11 @@ describe('rendering and Rapier integration', () => {
     const view = createWorldScene(island, { chunkSegments: 16 });
     expect(view.chunks.length).toBe(16);
     expect(view.group.getObjectByName('props-tree-pine')).toBeInstanceOf(THREE.InstancedMesh);
-    expect(view.group.getObjectByName('paths-road')).toBeInstanceOf(THREE.InstancedMesh);
+    for (const name of ['paths-road', 'paths-trail']) {
+      const surface = view.group.getObjectByName(name);
+      expect(surface).toBeInstanceOf(THREE.Mesh);
+      expect(surface).not.toBeInstanceOf(THREE.InstancedMesh);
+    }
     view.setDayNight(0.02);
     const nightLight = view.sun.intensity;
     view.setDayNight(0.5);
