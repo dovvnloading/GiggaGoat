@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { PropDescriptor, PropKind } from './types';
+import { buildArchitecture, isArchitecturalKind } from './visual-architecture';
 
 export interface PropBatch {
   sphere: THREE.Sphere;
@@ -88,39 +89,7 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
   const blob = (x: number, y: number, z: number, sx: number, sy: number, sz: number,
     c = 0xffffff): void =>
     append(new THREE.DodecahedronGeometry(0.56, 0), x, y, z, sx, sy, sz, c);
-  if (['barn', 'house', 'shop', 'booth', 'cottage', 'control-house'].includes(kind)) {
-    box(0, -0.13, 0, 0.9, 0.74, 0.88);
-    box(0, 0.27, 0, 1.05, 0.08, 1.04, kind === 'barn' ? 0x815b55 : 0xb16c61);
-    if (kind === 'shop') {
-      // Flat, climbable shop roofs align with the rooftop parkour colliders.
-      box(0, 0.39, 0, 1.01, 0.13, 1.0, 0xa77773);
-      for (const x of [-0.47, 0.47]) {
-        box(x, 0.47, 0, 0.06, 0.15, 1.0, 0xb58a81);
-      }
-      for (const z of [-0.46, 0.46]) {
-        box(0, 0.47, z, 1.0, 0.15, 0.06, 0xb58a81);
-      }
-    } else {
-      cone(0, 0.46, 0, 1.4, 0.40, 1.34,
-        kind === 'barn' ? 0x864750 : 0xc67c68, 4);
-    }
-    box(0, -0.31, 0.457, 0.23, 0.33, 0.04, 0x795847);
-    for (const x of [-0.30, 0.30]) {
-      box(x, 0, 0.46, 0.18, 0.22, 0.034, 0x83c4d5);
-      box(x, 0, 0.484, 0.022, 0.22, 0xeeeecc);
-      box(x, 0, 0.485, 0.18, 0.025, 0xeeeecc);
-    }
-    if (kind === 'shop' || kind === 'booth') {
-      box(0, -0.10, 0.55, 0.97, 0.13, 0.25, 0xf5dcc3);
-      for (let i = 0; i < 5; i++) {
-        box(-0.39 + i * 0.19, -0.15, 0.56, 0.12, 0.13, 0.24,
-          i % 2 ? 0xf3767d : 0xffe3a0);
-      }
-    }
-    if (kind === 'barn') box(0, -0.28, 0.49, 0.4, 0.41, 0.04, 0xf1dec1);
-    if (kind === 'house' || kind === 'cottage') box(0.29, 0.52, -0.19,
-      0.14, 0.23, 0.15, 0xb67b63);
-  } else if (kind === 'silo') {
+  if (kind === 'silo') {
     cyl(0, -0.1, 0, 0.85, 0.8, 0.85, 0xdedcd0, 12);
     cone(0, 0.4, 0, 0.96, 0.26, 0.96, 0xb8c5ca, 12);
     for (let i = 0; i < 4; i++) cyl(0, -0.3 + i * 0.19, 0,
@@ -364,8 +333,7 @@ const SHADOW_KINDS = new Set<PropKind>([
   'satellite-dish', 'ferris-wheel',
 ]);
 const OUTLINE_KINDS = new Set<PropKind>([
-  'barn', 'house', 'shop', 'windmill', 'lighthouse',
-  'ferris-wheel', 'crane', 'satellite-dish',
+  'windmill', 'lighthouse', 'ferris-wheel', 'crane', 'satellite-dish',
 ]);
 function sways(kind: PropKind): boolean {
   return ['tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'bunting', 'flag'].includes(kind);
@@ -392,8 +360,9 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
   const windUniforms: Array<{ value: number }> = [];
   const dummy = new THREE.Object3D();
   for (const [kind, entries] of buckets) {
+    const architecture = isArchitecturalKind(kind) ? buildArchitecture(kind) : null;
     let geometry = geometries.get(kind);
-    if (!geometry) { geometry = geometryFor(kind); geometries.set(kind, geometry); }
+    if (!geometry) { geometry = architecture?.shell ?? geometryFor(kind); geometries.set(kind, geometry); }
     let material = materials.get(kind);
     if (!material) {
       material = new THREE.MeshToonMaterial({
@@ -439,6 +408,25 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     mesh.computeBoundingSphere();
     group.add(mesh);
     const drawn: THREE.InstancedMesh[] = [mesh];
+    if (architecture) {
+      // A second instanced draw keeps paint colours on only the plaster shell:
+      // architectural window glass, flower boxes and tiles stay their own hues.
+      // These are all static scenery; the core's dynamic-prop binding still
+      // sees exactly one props-<kind> mesh in descriptor order.
+      const details = new THREE.InstancedMesh(architecture.details, material, entries.length);
+      details.name = 'architecture-details-' + kind;
+      details.receiveShadow = true;
+      details.castShadow = false;
+      const transform = new THREE.Matrix4();
+      for (let i = 0; i < entries.length; i++) {
+        mesh.getMatrixAt(i, transform);
+        details.setMatrixAt(i, transform);
+      }
+      details.instanceMatrix.needsUpdate = true;
+      details.computeBoundingSphere();
+      group.add(details);
+      drawn.push(details);
+    }
     if (OUTLINE_KINDS.has(kind)) {
       const hull = new THREE.InstancedMesh(geometry, outlineMat, entries.length);
       hull.name = 'outline-' + kind;
