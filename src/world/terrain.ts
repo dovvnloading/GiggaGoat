@@ -65,6 +65,12 @@ export function makeTerrain(seed: string | number, size: number, resolution: num
         const roughness = noise.fractal(u / 9, v / 9, 3) *
           (0.48 + 0.95 * smoothstep(16, 28, isletRadius));
         h = Math.max(h, cliff + roughness);
+        // The underlying broad west-coast shelf can otherwise remain +5 m
+        // high exactly where the cape bridge crosses. Force a submerged
+        // annulus with feathered inner/outer edges, not an exposed sand spit.
+        const channel = smoothstep(25.5, 28.5, isletRadius) *
+          (1 - smoothstep(36, 40, isletRadius));
+        h = h + (Math.min(h, -3.2) - h) * channel;
       }
 
       heights[gridIndex(resolution, ix, iz)] = h * scale;
