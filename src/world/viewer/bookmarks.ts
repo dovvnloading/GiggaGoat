@@ -25,7 +25,7 @@ export const ART_BOOKMARKS: readonly ArtBookmark[] = [
     camera: { x: -147, y: 11.5, z: 171 }, target: { x: -147, y: 10, z: 91 },
     fov: 64, day: 0.53, tide: 0 },
   { id: '09', label: '09 · Baa-ardwalk', image: '09_poi_baaardwalk.png',
-    camera: { x: 109, y: 22, z: 300 }, target: { x: 52, y: 12, z: 230 },
+    camera: { x: 112, y: 21, z: 187 }, target: { x: 60, y: 13, z: 266 },
     fov: 61, day: 0.29, tide: 0 },
   { id: '10', label: '10 · Crane Yard', image: '10_poi_crane_yard.png',
     camera: { x: 241, y: 29, z: 24 }, target: { x: 185, y: 15, z: -47 },
