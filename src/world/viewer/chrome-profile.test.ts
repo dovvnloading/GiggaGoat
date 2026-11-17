@@ -208,6 +208,22 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
       expect(downtown.triangles).toBeGreaterThan(5000);
       expect(downtown.signs).toBe(10);
       expect(downtown.awnings).toBe(true);
+      // Wait for the *actual* prop GLBs, not only the Downtown facades.
+      // This prevents a fast procedural fallback from disguising broken paths.
+      const library = await until(async () => {
+        const response = await send('Runtime.evaluate', {
+          expression: 'window.__worldProfile.propLibraryState()',
+          returnByValue: true,
+        });
+        const state = response.result?.value as {
+          ready: boolean; loaded: number; failed: number; pending: number;
+        } | undefined;
+        return state?.ready ? state : null;
+      }, 60000);
+      expect(library.pending).toBe(0);
+      expect(library.loaded).toBeGreaterThan(50);
+      expect(library.failed).toBe(0);
+      console.log('WORLD_PROP_LIBRARY ' + JSON.stringify(library));
       await send('Runtime.evaluate', {
         expression: '(() => { const menu = document.getElementById("bookmark"); ' +
           'menu.value = "11"; menu.dispatchEvent(new Event("change", ' +
@@ -290,6 +306,8 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
       const report = answer.result?.value as Report | undefined;
       expect(report?.bookmarks).toHaveLength(ART_BOOKMARKS.length);
       expect(report?.dpr).toBe(1.5);
+      expect(report!.bookmarks.find(mark => mark.id === '11')?.drawCalls)
+        .toBeLessThanOrEqual(179);
       // Library prop batches can remove their outline draws before profiling;
       // toggling outlines off may then leave the already-optimized count equal.
       expect(report!.crane.noOutlines!.drawCalls)
