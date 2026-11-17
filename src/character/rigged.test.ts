@@ -1,11 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
+import { forward } from '../physics/math';
 import { GoatCharacter } from './GoatCharacter';
 import { LegacyGoatCharacter } from './LegacyGoatCharacter';
 import {
-  GOAT_CLIPS, GOAT_GLB_FILES, GOAT_VARIANTS, clipForAction,
-  locomotionBlend, selectGoatVariant,
+  GOAT_CLIPS, GOAT_GLB_FILES, GOAT_VARIANTS, alignRiggedSceneForward, clipForAction,
+  locomotionBlend, selectGoatVariant, type GoatVariant,
 } from './rigged';
 
 describe('GLB variant selection', () => {
@@ -122,4 +124,52 @@ describe('checked-in GLB animation contract', () => {
     expect(new Set(gltf.animations?.map(animation => animation.name)))
       .toEqual(new Set(GOAT_CLIPS));
   });
+});
+
+/** Read the actual exported scene root, not an assumed mock GLB orientation. */
+function exportedArmatureRotation(variant: GoatVariant): THREE.Quaternion {
+  const bytes = readFileSync(resolve(process.cwd(), 'public/assets/characters/goat',
+    GOAT_GLB_FILES[variant]));
+  const length = bytes.readUInt32LE(12);
+  const gltf = JSON.parse(bytes.toString('utf8', 20, 20 + length)) as {
+    scene?: number;
+    scenes?: { nodes?: number[] }[];
+    nodes?: { name?: string; rotation?: number[] }[];
+  };
+  const roots = gltf.scenes?.[gltf.scene ?? 0]?.nodes ?? [];
+  const armature = roots.map(index => gltf.nodes?.[index])
+    .find(node => node?.name === 'purebind_armature');
+  if (!armature?.rotation) throw new Error(variant + ' GLB has no exported armature rotation');
+  return new THREE.Quaternion().fromArray(armature.rotation);
+}
+
+describe('rigged GLB heading matches physical forward', () => {
+  it.each(GOAT_VARIANTS)('%s renders its local -Z nose in the travel direction at cardinal yaws',
+    variant => {
+      const bakedRotation = exportedArmatureRotation(variant);
+      // Without the correction this exported 180° root rotation faces backward.
+      expect(new THREE.Vector3(0, 0, -1).applyQuaternion(bakedRotation).z)
+        .toBeGreaterThan(.999);
+
+      const rigModel = new THREE.Group();
+      const clonedScene = new THREE.Group();
+      const armature = new THREE.Group();
+      armature.quaternion.copy(bakedRotation);
+      clonedScene.add(armature);
+      rigModel.add(clonedScene);
+      alignRiggedSceneForward(clonedScene);
+
+      for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+        // Physics forward(yaw) goes toward +X for +PI/2, whereas a positive
+        // Three.js Y rotation turns local -Z toward -X. The balanced torso
+        // therefore has rotation -yaw for the corresponding travel heading.
+        rigModel.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -yaw);
+        rigModel.updateMatrixWorld(true);
+        const nose = new THREE.Vector3(0, 0, -1)
+          .transformDirection(armature.matrixWorld);
+        const wanted = forward(yaw);
+        expect(nose.distanceTo(new THREE.Vector3(wanted.x, wanted.y, wanted.z)),
+          variant + ' yaw=' + yaw).toBeLessThan(1e-5);
+      }
+    });
 });
