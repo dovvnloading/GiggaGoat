@@ -32,8 +32,8 @@ export interface WorldScene {
   setTideLevel(level: number): void;
   /** Call with elapsed seconds to animate sea, waterfalls and foliage. */
   update(time: number): void;
-  /** Frustum culling, vegetation distance LOD and a half-resolution terrain LOD. */
-  updateCulling(camera: THREE.Camera): void;
+  /** Frustum/terrain LOD; true when camera culling changed shadow-caster visibility. */
+  updateCulling(camera: THREE.Camera): boolean;
   dispose(): void;
 }
 export type { LightingPreset } from './visual-sky';
@@ -357,11 +357,12 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     waterVisuals.update(elapsed, tide);
     props.update(elapsed);
   }
-  function updateCulling(camera: THREE.Camera): void {
+  function updateCulling(camera: THREE.Camera): boolean {
     camera.updateMatrixWorld();
     matrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     frustum.setFromProjectionMatrix(matrix);
     const pos = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
+    let shadowCastersChanged = false;
     for (const chunk of chunks) {
       const dist = chunk.sphere.center.distanceTo(pos);
       chunk.mesh.visible = dist < cullingDistance + chunk.sphere.radius &&
@@ -373,8 +374,12 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
       const distance = batch.sphere.center.distanceTo(pos);
       const visible = distance < (batch.nearOnly ? island.size * 0.32 : cullingDistance) +
         batch.sphere.radius && frustum.intersectsSphere(batch.sphere);
-      for (const mesh of batch.meshes) mesh.visible = visible;
+      for (const mesh of batch.meshes) {
+        if (mesh.castShadow && mesh.visible !== visible) shadowCastersChanged = true;
+        mesh.visible = visible;
+      }
     }
+    return shadowCastersChanged;
   }
   function dispose(): void {
     const geometries = new Set<THREE.BufferGeometry>();

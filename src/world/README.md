@@ -76,6 +76,8 @@ Start the existing Vite dev server with `npm run dev`, then open:
 
 This standalone page is deliberately not mounted in the application's root `index.html`. It provides a seed/regenerate input, orbit and WASD flying cameras, POI labels, live collider wireframes (including terrain), tide scrubber with dry-land area and adjustable day/night lighting. It never imports another lane. The regular Vite production build remains controlled by the existing root entry point.
 
+**Shadow performance:** The viewer's terrain, buildings and shadow-casting prop transforms are static, but Three.js normally re-renders its 1536×1536 directional shadow map every animation frame. The viewer now caches this map and refreshes it when the island is regenerated, sun direction/daylight changes, or camera culling changes which shadow casters are present. Camera movement alone does not require rebuilding shadows if the casters remain the same. The animation loop and the all-bookmarks image exporter share this invalidation path. This keeps the same shadow resolution and scene detail; the game integrator may retain dynamic shadows because its actors move.
+
 ## Checks
 
 `npm run ci` runs strict TypeScript, Vitest and Vite build without extra dependencies. `world.test.ts` covers determinism, seed differentiation, POI land/clearance, network continuity and slope limits, plot grading, spawn/relic safety and variety, monotonic tides, scene creation without the DOM, and an initialized headless Rapier dropped-ball collision against the generated terrain.
