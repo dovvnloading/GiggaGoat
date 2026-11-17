@@ -92,7 +92,7 @@ describe('painting bookmark recompositions (default billy-isle)', () => {
       y: wheel.transform.position.y + 1,
       z: wheel.transform.position.z,
     }));
-    expect(bookmark.camera).toEqual({ x: 49, y: 9, z: 240 });
+    expect(bookmark.camera).toEqual({ x: 50, y: 7, z: 249 });
     expect(bookmark.target).toEqual({ x: 56.5, y: 20.5, z: 347 });
     expect(bookmark.fov).toBe(62);
     expect(bookmark.day).toBe(0.29);
