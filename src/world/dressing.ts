@@ -380,6 +380,13 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
         Math.abs(dx * s + dz * c) <= deck.size.z / 2;
     });
 
+  // One metre beyond the authored Crane Yard fence on all four sides.
+  // This is a scenery-only exclusion; the yard layout is not modified.
+  const craneYard = sites.get('crane-yard')!;
+  const inCraneYard = (x: number, z: number): boolean =>
+    Math.abs(x - craneYard.x) <= 41 * scale &&
+    Math.abs(z - craneYard.z) <= 37 * scale;
+
   // Seeded hedges, trees, flowers and windblown grass: consistent density, clear paths.
   const vegetationCount = Math.max(160, Math.round(440 * scale));
   for (let attempt = 0, accepted = 0; attempt < vegetationCount * 8 &&
@@ -412,7 +419,8 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     const position = near?.id === farm &&
       (kind === 'flower' || kind === 'bush' || kind.startsWith('tree-'))
       ? clearHoofingtonFoliage(x, z, width * scale, yaw) : { x, z };
-    if (onBoardwalkDeck(position.x, position.z)) continue;
+    if (onBoardwalkDeck(position.x, position.z) ||
+        inCraneYard(position.x, position.z)) continue;
     place(kind, position.x, position.z, width, height, width, near?.id,
       { shape: 'cylinder', yaw });
     accepted++;
