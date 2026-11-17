@@ -28,7 +28,10 @@ export type PropKind =
   | 'ac-unit' | 'water-tower' | 'mushroom' | 'stump' | 'lookout'
   | 'control-house' | 'dock' | 'cottage' | 'shipwreck'
   | 'cave-mouth' | 'bush' | 'flower' | 'grass-tuft' | 'rope-rail'
-  | 'stepping-stone' | 'chimney' | 'signboard';
+  | 'stepping-stone' | 'chimney' | 'signboard'
+  | 'concrete-slab' | 'concrete-column' | 'yard-scaffold' | 'safety-rail'
+  | 'chain-fence' | 'crane-jib' | 'crane-cab' | 'crane-cable'
+  | 'red-girder' | 'pipe-stack' | 'site-barrier';
 
 export type BodyDescriptor =
   | { type: 'static' }

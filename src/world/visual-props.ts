@@ -46,6 +46,9 @@ const COLORS: Partial<Record<PropKind, number>> = {
 const foliage = new Set<PropKind>([
   'tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'mushroom',
   'gnome', 'ferris-wheel', 'lighthouse', 'bunting',
+  'crane', 'concrete-slab', 'concrete-column', 'yard-scaffold', 'safety-rail',
+  'chain-fence', 'crane-jib', 'crane-cab', 'crane-cable', 'red-girder',
+  'pipe-stack', 'site-barrier',
 ]);
 
 /** Build one reusable, genuinely compound silhouette per prop kind. */
@@ -89,6 +92,13 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
   const blob = (x: number, y: number, z: number, sx: number, sy: number, sz: number,
     c = 0xffffff): void =>
     append(new THREE.DodecahedronGeometry(0.56, 0), x, y, z, sx, sy, sz, c);
+  // Thin diagonal bars for open steel trusses and chain-link panels.
+  const brace = (x0: number, y0: number, x1: number, y1: number,
+    z: number, thickness: number, color: number): void => {
+    const length = Math.hypot(x1 - x0, y1 - y0);
+    box((x0 + x1) / 2, (y0 + y1) / 2, z, length, thickness, thickness,
+      color, Math.atan2(y1 - y0, x1 - x0));
+  };
   if (kind === 'silo') {
     cyl(0, -0.1, 0, 0.85, 0.8, 0.85, 0xdedcd0, 12);
     cone(0, 0.4, 0, 0.96, 0.26, 0.96, 0xb8c5ca, 12);
@@ -140,17 +150,144 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
         0xc6d7d8, side * 0.4);
     }
   } else if (kind === 'crane') {
-    for (let i = 0; i < 8; i++) {
-      box(0, -0.44 + i * 0.13, 0, 0.35, 0.04, 0.35, 0xffd833);
-      box(0, -0.37 + i * 0.13, 0, 0.04, 0.16, 0.25, 0xc2933b,
-        (i % 2 ? -1 : 1) * 0.38);
+    // Free-standing lattice tower: thick square legs, open cross-bracing,
+    // yellow collars and a grounded striped foot. The horizontal jib is an
+    // independent collider/visual, not squeezed into this mast's envelope.
+    for (const x of [-0.35, 0.35]) for (const z of [-0.35, 0.35]) {
+      box(x, 0, z, 0.09, 0.96, 0.09, 0xffbf22);
     }
-    for (const x of [-0.17, 0.17]) for (const z of [-0.17, 0.17]) {
-      box(x, 0, z, 0.045, 0.98, 0.045, 0xc99c4a);
+    for (let i = 0; i <= 10; i++) {
+      const y = -0.44 + i * 0.088;
+      for (const z of [-0.35, 0.35])
+        box(0, y, z, 0.79, 0.022, 0.045, 0xffdd45);
+      for (const x of [-0.35, 0.35])
+        box(x, y, 0, 0.045, 0.022, 0.79, 0xffd136);
+      if (i < 10) {
+        const next = y + 0.088;
+        for (const z of [-0.35, 0.35])
+          brace(i % 2 ? 0.35 : -0.35, y, i % 2 ? -0.35 : 0.35,
+            next, z, 0.022, 0xd99b12);
+      }
     }
-    box(0.13, 0.47, 0, 0.96, 0.07, 0.22, 0xffd833);
-    box(0.43, 0.31, 0, 0.03, 0.30, 0.03, 0x495264);
-    box(0.43, 0.13, 0, 0.14, 0.04, 0.12, 0x495264);
+    box(0, -0.48, 0, 0.99, 0.038, 0.99, 0x555b66);
+    for (const x of [-0.37, 0.37])
+      box(x, -0.479, 0.42, 0.18, 0.035, 0.1, 0xffd344);
+    box(0, 0.47, 0, 0.93, 0.055, 0.93, 0xfcc032);
+    cyl(0, 0.50, 0, 0.43, 0.07, 0.43, 0x4b5661, 10);
+  } else if (kind === 'crane-jib') {
+    // 3-D triangular lattice, a much longer and lighter silhouette than a
+    // solid yellow cuboid. Wind-bracing is merged into one instanced mesh.
+    const yellow = 0xffce2d, highlight = 0xffe063, shade = 0xc8910e;
+    for (const z of [-0.32, 0.32]) {
+      box(0, -0.25, z, 0.97, 0.065, 0.045, yellow);
+      box(0, 0.23, z, 0.97, 0.055, 0.045, highlight);
+      for (let i = 0; i < 15; i++) {
+        const x0 = -0.48 + i * 0.064;
+        const x1 = x0 + 0.064;
+        brace(x0, -0.22, x1, 0.20, z, 0.022, i % 2 ? shade : yellow);
+        if (i % 3 === 0)
+          box(x0, 0, z, 0.02, 0.50, 0.035, yellow);
+      }
+    }
+    for (let i = 0; i <= 15; i++) {
+      const x = -0.48 + i * 0.064;
+      box(x, 0.22, 0, 0.019, 0.04, 0.71, highlight);
+      if (i % 3 === 0) box(x, -0.25, 0, 0.026, 0.045, 0.71, yellow);
+    }
+    // Trolley and travel wheels at the load end.
+    box(0.34, -0.29, 0, 0.065, 0.12, 0.59, 0x677078);
+    for (const z of [-0.31, 0.31])
+      cyl(0.34, -0.34, z, 0.065, 0.055, 0.065, 0x444d57, 8);
+  } else if (kind === 'crane-cab') {
+    box(0, 0, 0, 0.94, 0.80, 0.83, 0xffc733);
+    box(0, -0.43, 0, 1, 0.12, 0.94, 0x626c72);
+    box(0, 0.44, 0, 1, 0.085, 0.93, 0xffde58);
+    box(0, 0.045, 0.435, 0.78, 0.64, 0.018, 0x75c6e5);
+    box(0.475, 0.045, 0, 0.022, 0.64, 0.69, 0x8fd1eb);
+    box(0, 0.04, 0.45, 0.045, 0.65, 0.028, 0xe8df9e);
+    box(0, 0.03, 0.46, 0.81, 0.032, 0.028, 0xd7e1e4);
+  } else if (kind === 'crane-cable') {
+    cyl(0, 0, 0, 0.52, 0.995, 0.52, 0x38424a, 6);
+  } else if (kind === 'red-girder') {
+    // Long red I-beam carried horizontally below the hoist cable.
+    box(0, 0, 0, 0.98, 0.21, 0.24, 0xd93b2c);
+    for (const y of [-0.33, 0.33])
+      box(0, y, 0, 1, 0.20, 0.89, 0xff593b);
+    for (const x of [-0.42, 0.42])
+      box(x, 0, 0, 0.045, 0.81, 0.91, 0xba3029);
+  } else if (kind === 'concrete-slab') {
+    box(0, -0.06, 0, 1, 0.84, 1, 0xc1c4c6);
+    box(0, 0.41, 0, 1, 0.075, 1, 0xe2e1db);
+    box(0, -0.47, 0.485, 0.99, 0.055, 0.025, 0x969ba0);
+    for (const x of [-0.42, 0.42])
+      box(x, 0.45, 0, 0.014, 0.012, 0.97, 0xb4b4ac);
+  } else if (kind === 'concrete-column') {
+    box(0, -0.07, 0, 0.72, 0.86, 0.74, 0xc4c9cd);
+    box(0, -0.45, 0, 0.89, 0.09, 0.87, 0x9caaae);
+    box(0, 0.36, 0, 0.78, 0.12, 0.78, 0xe1e2df);
+    // Exposed dark rebar protrudes above the unfinished top storey.
+    for (const x of [-0.23, 0.23]) for (const z of [-0.23, 0.23])
+      box(x, 0.445, z, 0.065, 0.10, 0.065, 0x7c6760);
+  } else if (kind === 'yard-scaffold') {
+    const steel = 0xffcd27, pale = 0xffe66c;
+    for (const x of [-0.43, 0.43]) for (const z of [-0.41, 0.41])
+      box(x, 0, z, 0.045, 0.98, 0.045, steel);
+    for (let level = 0; level <= 5; level++) {
+      const y = -0.48 + level * 0.19;
+      for (const z of [-0.41, 0.41])
+        box(0, y, z, 0.93, 0.028, 0.038, pale);
+      for (const x of [-0.43, 0.43])
+        box(x, y, 0, 0.04, 0.029, 0.91, pale);
+      if (level > 0 && level < 5)
+        box(0, y - 0.014, 0, 0.89, 0.024, 0.84, 0x9a8771);
+      if (level < 5) {
+        const next = y + 0.19;
+        for (const z of [-0.41, 0.41])
+          brace(level % 2 ? 0.43 : -0.43, y,
+            level % 2 ? -0.43 : 0.43, next, z, 0.022, steel);
+      }
+    }
+    for (let i = 0; i < 11; i++)
+      box(-0.3, -0.44 + i * 0.08, 0.37, 0.26, 0.022, 0.04, pale);
+  } else if (kind === 'safety-rail') {
+    for (let i = 0; i <= 8; i++)
+      box(-0.47 + i * 0.1175, -0.01, 0, 0.032, 0.97, 0.12, 0xf8cd29);
+    for (const y of [-0.08, 0.36])
+      box(0, y, 0, 0.99, 0.04, 0.12, 0xffe15d);
+  } else if (kind === 'chain-fence') {
+    // Perforated steel mesh (not an opaque board or farm picket fence).
+    for (const x of [-0.49, 0.49]) {
+      cyl(x, 0, 0, 0.042, 1, 0.042, 0x687b88, 7);
+      cyl(x, -0.48, 0, 0.10, 0.035, 0.10, 0x88969b, 7);
+    }
+    for (const y of [-0.45, 0.45])
+      box(0, y, 0, 0.99, 0.027, 0.065, 0x8fa1aa);
+    for (let i = 0; i < 11; i++) {
+      const x = -0.40 + i * 0.08;
+      brace(x - 0.07, -0.435, x + 0.07, 0.435, 0,
+        0.008, 0xa6b5be);
+      brace(x + 0.07, -0.435, x - 0.07, 0.435, 0,
+        0.008, 0xa6b5be);
+    }
+  } else if (kind === 'pipe-stack') {
+    // Six open-ended concrete drainage pipes, stacked 3/2/1.
+    const pipePositions: Array<[number, number]> = [
+      [-0.30, -0.29], [0, -0.29], [0.30, -0.29],
+      [-0.15, 0.0], [0.15, 0.0], [0, 0.29],
+    ];
+    for (const [x, y] of pipePositions) {
+      append(new THREE.CylinderGeometry(0.5, 0.5, 1, 12, 1, true),
+        x, y, 0, 0.27, 0.86, 0.27, 0xc0c5c8, 0, Math.PI / 2);
+      for (const z of [-0.44, 0.44])
+        append(new THREE.TorusGeometry(0.135, 0.027, 5, 12),
+          x, y, z, 1, 1, 1, 0x8b979d);
+    }
+  } else if (kind === 'site-barrier') {
+    box(0, -0.08, 0, 1, 0.75, 0.93, 0xf0eee6);
+    box(0, -0.47, 0, 1.02, 0.085, 1, 0x999e9e);
+    for (const side of [-1, 1]) for (let i = 0; i < 4; i++)
+      box(-0.42 + i * 0.27, 0, side * 0.48,
+        0.18, 0.48, 0.035, 0xe7674b, -0.44);
   } else if (kind === 'tower' || kind === 'scaffold' || kind === 'lookout') {
     for (const x of [-0.42, 0.42]) for (const z of [-0.42, 0.42]) {
       box(x, 0, z, 0.065, 1, 0.065, kind === 'tower' ? 0xb3bec6 : 0xa47b55);
@@ -281,10 +418,27 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
     }
     box(-0.19, 0.09, 0.055, 0.27, 0.34, 0.035, 0xe8a63e);
     box(-0.19, 0.16, 0.082, 0.095, 0.11, 0.012, 0xf8efcd);
+  } else if (kind === 'crate') {
+    box(0, 0, 0, 0.94, 0.93, 0.94, 0xe8bb7f);
+    for (const side of [-1, 1]) {
+      for (const x of [-0.32, 0, 0.32]) {
+        box(x, 0, side * 0.485, 0.025, 0.88, 0.028, 0x9b6e48);
+      }
+      for (const y of [-0.34, 0.34]) {
+        box(0, y, side * 0.488, 0.95, 0.052, 0.027, 0xb47c49);
+      }
+    }
+    for (const x of [-0.41, 0.41])
+      box(x, 0, 0, 0.055, 0.95, 0.96, 0xc29158);
   } else if (kind === 'container') {
     box(0, 0, 0, 1, 0.91, 0.96);
-    for (let i = 0; i < 7; i++) box(-0.44 + i * 0.145, 0, 0.49,
-      0.035, 0.88, 0.025, 0xc6b8a8);
+    for (const z of [-0.49, 0.49]) for (let i = 0; i < 15; i++)
+      box(-0.46 + i * 0.065, 0, z, 0.017, 0.86, 0.025, 0xe7ded5);
+    for (const x of [-0.485, 0.485]) {
+      for (let i = 0; i < 5; i++)
+        box(x, 0, -0.4 + i * 0.2, 0.025, 0.86, 0.022, 0xd0d9d9);
+      box(x, 0, 0, 0.03, 0.035, 0.94, 0x737e87);
+    }
   } else if (kind === 'cone') {
     cyl(0, -0.46, 0, 1, 0.11, 1, 0x494d54, 4);
     cone(0, -0.02, 0, 0.77, 0.88, 0.77, 0xff891e, 6);
@@ -397,6 +551,7 @@ const SHADOW_KINDS = new Set<PropKind>([
   'barn', 'house', 'shop', 'cottage', 'windmill', 'lighthouse',
   'tower', 'crane', 'tree-pine', 'tree-oak', 'silo', 'water-tower',
   'satellite-dish', 'ferris-wheel',
+  'concrete-slab', 'concrete-column', 'yard-scaffold', 'crane-jib',
 ]);
 const OUTLINE_KINDS = new Set<PropKind>([
   'windmill', 'lighthouse', 'ferris-wheel', 'crane', 'satellite-dish',
