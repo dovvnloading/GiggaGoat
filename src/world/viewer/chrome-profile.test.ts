@@ -176,6 +176,21 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
       });
       expect(latest.result?.value?.reservoirHidden).toBe(true);
 
+      // Asset arrivals are asynchronous; profile the actual village GLBs,
+      // not the temporary procedural placeholders displayed during fetch.
+      const hoofington = await until(async () => {
+        const answer = await send('Runtime.evaluate', {
+          expression: 'window.__worldProfile.hoofingtonState()',
+          returnByValue: true,
+        });
+        const state = answer.result?.value as {
+          loaded: boolean; models: number; triangles: number;
+        } | undefined;
+        return state?.loaded ? state : null;
+      }, 40000);
+      expect(hoofington.models).toBeGreaterThanOrEqual(20);
+      expect(hoofington.triangles).toBeGreaterThan(5000);
+
       const expression = String.raw`(() => {
         const profile = window.__worldProfile;
         const menu = document.getElementById('bookmark');

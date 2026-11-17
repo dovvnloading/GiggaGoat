@@ -469,6 +469,17 @@ if (new URLSearchParams(window.location.search).has('profile')) {
           target: orbit.target.toArray(),
         };
       },
+      /** Runtime QA for the painting's sourced-village asset handoff. */
+      hoofingtonState(): { loaded: boolean; models: number; triangles: number } {
+        const root = worldView.group.getObjectByName('hoofington-library-models');
+        const batch = root?.getObjectByName('hoofington-library-batched');
+        return {
+          loaded: root?.userData['ready'] === true && batch instanceof THREE.Mesh,
+          models: Number(root?.userData['loadedModels'] ?? 0),
+          triangles: batch instanceof THREE.Mesh
+            ? batch.geometry.getAttribute('position').count / 3 : 0,
+        };
+      },
       measure(frames = 16): {
         frameTimesMs: number[]; drawCalls: number; triangles: number;
         width: number; height: number; pixelRatio: number; gpu: string;
