@@ -186,8 +186,8 @@ function buildProceduralDamFallback(island: IslandData): THREE.Group {
   }
   // One draw call per solid material, not a shadow caster for every ladder rung.
   addBatch('dam-fallback-stone', stone, stoneParts, true);
-  addBatch('dam-fallback-deck', deck, deckParts, true);
-  addBatch('dam-fallback-house', house, houseParts, true);
+  addBatch('dam-fallback-deck', deck, deckParts, false);
+  addBatch('dam-fallback-house', house, houseParts, false);
 
   const water = new THREE.MeshToonMaterial({
     color: 0x40c9e6, transparent: true, opacity: 0.88,

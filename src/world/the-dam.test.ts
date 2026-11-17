@@ -94,7 +94,7 @@ describe('The Dam hero POI', () => {
         .toBeInstanceOf(THREE.Mesh);
       expect(fallback?.children).toHaveLength(4);
       expect(fallback?.children.filter(child => (child as THREE.Mesh).castShadow))
-        .toHaveLength(3);
+        .toHaveLength(1);
     } finally {
       visuals.dispose();
     }
