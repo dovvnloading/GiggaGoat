@@ -91,7 +91,8 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
       case 'silo': model = 'silo'; paint = { wall: 0xf6ead8, roof: 0xce5648 }; break;
       case 'windmill': model = 'windmill'; paint = { wall: 0xffeedc, roof: 0xc75c48 }; break;
       case 'fence': model = 'fence'; paint = { wall: 0xfff8e9 }; break;
-      case 'mailbox': model = 'mailbox'; break;
+      case 'mailbox': model = 'mailbox';
+        paint = { wall: 0xce493d, roof: 0xc84338 }; break;
       case 'bench': model = 'bench'; break;
       case 'gnome': model = 'gnome'; break;
       case 'trampoline': model = 'playPad'; break;

@@ -39,6 +39,8 @@ describe('Hoofington sourced village model integration', () => {
     expect(linked.filter(p => p.source!.kind === 'barn')).toHaveLength(1);
     expect(linked.filter(p => p.source!.kind === 'silo')).toHaveLength(1);
     expect(linked.filter(p => p.source!.kind === 'windmill')).toHaveLength(1);
+    expect(linked.filter(p => p.source!.kind === 'mailbox')
+      .every(p => p.wall === 0xce493d)).toBe(true);
     expect(plan.filter(p => p.model === 'cow' || p.model === 'sheep' ||
       p.model === 'pig' || p.model === 'horse').length).toBeGreaterThanOrEqual(5);
     expect(plan.filter(p => p.model === 'planter').length).toBeGreaterThan(5);
