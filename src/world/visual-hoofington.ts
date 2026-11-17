@@ -4,6 +4,7 @@ import type { IslandData, PropDescriptor, PropKind, Vec3 } from './types';
 import { gridSample } from './terrain';
 import { publicAssetUrl } from './public-assets';
 import { createDistrictLod, type BakedPlacement, type DistrictLod } from './district-lod';
+import { WORLD_LOD, simplifiedWorldGeometry } from './lod';
 
 /**
  * CC0 models only. The Poly Pizza trampoline is CC-BY and CREDITS.md is
@@ -26,7 +27,7 @@ export const HOOFINGTON_MODELS = {
   bench: 'assets/library/quaternius/medieval-village-pack/bench_7uSlZo3n9Y.glb',
   gnome: 'assets/library/meshy/garden-gnome/garden-gnome.glb',
   playPad: 'assets/library/kenney/platformer-kit/spring.glb',
-  lamp: 'assets/library/kenney/city-kit-roads/light-curved.glb',
+  lamp: 'assets/library/usdcraft/street-lamp-lantern.glb',
   planter: 'assets/library/kenney/city-kit-suburban/planter.glb',
   flowerPink: 'assets/library/custom/hoofington-props/flowers-pink.glb',
   flowerPurple: 'assets/library/custom/hoofington-props/flowers-purple.glb',
@@ -407,6 +408,137 @@ export function createTexturedGnomeInstances(
   return batch;
 }
 
+/**
+ * Preserve the native materials and authored geometry of every USDCraft lamp.
+ * Compact visible instances into shared near/far meshes per GLB primitive,
+ * avoiding a separate material draw for every street cell. Far meshes use the
+ * existing geometric LOD simplifier, never vertex-colour baking or paint.
+ */
+export interface LanternLampBatch {
+  group: THREE.Group;
+  updateCulling(position: THREE.Vector3, frustum: THREE.Frustum): boolean;
+  dispose(): void;
+}
+
+export async function createLanternLampInstances<Model extends string>(
+  placements: readonly HoofPlacement<Model>[], model: THREE.Group, islandSize: number,
+): Promise<LanternLampBatch | null> {
+  if (!placements.length) return null;
+  model.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(model);
+  if (bounds.isEmpty()) return null;
+  const span = bounds.getSize(new THREE.Vector3());
+  const parts: Array<{
+    high: THREE.BufferGeometry; low: THREE.BufferGeometry;
+    material: THREE.Material | THREE.Material[];
+  }> = [];
+  const meshes: THREE.Mesh[] = [];
+  model.traverse(object => {
+    if (object instanceof THREE.Mesh) meshes.push(object);
+  });
+  for (const source of meshes) {
+    const high = source.geometry.clone();
+    high.applyMatrix4(source.matrixWorld);
+    // A GLTF primitive normally has one material. Keep grouped multi-material
+    // geometry at full detail if simplifying would discard its group indices.
+    const low = Array.isArray(source.material) && source.material.length > 1
+      ? high : await simplifiedWorldGeometry(await simplifiedWorldGeometry(high));
+    const material = Array.isArray(source.material)
+      ? source.material.map(m => m.clone()) : source.material.clone();
+    parts.push({ high, low, material });
+  }
+  if (!parts.length) return null;
+
+  const group = new THREE.Group();
+  group.name = 'usdcraft-lantern-lamps';
+  const nearMeshes: THREE.InstancedMesh[] = [], farMeshes: THREE.InstancedMesh[] = [];
+  for (const { high, low, material } of parts) {
+    const near = new THREE.InstancedMesh(high, material, placements.length);
+    const far = new THREE.InstancedMesh(low, material, placements.length);
+    near.name = 'usdcraft-lantern-near';
+    far.name = 'usdcraft-lantern-far';
+    for (const batch of [near, far]) {
+      batch.count = 0;
+      batch.visible = false; // do not draw zero-instance batches
+      batch.castShadow = true;
+      batch.receiveShadow = true;
+      batch.frustumCulled = false; // visible instances are compacted below
+      group.add(batch);
+    }
+    nearMeshes.push(near);
+    farMeshes.push(far);
+  }
+
+  const matrices: THREE.Matrix4[] = [], spheres: THREE.Sphere[] = [];
+  const dummy = new THREE.Object3D();
+  const radius = Math.hypot(span.x, span.y, span.z) / 2;
+  for (const placement of placements) {
+    const baseY = placement.position.y - placement.size.y / 2;
+    dummy.position.set(placement.position.x, baseY - bounds.min.y, placement.position.z);
+    dummy.rotation.set(0, placement.yaw, 0);
+    dummy.scale.set(1, 1, 1); // native asset scale, not collider dimensions
+    dummy.updateMatrix();
+    matrices.push(dummy.matrix.clone());
+    spheres.push(new THREE.Sphere(new THREE.Vector3(
+      placement.position.x, baseY - bounds.min.y + bounds.getCenter(new THREE.Vector3()).y,
+      placement.position.z), radius));
+  }
+  let previousNear: number[] = [], previousFar: number[] = [], disposed = false;
+  function same(a: readonly number[], b: readonly number[]): boolean {
+    return a.length === b.length && a.every((value, index) => value === b[index]);
+  }
+  function compact(batches: readonly THREE.InstancedMesh[], indices: readonly number[]): void {
+    for (const batch of batches) {
+      for (let i = 0; i < indices.length; i++)
+        batch.setMatrixAt(i, matrices[indices[i]!]!);
+      batch.count = indices.length;
+      batch.visible = indices.length > 0;
+      batch.instanceMatrix.needsUpdate = true;
+      if (indices.length) batch.computeBoundingSphere();
+    }
+  }
+  return {
+    group,
+    updateCulling(position, frustum): boolean {
+      if (disposed) return false;
+      const near: number[] = [], far: number[] = [];
+      for (let i = 0; i < placements.length; i++) {
+        const sphere = spheres[i]!;
+        const distance = position.distanceTo(sphere.center);
+        if (distance - sphere.radius > Math.min(WORLD_LOD.smallPropDistance, islandSize * 1.4) ||
+          !frustum.intersectsSphere(sphere)) continue;
+        (distance > WORLD_LOD.detailedDistance ? far : near).push(i);
+      }
+      // Keep a single active native-material LOD for the currently visible
+      // lamp cluster. Nearby lamps select high detail; if all are distant use
+      // the simplified geometry. This avoids drawing two material sets while
+      // retaining the source meshes, all materials and per-lamp frustum tests.
+      const visible = [...near, ...far];
+      const activeNear = near.length ? visible : [];
+      const activeFar = near.length ? [] : visible;
+      const nearChanged = !same(previousNear, activeNear);
+      const farChanged = !same(previousFar, activeFar);
+      const previouslyVisible = [...previousNear, ...previousFar].sort((a, b) => a - b);
+      const visibleNow = [...visible].sort((a, b) => a - b);
+      const castersChanged = !same(previouslyVisible, visibleNow);
+      if (nearChanged) { compact(nearMeshes, activeNear); previousNear = activeNear; }
+      if (farChanged) { compact(farMeshes, activeFar); previousFar = activeFar; }
+      return castersChanged;
+    },
+    dispose(): void {
+      if (disposed) return;
+      disposed = true;
+      group.clear();
+      group.removeFromParent();
+      for (const { high, low, material } of parts) {
+        high.dispose();
+        if (low !== high) low.dispose();
+        for (const m of Array.isArray(material) ? material : [material]) m.dispose();
+      }
+    },
+  };
+}
+
 /** Keep the exact original descriptor order, physics and dynamic hay updates. */
 function suppressOldArt(
   island: IslandData, oldProps: THREE.Group,
@@ -457,8 +589,18 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
   const fullyHidden = new Set<PropKind>();
   let shadowChanged = false, disposed = false;
   let districtLod: DistrictLod | undefined;
+  let lanterns: LanternLampBatch | null = null;
   if (typeof document !== 'undefined') {
-    const plan = makeHoofingtonPlacements(island);
+    const villagePlan = makeHoofingtonPlacements(island);
+    // Hoofington owns lamps on roads and the Baa-ardwalk too. Downtown owns
+    // its own district lamps; all positions and collider descriptors stay put.
+    const roadLamps: HoofPlacement[] = island.props.filter(p =>
+      p.kind === 'lamp' && p.poiId !== 'hoofington' &&
+      p.poiId !== 'downtown-bleatsville').map(source => ({
+        model: 'lamp', source, position: source.transform.position,
+        size: source.size, yaw: source.transform.rotationY,
+      }));
+    const plan = [...villagePlan, ...roadLamps];
     // Dynamic hay bales must remain on their existing instanced mesh so the
     // game integrator can continue moving them after Rapier collisions.
     const required = new Set(plan.map(p => p.model));
@@ -477,8 +619,9 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
       }
       try {
         if (disposed) return;
-        // UV-mapped gnomes must not go through the vertex-colour baker.
-        const staticPlan = plan.filter(p => p.model !== 'gnome' && models.has(p.model));
+        // Gnomes and material-authored lamps must never be vertex-colour baked.
+        const staticPlan = plan.filter(p => p.model !== 'gnome' &&
+          p.model !== 'lamp' && models.has(p.model));
         const ranges: BakedPlacement<HoofModel>[] = [];
         const geometry = bakeLibraryGeometry(staticPlan, models,
           (placement, start, count) => ranges.push({ placement, start, count }));
@@ -498,8 +641,14 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
         if (gnomes) group.add(gnomes);
         else if (gnomeModel && gnomePlan.length)
           console.warn('Hoofington gnome GLB needs one UV-mapped, textured mesh');
-        if (geometry || gnomes) {
-          const drawn = gnomes ? [...staticPlan, ...gnomePlan] : staticPlan;
+        const lampPlan = plan.filter(p => p.model === 'lamp');
+        const lampModel = models.get('lamp');
+        lanterns = lampModel ? await createLanternLampInstances(lampPlan, lampModel, island.size) : null;
+        if (disposed) { lanterns?.dispose(); return; }
+        if (lanterns) group.add(lanterns.group);
+        if (geometry || gnomes || lanterns) {
+          const drawn = [...(geometry ? staticPlan : []), ...(gnomes ? gnomePlan : []),
+            ...(lanterns ? lampPlan : [])];
           suppressOldArt(island, oldProps, new Set(drawn.map(p => p.model)),
             drawn, fullyHidden);
           shadowChanged = true;
@@ -547,11 +696,13 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
       return changed;
     },
     updateCulling(position, frustum): boolean {
-      return districtLod?.updateCulling(position, frustum) ?? false;
+      const districtChanged = districtLod?.updateCulling(position, frustum) ?? false;
+      return (lanterns?.updateCulling(position, frustum) ?? false) || districtChanged;
     },
     dispose(): void {
       disposed = true;
       districtLod?.dispose();
+      lanterns?.dispose();
       group.traverse(object => {
         if (!(object instanceof THREE.Mesh)) return;
         object.geometry.dispose();

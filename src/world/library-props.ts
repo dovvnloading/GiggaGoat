@@ -37,7 +37,7 @@ export const PROP_LIBRARY_MODELS = {
   'tree-oak': 'assets/library/custom/hoofington-props/tree-round-a.glb',
   'rock': 'assets/library/kenney/nature-kit/rock_largeB.glb',
   'log': 'assets/library/kenney/nature-kit/log.glb',
-  'lamp': 'assets/library/kenney/city-kit-roads/light-curved.glb',
+  'lamp': 'assets/library/usdcraft/street-lamp-lantern.glb',
   'ramp': 'assets/library/kenney/platformer-kit/platform-ramp.glb',
   'ledge': 'assets/library/kenney/nature-kit/cliff_half_rock.glb',
   'bridge': 'assets/library/kenney/nature-kit/bridge_wood.glb',
@@ -243,6 +243,21 @@ export async function loadLibraryPropGeometry(
 ): Promise<THREE.BufferGeometry> {
   const model = await loader.loadAsync(publicAssetUrl(PROP_LIBRARY_MODELS[kind]));
   try {
+    if (kind === 'lamp') {
+      // Districts draw all street lamps in native-material near/far batches.
+      // The legacy prop's instance indices remain intact for physics, but its
+      // geometry must be inert: baking this GLB would duplicate and repaint it.
+      // Load before returning so a missing asset preserves procedural fallback.
+      const marker = new THREE.BufferGeometry();
+      marker.setAttribute('position', new THREE.Float32BufferAttribute([
+        0, 0, 0, 0, 0, 0, 0, 0, 0,
+      ], 3));
+      marker.setAttribute('color', new THREE.Float32BufferAttribute([
+        1, 1, 1, 1, 1, 1, 1, 1, 1,
+      ], 3));
+      marker.computeBoundingSphere();
+      return marker;
+    }
     const geometry = bakeLibraryPropGeometry(kind, model.scene);
     if (!geometry) throw new Error('Library model has no visible triangles: ' + kind);
     return geometry;

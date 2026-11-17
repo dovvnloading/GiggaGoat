@@ -3,7 +3,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { IslandData, PropDescriptor, PropKind, Vec3 } from './types';
 import { gridSample } from './terrain';
 import { publicAssetUrl } from './public-assets';
-import { bakeLibraryGeometry, type HoofPlacement } from './visual-hoofington';
+import { bakeLibraryGeometry, createLanternLampInstances,
+  type LanternLampBatch, type HoofPlacement } from './visual-hoofington';
 import { createDistrictLod, type BakedPlacement, type DistrictLod } from './district-lod';
 
 /**
@@ -28,7 +29,7 @@ export const DOWNTOWN_MODELS = {
   retroCanopy: 'assets/library/kenney/retro-urban-kit/detail-awning-wide.glb',
   retroWindow: 'assets/library/kenney/retro-urban-kit/window-wide-type-a.glb',
   retroBalcony: 'assets/library/kenney/retro-urban-kit/balcony-type-a.glb',
-  lamp: 'assets/library/kenney/city-kit-roads/light-curved.glb',
+  lamp: 'assets/library/usdcraft/street-lamp-lantern.glb',
   bench: 'assets/library/kenney/furniture-kit/bench.glb',
   planter: 'assets/library/kenney/city-kit-suburban/planter.glb',
   flower: 'assets/library/kenney/nature-kit/flower_purpleA.glb',
@@ -394,6 +395,7 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
   const fullyHidden = new Set<PropKind>();
   let disposed = false, shadowChanged = false;
   let districtLod: DistrictLod | undefined;
+  let lanterns: LanternLampBatch | null = null;
   if (typeof document !== 'undefined') {
     const plan = makeDowntownPlacements(island);
     const signs = makeDowntownSigns(island);
@@ -413,14 +415,22 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
       try {
         if (disposed) return;
         const visible = plan.filter(p => models.has(p.model));
+        const staticPlan = visible.filter(p => p.model !== 'lamp');
+        const lampModel = models.get('lamp');
+        lanterns = lampModel ? await createLanternLampInstances(
+          visible.filter(p => p.model === 'lamp'), lampModel, island.size) : null;
+        if (disposed) { lanterns?.dispose(); return; }
+        if (lanterns) group.add(lanterns.group);
         const ranges: BakedPlacement<DowntownModel>[] = [];
-        const geometry = bakeLibraryGeometry(visible, models,
+        const geometry = bakeLibraryGeometry(staticPlan, models,
           (placement, start, count) => ranges.push({ placement, start, count }));
-        if (!geometry) return;
-        const lod = await createDistrictLod(island, geometry, ranges, group,
-          'downtown-library-batched');
-        if (disposed) { lod.dispose(); return; }
-        districtLod = lod;
+        if (!geometry && !lanterns) return;
+        if (geometry) {
+          const lod = await createDistrictLod(island, geometry, ranges, group,
+            'downtown-library-batched');
+          if (disposed) { lod.dispose(); return; }
+          districtLod = lod;
+        }
         const loadedShops = signs.filter(sign => {
           const planned = plan.find(p => p.source?.id === sign.source.id);
           return planned && models.has(planned.model);
@@ -428,7 +438,8 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
         const labels = signAtlas(loadedShops);
         if (labels) group.add(labels);
         group.userData['signCount'] = loadedShops.length;
-        suppressOldArt(island, oldProps, visible, new Set(models.keys()),
+        suppressOldArt(island, oldProps, lanterns ? visible : staticPlan,
+          new Set(models.keys()),
           new Set(loadedShops.map(s => s.source.id)), fullyHidden);
         shadowChanged = true;
       } catch (error) {
@@ -450,11 +461,13 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
       const changed = shadowChanged; shadowChanged = false; return changed;
     },
     updateCulling(position, frustum): boolean {
-      return districtLod?.updateCulling(position, frustum) ?? false;
+      const districtChanged = districtLod?.updateCulling(position, frustum) ?? false;
+      return (lanterns?.updateCulling(position, frustum) ?? false) || districtChanged;
     },
     dispose(): void {
       disposed = true;
       districtLod?.dispose();
+      lanterns?.dispose();
       group.traverse(node => {
         if (!(node instanceof THREE.Mesh)) return;
         node.geometry.dispose();
