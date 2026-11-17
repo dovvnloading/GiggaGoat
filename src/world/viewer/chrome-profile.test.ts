@@ -228,21 +228,34 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
           JSON.stringify(answer.exceptionDetails));
       }
       const report = answer.result?.value as Report | undefined;
-      // Temporary art QA: capture the real WebGL bookmark 15 against its
-      // reference panel. Removed after human comparison of this PR.
+      // Temporary full-resolution art QA, removed after comparing the PR.
       try {
-        await send('Runtime.evaluate', {
+        const native = await send('Runtime.evaluate', {
           expression: String.raw`(() => {
             const menu = document.getElementById('bookmark');
             menu.value = '15';
             menu.dispatchEvent(new Event('change', { bubbles: true }));
-            window.__worldProfile.pixelRatio(1);
-            window.__worldProfile.measure(3);
-            return true;
+            for (const id of ['panel', 'reference', 'labels', 'hint']) {
+              const element = document.getElementById(id);
+              if (element) element.style.display = 'none';
+            }
+            const profile = window.__worldProfile;
+            profile.pixelRatio(1.5);
+            const sample = profile.measure(12);
+            const times = [...sample.frameTimesMs].sort((a, b) => a - b);
+            return {
+              p50Ms: times[Math.floor(times.length / 2)],
+              p90Ms: times[Math.floor(times.length * 0.9)],
+              width: sample.width, height: sample.height,
+              pixelRatio: sample.pixelRatio, drawCalls: sample.drawCalls,
+              triangles: sample.triangles, gpu: sample.gpu,
+            };
           })()`,
           returnByValue: true,
         });
-        await sleep(350);
+        console.log('WORLD_LIGHTHOUSE_NATIVE ' +
+          JSON.stringify(native.result?.value ?? {}));
+        await sleep(100);
         const captured = await send('Page.captureScreenshot', {
           format: 'jpeg', quality: 68, captureBeyondViewport: false,
         });
