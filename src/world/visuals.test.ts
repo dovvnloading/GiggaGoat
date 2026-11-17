@@ -65,7 +65,7 @@ describe('Billy Isle hi-fi environment map', () => {
     const minimum: Record<(typeof POI_IDS)[number], number> = {
       hoofington: 75, 'baa-ardwalk': 65, 'crane-yard': 70,
       'downtown-bleatsville': 90, 'mt-gigga': 60,
-      'whispering-pines': 125, 'the-dam': 1, 'old-lighthouse': 30,
+      'whispering-pines': 125, 'the-dam': 45, 'old-lighthouse': 30,
     };
     for (const id of POI_IDS) {
       expect(island.props.filter(p => p.poiId === id).length).toBeGreaterThanOrEqual(minimum[id]);
