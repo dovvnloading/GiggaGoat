@@ -176,6 +176,30 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
       });
       expect(latest.result?.value?.reservoirHidden).toBe(true);
 
+      // Temporary PR visual QA: render the actual GLB + asynchronously loaded
+      // scenery at bookmark 14 and emit a screenshot for art self-review.
+      // Removed before merge so normal CI stays compact.
+      await sleep(2500);
+      await send('Runtime.evaluate', {
+        expression: String.raw`(() => {
+          const menu = document.getElementById('bookmark');
+          menu.value = '14';
+          menu.dispatchEvent(new Event('change', { bubbles: true }));
+          window.__worldProfile.measure(3);
+          return true;
+        })()`, returnByValue: true,
+      });
+      const damCapture = await send('Page.captureScreenshot', {
+        format: 'png', captureBeyondViewport: false, fromSurface: true,
+      });
+      const pngBase64 = String(damCapture.data ?? '');
+      const chunkSize = 24000;
+      const chunks = Math.ceil(pngBase64.length / chunkSize);
+      for (let i = 0; i < chunks; i++) {
+        console.log('WORLD_DAM_PNG_CHUNK ' + i + '/' + chunks + ' ' +
+          pngBase64.slice(i * chunkSize, (i + 1) * chunkSize));
+      }
+
       const expression = String.raw`(() => {
         const profile = window.__worldProfile;
         const menu = document.getElementById('bookmark');
