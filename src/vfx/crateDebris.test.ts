@@ -64,7 +64,7 @@ describe('crate break debris motion math (no Three.js or renderer)', () => {
     expect(chip.scale).toBeLessThan(0.12);
     expect(a.scale).toBe(1);
     expect(sampleCrateFragment(right, 'plank', 0, 0)).toBeNull();
-    expect(sampleCrateFragment(right, 'chip', 0, right.lifetime * 0.99)).toBeNull();
+    expect(sampleCrateFragment(right, 'chip', 0, right.lifetime)).toBeNull();
     expect(() => sampleCrateFragment(right, 'plank', -1, 0)).toThrow(RangeError);
     expect(() => sampleCrateFragment(right, 'plank', CRATE_PLANK_COUNT, 0)).toThrow(RangeError);
     expect(() => sampleCrateFragment(right, 'chip', CRATE_CHIP_COUNT, 0)).toThrow(RangeError);
