@@ -86,6 +86,7 @@ describe('live free-roam HUD DOM', () => {
       hud.dispose();
     }
   });
+
   it.each([1280, 1600, 1920])('keeps both sprite prompts on a single row at %ipx', width => {
     const head = new ElementStub();
     vi.stubGlobal('document', { head, createElement: () => new ElementStub() });
@@ -105,7 +106,7 @@ describe('live free-roam HUD DOM', () => {
       for (const [name, message] of [
         ['gg-board-hint', 'GOAT GIGS · GAMEPAD X'],
         ['gg-hint', 'CLICK TO PLAY · MOUSE TO LOOK'],
-      ]) {
+      ] as const) {
         expect(root.querySelector('.' + name)).not.toBeNull();
         // Read the exact constructor markup, rather than a second HTML fixture.
         const start = root.innerHTML.indexOf('<div class="' + name + '"');
@@ -147,5 +148,4 @@ describe('live free-roam HUD DOM', () => {
       hud.dispose();
     }
   });
-
 });
