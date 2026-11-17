@@ -45,7 +45,7 @@ export const DOWNTOWN_MODELS = {
   produce: 'assets/library/kenney/mini-shop/display-fruit.glb',
   clothes: 'assets/library/kenney/mini-shop/clothing-rack.glb',
   lights: 'assets/library/kenney/holiday-kit/lights-colored.glb',
-  skylineCrane: 'assets/library/kenney/factory-kit/crane.glb',
+  skylineCrane: 'assets/library/custom/crane-yard/skyline-tower-crane.glb',
 } as const;
 export type DowntownModel = keyof typeof DOWNTOWN_MODELS;
 export type DowntownPlacement = HoofPlacement<DowntownModel>;
@@ -239,8 +239,7 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
       gridSample(island, centre.x, centre.z + dz * scale) + 14.2 * scale);
   // Skyline machinery is intentionally behind the roofs, not on the route.
   scatter('skylineCrane', 32, -48, 19, 22, 8, Math.PI / 2,
-    gridSample(island, centre.x + 32 * scale, centre.z - 48 * scale) + 27 * scale,
-    0xfec544);
+    gridSample(island, centre.x + 32 * scale, centre.z - 48 * scale) + 27 * scale);
   return plan;
 }
 

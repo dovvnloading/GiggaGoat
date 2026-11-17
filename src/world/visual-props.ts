@@ -69,6 +69,9 @@ const COLORS: Partial<Record<PropKind, number>> = {
   'cave-mouth': 0x4c515b, 'rope-rail': 0x986e4a,
   'stepping-stone': 0x9ca2a8, signboard: 0xf5d793,
 };
+const authoredCraneYardKinds = new Set<PropKind>([
+  'crane', 'crane-jib', 'crane-cab', 'crane-cable', 'red-girder',
+]);
 const foliage = new Set<PropKind>([
   'tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'mushroom',
   'gnome', 'ferris-wheel', 'lighthouse', 'bunting',
@@ -803,12 +806,13 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
           }
           const original = job.mesh.geometry;
           job.mesh.geometry = libraryGeometry;
-          // Daisy clumps keep their authored paint exactly; other props retain
-          // mild per-descriptor variation without repainting their whole model.
+          // Daisies and crane-yard models keep their authored paint exactly;
+          // other props retain mild per-descriptor colour variation.
           for (let i = 0; i < job.entries.length; i++) {
             const color = job.entries[i]!.color;
-            job.mesh.setColorAt(i, job.kind === 'grass-tuft' || color === undefined
-              ? white : tint.setHex(color).lerp(white, 0.82));
+            job.mesh.setColorAt(i,
+              job.kind === 'grass-tuft' || authoredCraneYardKinds.has(job.kind) ||
+                color === undefined ? white : tint.setHex(color).lerp(white, 0.82));
           }
           if (job.mesh.instanceColor) job.mesh.instanceColor.needsUpdate = true;
           if (sways(job.kind)) {

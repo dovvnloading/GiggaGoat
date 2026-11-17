@@ -43,7 +43,8 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     }
     expect(new Set(Object.values(buildings)).size).toBe(11);
     expect(DOWNTOWN_MODELS.lamp).toBe('assets/library/kenney/city-kit-roads/light-curved.glb');
-    expect(DOWNTOWN_MODELS.skylineCrane).toContain('/factory-kit/');
+    expect(DOWNTOWN_MODELS.skylineCrane)
+      .toBe('assets/library/custom/crane-yard/skyline-tower-crane.glb');
     expect(DOWNTOWN_MODELS.waterTower).toContain('/city-kit-industrial/');
   });
 
@@ -107,7 +108,9 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       expect(garland.size.y).toBeCloseTo(0.36 * 0.45 * scale, 6);
       expect(garland.size.z).toBeCloseTo(0.28 * 0.45 * scale, 6);
     }
-    expect(plan.filter(p => p.model === 'skylineCrane')).toHaveLength(1);
+    const skyline = plan.filter(p => p.model === 'skylineCrane');
+    expect(skyline).toHaveLength(1);
+    expect(skyline[0]!.wall).toBeUndefined();
     expect(plan.filter(p => p.model === 'retroWindow').length).toBeGreaterThan(10);
     expect(plan.filter(p => p.model === 'flower').length).toBeGreaterThan(30);
     for (const model of ['table','chair','trash','cone','bread','produce','clothes','oak'])

@@ -56,12 +56,18 @@ describe('Crane Yard concept-art construction site', () => {
     expect(jibs).toHaveLength(2);
     expect(masts[0]!.size.y / (island.size / 600)).toBeCloseTo(CRANE_YARD_PLAN.crane.height);
     expect(jibs[0]!.size.x / (island.size / 600)).toBeCloseTo(CRANE_YARD_PLAN.crane.jibLength);
-    expect(girder.color).toBe(0xee4a31);
+    expect(girder.color).toBe(0xffffff);
     expect(girder.transform.position.y + girder.size.y / 2)
       .toBeLessThan(jibs[0]!.transform.position.y - jibs[0]!.size.y / 2);
     expect(props.filter(p => p.kind === 'crane-cable').length).toBeGreaterThan(3);
     expect(props.filter(p => p.kind === 'crane-cable').every(p => !p.collidable))
       .toBe(true);
+    for (const kind of ['crane', 'crane-jib', 'crane-cab', 'crane-cable',
+      'red-girder'] as const) {
+      const matches = props.filter(prop => prop.kind === kind);
+      expect(matches.length, kind).toBeGreaterThan(0);
+      expect(matches.every(prop => prop.color === 0xffffff), kind).toBe(true);
+    }
   });
 
   it('fences all four sides of the paved rectangle, keeping only two gated road entries', () => {
