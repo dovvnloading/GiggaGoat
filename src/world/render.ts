@@ -287,6 +287,41 @@ export function isDowntownRoadOverlay(
   return Math.abs(x) < 21 * scale && Math.abs(z) < 42 * scale;
 }
 
+/**
+ * Trail boxes are drawn after asphalt and can cover Hoofington's through-street.
+ * Cull only the visual trail pieces whose footprint meets that carriageway;
+ * never change the actual road graph, terrain stamps or physics descriptors.
+ * The margin accounts for the 0.35 m cap added to each rendered trail slab.
+ */
+export function isHoofingtonTrailOverlay(
+  island: IslandData, trailWidth: number,
+  a: { x: number; z: number }, b: { x: number; z: number },
+): boolean {
+  const farm = island.pois.find(p => p.id === 'hoofington')?.center;
+  if (!farm) return false;
+  const scale = island.size / 600;
+  const halfX = 3.4 * scale + trailWidth / 2 + 0.2;
+  const halfZ = 42 * scale + trailWidth / 2 + 0.2;
+  return Math.max(a.x, b.x) > farm.x - halfX &&
+    Math.min(a.x, b.x) < farm.x + halfX &&
+    Math.max(a.z, b.z) > farm.z - halfZ &&
+    Math.min(a.z, b.z) < farm.z + halfZ;
+}
+
+/** Avoid painting yellow centre dashes through the white zebra. */
+function isHoofingtonCrossingDash(
+  island: IslandData,
+  a: { x: number; z: number }, b: { x: number; z: number },
+): boolean {
+  const farm = island.pois.find(p => p.id === 'hoofington')?.center;
+  if (!farm) return false;
+  const scale = island.size / 600;
+  const x = (a.x + b.x) / 2, z = (a.z + b.z) / 2;
+  // A dash extends 1.3 m beyond its midpoint in either horizontal axis.
+  return Math.abs(x - farm.x) < 3.4 * scale + 1.3 &&
+    Math.abs(z - (farm.z - 18 * scale)) < 3.25 * scale + 1.3;
+}
+
 function buildRoads(island: IslandData): THREE.Group {
   const group = new THREE.Group();
   group.name = 'graded-ring-road-and-trails';
@@ -299,7 +334,9 @@ function buildRoads(island: IslandData): THREE.Group {
         ({ a: r.points[i]!, b, width: r.width, roadId: r.id }))
         .filter(segment => !isDowntownRoadOverlay(
           island, segment.roadId, segment.a, segment.b,
-        )));
+        ) && !(r.type === 'trail' && isHoofingtonTrailOverlay(
+          island, segment.width, segment.a, segment.b,
+        ))));
     const material = new THREE.MeshToonMaterial({
       color: type === 'road' ? 0x727e8a : 0xc3a06c, gradientMap: TOON_RAMP,
     });
@@ -321,7 +358,8 @@ function buildRoads(island: IslandData): THREE.Group {
     mesh.computeBoundingSphere();
     group.add(mesh);
     if (type === 'road') {
-      const marks = segments.filter((_, i) => i % 5 === 0);
+      const marks = segments.filter((segment, i) => i % 5 === 0 &&
+        !isHoofingtonCrossingDash(island, segment.a, segment.b));
       const dashes = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1),
         new THREE.MeshBasicMaterial({ color: 0xffe0a5 }), marks.length);
       dashes.name = 'road-centre-dashes';

@@ -113,7 +113,10 @@ describe('Hoofington art / building slicing regressions', () => {
     const walks = view.group.getObjectByName('paved-village-sidewalks') as THREE.InstancedMesh;
     const crossings = view.group.getObjectByName('hoofington-and-city-crosswalks') as THREE.InstancedMesh;
     expect(walks.count).toBe(88);
-    expect(crossings.count).toBe(35);
+    // The far village crossing now uses one merged white zebra mesh.
+    expect(crossings.count).toBe(28);
+    expect(view.group.getObjectByName('hoofington-zebra-crossing'))
+      .toBeInstanceOf(THREE.Mesh);
     view.dispose();
   });
   it('adds dense, ground-anchored meadow colour beyond the village without physics clutter', () => {
