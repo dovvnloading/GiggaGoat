@@ -9,7 +9,7 @@ export const CAMERA_TARGET_HEIGHT = .28;
 
 /** A size-aware orbit at street-eye height, with room to see the town. */
 export function goatCameraOffset(size: number, yaw: number, pitch: number): Vec3 {
-  const distance = Math.max(3.25, 4.55 * Math.pow(size, .8));
+  const distance = Math.max(3.25, 4.55 * Math.pow(size, 1.16));
   return {
     x: -Math.sin(yaw) * Math.cos(pitch) * distance,
     y: Math.sin(pitch) * distance + 1.6 * size,
