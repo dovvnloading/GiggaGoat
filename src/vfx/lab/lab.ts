@@ -483,8 +483,12 @@ setDirection(directionControl.value);
 goat.update(0);
 // Start the main viewport on the airborne sixth-panel beat, with the target
 // below the goat. The other five seeded previews remain available in showcase.
-if (trampolineBurst) {
-  trampolineClock = trampolineBurst.lifetime * 0.62;
+const initialTrampoline = makeTrampolineBoingBurst(
+  trampolineContact, Number(trampolineScaleControl.value),
+  Number(trampolineStrengthControl.value),
+);
+if (initialTrampoline) {
+  trampolineClock = initialTrampoline.lifetime * 0.62;
   trampoline.update(trampolineClock);
   poseTrampolineGoat();
 }
