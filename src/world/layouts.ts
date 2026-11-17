@@ -136,7 +136,8 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   const summit = byId.get(peak)!.center;
   add(peak, 'satellite-dish', summit.x + 9 * scale, summit.z - 3 * scale,
     { x: 7 * scale, y: 10 * scale, z: 7 * scale }, { shape: 'cylinder', lift: 1 });
-  site(peak, 'flag', -7, 4, 0.7, 9, 0.7);
+  // The new pennant's pole sits 1.25 m left of the model centre.
+  site(peak, 'flag', -5.75, 4, 2.8, 9, 0.4);
   for (let i = 0; i < 21; i++) {
     const angle = i * 2.39996;
     // Position shelves on the FLAT, grassy tier bands, never midway down a
@@ -164,8 +165,9 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
     if (gridSample(island, x, z) < 3 * scale) continue;
     if (Math.hypot(x - woods.x, z - woods.z) < 10 * scale) continue;
     const h = rng.range(8, 17) * scale;
-    add(forest, rng.next() < 0.83 ? 'tree-pine' : 'tree-oak',
-      x, z, { x: h * 0.43, y: h, z: h * 0.43 },
+    const kind: PropKind = rng.next() < 0.83 ? 'tree-pine' : 'tree-oak';
+    const width = h * (kind === 'tree-pine' ? 0.35 : 0.72);
+    add(forest, kind, x, z, { x: width, y: h, z: width },
       { shape: 'cylinder', lickable: true, climbable: true });
     trees++;
   }
@@ -219,7 +221,8 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
       { x: rng.range(2, 7) * scale, y: rng.range(2, 5) * scale, z: rng.range(2, 6) * scale },
       { yaw: a, shape: 'convex', lickable: false });
   }
-  site(cape, 'flag', 26, 11, 0.6, 9, 0.6);
+  // Preserve the cape pole's x=26 anchor with the new wider pennant model.
+  site(cape, 'flag', 27.25, 11, 2.8, 9, 0.4);
 
   // Roads have lamp posts / obstacles along the shoulders, not in driving lanes.
   for (const road of island.roads) {

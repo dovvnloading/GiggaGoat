@@ -12,7 +12,7 @@ describe('island scenery size descriptors', () => {
     expect(scenery).toHaveLength(vegetationCount);
     for (const [kind, ratio] of [
       ['tree-oak', 0.72],
-      ['tree-pine', 0.25],
+      ['tree-pine', 0.35],
       ['flower', 0.9],
       ['bush', 1.25],
       ['grass-tuft', 0.55],

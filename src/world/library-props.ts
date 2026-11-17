@@ -28,25 +28,25 @@ export const PROP_LIBRARY_MODELS = {
   'pier-rail': 'assets/library/custom/baaardwalk/pier-rail.glb',
   'bumper': 'assets/library/custom/baaardwalk/beach-ball.glb',
   'booth': 'assets/library/custom/baaardwalk/kiosk.glb',
-  'satellite-dish': 'assets/library/kenney/furniture-kit/televisionAntenna.glb',
+  'satellite-dish': 'assets/library/custom/mt-gigga/satellite-dish.glb',
   'dam-wall': 'assets/library/kenney/factory-kit/structure-wall.glb',
   'fence': 'assets/library/custom/hoofington-props/picket-fence.glb',
   'hay-bale': 'assets/library/polypizza/hay-bale/hay_Yu8TOERkpw.glb',
   'crate': 'assets/library/kenney/platformer-kit/crate.glb',
   'barrel': 'assets/library/kenney/survival-kit/barrel.glb',
-  'tree-pine': 'assets/library/kenney/nature-kit/tree_pineTallA.glb',
+  'tree-pine': 'assets/library/custom/pines/pine.glb',
   'tree-oak': 'assets/library/custom/hoofington-props/tree-round-a.glb',
   'rock': 'assets/library/kenney/nature-kit/rock_largeB.glb',
   'log': 'assets/library/kenney/nature-kit/log.glb',
   'lamp': 'assets/library/usdcraft/street-lamp-lantern.glb',
   'ramp': 'assets/library/kenney/platformer-kit/platform-ramp.glb',
-  'ledge': 'assets/library/kenney/nature-kit/cliff_half_rock.glb',
-  'bridge': 'assets/library/kenney/nature-kit/bridge_wood.glb',
+  'ledge': 'assets/library/custom/mt-gigga/ledge.glb',
+  'bridge': 'assets/library/custom/props/bridge-deck.glb',
   'bench': 'assets/library/kenney/retro-urban-kit/detail-bench.glb',
-  'sign': 'assets/library/kenney/city-kit-roads/road-sign-empty.glb',
-  'flag': 'assets/library/kenney/pirate-kit/flag-high.glb',
+  'sign': 'assets/library/custom/props/signpost.glb',
+  'flag': 'assets/library/custom/mt-gigga/pennant-pole.glb',
   'buoy': 'assets/library/kenney/watercraft-kit/buoy.glb',
-  'platform': 'assets/library/kenney/platformer-kit/platform.glb',
+  'platform': 'assets/library/custom/pines/timber-deck.glb',
   'silo': 'assets/library/custom/hoofington-props/silo.glb',
   'mailbox': 'assets/library/custom/hoofington-props/mailbox.glb',
   'gnome': 'assets/library/polypizza/garden-gnome/gnome_Yy3yuQ4l6r.glb',
@@ -61,16 +61,16 @@ export const PROP_LIBRARY_MODELS = {
   'water-tower': 'assets/library/kenney/city-kit-industrial/water-tower.glb',
   'mushroom': 'assets/library/kenney/nature-kit/mushroom_red.glb',
   'stump': 'assets/library/kenney/nature-kit/stump_round.glb',
-  'lookout': 'assets/library/kenney/pirate-kit/tower-watch.glb',
+  'lookout': 'assets/library/custom/pines/lookout.glb',
   'control-house': 'assets/library/kenney/city-kit-industrial/building-a.glb',
   'dock': 'assets/library/kenney/pirate-kit/structure-platform-dock-small.glb',
   'cottage': 'assets/library/custom/hoofington-houses/house-f-white.glb',
   'shipwreck': 'assets/library/kenney/pirate-kit/ship-wreck.glb',
-  'cave-mouth': 'assets/library/kenney/nature-kit/cliff_cave_rock.glb',
+  'cave-mouth': 'assets/library/custom/mt-gigga/cave-arch.glb',
   'bush': 'assets/library/custom/hoofington-props/bush-round-a.glb',
   'flower': 'assets/library/custom/hoofington-props/flowers-pink.glb',
   'grass-tuft': 'assets/library/custom/hoofington-props/daisies.glb',
-  'rope-rail': 'assets/library/kenney/platformer-kit/fence-rope.glb',
+  'rope-rail': 'assets/library/custom/props/rope-post.glb',
   'stepping-stone': 'assets/library/kenney/nature-kit/rock_smallFlatA.glb',
   'chimney': 'assets/library/kenney/city-kit-industrial/chimney-small.glb',
   'signboard': 'assets/library/custom/baaardwalk/signboard.glb',
@@ -141,9 +141,8 @@ export function bakeLibraryPropGeometry(
   const colour = new THREE.Color(), texel = new THREE.Color();
   const white = new THREE.Color(0xffffff);
   const imageCache = new Map<THREE.Texture, PixelMap | null>();
-  const paintedFoliage = new Set<PropKind>([
-    'tree-pine', 'planter',
-  ]);
+  // The Blender pine has its own paint; only the legacy planter needs a height ramp.
+  const paintedFoliage = new Set<PropKind>(['planter']);
 
   root.traverse(object => {
     if (!(object instanceof THREE.Mesh)) return;
@@ -183,8 +182,8 @@ export function bakeLibraryPropGeometry(
           colour.b *= vertexColours.getZ(index);
         }
         const map = (material as THREE.MeshStandardMaterial).map;
-        // Legacy pine/planter foliage needs painted colours in place of
-        // alpha-atlas padding. Blender props retain source paint.
+        // Legacy planter foliage needs height-based paint in place of alpha padding.
+        // Blender props, including pines, retain their source paint.
         if (!paintedFoliage.has(kind) && map && textureCoords && textureCoords.itemSize >= 2) {
           const image = pixels(map, imageCache);
           if (image) {
@@ -206,8 +205,7 @@ export function bakeLibraryPropGeometry(
             }
           }
         }
-        if (kind === 'tree-pine') colour.setHex(height > 0.23 ? 0x478f62 : 0x856346);
-        else if (kind === 'planter') colour.setHex(height > 0.57 ? 0x77b65f : 0xbb8967);
+        if (kind === 'planter') colour.setHex(height > 0.57 ? 0x77b65f : 0xbb8967);
         colours.push(colour.r, colour.g, colour.b);
       }
     }
