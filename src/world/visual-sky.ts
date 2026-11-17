@@ -2,6 +2,13 @@ import * as THREE from 'three';
 
 /** Daytime horizon RGB in the sky shader's linear working space. */
 export const SKY_HORIZON_COLOR = new THREE.Color(0.76, 0.88, 0.98);
+
+/** Golden-hour palette in Three.js linear colour space; daytime stays separate. */
+export const GOLDEN_HOUR_SKY = {
+  horizon: new THREE.Color(0xffb27a),
+  mid: new THREE.Color(0xd98bc4),
+  zenith: new THREE.Color(0x6b5fd1),
+} as const;
 // Clouds need a brighter, gentler shade than the shared prop toon ramp.
 const CLOUD_RAMP = new THREE.DataTexture(
   new Uint8Array([
@@ -33,6 +40,10 @@ export function buildSkyVisuals(): SkyVisuals {
     uGolden: { value: 0 },
     uSun: { value: new THREE.Vector3(0, 1, 0) },
     uHorizon: { value: SKY_HORIZON_COLOR },
+    uSunsetHorizon: { value: GOLDEN_HOUR_SKY.horizon },
+    uSunsetMid: { value: GOLDEN_HOUR_SKY.mid },
+    uSunsetZenith: { value: GOLDEN_HOUR_SKY.zenith },
+    uSunGlowStrength: { value: 0.29 },
   };
   const dome = new THREE.Mesh(new THREE.SphereGeometry(1800, 32, 18),
     new THREE.ShaderMaterial({
@@ -45,19 +56,21 @@ export function buildSkyVisuals(): SkyVisuals {
         '}',
       ].join('\n'),
       fragmentShader: [
-        'uniform float uDay, uGolden; uniform vec3 uSun, uHorizon;',
+        'uniform float uDay, uGolden, uSunGlowStrength;',
+        'uniform vec3 uSun, uHorizon, uSunsetHorizon, uSunsetMid, uSunsetZenith;',
         'varying vec3 vDirection;',
         'void main() {',
         '  vec3 dir = normalize(vDirection);',
         '  float horizon = smoothstep(-0.15, 0.90, dir.y);',
         '  vec3 sunny = mix(uHorizon, vec3(0.08, 0.48, 0.94), horizon);',
-        '  vec3 sunset = mix(vec3(1.0, 0.60, 0.47), vec3(0.56, 0.45, 0.73), horizon);',
+        '  vec3 sunset = mix(uSunsetHorizon, uSunsetMid, smoothstep(0.0, 0.5, horizon));',
+        '  sunset = mix(sunset, uSunsetZenith, smoothstep(0.5, 1.0, horizon));',
         '  vec3 night = mix(vec3(0.18, 0.22, 0.38), vec3(0.018, 0.045, 0.14), horizon);',
         '  vec3 dayColor = mix(sunny, sunset, uGolden);',
         '  float glow = max(dot(dir, normalize(uSun)), 0.0);',
         '  glow *= glow; glow *= glow; glow *= glow; glow *= glow; glow *= glow;',
-        '  dayColor += vec3(1.0, 0.72, 0.36) * glow * 0.29;',
-        '  gl_FragColor = vec4(mix(night, dayColor, uDay), 1.0);',
+        '  dayColor += vec3(1.0, 0.72, 0.36) * glow * uSunGlowStrength;',
+        '  gl_FragColor = vec4(mix(night, dayColor, max(uDay, uGolden)), 1.0);',
         '}',
       ].join('\n'),
     }));
@@ -130,12 +143,17 @@ export function buildSkyVisuals(): SkyVisuals {
     const angle = phase * Math.PI * 2 - Math.PI / 2;
     const altitude = Math.sin(angle);
     const daylight = THREE.MathUtils.clamp(altitude * 1.8 + 0.3, 0.025, 1);
-    const golden = Math.pow(1 - Math.min(1, Math.abs(altitude) * 1.9), 1.7) * daylight;
+    // Saturate the painting's late-afternoon palette at phases 0.285–0.29.
+    // Noon stays byte-for-byte on the original daytime shader path (golden=0).
+    const golden = Math.min(1,
+      Math.pow(1 - Math.min(1, Math.abs(altitude) * 1.9), 1.7) * daylight * 4.2);
     // Diagonal warm key, not a nearly vertical noon light that erases facade relief.
     const direction = new THREE.Vector3(Math.cos(angle) * 0.7 + 0.48 * daylight,
       altitude * 0.87, -0.63).normalize();
     uniforms.uDay.value = daylight;
     uniforms.uGolden.value = golden;
+    // At golden hour this is 1.65× the original glow; at noon it is 0.29.
+    uniforms.uSunGlowStrength.value = 0.29 * (1 + 0.65 * golden);
     uniforms.uSun.value.copy(direction);
     sun.position.copy(direction).multiplyScalar(900);
     sun.visible = altitude > -0.07;

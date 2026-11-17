@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { TOON_RAMP } from './visual-props';
-import { buildSkyVisuals, SKY_HORIZON_COLOR } from './visual-sky';
+import { buildSkyVisuals, GOLDEN_HOUR_SKY, SKY_HORIZON_COLOR } from './visual-sky';
 
 function makeClouds() {
   const sky = buildSkyVisuals();
@@ -136,4 +136,52 @@ describe('storybook sky clouds (Hoofington E2)', () => {
     expect((clouds.material as THREE.MeshToonMaterial).fog).toBe(true);
     expect((clouds.material as THREE.MeshToonMaterial).depthWrite).toBe(false);
   });
+  it('uses saturated three-stop golden-hour colours without changing noon blue', () => {
+    const sky = buildSkyVisuals();
+    const dome = sky.group.getObjectByName('gradient-sky') as THREE.Mesh;
+    const shader = dome.material as THREE.ShaderMaterial;
+    expect(shader.fog).toBe(false);
+    const uniforms = shader.uniforms;
+    expect(shader.fragmentShader).toContain('mix(uSunsetHorizon, uSunsetMid,');
+    expect(shader.fragmentShader).toContain('mix(sunset, uSunsetZenith,');
+    expect(shader.fragmentShader).toContain('max(uDay, uGolden)');
+    expect(shader.fragmentShader).toContain('glow * uSunGlowStrength');
+
+    sky.update(0.29);
+    expect(uniforms['uGolden']!.value).toBe(1);
+    expect((uniforms['uSunsetHorizon']!.value as THREE.Color).getHex())
+      .toBe(0xffb27a);
+    expect((uniforms['uSunsetMid']!.value as THREE.Color).getHex())
+      .toBe(0xd98bc4);
+    expect((uniforms['uSunsetZenith']!.value as THREE.Color).getHex())
+      .toBe(0x6b5fd1);
+    expect((uniforms['uSunsetHorizon']!.value as THREE.Color))
+      .toBe(GOLDEN_HOUR_SKY.horizon);
+    expect((uniforms['uSunsetMid']!.value as THREE.Color))
+      .toBe(GOLDEN_HOUR_SKY.mid);
+    expect((uniforms['uSunsetZenith']!.value as THREE.Color))
+      .toBe(GOLDEN_HOUR_SKY.zenith);
+    expect(uniforms['uSunGlowStrength']!.value)
+      .toBeGreaterThanOrEqual(0.29 * 1.6);
+
+    sky.update(0.5);
+    expect(uniforms['uGolden']!.value).toBe(0);
+    expect(uniforms['uDay']!.value).toBe(1);
+    expect(uniforms['uSunGlowStrength']!.value).toBeCloseTo(0.29, 10);
+    expect(uniforms['uHorizon']!.value).toBe(SKY_HORIZON_COLOR);
+    // The untouched noon gradient still runs from the old blue horizon to
+    // the original sky-blue zenith, with no sunset or night contribution.
+    expect(shader.fragmentShader)
+      .toContain('vec3 sunny = mix(uHorizon, vec3(0.08, 0.48, 0.94), horizon);');
+    expect(SKY_HORIZON_COLOR).toEqual(new THREE.Color(0.76, 0.88, 0.98));
+    const blueZenith = new THREE.Color(0.08, 0.48, 0.94);
+    for (const h of [0, 0.25, 0.5, 0.75, 1]) {
+      const expectedNoon = SKY_HORIZON_COLOR.clone().lerp(blueZenith, h);
+      const fromUnchangedDayPath = (uniforms['uHorizon']!.value as THREE.Color)
+        .clone().lerp(blueZenith, h);
+      expect(fromUnchangedDayPath.equals(expectedNoon)).toBe(true);
+    }
+    expect(shader.fragmentShader).toContain('vec3 night = mix(vec3(0.18, 0.22, 0.38),');
+  });
+
 });
