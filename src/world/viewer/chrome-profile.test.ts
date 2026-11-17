@@ -189,6 +189,12 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
           return true;
         })()`, returnByValue: true,
       });
+      // Expose the actual scene for the second art review; the standard
+      // UI overlays hide the path and sign from the normal screenshot.
+      await send('Runtime.evaluate', {
+        expression: "['panel','reference','labels','hint'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; }); window.__worldProfile.measure(3);",
+        returnByValue: true,
+      });
       const damCapture = await send('Page.captureScreenshot', {
         format: 'png', captureBeyondViewport: false, fromSurface: true,
       });
