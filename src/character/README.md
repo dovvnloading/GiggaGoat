@@ -104,7 +104,9 @@ side-by-side visual review. In **real Rapier mode**, the center hero alone binds
 to a real goat; WASD, Shift, Space, E, Q, T and 1–4 exercise movement and
 one-shot animation. The **Walk circle · nose first** button runs a
 1.2 m/s Billy-sized circular preview: x = -r cos(yaw), z = -r sin(yaw),
-so the model's -Z axis must lead along the path tangent at every yaw. Pause
+so the model's -Z axis must lead along the path tangent at every yaw.
+The lab renders that physics heading with Three.js rotation `-yaw` (positive
+Three.js Y rotation turns local -Z toward -X). Pause
 or orbit to visually check all directions, then stop the circle to restore
 the lineup. The lab is also usable in a built GitHub Pages deployment.
 
