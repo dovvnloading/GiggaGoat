@@ -47,7 +47,7 @@ class ElementStub {
 
 type Rect = { left: number; top: number; right: number; bottom: number; width: number; height: number };
 type Geometry = {
-  boxes: Record<string, Rect>;
+  boxes: Record<'card' | 'header' | 'paper' | 'title' | 'task' | 'detail' | 'footer' | 'wallet' | 'mode' | 'checkbox', Rect>;
   paperFits: boolean;
   taskFits: boolean;
   detailFits: boolean;
