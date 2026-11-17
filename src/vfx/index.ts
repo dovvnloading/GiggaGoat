@@ -62,3 +62,13 @@ export {
   makeLaunchPadBurstCue, makeLaunchPadBurstFrame, sampleLaunchPadBurst,
   type LaunchPadBurstCue, type LaunchPadBurstFrame,
 } from './launchPadMath';
+
+
+export {
+  ComboPopText, createComboPopText, type ComboPopTextOptions,
+} from './ComboPopText';
+export {
+  selectComboPopTier, makeComboPopCue, makeComboPopFrame, sampleComboPop,
+  type ComboPopTier, type ComboPopCue, type ComboPopFrame,
+} from './comboPopMath';
+export { COMBO_POP_PALETTES, type ComboPopPalette } from './comboPopArt';
