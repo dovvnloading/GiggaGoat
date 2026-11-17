@@ -122,6 +122,10 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
   // From the beach looking out to sea, kiosks occupy the LEFT (+X) deck strip.
   // Their fronts, striped awnings and signs face the central promenade (-X).
   const paints = [0xf0757c, 0xffc567, 0x65c8cc, 0xd78abf, 0xff9469];
+  const kioskSigns = [
+    'kiosk-sign-icecream', 'kiosk-sign-popcorn', 'kiosk-sign-games',
+    'kiosk-sign-prizes', 'kiosk-sign-candy',
+  ] as const satisfies readonly PropKind[];
   for (let i = 0; i < 5; i++) {
     const z = -27 + i * 11;
     const shopHeight = 6.8;
@@ -132,7 +136,7 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
       centreY: deckY + 4.55 * scale, yaw: -Math.PI / 2,
       color: i % 2 ? 0xffd365 : 0xf57e8d, collidable: false,
     });
-    place('signboard', 4.1, z, 4.6, 1.4, 0.3, {
+    place(kioskSigns[i]!, 4.1, z, 4.6, 1.4, 0.3, {
       centreY: deckY + 6.0 * scale, yaw: -Math.PI / 2,
       color: 0xffe3a7, collidable: false,
     });

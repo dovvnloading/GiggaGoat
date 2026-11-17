@@ -29,6 +29,8 @@ export type PropKind =
   | 'control-house' | 'dock' | 'cottage' | 'shipwreck'
   | 'cave-mouth' | 'bush' | 'flower' | 'grass-tuft' | 'rope-rail'
   | 'stepping-stone' | 'chimney' | 'signboard'
+  | 'kiosk-sign-icecream' | 'kiosk-sign-popcorn' | 'kiosk-sign-games'
+  | 'kiosk-sign-prizes' | 'kiosk-sign-candy'
   | 'concrete-slab' | 'concrete-column' | 'yard-scaffold' | 'safety-rail'
   | 'chain-fence' | 'crane-jib' | 'crane-cab' | 'crane-cable'
   | 'red-girder' | 'pipe-stack' | 'site-barrier' | 'site-banner'

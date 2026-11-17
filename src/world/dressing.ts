@@ -235,11 +235,14 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
         yaw, y: top - 3.0 * scale,
         color: [0xf2777f, 0xffd866, 0x69c6d8][i % 3],
       });
-    place('signboard', x + frontX * (facade + 0.35 * scale),
-      z + frontZ * (facade + 0.35 * scale),
-      7, 2.5, 0.45, city, {
-        yaw, y: top - 1.6 * scale, color: 0xffe6a2,
-      });
+    // Rear houses have no parapet advertising; retain shop name boards only.
+    if (building.kind === 'shop') {
+      place('signboard', x + frontX * (facade + 0.35 * scale),
+        z + frontZ * (facade + 0.35 * scale),
+        7, 2.5, 0.45, city, {
+          yaw, y: top - 1.6 * scale, color: 0xffe6a2,
+        });
+    }
     place('ac-unit', x - frontX * 1.8 * scale,
       z - frontZ * 1.8 * scale, 1.2, 1.0, 1.0, city,
       { yaw, y: top + 0.5 * scale, color: 0xc0cbd0 });
@@ -262,9 +265,10 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
         { color: 0xf2777f });
     }
   }
+  // Between the 8 m planter rows: keep benches on their existing pavement side.
   for (let i = 0; i < 8; i++) {
     const side = i % 2 ? -1 : 1;
-    at(city, 'bench', side * 12.7, -27 + i * 7.8,
+    at(city, 'bench', side * 12.7, -32 + i * 8,
       2.0, 0.95, 0.75, { yaw: Math.PI / 2, color: 0x9d6f57 });
   }
   for (const dz of [-12, 8]) for (const dx of [-46, -32]) {
