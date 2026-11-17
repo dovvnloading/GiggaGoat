@@ -11,6 +11,9 @@ interface ChunkBuffer {
 
 const DIRT = new THREE.Color('#B99262');
 const GARDEN = new THREE.Color('#6F8549');
+/** Hoofington front gardens (painting 08): dark soil beds and pale stone paths. */
+const FLOWER_BED = new THREE.Color('#7B5A3A');
+const STONE_PATH = new THREE.Color('#DDD3C2');
 const STONE = new THREE.Color('#D8C7A7');
 const TILE = new THREE.Color('#C2B6A2');
 const GRAVEL = new THREE.Color('#E1C18B');
@@ -114,17 +117,19 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Gr
       1.2 * scale, 0.28 * scale, YARD_MARKING, -0.62);
   }
 
-  // Farm path, picket-fenced flower beds and little dirt approaches to doors.
+  // Front gardens follow the painting (QA pass 2, G1): open lawn, a few
+  // dark-soil flower beds along the fence and pale stone paths to the doors.
+  // The old alternating dirt strips read as brown stripes from the street.
   const farm = site('hoofington');
   for (const side of [-1, 1]) {
-    for (let i = 0; i < 13; i++) {
+    for (let i = 0; i < 13; i += 3) {
       const z = farm.z + (-34 + i * 5.5) * scale;
       quad(farm.x + side * 15.2 * scale, z,
-        4.1 * scale, 4.6 * scale, i % 3 === 0 ? GARDEN : DIRT);
+        3.2 * scale, 2.0 * scale, FLOWER_BED);
     }
     for (const dz of [-19, -9, 11, 12, 29]) {
       quad(farm.x + side * 12.5 * scale, farm.z + dz * scale,
-        5.8 * scale, 2.3 * scale, GRAVEL, Math.PI / 2);
+        5.8 * scale, 1.6 * scale, STONE_PATH, Math.PI / 2);
     }
     quad(farm.x + side * 27 * scale, farm.z + 30 * scale,
       11 * scale, 8 * scale, GARDEN);
