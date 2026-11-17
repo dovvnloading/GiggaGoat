@@ -459,6 +459,30 @@ if (new URLSearchParams(window.location.search).has('profile')) {
           }
         });
       },
+      /** Debug rendered geometry including instanced copies at the active camera. */
+      meshCosts(): { name: string; triangles: number }[] {
+        worldView.group.updateMatrixWorld(true);
+        const clip = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4()
+          .multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+        const result: { name: string; triangles: number }[] = [];
+        worldView.group.traverse(node => {
+          if (!(node instanceof THREE.Mesh) || !node.visible) return;
+          let ancestor = node.parent;
+          while (ancestor && ancestor !== worldView.group) {
+            if (!ancestor.visible) return;
+            ancestor = ancestor.parent;
+          }
+          if (node.frustumCulled && !clip.intersectsObject(node)) return;
+          const materials = Array.isArray(node.material) ? node.material : [node.material];
+          if (!materials.some(mat => mat.visible)) return;
+          const vertices = node.geometry.index?.count ??
+            node.geometry.getAttribute('position')?.count ?? 0;
+          const instances = node instanceof THREE.InstancedMesh ? node.count : 1;
+          result.push({ name: node.name || node.parent?.name || node.type,
+            triangles: Math.floor(vertices * instances / 3) });
+        });
+        return result.sort((a, b) => b.triangles - a.triangles).slice(0,45);
+      },
       /** Profiling-only QA: confirm the authored Dam is on screen at bookmark 14. */
       damHeroState(): { loaded: boolean; inFrame: boolean;
         reservoirHidden: boolean; camera: number[]; target: number[] } {
