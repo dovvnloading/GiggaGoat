@@ -152,7 +152,7 @@ describe('Hoofington sourced village model integration', () => {
     // Six authored materials only cost six active draws, not twelve,
     // including when some visible lamps lie beyond the detailed distance.
     expect(batch.group.children.filter(mesh => mesh.visible)).toHaveLength(4);
-    expect(batch.updateCulling(new THREE.Vector3(65, 12, 3), allVisible)).toBe(false);
+    expect(batch.updateCulling(new THREE.Vector3(71, 12, 3), allVisible)).toBe(false);
     expect(batch.group.children.filter(mesh => mesh.visible)).toHaveLength(4);
     // Switching the same lamps from high to low LOD must not repaint shadows.
     expect(batch.updateCulling(new THREE.Vector3(90, 12, 3), allVisible)).toBe(false);
