@@ -221,6 +221,14 @@ describe.skipIf(!process.env['CI'] || !chrome)('world viewer real-Chrome frame p
       if (screenshot.data) {
         console.log('WORLD_DOWNTOWN_SCREENSHOT ' + screenshot.data);
       }
+      const picks = await send('Runtime.evaluate', {
+        expression: '[[570,385],[580,410],[590,425],[615,400],' +
+          '[585,370]].map(([x,y]) => ({x,y,hits:window.__worldProfile.debugPick(x,y)}))',
+        returnByValue: true,
+      });
+      console.log('WORLD_DOWNTOWN_HITS ' +
+        JSON.stringify(picks.result?.value ?? []));
+
       // Also capture the unobscured 3D world at precisely the same bookmark
       // for hands-on art review; restore all overlays before profiling.
       await send('Runtime.evaluate', {
