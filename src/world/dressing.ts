@@ -366,6 +366,20 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     }
   }
 
+  // Keep scenery scatter off the physical Baa-ardwalk pier and terminal deck.
+  // Check rotated descriptor footprints; no collision sizes or deck data change.
+  const boardwalkDecks = island.props.filter(p => p.poiId === beach &&
+    (p.kind === 'pier' || p.kind === 'deck'));
+  const onBoardwalkDeck = (x: number, z: number): boolean =>
+    boardwalkDecks.some(deck => {
+      const dx = x - deck.transform.position.x;
+      const dz = z - deck.transform.position.z;
+      const c = Math.cos(deck.transform.rotationY);
+      const s = Math.sin(deck.transform.rotationY);
+      return Math.abs(dx * c - dz * s) <= deck.size.x / 2 &&
+        Math.abs(dx * s + dz * c) <= deck.size.z / 2;
+    });
+
   // Seeded hedges, trees, flowers and windblown grass: consistent density, clear paths.
   const vegetationCount = Math.max(160, Math.round(440 * scale));
   for (let attempt = 0, accepted = 0; attempt < vegetationCount * 8 &&
@@ -398,6 +412,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     const position = near?.id === farm &&
       (kind === 'flower' || kind === 'bush' || kind.startsWith('tree-'))
       ? clearHoofingtonFoliage(x, z, width * scale, yaw) : { x, z };
+    if (onBoardwalkDeck(position.x, position.z)) continue;
     place(kind, position.x, position.z, width, height, width, near?.id,
       { shape: 'cylinder', yaw });
     accepted++;

@@ -62,6 +62,30 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
     }
   });
 
+  it('keeps procedural scenery vegetation outside both pier/deck footprints', () => {
+    const vegetationKinds = new Set(['tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft']);
+    for (const seed of ['billy-isle', 'shore-check', 'other-coast']) {
+      for (const size of [400, 600, 850]) {
+        const island = generateIsland({ seed, size, resolution: 97 });
+        const decks = island.props.filter(p => p.poiId === 'baa-ardwalk' &&
+          (p.kind === 'pier' || p.kind === 'deck'));
+        expect(decks).toHaveLength(2);
+        const plants = island.props.filter(p => p.id.startsWith('detail-') &&
+          vegetationKinds.has(p.kind));
+        expect(plants.length).toBeGreaterThan(100);
+        for (const plant of plants) for (const deck of decks) {
+          const dx = plant.transform.position.x - deck.transform.position.x;
+          const dz = plant.transform.position.z - deck.transform.position.z;
+          const yaw = deck.transform.rotationY;
+          const c = Math.cos(yaw), s = Math.sin(yaw);
+          const inside = Math.abs(dx * c - dz * s) <= deck.size.x / 2 &&
+            Math.abs(dx * s + dz * c) <= deck.size.z / 2;
+          expect(inside, `${seed}, size ${size}: ${plant.id} on ${deck.kind}`).toBe(false);
+        }
+      }
+    }
+  });
+
   it('supports every candy-coloured stall and the complete ferris wheel on deck', () => {
     for (const seed of ['billy-isle', 'art-deck-A', 'art-deck-B']) {
       const island = generateIsland({ seed, resolution: 193 });

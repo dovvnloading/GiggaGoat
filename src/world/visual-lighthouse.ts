@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { IslandData, PropDescriptor } from './types';
+import type { IslandData, PropDescriptor, PropKind } from './types';
 import { gridSample } from './terrain';
 import { publicAssetUrl } from './public-assets';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
@@ -10,6 +10,7 @@ import { TOON_RAMP } from './visual-props';
 
 export interface LighthouseVisuals {
   group: THREE.Group;
+  isFallbackHidden(mesh: THREE.InstancedMesh): boolean;
   update(seconds: number): void;
   dispose(): void;
 }
@@ -472,9 +473,42 @@ function makeFlowers(island: IslandData, center: { x: number; z: number }): THRE
   return group;
 }
 
-export function buildLighthouseVisuals(island: IslandData): LighthouseVisuals {
+/**
+ * Hide the generic instanced silhouettes already replaced by the lighthouse
+ * composition. Instance order must stay intact for physics bindings, and
+ * shared kinds (cottages and caves) must remain visible at other POIs.
+ */
+function suppressOldArt(island: IslandData, oldProps: THREE.Group,
+  fullyHidden: Set<PropKind>): void {
+  const replacedKinds: readonly PropKind[] = [
+    'lighthouse', 'cottage', 'shipwreck', 'dock', 'cave-mouth',
+  ];
+  const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  for (const kind of replacedKinds) {
+    const entries = island.props.filter(p => p.kind === kind &&
+      !p.id.startsWith('the-dam-compat-'));
+    const replaced = entries.flatMap((prop, i) =>
+      prop.poiId === 'old-lighthouse' ? [i] : []);
+    if (!replaced.length) continue;
+    if (replaced.length === entries.length) fullyHidden.add(kind);
+    // Also blank the architectural-detail and outline fallbacks, if any.
+    for (const prefix of ['props-', 'architecture-details-', 'outline-']) {
+      const mesh = oldProps.getObjectByName(prefix + kind);
+      if (!(mesh instanceof THREE.InstancedMesh)) continue;
+      for (const index of replaced) mesh.setMatrixAt(index, zero);
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingSphere();
+      // Do not flash an all-replaced legacy batch before the first cull.
+      if (fullyHidden.has(kind)) mesh.visible = false;
+    }
+  }
+}
+
+export function buildLighthouseVisuals(island: IslandData,
+  oldProps: THREE.Group): LighthouseVisuals {
   const group = new THREE.Group();
   group.name = 'old-lighthouse-hero';
+  const fullyHidden = new Set<PropKind>();
   const center = island.pois.find(p => p.id === 'old-lighthouse')!.center;
   const scale = island.size / 600;
   const local = (dx: number, dz: number): { x: number; z: number } =>
@@ -781,8 +815,13 @@ export function buildLighthouseVisuals(island: IslandData): LighthouseVisuals {
   loadRock('kenney/pirate-kit/rocks-a.glb', even, 'lighthouse-pirate-kit-grey-rocks-a');
   loadRock('kenney/nature-kit/rock_largeA.glb', odd, 'lighthouse-nature-kit-grey-rocks-b');
 
+  suppressOldArt(island, oldProps, fullyHidden);
   return {
     group,
+    isFallbackHidden(mesh: THREE.InstancedMesh): boolean {
+      const kind = mesh.name.replace(/^(?:props-|architecture-details-|outline-)/, '');
+      return fullyHidden.has(kind as PropKind);
+    },
     update(_seconds: number): void {
       // The emissive lantern is static and adds no new animated shadow pass.
     },

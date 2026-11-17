@@ -88,6 +88,38 @@ describe('Old Lighthouse painting rebuild', () => {
     view.dispose();
   });
 
+  it('hides only generic lighthouse-plot instances, without changing descriptors', () => {
+    for (const seed of ['billy-isle', 'sea-cave']) {
+      const island = generateIsland({ seed, resolution: 65 });
+      const descriptors = island.props.map(p => structuredClone(p));
+      const colliders = island.colliders.map(c => structuredClone(c));
+      const view = createWorldScene(island);
+      const matrix = new THREE.Matrix4();
+      for (const kind of ['lighthouse', 'cottage', 'shipwreck', 'dock', 'cave-mouth']) {
+        const entries = island.props.filter(p => p.kind === kind &&
+          !p.id.startsWith('the-dam-compat-'));
+        expect(entries.some(p => p.poiId === 'old-lighthouse'), kind).toBe(true);
+        for (const prefix of ['props-', 'architecture-details-', 'outline-']) {
+          const mesh = view.group.getObjectByName(prefix + kind);
+          if (!(mesh instanceof THREE.InstancedMesh)) continue;
+          entries.forEach((prop, index) => {
+            mesh.getMatrixAt(index, matrix);
+            const m = matrix.elements;
+            const scale = Math.hypot(m[0]!, m[1]!, m[2]!, m[4]!, m[5]!, m[6]!,
+              m[8]!, m[9]!, m[10]!);
+            expect(scale === 0, `${seed}: ${prefix}${kind}: ${prop.id}`)
+              .toBe(prop.poiId === 'old-lighthouse');
+          });
+          if (entries.every(p => p.poiId === 'old-lighthouse'))
+            expect(mesh.visible, kind).toBe(false);
+        }
+      }
+      expect(island.props).toEqual(descriptors);
+      expect(island.colliders).toEqual(colliders);
+      view.dispose();
+    }
+  });
+
   it('frames the painted signature objects in bookmark 15', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
     const mark = findBookmark('15')!;
