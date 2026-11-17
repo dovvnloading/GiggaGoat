@@ -495,14 +495,15 @@ function makeRopeBridgeRopes(island: IslandData): THREE.Mesh | undefined {
       const a = side[i - 1]!, b = side[i]!;
       const start = a.transform.position, end = b.transform.position;
       // Never span gaps between separate bridge sections.
-      if (Math.hypot(end.x - start.x, end.z - start.z) >= 6) continue;
+      const span = Math.hypot(end.x - start.x, end.z - start.z);
+      if (span >= 12) continue;
       for (const drop of [0.25, 1.2]) {
         const from = new THREE.Vector3(start.x, start.y + a.size.y / 2 - drop, start.z);
         const to = new THREE.Vector3(end.x, end.y + b.size.y / 2 - drop, end.z);
         const control = from.clone().add(to).multiplyScalar(0.5);
-        // A quadratic Bezier is half-way to its control at t=0.5:
-        // lowering the control 0.7 m makes the middle sag exactly 0.35 m.
-        control.y -= 0.7;
+        // At t=0.5 a quadratic Bezier is halfway between its control
+        // and the straight span, so twice the target sag lowers the midpoint.
+        control.y -= 2 * (0.04 * span);
         pieces.push(new THREE.TubeGeometry(
           new THREE.QuadraticBezierCurve3(from, control, to), 8, 0.04, 5, false));
       }
