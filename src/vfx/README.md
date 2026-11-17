@@ -1,4 +1,4 @@
-# VFX lane · Approved effects 01–08 (dust, landing, headbutt, water, crate, trampoline, launch pad, combo text)
+# VFX lane · Approved effects 01–09 (dust, landing, headbutt, water, crate, trampoline, launch pad, combo text, growth aura)
 
 The top-left **RUNNING DUST PUFFS** and adjacent **LANDING IMPACT RING** panels
 of the approved [`23_vfx_sheet.png`](../../docs/art/hifi/23_vfx_sheet.png)
@@ -299,14 +299,66 @@ Full pools recycle the oldest popup; clear is allocation-free and disposal
 is idempotent. It does not own a renderer, camera, game loop, physics,
 listener or runtime dependency.
 
+## GIGGA growth purple aura · call from gameplay (panel 09)
+
+```ts
+import { createGiggaGrowthPurpleAura } from '../vfx';
+
+const aura = createGiggaGrowthPurpleAura({ capacity: 3 });
+aura.attach(goat.root); // unscaled Object3D, local origin at hoof level
+aura.setTier(0);         // Kid 0, Billy 1, Big 2, GIGGA 3
+aura.triggerGrow(1);     // set Billy and play its violet hoof halo
+aura.triggerGrow(2);     // Big: taller violet pillars and upward spiral ribbons
+aura.triggerGrow(3);     // GIGGA: bright pink-purple flare and sparkles
+aura.update(dt);         // elapsed seconds, once per rendered frame
+
+// Remaining at GIGGA keeps a quiet, looping purple aura after the flare ends.
+aura.setTier(2);         // leaving GIGGA immediately removes the hold aura
+aura.clear();            // resets tier and pulses while retaining preallocated art
+aura.detach();           // optional: unparent without disposing
+aura.dispose();          // owning scene teardown
+```
+
+The effect operates **only** on its own child group, never on the goat's
+physics scale or transforms. Anchor its group under a locally unscaled
+Three Object3D placed at hoof level (+Y up); hoofOffsetY adjusts that
+local ground contact. Use one instance per goat. Calling triggerGrow()
+without arguments flashes the current setTier value; supplying a tier
+combines the two calls. Tier values must be integers 0–3. Calling
+setTier alone never fires a growth pulse, though GIGGA tier 3
+immediately shows a soft persistent aura. Dropping to a lower tier
+clears obsolete pulses. clear resets to Kid; all three methods
+and update validate inputs and throw after disposal.
+
+The pulse timeline progresses through a pale-violet ground ellipse and
+wide pink glow, narrow rising purple light pillars, three lilac/magenta
+helix ribbons with floating orbital hoops and 24 twinkling motes, then a
+brief stronger GIGGA-only purple-white flare. After ~1.2–2.0 s the burst
+dies without leaving stray particles. Remaining GIGGA keeps a gentle,
+breathing hoof ring, dim pillars and continually swirling/rising motes
+until the tier changes. This is not a gameplay growth controller.
+
+The bounded pool (default 3, max 8 overlapping tier-up pulses) reuses its
+oldest live slot when full; activeCount excludes the persistent GIGGA
+hold. All pulses, motes, cylinders, rings and helical strip meshes are
+precreated; ring, pillar and ribbon geometries and the two radial
+DataTextures are shared across the entire instance. Opacity materials
+are allocated once per slot so overlapping bursts can fade independently.
+No update-time arrays, vectors, meshes, geometries, textures, materials,
+canvas, downloads, event listeners, renderer, or physics objects are created.
+growthAuraMath.ts samples a mutable output frame at absolute ages for
+frame-rate independence; growthAura.test.ts covers the timeline,
+invalid inputs, pooling, resource sharing, GIGGA hold, headless scene
+lifecycle and split-vs-single update equivalence.
+
 ## Production art-review lab
 
 `/src/vfx/lab/index.html` works under `npm run dev` and in the **production
 Vite build / GitHub Pages**. The repo's existing lab-page discovery in
 `vite.config.ts` includes it automatically. The lab includes a running
-Three.js goat, a studio floor, dust, landing, headbutt, water, crate, trampoline and launch pad triggers, a small
+Three.js goat, a studio floor, dust, landing, headbutt, water, crate, trampoline, launch pad and growth-aura triggers, a small
 faceted decorative target rock, pause/direction/speed controls, landing
-strength, headbutt power, water speed and relative mass sliders, and crops of **all seven** approved
+strength, headbutt power, water speed and relative mass sliders, and crops of the earlier approved
 panels from the *existing* reference sheet (bundled by Vite from
 `docs/art/hifi`). Headbutt hits replay every 2.75 seconds, and paused
 single-hit triggering freezes a representative gold-star frame.
@@ -316,14 +368,14 @@ or the taller reference column to dictate its height. The pure
 `lab/viewport.ts` helper derives the drawing-buffer's logical dimensions from
 the wrapper width alone; a ResizeObserver, window resize handler and per-frame
 device-pixel-ratio check keep the camera projection and retina resolution in
-sync without a height feedback loop. The centered **08 COMBO POP TEXT** now loops x2 → x3 → x4! by default, with its supplied reference image displayed beside the 16:9 Three.js viewport. The **07 launch pad burst** is still selectable: lit
+sync without a height feedback loop. The centered **09 GIGGA GROWTH PURPLE AURA** loops Kid → Billy → Big → GIGGA on the existing goat by default, with a reduced WebP copy of the supplied panel displayed beside the 16:9 Three.js viewport. The stage gives GIGGA several seconds to show the flare settling into its persistent quiet aura. Tier replay and next-tier buttons allow paused art QA. The **08 COMBO POP TEXT** preview remains selectable with its supplied reference, looping x2 → x3 → x4!. The **07 launch pad burst** is still selectable: lit
 chevrons, spiky gold fountain, an airborne in-repo goat and sweeping
 gold flight trails. Its reference is cropped from the **lower-right
 panel of the existing sheet**, with no new image asset required.
 The **06 trampoline preview** remains selectable with its red/cream
 mat, violet arcs, scale and rebound strength controls. The **01–05
 showcase** remains selectable with original triggers and cadence.
-Effect 07 retains its launch-strength slider and retrigger button. Effect 08 has replay/next-tier controls and can be paused at a developed squash/stretch pose.
+Effect 07 retains its launch-strength slider and retrigger button. Effect 08 retains its replay/next-tier controls and can be paused at a developed squash/stretch pose.
 The viewport sizing helper still has headless Vitest coverage in
 `lab/viewport.test.ts`.
 
@@ -458,3 +510,22 @@ The viewport sizing helper still has headless Vitest coverage in
 - **Scope boundary:** `emit(position, comboCount)` is cosmetic;
   the existing gameplay owns combo timing/scoring and the rendered goat.
   No production game or other lane files were changed.
+
+
+### GIGGA Growth Purple Aura (09)
+
+- **Matches:** the in-repo goat steps from Kid to Billy to Big to GIGGA;
+  the first growth adds a luminous violet/pink ring directly beneath the
+  hooves, taller tiers gain sharp translucent purple pillars, lilac spiral
+  ribbons, airborne pink sparkles, and floating hoops. GIGGA peaks in a
+  much brighter pink-purple flare, then settles into a faint continuing
+  orbit and breathing ground glow as long as GIGGA is active.
+- **Intentional approximation:** the approved reference has hand-painted
+  glowing, irregular strokes, layered particle bloom and soft illustrated
+  goat fur. This budgeted Three.js approximation uses flat-shaded stylized
+  beams, prebuilt helix strips, additive radial textures and the existing
+  procedural goat; it preserves the purple-pink hierarchy, silhouette and
+  tier progression rather than reproducing each painted brushstroke.
+- **Scope boundary:** only the independent VFX module, its pure math/tests,
+  VFX barrel and production lab were changed. No other game lane, goat
+  character source, physics size/timing or main scene wiring was altered.

@@ -1,4 +1,4 @@
-/** Production art QA: 01–08, with combo pop centered by default. */
+/** Production art QA: 01–09, growth aura centered by default. */
 import * as THREE from 'three';
 import { GoatCharacter } from '../../character/GoatCharacter';
 import { RunningDustPuffs } from '../RunningDustPuffs';
@@ -13,6 +13,8 @@ import {
 } from '../trampolineBoingMath';
 import { LaunchPadBurst } from '../LaunchPadBurst';
 import { ComboPopText } from '../ComboPopText';
+import { GiggaGrowthPurpleAura } from '../GiggaGrowthPurpleAura';
+import type { GrowthTier } from '../growthAuraMath';
 import { makeComboPopCue } from '../comboPopMath';
 import {
   LAUNCH_PAD_TOP_Y, makeLaunchPadBurstCue, makeLaunchPadBurstFrame,
@@ -65,6 +67,10 @@ const comboControls = element<HTMLElement>('combo-controls');
 const comboReplayButton = element<HTMLButtonElement>('combo-replay');
 const comboNextButton = element<HTMLButtonElement>('combo-next');
 const comboReference = element<HTMLElement>('combo-reference');
+const growthReference = element<HTMLElement>('growth-reference');
+const growthControls = element<HTMLElement>('growth-controls');
+const growthReplayButton = element<HTMLButtonElement>('growth-replay');
+const growthNextButton = element<HTMLButtonElement>('growth-next');
 const launchReference = element<HTMLElement>('launch-reference');
 const targetTitle = element<HTMLElement>('target-title');
 const trampolineControls = element<HTMLElement>('trampoline-controls');
@@ -130,6 +136,9 @@ const launchPad = new LaunchPadBurst({ capacity: 3 });
 scene.add(launchPad.group);
 const comboPop = new ComboPopText({ capacity: 4 });
 scene.add(comboPop.group);
+// An unscaled root is a stable hoof-level anchor across all four character tiers.
+const growthAura = new GiggaGrowthPurpleAura({ capacity: 3 });
+growthAura.attach(goat.root);
 // A static faceted target for QA only; no collider or game physics.
 const rockGeometry = new THREE.DodecahedronGeometry(0.44, 0);
 const rockMaterial = new THREE.MeshToonMaterial({ color: 0x8e8194 });
@@ -152,10 +161,14 @@ let trampolineClock = 0;
 let launchClock = 0;
 let comboClock = 0;
 let comboIndex = 0;
+let growthClock = 0;
+let growthTier: GrowthTier = 0;
+const growthTierNames = ['KID', 'BILLY', 'BIG', 'GIGGA'] as const;
+const growthStageSeconds = [0.90, 1.65, 1.85, 4.05] as const;
 let activeCombo = 2;
 const comboSequence = [2, 3, 4] as const;
 const comboContact = { x: 0, y: 1.7, z: 0 };
-let previewMode: 'combo' | 'launch' | 'trampoline' | 'showcase' = 'combo';
+let previewMode: 'growth' | 'combo' | 'launch' | 'trampoline' | 'showcase' = 'growth';
 let trampolineBurst: TrampolineBoingBurst | null = null;
 const trampolinePreviewFrame = makeTrampolineBoingFrame();
 const trampolineContact = { x: 0, y: 0, z: 0 };
@@ -186,6 +199,7 @@ function setDirection(value: string): void {
   trampoline.clear();
   launchPad.clear();
   comboPop.clear();
+  growthAura.clear();
   emissionClock = 0;
   landingClock = 0;
   headbuttClock = 0;
@@ -195,6 +209,8 @@ function setDirection(value: string): void {
   launchClock = 0;
   comboClock = 0;
   comboIndex = 0;
+  growthClock = 0;
+  growthTier = 0;
   trampolineBurst = null;
   launchCue = null;
   goat.mountWorldPosition('head', headContact);
@@ -203,47 +219,58 @@ function setDirection(value: string): void {
   const showcase = previewMode === 'showcase';
   const boing = previewMode === 'trampoline';
   const isCombo = previewMode === 'combo';
+  const isGrowth = previewMode === 'growth';
   for (const effect of [dust, landing, headbutt, water, crate]) {
     effect.group.visible = showcase;
   }
   trampoline.group.visible = boing;
   launchPad.group.visible = previewMode === 'launch';
   comboPop.group.visible = isCombo;
+  growthAura.group.visible = isGrowth;
   rock.visible = showcase;
   goat.root.visible = !isCombo;
   floor.visible = !isCombo;
-  (scene.background as THREE.Color).setHex(isCombo ? 0xfff7f5 : 0xfff3ea);
+  (scene.background as THREE.Color).setHex(isGrowth ? 0xfff0fc : isCombo ? 0xfff7f5 : 0xfff3ea);
   showcaseControls.hidden = !showcase;
   showcaseTriggers.hidden = !showcase;
   trampolineControls.hidden = !boing;
   launchControls.hidden = previewMode !== 'launch';
   comboControls.hidden = !isCombo;
+  growthControls.hidden = !isGrowth;
   comboReference.hidden = !isCombo;
-  launchReference.hidden = isCombo;
-  targetTitle.textContent = isCombo
-    ? '08 · COMBO POP TEXT · approved target' : '07 · Launch Pad Burst · target';
+  growthReference.hidden = !isGrowth;
+  launchReference.hidden = isCombo || isGrowth;
+  targetTitle.textContent = isGrowth ? '09 · GIGGA GROWTH PURPLE AURA · approved target'
+    : isCombo ? '08 · COMBO POP TEXT · approved target'
+    : '07 · Launch Pad Burst · target';
   burstButton.disabled = !showcase;
 
-  previewTitle.textContent = isCombo
-    ? '08 · Combo Pop Text · x2 → x3 → x4! · squash, stretch and float'
+  previewTitle.textContent = isGrowth
+    ? '09 · GIGGA growth purple aura · Kid → Billy → Big → GIGGA'
+    : isCombo
+      ? '08 · Combo Pop Text · x2 → x3 → x4! · squash, stretch and float'
     : showcase
       ? '01–05 · Dust + landing + headbutt + water + crate · drag to orbit'
     : boing
       ? '06 · Trampoline boing · squash → snap → flight · drag to orbit'
       : '07 · Launch pad burst · lit arrows → gold spikes → flight trails · drag to orbit';
-  poseHint.textContent = isCombo
-    ? '08 · Blue/yellow → orange/gold → purple with extra stars'
+  poseHint.textContent = isGrowth
+    ? '09 · Hoof halo → lilac spirals + sparks → GIGGA flare → quiet aura'
+    : isCombo
+      ? '08 · Blue/yellow → orange/gold → purple with extra stars'
     : showcase
       ? '01–05 · Five looping legacy effects'
     : boing
       ? '06 · Downward dip → golden fan → violet launch arcs'
       : '07 · Glowing steel pad → gold fountain → long golden goat trail';
-  lookAt.set(isCombo ? 0 : showcase ? -0.35 : boing ? 0 : 0.22,
-    isCombo ? 1.98 : showcase ? 0.83 : boing ? 1.70 : 1.63, 0);
-  distance = isCombo ? 6.7 : showcase ? 5.1 : boing ? 7.7 : 8.9;
+  lookAt.set(isGrowth ? 0 : isCombo ? 0 : showcase ? -0.35 : boing ? 0 : 0.22,
+    isGrowth ? 1.82 : isCombo ? 1.98 : showcase ? 0.83 : boing ? 1.70 : 1.63, 0);
+  distance = isGrowth ? 8.8 : isCombo ? 6.7 : showcase ? 5.1 : boing ? 7.7 : 8.9;
   goat.root.rotation.z = 0;
-  goat.setPreview(showcase ? 'sprint' : boing ? 'stand' : 'sprint', 'BILLY');
-  if (isCombo) {
+  goat.setPreview(isGrowth || boing ? 'stand' : 'sprint', isGrowth ? 'KID' : 'BILLY');
+  if (isGrowth) {
+    emitGrowthTier(0);
+  } else if (isCombo) {
     emitCombo();
   } else if (boing) {
     goat.root.rotation.y = -Math.PI / 2;
@@ -314,6 +341,19 @@ function emitLaunch(): void {
   launchPad.emit(launchContact, launchDirection, strength);
 }
 
+function emitGrowthTier(tier: GrowthTier): void {
+  growthTier = tier;
+  growthClock = 0;
+  goat.root.position.set(0, 0, 0);
+  goat.root.rotation.set(0, Math.PI / 2, 0);
+  goat.setPreview('stand', growthTierNames[tier]);
+  growthAura.triggerGrow(tier);
+}
+
+function nextGrowthTier(): void {
+  emitGrowthTier(((growthTier + 1) % 4) as GrowthTier);
+}
+
 function emitCombo(): void {
   activeCombo = comboSequence[comboIndex]!;
   comboIndex = (comboIndex + 1) % comboSequence.length;
@@ -339,7 +379,10 @@ function emitCrate(): void {
 }
 
 function refreshUi(): void {
-  state.textContent = previewMode === 'combo'
+  state.textContent = previewMode === 'growth'
+    ? (paused ? 'Paused' : 'Running') + ' / ' + growthTierNames[growthTier] +
+      ' / ' + growthAura.activeCount + ' growth pulses / GIGGA hold at tier 3'
+    : previewMode === 'combo'
     ? (paused ? 'Paused' : 'Running') + ' / COMBO x' + activeCombo +
       (activeCombo >= 4 ? '!' : '') + ' / pop → overshoot → rise + fade'
     : previewMode === 'launch'
@@ -367,7 +410,8 @@ function refreshUi(): void {
 }
 
 previewModeControl.addEventListener('change', () => {
-  previewMode = previewModeControl.value === 'combo' ? 'combo' :
+  previewMode = previewModeControl.value === 'growth' ? 'growth' :
+    previewModeControl.value === 'combo' ? 'combo' :
     previewModeControl.value === 'showcase' ? 'showcase' :
     previewModeControl.value === 'trampoline' ? 'trampoline' : 'launch';
   setDirection(directionControl.value);
@@ -398,6 +442,30 @@ waterMassControl.addEventListener('input', refreshUi);
 crateSizeControl.addEventListener('input', refreshUi);
 trampolineScaleControl.addEventListener('input', () => { emitTrampoline(); poseTrampolineGoat(); refreshUi(); });
 trampolineStrengthControl.addEventListener('input', () => { emitTrampoline(); poseTrampolineGoat(); refreshUi(); });
+growthReplayButton.addEventListener('click', () => {
+  if (previewMode !== 'growth') {
+    previewMode = 'growth';
+    previewModeControl.value = 'growth';
+    setDirection(directionControl.value);
+  } else {
+    growthAura.clear();
+    emitGrowthTier(0);
+  }
+  refreshUi();
+});
+growthNextButton.addEventListener('click', () => {
+  if (previewMode !== 'growth') {
+    previewMode = 'growth';
+    previewModeControl.value = 'growth';
+    setDirection(directionControl.value);
+  }
+  nextGrowthTier();
+  if (paused && growthTier > 0) {
+    growthClock = 0.43;
+    growthAura.update(0.43);
+  }
+  refreshUi();
+});
 comboReplayButton.addEventListener('click', () => {
   if (previewMode !== 'combo') {
     previewMode = 'combo';
@@ -494,6 +562,7 @@ clearButton.addEventListener('click', () => {
   trampoline.clear();
   launchPad.clear();
   comboPop.clear();
+  growthAura.clear();
   emissionClock = 0;
   landingClock = 0;
   headbuttClock = 0;
@@ -563,7 +632,12 @@ function frame(now: number): void {
   const dt = lastTime ? Math.min(0.05, Math.max(0, (now - lastTime) / 1000)) : 0;
   lastTime = now;
   if (!paused) {
-    if (previewMode === 'combo') {
+    if (previewMode === 'growth') {
+      goat.update(dt);
+      growthAura.update(dt);
+      growthClock += dt;
+      if (growthClock >= growthStageSeconds[growthTier]) nextGrowthTier();
+    } else if (previewMode === 'combo') {
       comboClock += dt;
       comboPop.update(dt);
       if (comboClock >= 1.67) emitCombo();
@@ -639,20 +713,7 @@ function frame(now: number): void {
 
 setDirection(directionControl.value);
 goat.update(0);
-// Start 08 mid-pop so the reference comparison is immediately readable.
-// The launch pad keeps its mid-flight initial seek when 07 is selected.
-const initialLaunch = makeLaunchPadBurstCue(
-  launchContact, launchDirection, Number(launchStrengthControl.value),
-);
-if (previewMode === 'combo') {
-  const first = makeComboPopCue(comboContact, 2)!;
-  comboClock = first.lifetime * 0.16;
-  comboPop.update(comboClock);
-} else if (initialLaunch) {
-  launchClock = initialLaunch.lifetime * 0.60;
-  launchPad.update(launchClock);
-  poseLaunchGoat();
-}
+// Start at Kid; 01–08 seed their own previews when selected.
 refreshUi();
 resizeViewport();
 requestAnimationFrame(frame);
@@ -670,6 +731,7 @@ window.addEventListener('pagehide', () => {
   trampoline.dispose();
   launchPad.dispose();
   comboPop.dispose();
+  growthAura.dispose();
   rockGeometry.dispose();
   rockMaterial.dispose();
   goat.dispose();
