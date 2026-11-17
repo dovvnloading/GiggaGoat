@@ -84,6 +84,6 @@ These models are licensed CC-BY 3.0 and must be credited when shipped.
 
 Garden gnome (`assets/library/meshy/garden-gnome/garden-gnome.glb`) is "Gartenzwerg" by Tauberstein on Meshy, CC0: https://www.meshy.ai/posts/0199e482-7749-78a4-937d-6019638b4153
 
-Street lamp (`assets/library/meshy/street-lamp/street-lamp.glb`) is "lamp" by MKHORIZON on Meshy, CC0: https://www.meshy.ai/posts/lamp-01a16feb-a816-745e-b34e-a4aa78be53fc
+Models in `assets/library/usdcraft/` are converted from NVIDIA USDCraft-10K (https://huggingface.co/datasets/nvidia/USDCraft-10K), Apache-2.0, Copyright NVIDIA Corporation.
 
 All other models are CC0 / public domain: Kenney (kenney.nl), KayKit by Kay Lousberg, Quaternius (quaternius.com) and public-domain Poly Pizza uploads. Credit is appreciated but not required.
