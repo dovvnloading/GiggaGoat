@@ -5,7 +5,7 @@ import { BIOMES, POI_IDS } from './types';
 import { hashString, SeededRandom } from './random';
 import {
   assignBiomes, carveWater, gridCoordinate, gridIndex, gridSample, makeTerrain,
-  sculptLighthouseSeaCave, stampPlot,
+  preserveLighthouseChannel, sculptLighthouseSeaCave, stampPlot,
 } from './terrain';
 import { makeRoads, makeBridgeDecks } from './roads';
 import { populateProps } from './layouts';
@@ -147,6 +147,8 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   const dressed = dressIsland(island, rng);
   gradeBuildingFootprints(island, dressed);
   island.props.push(...dressed, ...makeBridgeDecks(island));
+  // Restore the full water gap after footings have feathered toward the bridge.
+  preserveLighthouseChannel(island, lighthouse.center);
   assignBiomes(island);
   island.spawns = makeSpawns(island);
   island.relics = makeRelics(island, rng);
