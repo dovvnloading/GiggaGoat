@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { createWorldScene, generateIsland } from './index';
 import {
-  DOWNTOWN_MODELS, DOWNTOWN_SIGN_ANCHORS, downtownSignGeometry,
+  DOWNTOWN_MODELS, DOWNTOWN_SIGN_ANCHORS, DOWNTOWN_BUILDING_SIZES,
+  SHOP_FRONTS, downtownRearHouseModel, downtownSignGeometry,
   makeDowntownPlacements, makeDowntownSigns,
   type DowntownModel, type DowntownPlacement,
 } from './visual-downtown';
@@ -115,6 +116,127 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       .toEqual(plan.map(p => [p.model, p.position, p.size, p.wall, p.roof]));
   });
 
+
+  it('fits every Downtown building to native dimensions at one 8 m/unit scale while keeping facades fixed', () => {
+    const exact = {
+      cornerShop: { x: 7.76, y: 10.43, z: 9.50 },
+      kayShop: { x: 7.12, y: 7.24, z: 10.30 },
+      cinema: { x: 6.72, y: 10.43, z: 8.70 },
+      cafe: { x: 13.12, y: 7.24, z: 9.82 },
+      market: { x: 7.76, y: 13.63, z: 8.70 },
+      bakery: { x: 7.07, y: 10.43, z: 9.32 },
+      boutique: { x: 17.12, y: 13.63, z: 12.30 },
+      arcade: { x: 16.67, y: 11.85, z: 8.79 },
+      townhouse: { x: 11.36, y: 18.25, z: 12.71 },
+      brickHouse: { x: 9.92, y: 25.29, z: 11.51 },
+      kayHouse: { x: 6.72, y: 13.63, z: 9.50 },
+    } as const;
+    expect(DOWNTOWN_BUILDING_SIZES).toEqual(exact);
+    for (const size of [400, 600, 900]) {
+      const island = generateIsland({ seed: 'billy-isle', size, resolution: 97 });
+      const scale = island.size / 600;
+      const centre = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
+      const plan = makeDowntownPlacements(island);
+      const shops = plan.filter(p => p.source?.kind === 'shop');
+      const houses = plan.filter(p => p.source?.kind === 'house');
+      expect(shops).toHaveLength(10);
+      expect(houses).toHaveLength(6);
+      const assertBox = (placement: DowntownPlacement, model: keyof typeof exact,
+        oldCentre: number, oldDepth: number, side: number, dz: number): void => {
+        expect(placement.model).toBe(model);
+        for (const axis of ['x', 'y', 'z'] as const) {
+          expect(Math.abs(placement.size[axis] - exact[model][axis] * scale),
+            model + ' ' + axis).toBeLessThan(0.01 * scale);
+        }
+        expect(placement.yaw).toBeCloseTo(-side * Math.PI / 2, 6);
+        expect(placement.position.z - centre.z).toBeCloseTo(dz * scale, 5);
+        const frontX = placement.position.x + Math.sin(placement.yaw) *
+          placement.size.z / 2;
+        // Keep the exact pavement-facing plane, moving only the rear wall.
+        expect(frontX - centre.x).toBeCloseTo(side *
+          (oldCentre - oldDepth / 2) * scale, 5);
+      };
+      for (let row = 0; row < 5; row++) for (const side of [-1, 1]) {
+        const dz = (row - 2) * 19;
+        const placement = shops.find(p =>
+          (p.position.x - centre.x) * side > 0 &&
+          Math.abs(p.position.z - centre.z - dz * scale) < 0.001);
+        expect(placement, 'storefront row ' + row + ' side ' + side).toBeDefined();
+        assertBox(placement!, SHOP_FRONTS[side < 0 ? 0 : 1]![row]!.model,
+          20, 11.4, side, dz);
+      }
+      for (const dz of [-19, 0, 19]) for (const side of [-1, 1]) {
+        const placement = houses.find(p =>
+          (p.position.x - centre.x) * side > 0 &&
+          Math.abs(p.position.z - centre.z - dz * scale) < 0.001);
+        expect(placement, 'rear house at ' + dz + ', ' + side).toBeDefined();
+        assertBox(placement!, downtownRearHouseModel(dz), 36, 11.5, side, dz);
+      }
+      const towers = plan.filter(p => p.source?.kind === 'tower');
+      expect(towers).toHaveLength(1);
+      expect(towers[0]!.size).toEqual({ x: 8 * scale, y: 27 * scale, z: 8 * scale });
+      const buildings = [...shops, ...houses, ...towers];
+      const footprint = (p: DowntownPlacement): { x: number; z: number } => ({
+        x: (Math.abs(Math.cos(p.yaw)) * p.size.x +
+          Math.abs(Math.sin(p.yaw)) * p.size.z) / 2,
+        z: (Math.abs(Math.sin(p.yaw)) * p.size.x +
+          Math.abs(Math.cos(p.yaw)) * p.size.z) / 2,
+      });
+      // Horizontal boxes may touch but must never intersect, including the tower.
+      for (let i = 0; i < buildings.length; i++) {
+        const a = buildings[i]!, aa = footprint(a);
+        for (const b of buildings.slice(i + 1)) {
+          const bb = footprint(b);
+          const overlap = Math.abs(a.position.x - b.position.x) <
+            aa.x + bb.x - 0.001 * scale &&
+            Math.abs(a.position.z - b.position.z) < aa.z + bb.z - 0.001 * scale;
+          expect(overlap, a.model + ' and ' + b.model).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('derives facade ornaments and rooftop equipment from each resized roof', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    const scale = island.size / 600;
+    const buildings = island.props.filter(p => p.poiId === 'downtown-bleatsville' &&
+      (p.kind === 'shop' || p.kind === 'house'));
+    const details = island.props.filter(p => p.poiId === 'downtown-bleatsville' &&
+      p.id.startsWith('detail-'));
+    expect(buildings).toHaveLength(16);
+    const findAt = (kind: string, x: number, z: number) => details.find(p =>
+      p.kind === kind && Math.hypot(p.transform.position.x - x,
+        p.transform.position.z - z) < 0.01);
+    for (const [i, building] of buildings.entries()) {
+      const { x, z } = building.transform.position;
+      const yaw = building.transform.rotationY;
+      const frontX = Math.sin(yaw), frontZ = Math.cos(yaw);
+      const roof = building.transform.position.y + building.size.y / 2;
+      const ac = findAt('ac-unit', x - frontX * 1.8 * scale,
+        z - frontZ * 1.8 * scale);
+      expect(ac, building.id + ' AC').toBeDefined();
+      expect(ac!.transform.position.y - ac!.size.y / 2,
+        building.id + ' AC base').toBeCloseTo(roof, 5);
+      const facade = building.size.z / 2;
+      const awning = findAt('awning', x + frontX * (facade + 1 * scale),
+        z + frontZ * (facade + 1 * scale));
+      const sign = findAt('signboard', x + frontX * (facade + 0.35 * scale),
+        z + frontZ * (facade + 0.35 * scale));
+      expect(awning, building.id + ' awning').toBeDefined();
+      expect(sign, building.id + ' sign').toBeDefined();
+      expect(awning!.transform.position.y, building.id + ' awning height')
+        .toBeCloseTo(roof - 3 * scale, 5);
+      expect(sign!.transform.position.y, building.id + ' sign height')
+        .toBeCloseTo(roof - 1.6 * scale, 5);
+      if (i % 4 === 0) {
+        const waterTower = findAt('water-tower', x - frontX * 1.7 * scale,
+          z - frontZ * 1.7 * scale);
+        expect(waterTower, building.id + ' roof water tower').toBeDefined();
+        expect(waterTower!.transform.position.y - waterTower!.size.y / 2)
+          .toBeCloseTo(roof, 5);
+      }
+    }
+  });
 
   it('cycles authored vegetation variants without changing placement paint', () => {
     const plan = makeDowntownPlacements(generateIsland({

@@ -208,6 +208,36 @@ describe('Gig boards and real world integration', () => {
     expect(demolition.spawns.every(p => p.role === 'tower' && p.mass > 0)).toBe(true);
     expect(island.props.some(p => p.poiId === 'crane-yard' && p.kind === 'tower')).toBe(true);
   });
+  it('keeps four y-rotated roofs in every Rooftop Express row and uses their actual roof heights', () => {
+    const city = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
+    const roofs = island.props.filter(p => p.poiId === 'downtown-bleatsville' &&
+      (p.kind === 'shop' || p.kind === 'house'));
+    expect(roofs).toHaveLength(16);
+    for (const dz of [-19, 0, 19]) {
+      const row = roofs.filter(p => Math.abs(p.transform.position.z - city.z - dz) < 3);
+      expect(row, 'Rooftop Express row ' + dz).toHaveLength(4);
+      for (const building of row) {
+        expect(Math.abs(building.transform.rotationY),
+          building.id).toBeCloseTo(Math.PI / 2, 6);
+      }
+    }
+    for (const [difficulty, count] of [
+      ['easy', 3], ['medium', 4], ['hard', 4],
+    ] as const) {
+      const setup = catalog.build(catalog.makeOffer('rooftop-express', difficulty));
+      const gig = configOf(setup, 'rooftop-express');
+      expect(gig.checkpoints).toHaveLength(count);
+      for (const checkpoint of gig.checkpoints) {
+        const building = roofs.find(p =>
+          Math.abs(p.transform.position.x - checkpoint.x) < 0.01 &&
+          Math.abs(p.transform.position.z - checkpoint.z) < 0.01);
+        expect(building, 'checkpoint on a physical roof').toBeDefined();
+        expect(checkpoint.y, 'Rooftop Express roof height').toBeCloseTo(
+          building!.transform.position.y + building!.size.y / 2 + 0.65, 5);
+      }
+    }
+  });
+
   it('grounds generated mowing and gnome routes on actual island terrain', () => {
     const mow = configOf(catalog.build(catalog.makeOffer('mow-down', 'hard')), 'mow-down');
     for (const p of mow.patches) expect(p.y).toBeCloseTo(heightAt(island, p.x, p.z) + 0.15, 4);
