@@ -111,7 +111,8 @@ describe('Billy Isle deterministic world generation', () => {
       expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(3.5);
     }
     expect(island.props.filter(p => p.kind === 'shop').length).toBeGreaterThanOrEqual(7);
-    expect(island.props.filter(p => p.kind === 'ramp').length).toBeGreaterThan(5);
+    // The former Dam ramp is now the modeled ladder + physical rungs.
+    expect(island.props.filter(p => p.kind === 'ramp').length).toBeGreaterThanOrEqual(5);
     expect(island.colliders.some(p => p.shape === 'convex')).toBe(true);
     expect(island.props.filter(p => p.kind.startsWith('tree-')).length).toBeGreaterThan(70);
   });
