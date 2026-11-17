@@ -18,7 +18,7 @@ export const PROP_LIBRARY_MODELS = {
   'shop': 'assets/library/kenney/city-kit-commercial/building-a.glb',
   'tower': 'assets/library/kenney/pirate-kit/tower-watch.glb',
   'windmill': 'assets/library/custom/hoofington-props/windmill.glb',
-  'lighthouse': 'assets/library/kenney/pirate-kit/tower-complete-large.glb',
+  'lighthouse': 'assets/library/custom/lighthouse/lighthouse.glb',
   'ferris-wheel': 'assets/library/polypizza/ferris-wheel/ferris-wheel_6CepsZjXBw.glb',
   'crane': 'assets/library/custom/crane-yard/crane-mast.glb',
   'scaffold': 'assets/library/kenney/retro-urban-kit/scaffolding-structure.glb',

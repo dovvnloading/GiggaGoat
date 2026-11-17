@@ -95,7 +95,15 @@ describe('Old Lighthouse painting rebuild', () => {
       const colliders = island.colliders.map(c => structuredClone(c));
       const view = createWorldScene(island);
       const matrix = new THREE.Matrix4();
-      for (const kind of ['lighthouse', 'cottage', 'shipwreck', 'dock', 'cave-mouth']) {
+      // QA LH-1: the striped tower is the generic 'lighthouse' prop and stays visible.
+      const towers = island.props.filter(p => p.kind === 'lighthouse');
+      const towerMesh = view.group.getObjectByName('props-lighthouse') as THREE.InstancedMesh;
+      towers.forEach((prop, index) => {
+        towerMesh.getMatrixAt(index, matrix);
+        const m = matrix.elements;
+        expect(Math.hypot(m[0]!, m[5]!, m[10]!), `${seed}: ${prop.id}`).toBeGreaterThan(0);
+      });
+      for (const kind of ['cottage', 'shipwreck', 'dock', 'cave-mouth']) {
         const entries = island.props.filter(p => p.kind === kind &&
           !p.id.startsWith('the-dam-compat-'));
         expect(entries.some(p => p.poiId === 'old-lighthouse'), kind).toBe(true);
