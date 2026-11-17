@@ -24,7 +24,7 @@ describe('library prop catalog', () => {
   it('covers every PropKind and every path exists locally with the right licence', () => {
     // The satisfies Record<PropKind, string> declaration enforces exhaustive
     // coverage at typecheck time, including any newly added descriptor kind.
-    expect(mapped).toHaveLength(72);
+    expect(mapped).toHaveLength(73);
     expect(new Set(mapped.map(([kind]) => kind)).size).toBe(mapped.length);
     for (const [kind, path] of mapped) {
       const entry = byPath.get(path);
@@ -39,13 +39,23 @@ describe('library prop catalog', () => {
     }
   });
 
-  it('maps all five crane-yard kinds to their authored CC0 manifest entries', () => {
+  it('maps all 15 Crane Yard kinds to their exact authored CC0 assets', () => {
     const expected: Partial<Record<PropKind, string>> = {
       crane: 'assets/library/custom/crane-yard/crane-mast.glb',
       'crane-jib': 'assets/library/custom/crane-yard/crane-jib.glb',
       'crane-cab': 'assets/library/custom/crane-yard/crane-cab.glb',
       'crane-cable': 'assets/library/custom/crane-yard/crane-cable.glb',
       'red-girder': 'assets/library/custom/crane-yard/red-girder.glb',
+      'concrete-slab': 'assets/library/custom/crane-yard/concrete-slab.glb',
+      'concrete-column': 'assets/library/custom/crane-yard/concrete-column.glb',
+      'yard-scaffold': 'assets/library/custom/crane-yard/yard-scaffold.glb',
+      'safety-rail': 'assets/library/custom/crane-yard/safety-rail.glb',
+      'chain-fence': 'assets/library/custom/crane-yard/chain-fence.glb',
+      'pipe-stack': 'assets/library/custom/crane-yard/pipe-stack.glb',
+      'site-barrier': 'assets/library/custom/crane-yard/site-barrier.glb',
+      bunting: 'assets/library/custom/crane-yard/bunting.glb',
+      container: 'assets/library/custom/crane-yard/container.glb',
+      'site-banner': 'assets/library/custom/crane-yard/site-banner.glb',
     };
     for (const [kind, path] of Object.entries(expected)) {
       expect(PROP_LIBRARY_MODELS[kind as PropKind]).toBe(path);
@@ -76,7 +86,7 @@ describe('library prop catalog', () => {
       'crane-cab': 'custom/crane-yard/crane-cab.glb',
       'crane-cable': 'custom/crane-yard/crane-cable.glb',
       'red-girder': 'custom/crane-yard/red-girder.glb',
-      container: 'city-kit-industrial/shipping-container-a.glb',
+      container: 'custom/crane-yard/container.glb',
     };
     for (const [kind, suffix] of Object.entries(expected))
       expect(PROP_LIBRARY_MODELS[kind as PropKind], kind).toContain(suffix);
@@ -330,13 +340,15 @@ describe('authored daisy grass-tuft instances', () => {
 });
 
 describe('authored crane-yard instance colours', () => {
-  it('keeps all five GLB colours unchanged through near/far LOD', async () => {
+  it('keeps all authored Crane Yard paint and full-detail near/far LOD', async () => {
     const kinds = ['crane', 'crane-jib', 'crane-cab', 'crane-cable',
-      'red-girder'] as const;
+      'red-girder', 'concrete-slab', 'concrete-column', 'yard-scaffold',
+      'safety-rail', 'chain-fence', 'pipe-stack', 'site-barrier',
+      'site-banner', 'bunting'] as const;
     const painted = new THREE.Color(0x5a96c3);
     const load = vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockImplementation(async () => {
       const scene = new THREE.Group();
-      scene.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1),
+      scene.add(new THREE.Mesh(new THREE.SphereGeometry(0.5, 24, 16),
         new THREE.MeshStandardMaterial({ color: 0x5a96c3 })));
       return { scene } as Awaited<ReturnType<GLTFLoader['loadAsync']>>;
     });
@@ -363,13 +375,23 @@ describe('authored crane-yard instance colours', () => {
         expectWhite(visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh,
           kind + ' fallback');
       }
-      await vi.waitFor(() => expect(visuals.group.userData['libraryReady']).toBe(true));
+      await vi.waitFor(() => expect(visuals.group.userData['libraryReady']).toBe(true),
+        { timeout: 15000 });
       expect(visuals.group.userData['libraryFailed']).toBe(0);
       expect(load).toHaveBeenCalledTimes(kinds.length);
       for (const kind of kinds) {
         expect(load).toHaveBeenCalledWith(publicAssetUrl(PROP_LIBRARY_MODELS[kind]));
         const mesh = visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
         expectWhite(mesh, kind + ' loaded');
+        const near = visuals.group.getObjectByName('render-near-' + kind) as THREE.InstancedMesh;
+        const far = visuals.group.getObjectByName('render-far-' + kind) as THREE.InstancedMesh;
+        expect(near.geometry, kind + ' near source').toBe(mesh.geometry);
+        expect(far.geometry, kind + ' far source').toBe(mesh.geometry);
+        expect(mesh.geometry.getAttribute('position').count / 3, kind)
+          .toBeGreaterThan(48);
+        if (kind === 'site-banner') {
+          expect((mesh.material as THREE.MeshToonMaterial).side).toBe(THREE.FrontSide);
+        }
         const paint = mesh.geometry.getAttribute('color');
         expect(paint.getX(0), kind).toBeCloseTo(painted.r, 5);
         expect(paint.getY(0), kind).toBeCloseTo(painted.g, 5);
@@ -396,6 +418,60 @@ describe('authored crane-yard instance colours', () => {
         mesh.geometry.dispose();
         (mesh.material as THREE.Material).dispose();
       }
+      visuals.dispose();
+      load.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('Crane Yard container descriptor colours', () => {
+  it('tints authored container bodies at full strength and retains full far geometry', async () => {
+    const scene = new THREE.Group();
+    scene.add(new THREE.Mesh(new THREE.SphereGeometry(0.5, 24, 16),
+      new THREE.MeshStandardMaterial({ color: 0xf5f5f5 })));
+    const load = vi.spyOn(GLTFLoader.prototype, 'loadAsync')
+      .mockResolvedValue({ scene } as Awaited<ReturnType<GLTFLoader['loadAsync']>>);
+    vi.stubGlobal('document', {});
+    const colours = [0x4589ba, 0xc95241, undefined] as const;
+    const props: PropDescriptor[] = colours.map((color, i) => ({
+      id: 'crane-container-' + i, kind: 'container',
+      transform: { position: { x: i * 2 - 2, y: 1.6, z: 0 }, rotationY: 0 },
+      size: { x: 12.2, y: 3.2, z: 3.0 },
+      body: { type: 'static' }, shape: 'cuboid',
+      collidable: true, breakable: false, lickable: true, climbable: true,
+      ...(color === undefined ? {} : { color }),
+    }));
+    const visuals = buildPropVisuals(props);
+    try {
+      await vi.waitFor(() => expect(visuals.group.userData['libraryReady']).toBe(true));
+      expect(visuals.group.userData['libraryFailed']).toBe(0);
+      expect(load).toHaveBeenCalledWith(publicAssetUrl(PROP_LIBRARY_MODELS.container));
+      const original = visuals.group.getObjectByName('props-container') as THREE.InstancedMesh;
+      const near = visuals.group.getObjectByName('render-near-container') as THREE.InstancedMesh;
+      const far = visuals.group.getObjectByName('render-far-container') as THREE.InstancedMesh;
+      expect(near.geometry).toBe(original.geometry);
+      expect(far.geometry).toBe(original.geometry);
+      expect(original.geometry.getAttribute('position').count / 3).toBeGreaterThan(48);
+
+      const visible = { intersectsSphere: () => true } as unknown as THREE.Frustum;
+      const actual = new THREE.Color();
+      const expectColours = (mesh: THREE.InstancedMesh): void => {
+        expect(mesh.count).toBe(colours.length);
+        colours.forEach((color, i) => {
+          mesh.getColorAt(i, actual);
+          expect(actual.getHex(), 'container ' + i).toBe(color ?? 0xffffff);
+        });
+      };
+      expectColours(original);
+      visuals.updateCulling(new THREE.Vector3(0, 1, 20), visible, 500, () => false);
+      expectColours(near);
+      visuals.updateCulling(new THREE.Vector3(0, 1, 100), visible, 500, () => false);
+      expectColours(far);
+    } finally {
+      const mesh = visuals.group.getObjectByName('props-container') as THREE.InstancedMesh;
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
       visuals.dispose();
       load.mockRestore();
       vi.unstubAllGlobals();
