@@ -7,6 +7,7 @@ import {
   stripedAwningGeometry, type DowntownModel, type DowntownPlacement,
 } from './visual-downtown';
 import { bakeLibraryGeometry } from './visual-hoofington';
+import { isDowntownRoadOverlay } from './render';
 
 describe('Downtown Bleatsville sourced streetscape', () => {
   it('loads only CC0 library models from the required city, shop and furniture packs', () => {
@@ -155,4 +156,21 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     expect(island.colliders).toHaveLength(colliderCount);
     scene.dispose();
   });
+  it('does not render inter-POI road fans over the local city street', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    const allRoads = island.roads.map(r => structuredClone(r));
+    const city = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
+    const overlapping = island.roads.flatMap(road => road.points.slice(1).map((b, i) =>
+      isDowntownRoadOverlay(island, road.id, road.points[i]!, b)))
+      .filter(Boolean).length;
+    expect(overlapping).toBeGreaterThan(5);
+    expect(isDowntownRoadOverlay(island, 'downtown-bleatsville-main-street',
+      { x: city.x, z: city.z - 10 }, { x: city.x, z: city.z + 10 })).toBe(false);
+    expect(isDowntownRoadOverlay(island, 'road-far-away--other',
+      { x: city.x + 65, z: city.z }, { x: city.x + 75, z: city.z })).toBe(false);
+    // The culling decision is used only by the Three.js draw adapter.
+    expect(island.roads).toEqual(allRoads);
+    expect(island.roads.some(r => r.from === 'downtown-bleatsville')).toBe(true);
+  });
+
 });
