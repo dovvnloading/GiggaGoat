@@ -164,11 +164,14 @@ function terrainGeometry(
     // Cap the beacon's headland in grass, but keep the steep sea-facing
     // walls visibly pale grey rather than the generic low sand/beach palette.
     const capeRadius = Math.hypot(x - lighthouse.x, z - lighthouse.z) / scale;
-    if (capeRadius < 36 && h > 0.2 * scale) {
-      const face = Math.max(smoothstep(16.5, 27.5, capeRadius),
-        smoothstep(0.65, 1.7, slope) * 0.85);
+    if (capeRadius < 38 && h >= 0) {
+      // Even low coastal faces are stone: the old h>0.2-only rule exposed
+      // sand-coloured vertical walls below the grassy beacon plateau.
+      const face = Math.max(smoothstep(14.5, 25.5, capeRadius),
+        smoothstep(0.43, 1.25, slope) * 0.94,
+        1 - smoothstep(4, 10, h / scale));
       color.copy(CAPE_GRASS).lerp(CAPE_STONE,
-        face * (1 - smoothstep(33, 37, capeRadius)));
+        Math.max(0, Math.min(1, face)));
     }
     const trail = roadMix(roads, x, z, 22);
     color.lerp(COLORS.dirt, trail * (1 - cliff) * (1 - mountain * 0.42) * 0.86);
