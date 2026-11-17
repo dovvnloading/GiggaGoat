@@ -1,7 +1,7 @@
 import type { RigidBody, ColliderDesc } from '@dimforge/rapier3d-compat';
 import {
   PhysicsWorld, GoatRagdoll, RAPIER, V, forward, add, mul, collisionGroups,
-  GROUND_QUERY_GROUPS, type Vec3, type GoatSize, type PhysicsEvent,
+  type Vec3, type GoatSize, type PhysicsEvent,
 } from '../physics';
 import {
   generateIsland, buildRapierColliders, heightAt, zoneAt,
@@ -428,12 +428,18 @@ export class Game {
     }
   }
 
-  /** A bite is accepted only with actual near-foot terrain under the goat. */
+  /** Test terrain proximity (not an overlapping prop's zero-normal ray).
+   * Origin starts above the goat so the ray cannot begin inside the ground. */
   canGraze(): boolean {
-    const ground = this.physics.raycast(this.goat.torso.translation(),
-      V(0, -1, 0), 1.6 * this.goat.size, { groups: GROUND_QUERY_GROUPS });
-    return this.goat.locomotion.grounded ||
-      !!ground && ground.distance <= 1.4 * this.goat.size && ground.normal.y >= .55;
+    const torso = this.goat.torso.translation();
+    const size = this.goat.size;
+    const origin = add(torso, V(0, 2 * size, 0));
+    const ground = this.physics.raycast(origin, V(0, -1, 0), 3.7 * size, {
+      predicate: collider => collider.handle === this.colliders.terrain.handle,
+    });
+    return !!ground && ground.normal.y >= .55 &&
+      torso.y - ground.point.y <= 1.5 * size &&
+      torso.y >= ground.point.y - .25 * size;
   }
 
   private isFacingWall(wish: Vec3, goat = this.goat): boolean {
