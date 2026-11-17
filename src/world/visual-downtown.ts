@@ -198,9 +198,9 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
       scatter('trash', side * 13.9, dz, 0.85, 1.2, 0.85);
     }
     for (const dz of [-21, 13]) {
-      scatter('table', side * 15.2, dz, 2.15, 1.25, 2.15);
-      scatter('chair', side * 16.9, dz - 1.5, 0.95, 1.6, 0.95, side * 0.3);
-      scatter('chair', side * 13.8, dz + 1.5, 0.95, 1.6, 0.95, -side * 0.3);
+      scatter('table', side * 13.4, dz, 1.55, 1.15, 1.55);
+      scatter('chair', side * 13.0, dz - 1.65, 0.82, 1.4, 0.82, side * 0.3);
+      scatter('chair', side * 13.0, dz + 1.65, 0.82, 1.4, 0.82, -side * 0.3);
     }
     for (const dz of [-34, 5, 32]) {
       scatter('bush', side * 15, dz, 2.4, 1.6, 2.0);
@@ -217,9 +217,9 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
     scatter('cone', 2.2, dz + 1.4, 0.65, 1.15, 0.65);
   }
   // Source-model garlands suspend across the street at several depths.
-  for (const dz of [-29, -6, 18, 37])
-    scatter('lights', 0, dz, 22, 0.65, 0.7, 0,
-      gridSample(island, centre.x, centre.z + dz * scale) + 10.5 * scale);
+  for (const dz of [-34, -14, 6, 21])
+    scatter('lights', 0, dz, 27, 0.36, 0.28, 0,
+      gridSample(island, centre.x, centre.z + dz * scale) + 14.2 * scale);
   // Skyline machinery is intentionally behind the roofs, not on the route.
   scatter('skylineCrane', 32, -48, 19, 22, 8, Math.PI / 2,
     gridSample(island, centre.x + 32 * scale, centre.z - 48 * scale) + 27 * scale,
@@ -298,7 +298,9 @@ function signAtlas(signs: readonly DowntownSign[]): THREE.Mesh | null {
 }
 
 /** One vertex-coloured draw of alternating fabric panels and scalloped trim. */
-export function stripedAwningGeometry(shops: readonly PropDescriptor[]): THREE.BufferGeometry {
+export function stripedAwningGeometry(
+  shops: readonly PropDescriptor[], island?: IslandData,
+): THREE.BufferGeometry {
   const positions: number[] = [], colors: number[] = [];
   const pale = new THREE.Color(0xffefdc);
   const accents = [0xec799b, 0x70b5c0, 0xf4c756, 0x8773ba];
@@ -333,6 +335,28 @@ export function stripedAwningGeometry(shops: readonly PropDescriptor[]): THREE.B
       triangle(d, f, g, color); triangle(d, g, e, color);
     }
   });
+  if (island) {
+    const district = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
+    const scale = island.size / 600;
+    const flags = [0xf5c449, 0xf287a5, 0x6fc5df, 0x8ed17a, 0xb29de8];
+    // Each imported lamp string carries a row of small painterly pennants.
+    // They share the same single awning draw rather than N flag meshes.
+    for (const dz of [-34, -14, 6, 21]) {
+      const z = district.z + dz * scale;
+      const y = gridSample(island, district.x, z) + 13.95 * scale;
+      for (let i = 0; i < 22; i++) {
+        const x = district.x + (i - 10.5) * 1.19 * scale;
+        triangle(
+          new THREE.Vector3(x - 0.52 * scale, y, z),
+          new THREE.Vector3(x + 0.52 * scale, y, z),
+          new THREE.Vector3(x, y - 0.85 * scale, z),
+          new THREE.Color(flags[(i + Math.round(dz)) % flags.length < 0
+            ? (i + Math.round(dz)) % flags.length + flags.length
+            : (i + Math.round(dz)) % flags.length]!),
+        );
+      }
+    }
+  }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -442,7 +466,7 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
         const labels = signAtlas(loadedShops);
         if (labels) group.add(labels);
         group.userData['signCount'] = loadedShops.length;
-        const stripes = stripedAwningGeometry(loadedShops.map(s => s.source));
+        const stripes = stripedAwningGeometry(loadedShops.map(s => s.source), island);
         if (stripes.getAttribute('position').count) {
           const shade = new THREE.Mesh(stripes, new THREE.MeshToonMaterial({
             color: 0xffffff, vertexColors: true, gradientMap: TOON_RAMP,
