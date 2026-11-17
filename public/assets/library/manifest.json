@@ -33224,6 +33224,7 @@
   "url": ""
  },
  {
+<<<<<<< HEAD
   "path": "assets/library/usdcraft/street-lamp-lantern.glb",
   "name": "street-lamp-lantern",
   "source": "NVIDIA USDCraft-10K",
@@ -33231,5 +33232,59 @@
   "license": "Apache-2.0",
   "credit": "NVIDIA USDCraft-10K (ds_R500_03, Apache-2.0)",
   "url": "https://huggingface.co/datasets/nvidia/USDCraft-10K"
+=======
+  "path": "assets/library/custom/crane-yard/crane-cab.glb",
+  "name": "Crane Yard crane-cab",
+  "source": "custom",
+  "pack": "crane-yard",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/crane-yard/crane-cable.glb",
+  "name": "Crane Yard crane-cable",
+  "source": "custom",
+  "pack": "crane-yard",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/crane-yard/crane-jib.glb",
+  "name": "Crane Yard crane-jib",
+  "source": "custom",
+  "pack": "crane-yard",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/crane-yard/crane-mast.glb",
+  "name": "Crane Yard crane-mast",
+  "source": "custom",
+  "pack": "crane-yard",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/crane-yard/red-girder.glb",
+  "name": "Crane Yard red-girder",
+  "source": "custom",
+  "pack": "crane-yard",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/crane-yard/skyline-tower-crane.glb",
+  "name": "Crane Yard skyline-tower-crane",
+  "source": "custom",
+  "pack": "crane-yard",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+>>>>>>> origin/main
  }
 ]
