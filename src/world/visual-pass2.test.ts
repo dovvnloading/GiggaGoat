@@ -16,7 +16,10 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
   });
   afterAll(() => view.dispose());
 
-  it('keeps every prop instance finite, in the right location, and within its descriptor size', () => {
+  it('keeps every prop instance finite, with only replaced lighthouse art hidden', () => {
+    const replacedLighthouseKinds = new Set([
+      'lighthouse', 'cottage', 'shipwreck', 'dock', 'cave-mouth',
+    ]);
     const grouped = new Map<string, PropDescriptor[]>();
     for (const prop of island.props) {
       // The Dam Bomb's data-only platform is replaced visually by the GLB.
@@ -44,12 +47,17 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
         expect(matrix.elements.every(Number.isFinite), kind + ':' + i).toBe(true);
         matrix.decompose(position, rotation, scale);
         const prop = props[i]!;
-        expect(position.distanceTo(new THREE.Vector3(
-          prop.transform.position.x, prop.transform.position.y,
-          prop.transform.position.z)), prop.id).toBeLessThan(0.006);
-        expect(Math.abs(scale.x - prop.size.x), prop.id).toBeLessThan(0.006);
-        expect(Math.abs(scale.y - prop.size.y), prop.id).toBeLessThan(0.006);
-        expect(Math.abs(scale.z - prop.size.z), prop.id).toBeLessThan(0.006);
+        if (prop.poiId === 'old-lighthouse' && replacedLighthouseKinds.has(kind)) {
+          // A zero-scale visual is intentional; its descriptor and collider remain.
+          expect(scale.length(), prop.id).toBe(0);
+        } else {
+          expect(position.distanceTo(new THREE.Vector3(
+            prop.transform.position.x, prop.transform.position.y,
+            prop.transform.position.z)), prop.id).toBeLessThan(0.006);
+          expect(Math.abs(scale.x - prop.size.x), prop.id).toBeLessThan(0.006);
+          expect(Math.abs(scale.y - prop.size.y), prop.id).toBeLessThan(0.006);
+          expect(Math.abs(scale.z - prop.size.z), prop.id).toBeLessThan(0.006);
+        }
         // Allow the intentional pier/buoys outside the 600-m terrain square,
         // never a kilometer-long fence, cable, roof or shadow-caster streak.
         const limit = island.size / 2 + 150;
