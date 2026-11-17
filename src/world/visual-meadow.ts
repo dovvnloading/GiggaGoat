@@ -91,15 +91,17 @@ export function buildMeadowScatter(island: IslandData): THREE.Group {
     }
   }
 
-  // Reuse one geometrical tuft (three tapered clumps) and one tiny flower
-  // kit (stalk, six petals and yellow centre) over the whole island.
-  const leafParts: THREE.BufferGeometry[] = [];
-  for (let i = 0; i < 3; i++) {
-    const angle = i * Math.PI * 2 / 3;
-    const leaf = new THREE.ConeGeometry(0.17, 0.72, 3);
-    leaf.translate(Math.cos(angle) * 0.12, 0.35, Math.sin(angle) * 0.12);
-    leafParts.push(leaf);
-  }
+  // Two low rounded octahedra (16 triangles total) share one tuft
+  // geometry and every existing instance transform/tint. The flower kit
+  // below remains unchanged.
+  const leafParts: THREE.BufferGeometry[] = [
+    new THREE.OctahedronGeometry(0.2, 0),
+    new THREE.OctahedronGeometry(0.15, 0),
+  ];
+  leafParts[0]!.scale(1.35, 0.5, 1.35);
+  leafParts[0]!.translate(0, 0.1, 0);
+  leafParts[1]!.scale(1.3, 0.55, 1.3);
+  leafParts[1]!.translate(0.14, 0.08, -0.06);
   const tuft = mergeGeometries(leafParts, false);
   leafParts.forEach(p => p.dispose());
   if (!tuft) throw new Error('Failed to assemble meadow tufts');
