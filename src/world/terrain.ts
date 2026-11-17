@@ -60,8 +60,8 @@ export function makeTerrain(seed: string | number, size: number, resolution: num
       // the broad, traversable summit.
       const isletRadius = Math.hypot(u + 259, v + 18);
       if (isletRadius < 37) {
-        const cliff = 16.5 * (1 - smoothstep(18, 31, isletRadius))
-          - 4.1 * smoothstep(29, 37, isletRadius);
+        const cliff = 18.5 * (1 - smoothstep(16, 27, isletRadius))
+          - 7.0 * smoothstep(25, 32, isletRadius);
         const roughness = noise.fractal(u / 9, v / 9, 3) *
           (0.48 + 0.95 * smoothstep(16, 28, isletRadius));
         h = Math.max(h, cliff + roughness);
