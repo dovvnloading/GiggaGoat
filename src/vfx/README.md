@@ -330,26 +330,31 @@ immediately shows a soft persistent aura. Dropping to a lower tier
 clears obsolete pulses. clear resets to Kid; all three methods
 and update validate inputs and throw after disposal.
 
-The pulse timeline progresses through a pale-violet ground ellipse and
-wide pink glow, narrow rising purple light pillars, three lilac/magenta
-helix ribbons with floating orbital hoops and 24 twinkling motes, then a
-brief stronger GIGGA-only purple-white flare. After ~1.2–2.0 s the burst
+The pulse timeline progresses through a saturated violet hoof ring and
+purple ground disc, tall violet pillars with pale white-hot inner shafts,
+three lilac/magenta helix ribbons with thin near-white cores, floating
+orbital hoops and 24 rising twinkling purple motes, then a strong
+GIGGA-only purple flare with a bright star highlight. After ~1.2–2.0 s the burst
 dies without leaving stray particles. Remaining GIGGA keeps a gentle,
 breathing hoof ring, dim pillars and continually swirling/rising motes
 until the tier changes. This is not a gameplay growth controller.
 
 The bounded pool (default 3, max 8 overlapping tier-up pulses) reuses its
 oldest live slot when full; activeCount excludes the persistent GIGGA
-hold. All pulses, motes, cylinders, rings and helical strip meshes are
-precreated; ring, pillar and ribbon geometries and the two radial
-DataTextures are shared across the entire instance. Opacity materials
-are allocated once per slot so overlapping bursts can fade independently.
+hold. All pulses, motes, cylinders, rings and dual-width helical strip meshes are
+precreated; ring, pillar and outer/core ribbon geometries and the two radial
+DataTextures are shared across the entire instance. **Normal-blended** purple
+toon silhouettes and soft **additive** glow are separate per-slot materials,
+so the ring, beams and spiral cores stay richly purple on white/lilac
+backgrounds as well as on the game island. Opacities are reused and sampled
+per pulse so overlapping bursts fade independently.
 No update-time arrays, vectors, meshes, geometries, textures, materials,
 canvas, downloads, event listeners, renderer, or physics objects are created.
 growthAuraMath.ts samples a mutable output frame at absolute ages for
 frame-rate independence; growthAura.test.ts covers the timeline,
-invalid inputs, pooling, resource sharing, GIGGA hold, headless scene
-lifecycle and split-vs-single update equivalence.
+purple-only hues and minimum visible normal-blend opacity at every active
+tier's peak, pooling, resource sharing, GIGGA hold, headless scene lifecycle
+and split-vs-single update equivalence.
 
 ## Production art-review lab
 
@@ -368,7 +373,7 @@ or the taller reference column to dictate its height. The pure
 `lab/viewport.ts` helper derives the drawing-buffer's logical dimensions from
 the wrapper width alone; a ResizeObserver, window resize handler and per-frame
 device-pixel-ratio check keep the camera projection and retina resolution in
-sync without a height feedback loop. The centered **09 GIGGA GROWTH PURPLE AURA** loops Kid → Billy → Big → GIGGA on the existing goat by default, with a reduced WebP copy of the supplied panel displayed beside the 16:9 Three.js viewport. The stage gives GIGGA several seconds to show the flare settling into its persistent quiet aura. Tier replay and next-tier buttons allow paused art QA. The **08 COMBO POP TEXT** preview remains selectable with its supplied reference, looping x2 → x3 → x4!. The **07 launch pad burst** is still selectable: lit
+sync without a height feedback loop. The centered **09 GIGGA GROWTH PURPLE AURA** loops Kid → Billy → Big → GIGGA on the existing goat by default, with a reduced WebP copy of the supplied panel displayed beside the 16:9 Three.js viewport. A pure `lab/growthCamera.ts` helper fits the whole goat, ground ring, rising pillars, ribbons and flare inside the camera at **each size tier** (including during orbit/zoom). The stage gives GIGGA several seconds to show the flare settling into its persistent quiet aura. Tier replay and next-tier buttons allow paused art QA. The **08 COMBO POP TEXT** preview remains selectable with its supplied reference, looping x2 → x3 → x4!. The **07 launch pad burst** is still selectable: lit
 chevrons, spiky gold fountain, an airborne in-repo goat and sweeping
 gold flight trails. Its reference is cropped from the **lower-right
 panel of the existing sheet**, with no new image asset required.
@@ -522,10 +527,11 @@ The viewport sizing helper still has headless Vitest coverage in
   orbit and breathing ground glow as long as GIGGA is active.
 - **Intentional approximation:** the approved reference has hand-painted
   glowing, irregular strokes, layered particle bloom and soft illustrated
-  goat fur. This budgeted Three.js approximation uses flat-shaded stylized
-  beams, prebuilt helix strips, additive radial textures and the existing
-  procedural goat; it preserves the purple-pink hierarchy, silhouette and
-  tier progression rather than reproducing each painted brushstroke.
+  goat fur. This budgeted Three.js approximation uses normal-blended saturated
+  violet beams/rings, white-lilac thin cores, prebuilt helix strips and subtle
+  additive radial glow behind the vivid purple, plus the existing procedural
+  goat; it preserves the purple-pink hierarchy, silhouette and tier progression
+  rather than reproducing each painted brushstroke.
 - **Scope boundary:** only the independent VFX module, its pure math/tests,
   VFX barrel and production lab were changed. No other game lane, goat
   character source, physics size/timing or main scene wiring was altered.

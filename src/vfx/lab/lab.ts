@@ -21,6 +21,7 @@ import {
   sampleLaunchPadBurst, type LaunchPadBurstCue,
 } from '../launchPadMath';
 import { getViewportSize } from './viewport';
+import { frameGrowthCamera } from './growthCamera';
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -348,6 +349,13 @@ function emitGrowthTier(tier: GrowthTier): void {
   goat.root.rotation.set(0, Math.PI / 2, 0);
   goat.setPreview('stand', growthTierNames[tier]);
   growthAura.triggerGrow(tier);
+  // Reframe at the same instant the goat changes size. A fixed Billy-sized
+  // camera cut off GIGGA's horns, spiral tops and flare.
+  if (previewMode === 'growth') {
+    const framing = frameGrowthCamera(tier, camera.aspect, camera.fov, elevation);
+    lookAt.set(0, framing.targetY, 0);
+    distance = framing.distance;
+  }
 }
 
 function nextGrowthTier(): void {
@@ -590,6 +598,10 @@ canvas.addEventListener('pointermove', e => {
   yaw -= (e.clientX - pointer.x) * 0.008;
   elevation = THREE.MathUtils.clamp(
     elevation + (e.clientY - pointer.y) * 0.006, -0.05, 0.85);
+  if (previewMode === 'growth') {
+    const framing = frameGrowthCamera(growthTier, camera.aspect, camera.fov, elevation);
+    distance = Math.max(distance, framing.distance);
+  }
   pointer.x = e.clientX;
   pointer.y = e.clientY;
 });
@@ -601,8 +613,14 @@ canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
+  // In the growth preview, even manual zoom retains enough room for the
+  // entire current goat and aura. Other VFX previews keep their old range.
+  const minDistance = previewMode === 'growth'
+    ? frameGrowthCamera(growthTier, camera.aspect, camera.fov, elevation).distance
+    : 3.4;
   distance = THREE.MathUtils.clamp(
-    distance * Math.exp(e.deltaY * 0.001), 3.4, 9);
+    distance * Math.exp(e.deltaY * 0.001),
+    minDistance, previewMode === 'growth' ? minDistance * 1.7 : 9);
 }, { passive: false });
 
 // Measure only the fixed-aspect-ratio wrapper, never the canvas that
@@ -620,6 +638,10 @@ function resizeViewport(): void {
   renderer.setSize(width, height, false); // CSS sizing belongs exclusively to .viewport.
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
+  if (previewMode === 'growth') {
+    const framing = frameGrowthCamera(growthTier, camera.aspect, camera.fov, elevation);
+    distance = Math.max(distance, framing.distance);
+  }
 }
 
 const viewportObserver = new ResizeObserver(resizeViewport);
@@ -699,7 +721,7 @@ function frame(now: number): void {
   const horizontal = Math.cos(elevation) * distance;
   camera.position.set(
     lookAt.x + Math.sin(yaw) * horizontal,
-    lookAt.y + Math.sin(elevation) * distance + 0.42,
+    lookAt.y + Math.sin(elevation) * distance + (previewMode === 'growth' ? 0 : 0.42),
     lookAt.z + Math.cos(yaw) * horizontal,
   );
   camera.lookAt(lookAt);

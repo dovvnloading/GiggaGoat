@@ -43,7 +43,7 @@ export function sampleGrowthBurst(
   const peak = smooth(0.27, 0.53, p) * (1 - smooth(0.69, 0.86, p));
   const scale = GROWTH_TIER_SCALES[tier];
   out.radius = 0.77 * scale + 0.08;
-  out.height = 1.38 * scale;
+  out.height = 1.92 * scale;
   out.ring = smooth(0, 0.085, p) * fade * (0.75 + 0.25 * peak);
   out.pillars = lift * fade * (0.42 + 0.5 * peak);
   out.ribbons = smooth(0.10, 0.34, p) * fade * (0.50 + 0.50 * peak);
@@ -60,7 +60,7 @@ export function sampleGiggaHold(age: number, out: GrowthAuraFrame): GrowthAuraFr
   }
   const breathe = Math.sin(age * 1.65);
   out.radius = 0.77 * GROWTH_TIER_SCALES[3] + 0.08;
-  out.height = 1.38 * GROWTH_TIER_SCALES[3];
+  out.height = 1.92 * GROWTH_TIER_SCALES[3];
   out.ring = 0.27 + 0.07 * breathe;
   out.pillars = 0.12 + 0.025 * breathe;
   out.ribbons = 0.19 + 0.035 * breathe;
