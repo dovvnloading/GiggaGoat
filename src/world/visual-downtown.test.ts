@@ -35,7 +35,6 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       kayHouse: 'shop-f-lavender.glb',
       townhouse: 'shop-l-peach.glb',
       brickHouse: 'shop-m-pink.glb',
-      highrise: 'shop-l-peach.glb',
     } as const;
     for (const [model, file] of Object.entries(buildings)) {
       const path = DOWNTOWN_MODELS[model as keyof typeof buildings];
@@ -48,6 +47,17 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     expect(DOWNTOWN_MODELS.skylineCrane)
       .toBe('assets/library/custom/crane-yard/skyline-tower-crane.glb');
     expect(DOWNTOWN_MODELS.waterTower).toContain('/city-kit-industrial/');
+    for (const [model, path] of Object.entries({
+      ac: 'assets/library/custom/town/ac-unit.glb',
+      planter: 'assets/library/custom/town/planter.glb',
+      bench: 'assets/library/custom/town/park-bench.glb',
+      highrise: 'assets/library/custom/town/downtown-tower.glb',
+      lights: 'assets/library/custom/crane-yard/bunting.glb',
+    })) {
+      expect(DOWNTOWN_MODELS[model as keyof typeof DOWNTOWN_MODELS], model).toBe(path);
+      expect(manifest.find(entry => entry.path === path)?.license, model).toBe('CC0');
+      expect(existsSync('public/' + path), model).toBe(true);
+    }
     const vegetation = {
       flowerPink: 'flowers-pink.glb',
       flowerPurple: 'flowers-purple.glb',
@@ -103,6 +113,13 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       'ac-unit', 'water-tower', 'fountain']) {
       expect(linked.some(p => p.source!.kind === kind), kind).toBe(true);
     }
+    const benches = linked.filter(p => p.model === 'bench');
+    expect(benches.length).toBeGreaterThan(0);
+    for (const bench of benches) {
+      expect(bench.position).toBe(bench.source!.transform.position);
+      expect(bench.size).toBe(bench.source!.size);
+      expect(bench.yaw).toBeCloseTo(bench.source!.transform.rotationY + Math.PI, 6);
+    }
     // The collider descriptors remain, but baked storefront GLBs own the awnings.
     expect(island.props.some(p => p.poiId === 'downtown-bleatsville' &&
       p.kind === 'awning')).toBe(true);
@@ -115,6 +132,51 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       .toEqual(plan.map(p => [p.model, p.position, p.size, p.wall, p.roof]));
   });
 
+
+  it('keeps rooftop AC units, sidewalk planters and benches at actual metre dimensions', () => {
+    for (const size of [400, 600, 850]) {
+      const island = generateIsland({ seed: 'billy-isle', resolution: 97, size });
+      const scale = size / 600;
+      const props = island.props.filter(p => p.poiId === 'downtown-bleatsville');
+      const buildings = props.filter(p => p.kind === 'shop' || p.kind === 'house');
+      const acUnits = props.filter(p => p.kind === 'ac-unit');
+      expect(acUnits.length).toBe(buildings.length);
+      for (const ac of acUnits) {
+        expect(ac.size).toEqual({
+          x: 1.2 * scale, y: 1.0 * scale, z: 1.0 * scale,
+        });
+        const roof = buildings.reduce((closest, b) =>
+          Math.hypot(ac.transform.position.x - b.transform.position.x,
+            ac.transform.position.z - b.transform.position.z) <
+          Math.hypot(ac.transform.position.x - closest.transform.position.x,
+            ac.transform.position.z - closest.transform.position.z) ? b : closest,
+        buildings[0]!);
+        expect(ac.transform.position.y - ac.size.y / 2).toBeCloseTo(
+          roof.transform.position.y + roof.size.y / 2, 6);
+        const collider = island.colliders.find(c =>
+          c.shape !== 'heightfield' && c.id === ac.id);
+        expect(collider).toBeDefined();
+      }
+      const planters = props.filter(p => p.kind === 'planter');
+      expect(planters).toHaveLength(24);
+      for (const planter of planters)
+        expect(planter.size).toEqual({
+          x: 1.6 * scale, y: 1.1 * scale, z: 1.6 * scale,
+        });
+      const benches = props.filter(p => p.kind === 'bench');
+      expect(benches).toHaveLength(8);
+      for (const bench of benches)
+        expect(bench.size).toEqual({
+          x: 2.0 * scale, y: 0.95 * scale, z: 0.75 * scale,
+        });
+      const cones = makeDowntownPlacements(island).filter(p => p.model === 'cone');
+      expect(cones).toHaveLength(4);
+      for (const cone of cones)
+        expect(cone.size).toEqual({
+          x: 0.45 * scale, y: 0.7 * scale, z: 0.45 * scale,
+        });
+    }
+  });
 
   it('cycles authored vegetation variants without changing placement paint', () => {
     const plan = makeDowntownPlacements(generateIsland({
@@ -180,6 +242,36 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     const renderer = readFileSync('src/world/visual-downtown.ts', 'utf8');
     expect(renderer).not.toContain('stripedAwningGeometry');
     expect(renderer).not.toContain('downtown-striped-awnings');
+  });
+
+  it('retains painted planter and bunting GLB colours in the shared geometry baker', () => {
+    const paint = new THREE.Color(0x619bc2);
+    const model = new THREE.Group();
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshStandardMaterial({ color: paint }));
+    model.add(mesh);
+    const plan: DowntownPlacement[] = ['planter', 'lights'].map((kind, i) => ({
+      model: kind as DowntownModel, position: { x: i * 2, y: 1, z: 0 },
+      size: { x: 1, y: 1, z: 1 }, yaw: 0,
+      wall: 0xff0000, roof: 0x0000ff,
+    }));
+    const models = new Map<DowntownModel, THREE.Group>([
+      ['planter', model], ['lights', model],
+    ]);
+    const baked = bakeLibraryGeometry(plan, models, undefined, DOWNTOWN_MODELS)!;
+    try {
+      const colours = baked.getAttribute('color');
+      expect(colours.count).toBeGreaterThan(50);
+      for (let i = 0; i < colours.count; i++) {
+        expect(colours.getX(i)).toBeCloseTo(paint.r, 5);
+        expect(colours.getY(i)).toBeCloseTo(paint.g, 5);
+        expect(colours.getZ(i)).toBeCloseTo(paint.b, 5);
+      }
+    } finally {
+      baked.dispose();
+      mesh.geometry.dispose();
+      mesh.material.dispose();
+    }
   });
 
   it('anchors each shop label flush to its model-specific cream sign board', () => {
