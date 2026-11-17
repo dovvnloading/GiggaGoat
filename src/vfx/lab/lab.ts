@@ -1,9 +1,10 @@
-/** Production-ready art QA for dust, landing rings and headbutt stars. */
+/** Production-ready art QA for dust, landing, headbutt and water splash. */
 import * as THREE from 'three';
 import { GoatCharacter } from '../../character/GoatCharacter';
 import { RunningDustPuffs } from '../RunningDustPuffs';
 import { LandingImpactRing } from '../LandingImpactRing';
 import { HeadbuttImpactStars } from '../HeadbuttImpactStars';
+import { WaterSplash } from '../WaterSplash';
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -25,6 +26,11 @@ const impactStrengthLabel = element<HTMLOutputElement>('impact-strength-value');
 const headbuttButton = element<HTMLButtonElement>('headbutt');
 const headbuttPowerControl = element<HTMLInputElement>('headbutt-power');
 const headbuttPowerLabel = element<HTMLOutputElement>('headbutt-power-value');
+const waterButton = element<HTMLButtonElement>('water');
+const waterSpeedControl = element<HTMLInputElement>('water-speed');
+const waterSpeedLabel = element<HTMLOutputElement>('water-speed-value');
+const waterMassControl = element<HTMLInputElement>('water-mass');
+const waterMassLabel = element<HTMLOutputElement>('water-mass-value');
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xfff3ea);
@@ -76,6 +82,8 @@ scene.add(landing.group);
 
 const headbutt = new HeadbuttImpactStars({ capacity: 10 });
 scene.add(headbutt.group);
+const water = new WaterSplash({ capacity: 10 });
+scene.add(water.group);
 // A static faceted target for QA only; no collider or game physics.
 const rockGeometry = new THREE.DodecahedronGeometry(0.44, 0);
 const rockMaterial = new THREE.MeshToonMaterial({ color: 0x8e8194 });
@@ -92,6 +100,7 @@ let paused = false;
 let emissionClock = 0;
 let landingClock = 0;
 let headbuttClock = 0;
+let waterClock = 0;
 let lastTime = 0;
 let yaw = 0;
 let elevation = 0.19;
@@ -109,9 +118,11 @@ function setDirection(value: string): void {
   dust.clear();
   landing.clear();
   headbutt.clear();
+  water.clear();
   emissionClock = 0;
   landingClock = 0;
   headbuttClock = 0;
+  waterClock = 0;
   goat.mountWorldPosition('head', headContact);
   rock.position.set(headContact.x + heading * 0.58, 0.38, headContact.z - 0.05);
 }
@@ -144,15 +155,26 @@ function emitHeadbutt(): void {
   );
 }
 
+function emitWater(): void {
+  // Contact at the water surface below the goat; cosmetic only, no physics.
+  water.emit(
+    { x: goat.root.position.x, y: 0, z: 0.16 },
+    Number(waterSpeedControl.value), Number(waterMassControl.value),
+  );
+}
+
 function refreshUi(): void {
   state.textContent = (paused ? 'Paused' : 'Running') + ' / ' +
     dust.activeCount + ' dust sprites / ' + landing.activeCount +
-    ' landing rings / ' + headbutt.activeCount + ' headbutt impacts';
+    ' landing rings / ' + headbutt.activeCount + ' headbutt impacts / ' +
+    water.activeCount + ' water splashes';
   pauseButton.textContent = paused ? 'Resume motion' : 'Pause motion';
   pauseButton.setAttribute('aria-pressed', String(paused));
   rateLabel.textContent = cadence.toFixed(1) + '/s';
   impactStrengthLabel.textContent = Number(impactStrengthControl.value).toFixed(1);
   headbuttPowerLabel.textContent = Number(headbuttPowerControl.value).toFixed(1);
+  waterSpeedLabel.textContent = Number(waterSpeedControl.value).toFixed(1);
+  waterMassLabel.textContent = Number(waterMassControl.value).toFixed(1);
 }
 
 directionControl.addEventListener('change', () => {
@@ -166,6 +188,13 @@ rateControl.addEventListener('input', () => {
 });
 impactStrengthControl.addEventListener('input', refreshUi);
 headbuttPowerControl.addEventListener('input', refreshUi);
+waterSpeedControl.addEventListener('input', refreshUi);
+waterMassControl.addEventListener('input', refreshUi);
+waterButton.addEventListener('click', () => {
+  emitWater();
+  if (paused) water.update(0.37); // hold a tall cyan crown for art review
+  refreshUi();
+});
 headbuttButton.addEventListener('click', () => {
   emitHeadbutt();
   if (paused) headbutt.update(0.31); // show gold stars in the paused comparison
@@ -191,9 +220,11 @@ clearButton.addEventListener('click', () => {
   dust.clear();
   landing.clear();
   headbutt.clear();
+  water.clear();
   emissionClock = 0;
   landingClock = 0;
   headbuttClock = 0;
+  waterClock = 0;
   refreshUi();
 });
 
@@ -253,6 +284,12 @@ function frame(now: number): void {
       emitHeadbutt();
     }
     headbutt.update(dt);
+    waterClock += dt;
+    if (waterClock >= 3.2) {
+      waterClock %= 3.2;
+      emitWater();
+    }
+    water.update(dt);
   }
 
   const horizontal = Math.cos(elevation) * distance;
@@ -285,6 +322,8 @@ emitLanding();
 landing.update(0.19);
 emitHeadbutt();
 headbutt.update(0.27);
+emitWater();
+water.update(0.37);
 refreshUi();
 requestAnimationFrame(frame);
 
@@ -294,6 +333,7 @@ window.addEventListener('pagehide', () => {
   dust.dispose();
   landing.dispose();
   headbutt.dispose();
+  water.dispose();
   rockGeometry.dispose();
   rockMaterial.dispose();
   goat.dispose();
