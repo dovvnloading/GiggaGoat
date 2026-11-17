@@ -130,7 +130,11 @@ export class GigSession {
         const up = Math.max(-1, Math.min(1, 1 - 2 * (rotation.x ** 2 + rotation.z ** 2)));
         const impact = this.impacts.get(body.handle) ?? 0;
         // A fragile prop visibly breaks only under an actual measured contact impulse.
-        if (entry && entry.descriptor.fragile && impact >= 35) entry.broken = true;
+        if (entry?.descriptor.fragile) {
+          const threshold = run.setup.config.kind === 'escort-the-gnome' ?
+            run.setup.config.breakImpulse : 35;
+          if (impact >= threshold) entry.broken = true;
+        }
         props.push({ id, position: { ...position }, velocity: { ...body.linvel() },
           tilt: Math.acos(up), impact, heldByTongue: held === body.handle,
           carried: held === body.handle, broken: !!entry?.broken || this.game.destroyedProps.has(id) });
