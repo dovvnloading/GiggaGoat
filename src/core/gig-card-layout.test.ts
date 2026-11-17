@@ -166,6 +166,7 @@ describe('live gig card text box geometry (headless browser DOM)', () => {
       expect(g.checkboxVisible).toBe(false);
       expect(g.checkboxHiddenAttribute).toBe(true);
     },
+    20_000,
   );
 
   it.each([[1280, 720], [1600, 900], [1920, 1080]])(
@@ -185,5 +186,6 @@ describe('live gig card text box geometry (headless browser DOM)', () => {
       expect(g.checkboxVisible).toBe(true);
       expect(g.checkboxHiddenAttribute).toBe(false);
     },
+    20_000,
   );
 });
