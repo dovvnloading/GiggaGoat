@@ -30,7 +30,7 @@ import { HUD_SPRITES, hudSpriteUrl } from '/src/core/HudSprites.ts';
 const hud=new GameHud(document.querySelector('#app'));
 const q=(s)=>document.querySelector(s);
 q('[data-combo-title]').textContent='BARNSTORM BONANZA!';
-q('[data-combo-count]').textContent='×12\\nCOMBO!';
+q('[data-combo-count]').textContent='×12\nCOMBO!';
 q('[data-score]').textContent='48,750';
 q('[data-place]').textContent='HOOFINGTON';
 q('[data-gig-title]').textContent='CURRENT OBJECTIVE';
