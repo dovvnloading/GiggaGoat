@@ -209,6 +209,12 @@ export function bakeHoofingtonGeometry(
     if (bounds.isEmpty()) continue;
     const span = bounds.getSize(new THREE.Vector3());
     if (Math.min(span.x, span.y, span.z) <= 0.00001) continue;
+    // Nature-kit leaves frequently use alpha-cutout atlases. Sampling only
+    // their triangle vertices hits transparent black texels (black hedges).
+    // These stylized foliage models are instead painted by part/height into
+    // solid green and blossom colours; they still occupy one merged draw.
+    const foliageModel = placement.model === 'oak' || placement.model === 'pine' ||
+      placement.model === 'bush' || placement.model === 'flower';
     const wallColor = placement.wall === undefined ? null : body.setHex(placement.wall).clone();
     const roofColor = placement.roof === undefined ? null : roof.setHex(placement.roof).clone();
     quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), placement.yaw);
@@ -252,7 +258,7 @@ export function bakeHoofingtonGeometry(
             tint.b *= painted.getZ(idx);
           }
           const map = (material as THREE.MeshStandardMaterial).map;
-          if (map && uvs && uvs.itemSize >= 2) {
+          if (!foliageModel && map && uvs && uvs.itemSize >= 2) {
             const data = pixels(map);
             if (data) {
               sampleUv.set(uvs.getX(idx), uvs.getY(idx));
@@ -262,13 +268,25 @@ export function bakeHoofingtonGeometry(
               const y = Math.min(data.height - 1,
                 Math.max(0, Math.floor((1 - sampleUv.y) * (data.height - 1))));
               const index = (y * data.width + x) * 4;
-              texel.setRGB(data.data[index]! / 255,
-                data.data[index + 1]! / 255, data.data[index + 2]! / 255,
-                THREE.SRGBColorSpace);
-              tint.multiply(texel);
+              // Transparent atlas padding is black; it is not surface paint.
+              if (data.data[index + 3]! > 24) {
+                texel.setRGB(data.data[index]! / 255,
+                  data.data[index + 1]! / 255, data.data[index + 2]! / 255,
+                  THREE.SRGBColorSpace);
+                tint.multiply(texel);
+              }
             }
           }
           const hint = (mesh.name + ' ' + material.name).toLowerCase();
+          if (placement.model === 'oak') {
+            tint.setHex(height > 0.28 ? 0x72b94d : 0x916947);
+          } else if (placement.model === 'pine') {
+            tint.setHex(height > 0.23 ? 0x478f62 : 0x8d694b);
+          } else if (placement.model === 'bush') {
+            tint.setHex(/flower|petal|blossom/.test(hint) ? 0xe6a4dd : 0x6db85b);
+          } else if (placement.model === 'flower') {
+            tint.setHex(height > 0.38 ? 0xc68ee6 : 0x6ba955);
+          }
           const detail = /window|glass|door|shutter|trim|metal|flower/.test(hint);
           const roofVertex = /roof|tile|shingle|thatch/.test(hint) || height > 0.71;
           if (roofColor && roofVertex) tint.lerp(roofColor, 0.82);
