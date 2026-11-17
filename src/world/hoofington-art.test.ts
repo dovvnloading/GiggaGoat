@@ -115,4 +115,37 @@ describe('Hoofington art / building slicing regressions', () => {
     expect(crossings.count).toBe(35);
     view.dispose();
   });
+  it('adds dense, ground-anchored meadow colour beyond the village without physics clutter', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    const originalCount = island.props.length;
+    const view = createWorldScene(island);
+    const grass = view.group.getObjectByName('meadow-grass-sprigs') as THREE.InstancedMesh;
+    const daisies = view.group.getObjectByName('meadow-daisy-flowers') as THREE.InstancedMesh;
+    expect(grass).toBeInstanceOf(THREE.InstancedMesh);
+    expect(daisies).toBeInstanceOf(THREE.InstancedMesh);
+    expect(grass.count).toBeGreaterThan(1200);
+    expect(daisies.count).toBeGreaterThan(100);
+    expect(grass.castShadow).toBe(false);
+    expect(daisies.castShadow).toBe(false);
+    expect(island.props.length).toBe(originalCount);
+    const matrix = new THREE.Matrix4();
+    const position = new THREE.Vector3(), rotation = new THREE.Quaternion();
+    const size = new THREE.Vector3();
+    let nearVillage = 0, awayFromVillage = 0;
+    const farm = island.pois.find(p => p.id === 'hoofington')!.center;
+    for (let i = 0; i < grass.count; i++) {
+      grass.getMatrixAt(i, matrix);
+      matrix.decompose(position, rotation, size);
+      expect(Math.abs(position.y - heightAt(island, position.x, position.z)))
+        .toBeLessThan(0.1);
+      expect(size.x).toBeGreaterThan(0.3);
+      expect(Number.isFinite(position.x + position.y + position.z)).toBe(true);
+      if (Math.hypot(position.x - farm.x, position.z - farm.z) < 65) nearVillage++;
+      else awayFromVillage++;
+    }
+    expect(nearVillage).toBeGreaterThan(40);
+    expect(awayFromVillage).toBeGreaterThan(900);
+    view.dispose();
+  });
+
 });
