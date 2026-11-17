@@ -363,7 +363,11 @@ export class Game {
     if (intent.toggleBuild) this.buildMode = !this.buildMode;
     if (intent.buildPiece) this.buildPiece = intent.buildPiece;
     if (intent.placeBuild && this.buildMode) this.placeBuild();
-    return this.physics.step(seconds);
+    const result = this.physics.step(seconds);
+    // WaterSystem.setSeaLevel wakes all tracked Rapier bodies. It must run
+    // outside PhysicsWorld's callbacks to avoid re-entering Rapier during step.
+    if (this.party.match) this.water.setSeaLevel(this.party.match.tideLevel);
+    return result;
   }
 
   /** One and exactly one deterministic fixed tick for Node/Vitest. */
