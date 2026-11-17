@@ -6,6 +6,7 @@ import { LandingImpactRing } from '../LandingImpactRing';
 import { HeadbuttImpactStars } from '../HeadbuttImpactStars';
 import { WaterSplash } from '../WaterSplash';
 import { CrateBreakDebris } from '../CrateBreakDebris';
+import { getViewportSize } from './viewport';
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -14,6 +15,7 @@ function element<T extends HTMLElement>(id: string): T {
 }
 
 const canvas = element<HTMLCanvasElement>('stage');
+const viewport = element<HTMLElement>('viewport');
 const state = element<HTMLElement>('state');
 const pauseButton = element<HTMLButtonElement>('pause');
 const burstButton = element<HTMLButtonElement>('burst');
@@ -39,7 +41,6 @@ const crateSizeLabel = element<HTMLOutputElement>('crate-size-value');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xfff3ea);
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -114,9 +115,10 @@ let elevation = 0.19;
 let distance = 5.1;
 let width = 0;
 let height = 0;
+let pixelRatio = 0;
 let pointer: { id: number; x: number; y: number } | null = null;
 let disposed = false;
-const lookAt = new THREE.Vector3(0.15, 0.79, 0);
+const lookAt = new THREE.Vector3(-0.35, 0.83, 0);
 
 function setDirection(value: string): void {
   heading = value === 'right' ? 1 : -1;
@@ -281,6 +283,27 @@ canvas.addEventListener('wheel', e => {
     distance * Math.exp(e.deltaY * 0.001), 3.4, 9);
 }, { passive: false });
 
+// Measure only the fixed-aspect-ratio wrapper, never the canvas that
+// renderer.setSize() updates. This prevents a resize/layout feedback loop.
+function resizeViewport(): void {
+  const size = getViewportSize(viewport.clientWidth, window.devicePixelRatio);
+  if (!size) return; // Hidden or not yet laid out.
+
+  if (size.width === width && size.height === height && size.pixelRatio === pixelRatio) return;
+  const dprChanged = size.pixelRatio !== pixelRatio;
+  width = size.width;
+  height = size.height;
+  pixelRatio = size.pixelRatio;
+  if (dprChanged) renderer.setPixelRatio(pixelRatio);
+  renderer.setSize(width, height, false); // CSS sizing belongs exclusively to .viewport.
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+}
+
+const viewportObserver = new ResizeObserver(resizeViewport);
+viewportObserver.observe(viewport);
+window.addEventListener('resize', resizeViewport);
+
 function frame(now: number): void {
   if (disposed) return;
   requestAnimationFrame(frame);
@@ -334,15 +357,9 @@ function frame(now: number): void {
   );
   camera.lookAt(lookAt);
 
-  const w = Math.max(1, canvas.clientWidth);
-  const h = Math.max(1, canvas.clientHeight);
-  if (w !== width || h !== height) {
-    width = w;
-    height = h;
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-  }
+  // Also catches DPR changes when a tab is dragged between displays without
+  // any element or window resize event. Size changes only when values differ.
+  resizeViewport();
   refreshUi();
   renderer.render(scene, camera);
 }
@@ -361,11 +378,14 @@ water.update(0.37);
 emitCrate();
 crate.update(0.34);
 refreshUi();
+resizeViewport();
 requestAnimationFrame(frame);
 
 window.addEventListener('pagehide', () => {
   if (disposed) return;
   disposed = true;
+  viewportObserver.disconnect();
+  window.removeEventListener('resize', resizeViewport);
   dust.dispose();
   landing.dispose();
   headbutt.dispose();

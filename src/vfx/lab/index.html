@@ -23,9 +23,13 @@
       overflow: hidden; box-shadow: 0 12px 32px #70406414; }
     .panel h2 { margin: 0; font-size: 13px; letter-spacing: .07em; font-weight: 900;
       background: #764392; color: #fff; padding: 11px 16px; text-transform: uppercase; }
-    .stage { position: relative; min-height: 520px; display: flex; flex-direction: column; }
-    #stage { display: block; width: 100%; height: 100%; flex: 1; min-height: 520px;
-      cursor: grab; touch-action: none; background: #fff1e9; }
+    /* The tall reference column must never stretch the WebGL stage. */
+    .stage { min-width: 0; align-self: start; }
+    .viewport { position: relative; width: 100%; aspect-ratio: 16 / 9;
+      overflow: hidden; background: #fff1e9; }
+    /* Absolute positioning removes the canvas from the viewport's sizing flow. */
+    #stage { position: absolute; inset: 0; display: block; width: 100%; height: 100%;
+      cursor: grab; touch-action: none; }
     #stage.dragging { cursor: grabbing; }
     .overlay { position: absolute; bottom: 16px; left: 16px; right: 16px; display: flex;
       gap: 8px; justify-content: space-between; align-items: end; pointer-events: none; }
@@ -71,9 +75,10 @@
     footer { text-align: center; padding: 0 18px 22px; font-size: 11px; color: #876d84; }
     @media (max-width: 850px) { main { grid-template-columns: 1fr; padding: 10px; }
       aside { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .stage, #stage { min-height: 390px; } }
-    @media (max-width: 570px) { aside { display: flex; } .stage, #stage { min-height: 340px; }
-      .overlay { bottom: 8px; left: 8px; right: 8px; } .overlay span { font-size: 10px; } }
+    }
+    @media (max-width: 570px) { aside { display: flex; }
+      .overlay { bottom: 8px; left: 8px; right: 8px; } .overlay span { font-size: 10px; }
+      .overlay span:last-child { display: none; } }
   </style>
 </head>
 <body>
@@ -84,10 +89,12 @@
   <main>
     <section class="panel stage" aria-label="Live goat with dust, landing rings, headbutt stars, water splashes and crate debris">
       <h2>Live 3D dust + landing + headbutt + water + crate · drag to orbit / scroll to zoom</h2>
-      <canvas id="stage" tabindex="0" aria-label="Three-dimensional goat with dust, landing shockwaves, headbutt stars, water splashes and flying crate debris"></canvas>
-      <div class="overlay">
-        <span id="state" role="status">Running / 0 dust sprites / 0 landing rings / 0 headbutt impacts / 0 water splashes / 0 crate breaks</span>
-        <span>Crate: intact → cracked → planks &amp; chips</span>
+      <div id="viewport" class="viewport">
+        <canvas id="stage" tabindex="0" aria-label="Three-dimensional goat with dust, landing shockwaves, headbutt stars, water splashes and flying crate debris"></canvas>
+        <div class="overlay">
+          <span id="state" role="status">Running / 0 dust sprites / 0 landing rings / 0 headbutt impacts / 0 water splashes / 0 crate breaks</span>
+          <span>Crate: intact → cracked → planks &amp; chips</span>
+        </div>
       </div>
     </section>
     <aside aria-label="Controls and approved VFX comparison">
