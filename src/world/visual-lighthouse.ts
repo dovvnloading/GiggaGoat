@@ -27,6 +27,16 @@ const DARK_WOOD = 0x63432e;
 const CREAM = 0xf6e6c5;
 const GOLD = 0xffcf56;
 
+/**
+ * MeshToonMaterial does not declare flatShading in Three.js's r187 TS types,
+ * but WebGLRenderer checks this shader flag for flat face normals.
+ */
+function rockToonMaterial(color: number | THREE.Color): THREE.MeshToonMaterial {
+  return Object.assign(new THREE.MeshToonMaterial({
+    color, gradientMap: BUILDING_RAMP, side: THREE.DoubleSide,
+  }), { flatShading: true });
+}
+
 /** Merge all painted parts into one vertex-coloured mesh per landmark. */
 function makePainter() {
   const painted: THREE.BufferGeometry[] = [];
@@ -301,10 +311,7 @@ function makeSeaCave(island: IslandData, cave: PropDescriptor): THREE.Group {
 
   const rocks = new THREE.InstancedMesh(
     new THREE.DodecahedronGeometry(1, 0),
-    new THREE.MeshToonMaterial({
-      color: 0xa8a8b0, gradientMap: BUILDING_RAMP,
-      flatShading: true, side: THREE.DoubleSide,
-    }), 13);
+    rockToonMaterial(0xa8a8b0), 13);
   rocks.name = 'lighthouse-cave-sunlit-arch-boulders';
   const dummy = new THREE.Object3D();
   for (let i = 0; i < 13; i++) {
@@ -397,11 +404,7 @@ export function instantiateLibraryModel(root: THREE.Object3D, placements: readon
     const sourceColor = 'color' in sourceMaterial &&
       sourceMaterial.color instanceof THREE.Color
       ? sourceMaterial.color : new THREE.Color(0xffffff);
-    const material = rock
-      ? new THREE.MeshToonMaterial({
-        color: sourceColor, gradientMap: BUILDING_RAMP,
-        side: THREE.DoubleSide, flatShading: true,
-      }) : object.material;
+    const material = rock ? rockToonMaterial(sourceColor) : object.material;
     const instanced = new THREE.InstancedMesh(geometry, material, placements.length);
     instanced.name = name + '-instanced-part';
     instanced.castShadow = false;
@@ -427,10 +430,7 @@ export function instantiateLibraryModel(root: THREE.Object3D, placements: readon
 function makeFallbackRocks(placements: readonly Placement[]): THREE.InstancedMesh {
   const geometry = new THREE.DodecahedronGeometry(1, 0);
   geometry.computeVertexNormals();
-  const mesh = new THREE.InstancedMesh(geometry, new THREE.MeshToonMaterial({
-    color: 0xadb0b4, gradientMap: BUILDING_RAMP,
-    side: THREE.DoubleSide, flatShading: true,
-  }), placements.length);
+  const mesh = new THREE.InstancedMesh(geometry, rockToonMaterial(0xadb0b4), placements.length);
   mesh.name = 'lighthouse-fallback-grey-rocks';
   const dummy = new THREE.Object3D();
   placements.forEach((p, i) => {

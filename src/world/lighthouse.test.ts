@@ -184,7 +184,7 @@ describe('Old Lighthouse painting rebuild', () => {
         expect(material.color.equals(sources[i]!.color)).toBe(true);
         expect(material.gradientMap).toBe(BUILDING_RAMP);
         expect(material.side).toBe(THREE.DoubleSide);
-        expect(material.flatShading).toBe(true);
+        expect((material as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading).toBe(true);
         expect(material.emissive.getHex()).toBe(0x000000);
         expect(material.emissive.r + material.emissive.g + material.emissive.b).toBe(0);
         expect(batch.castShadow).toBe(false);
