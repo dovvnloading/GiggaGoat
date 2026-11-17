@@ -24,10 +24,16 @@ describe('Core game loop — production adapters on real Rapier ticks', () => {
       expect(run.status).toBe('running');
       expect(run.setup.config.kind).toBe('mow-down');
       if (run.setup.config.kind !== 'mow-down') throw new Error('wrong gig');
+      // Airborne input never masquerades as a bite: core requires a real
+      // ground ray / contact before passing the verb to the gig engine.
+      game.teleport({ ...run.setup.config.patches[0]!,
+        y: run.setup.config.patches[0]!.y + 35 });
+      expect(game.canGraze()).toBe(false);
+      game.step({ graze: true });
+      expect(game.gigs.active?.objective.kind).toBe('coverage');
       for (const patch of run.setup.config.patches) {
         game.teleport(patch);
-        ticks(game, 48);
-        expect(game.goat.locomotion.grounded).toBe(true);
+        expect(game.canGraze()).toBe(true);
         game.step({ graze: true });
         game.step({ graze: false });
       }
