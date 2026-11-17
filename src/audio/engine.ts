@@ -352,6 +352,7 @@ export class AudioEngine {
     if (frame.state) this.currentState = { ...this.currentState, ...frame.state };
     if (frame.camera) this.updateListener(frame.camera);
     if (!this.context || this.context.state !== 'running') return;
+    const audioNow = this.context.currentTime;
     const resolve = (input: AudioCue): PlayOptions => {
       // Physics/mode events carry goat IDs. Keyed gameplay events don't, so the
       // first observed goat is the local player (documented host convention).
@@ -364,7 +365,7 @@ export class AudioEngine {
       return {
         position: location, intensity: input.intensity, pitch: input.pitch,
         combo: input.combo,
-        when: input.delay === undefined ? undefined : this.context.currentTime + Math.max(0, input.delay),
+        when: input.delay === undefined ? undefined : audioNow + Math.max(0, input.delay),
         size: input.size ??
           (owner ? frame.sizeForGoat?.(owner) : undefined) ?? observed?.size,
       };
