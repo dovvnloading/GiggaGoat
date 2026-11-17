@@ -3,6 +3,7 @@ import { SeededRandom } from './random';
 import { gridSample, riverAt } from './terrain';
 import { buildBaaardwalk } from './boardwalk';
 import { buildCraneYard } from './crane-yard';
+import { getDamPlacement } from './the-dam';
 
 interface AddOptions {
   yaw?: number;
@@ -179,8 +180,22 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   site(forest, 'platform', 19, -17, 8, 1.1, 7, { lift: 8.5 });
   site(forest, 'sign', -4, 8, 4, 3, 0.5);
 
-  // THE DAM: the custom GLB and its Rapier architecture are assembled in the
-  // world adapters. Do not generate overlapping primitive props here.
+  // THE DAM: one non-rendered marker preserves the Dam Bomb gig's walkway
+  // contract. Its upper surface matches the custom GLB deck; the actual
+  // geometry and Rapier boxes are assembled by the world adapters.
+  const dam = getDamPlacement(island);
+  props.push({
+    id: 'the-dam-compat-walkway',
+    kind: 'platform', poiId: 'the-dam',
+    transform: {
+      position: { x: dam.position.x, y: dam.position.y + 18.3 * scale,
+        z: dam.position.z },
+      rotationY: 0,
+    },
+    size: { x: 33 * scale, y: 1 * scale, z: 7 * scale },
+    shape: 'cuboid', body: STATIC, collidable: false,
+    breakable: false, lickable: false, climbable: true,
+  });
 
   // OLD LIGHTHOUSE: a rocky cape with a climbable beacon and cliffside secrets.
   const cape: PoiId = 'old-lighthouse';
