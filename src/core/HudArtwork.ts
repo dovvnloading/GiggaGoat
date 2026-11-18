@@ -1,4 +1,4 @@
-import { biomeAt, type IslandData, type PropDescriptor } from '../world';
+import { biomeAt, heightAt, type IslandData, type PropDescriptor } from '../world';
 import { projectHudMap } from './GameHudState';
 import { HUD_SPRITES, hudSpriteImage, hudSpriteUrl, type HudSpriteName } from './HudSprites';
 
@@ -27,6 +27,54 @@ const biomeColors: Record<string, string> = {
   town: '#a5d078', industrial: '#bdcda0', 'pine-forest': '#619e68',
   highlands: '#8fbd82', cliff: '#a8a997', freshwater: '#61bed4',
 };
+const MAP_TILES = 16;
+const MAP_TILE = 280 / MAP_TILES;
+const MAP_SCALE = 1.05;
+
+interface MapHeight {
+  x: number;
+  y: number;
+  height: number;
+}
+
+function oceanPath(island: IslandData, origin: { x: number; z: number }): string {
+  const halfSize = island.size / 2;
+  const samples = Array.from({ length: MAP_TILES + 1 }, (_, row) =>
+    Array.from({ length: MAP_TILES + 1 }, (_, col): MapHeight => {
+      const x = col * MAP_TILE, y = row * MAP_TILE;
+      const worldX = origin.x + (x - 140) / MAP_SCALE;
+      const worldZ = origin.z + (y - 140) / MAP_SCALE;
+      const height = Math.max(Math.abs(worldX), Math.abs(worldZ)) > halfSize
+        ? -2 : heightAt(island, worldX, worldZ) - island.seaLevel;
+      return { x, y, height };
+    }));
+  const path: string[] = [];
+  const add = (points: readonly Pick<MapHeight, 'x' | 'y'>[]): void => {
+    if (points.length > 2) path.push('M' + points.map(p => n(p.x) + ',' + n(p.y)).join('L') + 'Z');
+  };
+  function waterTriangle(triangle: readonly MapHeight[]): void {
+    const wet: Pick<MapHeight, 'x' | 'y'>[] = [];
+    for (const [index, a] of triangle.entries()) {
+      const b = triangle[(index + 1) % triangle.length]!;
+      if (a.height <= 0) wet.push(a);
+      if ((a.height <= 0) !== (b.height <= 0)) {
+        const t = a.height / (a.height - b.height);
+        wet.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+      }
+    }
+    add(wet);
+  }
+  for (let row = 0; row < MAP_TILES; row++) for (let col = 0; col < MAP_TILES; col++) {
+    const a = samples[row]![col]!, b = samples[row]![col + 1]!;
+    const c = samples[row + 1]![col + 1]!, d = samples[row + 1]![col]!;
+    if (Math.max(a.height, b.height, c.height, d.height) <= 0) add([a, b, c, d]);
+    else if (Math.min(a.height, b.height, c.height, d.height) <= 0) {
+      waterTriangle([a, b, c]);
+      waterTriangle([a, c, d]);
+    }
+  }
+  return '<path data-map-ocean d="' + path.join('') + '" fill="' + biomeColors.ocean + '"/>';
+}
 /** Sprite markers sit on top of the live biome and road SVG. */
 function mapImage(name: HudSpriteName, x: number, y: number, w: number, h: number): string {
   return '<image data-sprite="' + name + '" href="' + hudSpriteUrl(name) +
@@ -36,25 +84,25 @@ function mapImage(name: HudSpriteName, x: number, y: number, w: number, h: numbe
 const tree = (x: number, y: number, pine: boolean): string =>
   mapImage(pine ? HUD_SPRITES.markerTreePine :
     (Math.floor(x + y) % 5 === 0 ? HUD_SPRITES.markerTreeApple : HUD_SPRITES.markerTreeRound),
-  x, y, 19, 20);
+  x, y, 16, 17);
 
 const building = (prop: PropDescriptor, x: number, y: number): string => {
   const name = prop.kind === 'barn' ? HUD_SPRITES.markerBarn :
     prop.kind === 'cottage' ? HUD_SPRITES.markerHousePink : HUD_SPRITES.markerHouseBlue;
-  return mapImage(name, x, y, 24, 22);
+  return mapImage(name, x, y, 20, 19);
 };
 
 /** Rebuild only when the map's area changes. Every feature is from island data. */
 export function renderHudMinimap(island: IslandData, origin: { x: number; z: number }): string {
-  const tile = 17.5;
   const terrain: string[] = [];
-  for (let row = 0; row < 16; row++) for (let col = 0; col < 16; col++) {
-    const mapX = (col + .5) * tile, mapY = (row + .5) * tile;
-    const worldX = origin.x + (mapX - 140) / 1.05;
-    const worldZ = origin.z + (mapY - 140) / 1.05;
+  for (let row = 0; row < MAP_TILES; row++) for (let col = 0; col < MAP_TILES; col++) {
+    const mapX = (col + .5) * MAP_TILE, mapY = (row + .5) * MAP_TILE;
+    const worldX = origin.x + (mapX - 140) / MAP_SCALE;
+    const worldZ = origin.z + (mapY - 140) / MAP_SCALE;
     const biome = biomeAt(island, worldX, worldZ);
-    terrain.push('<rect x="' + n(col * tile) + '" y="' + n(row * tile) +
-      '" width="17.7" height="17.7" fill="' + (biomeColors[biome] ?? '#9ace69') + '"/>');
+    const color = biome === 'ocean' ? biomeColors.beach : biomeColors[biome] ?? '#9ace69';
+    terrain.push('<rect x="' + n(col * MAP_TILE) + '" y="' + n(row * MAP_TILE) +
+      '" width="' + n(MAP_TILE + .2) + '" height="' + n(MAP_TILE + .2) + '" fill="' + color + '"/>');
   }
   const roads: string[] = [];
   for (const road of island.roads) {
@@ -88,8 +136,9 @@ export function renderHudMinimap(island: IslandData, origin: { x: number; z: num
     return mapImage(HUD_SPRITES.mapPin, point.x, point.y - 2, 16, 20);
   }).join('');
   return '<defs><clipPath id="gg-hud-map-clip"><circle cx="140" cy="140" r="132"/></clipPath></defs>' +
-    '<g clip-path="url(#gg-hud-map-clip)">' + terrain.join('') + roads.join('') +
-    trees.join('') + structures.join('') + boards +
+    '<g clip-path="url(#gg-hud-map-clip)">' + terrain.join('') + oceanPath(island, origin) +
+    roads.join('') + '<g opacity=".72">' + trees.join('') + structures.join('') +
+    '</g>' + boards +
     '<g data-player><path d="M0 -17 L12 14 L0 8 L-12 14Z" fill="#fff7df" stroke="#88411d" stroke-width="6" stroke-linejoin="round"/>' +
     '<path d="M0 -17 L12 14 L0 8 L-12 14Z" fill="#ff8e28" stroke="#ffe883" stroke-width="2"/></g></g>' +
     '<circle cx="140" cy="140" r="132" fill="none" stroke="#f6d78d" stroke-width="6"/>';

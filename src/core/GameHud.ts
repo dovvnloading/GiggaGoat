@@ -114,7 +114,9 @@ const CSS = `
 .gg-map-skin{position:absolute;inset:0;background:var(--gg-minimapRing) center/100% 100% no-repeat}
 .gg-map-north{position:absolute;top:1%;left:42%;width:16%;height:16%}
 .gg-compass{width:100%;height:100%}
-.gg-map-location{position:absolute;left:12%;right:12%;bottom:5%;height:13%;display:grid;place-items:center;white-space:nowrap;font-size:clamp(11px,1.25vw,19px);color:#fff5d4;letter-spacing:.1px}
+.gg-map-location{position:absolute;left:12%;right:12%;bottom:5%;height:13%;display:grid;place-items:center;
+ text-wrap:balance;text-align:center;line-height:1.02;font-size:clamp(11px,1.25vw,19px);color:#fff5d4;letter-spacing:.1px}
+@media(min-width:1101px){.gg-map-location [data-long-label="true"]{font-size:.82em}}
 .gg-gig-card{position:absolute;right:clamp(10px,1.2vw,23px);top:clamp(234px,19vw,316px);width:clamp(280px,23.5vw,390px);height:clamp(150px,12.4vw,208px)}
 /* Shadow only the illustrated panel: filtering the card itself rasterizes its
    live copy and makes the tiny footer glyphs look blurred. */
@@ -744,6 +746,7 @@ export class GameHud {
       '+' + state.comboPoints + ' COMBO POINTS · STYLE SCORE' : 'STYLE SCORE';
     this.score.textContent = state.score;
     this.place.textContent = state.location;
+    this.place.dataset.longLabel = String(state.location.length > 18);
     this.wallet.textContent = state.coins + ' CUD COINS';
     this.updateMap(game, state.location, hayHaul);
 

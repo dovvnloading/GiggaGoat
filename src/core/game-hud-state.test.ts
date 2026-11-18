@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { EventBus, StyleSystem, TUNING } from '../gameplay';
 import type { HudInput } from './GameHudState';
 import { clampHudPercent, deriveHudState, formatHudObjective, projectHudMap } from './GameHudState';
+import { renderHudMinimap } from './HudArtwork';
+import { generateIsland } from '../world';
 
 const input = (): HudInput => ({
   meter: 0, tier: 'Kid', score: 0,
@@ -13,6 +15,17 @@ const input = (): HudInput => ({
 });
 
 describe('in-game HUD state projection', () => {
+  it('uses terrain crossings for the shore and keeps player art above the scenery', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    const coast = renderHudMinimap(island, { x: 0, z: 230 });
+    const outline = coast.match(/data-map-ocean d="([^"]+)"/)?.[1];
+    expect(outline).toBeDefined();
+    const coordinates = [...(outline ?? '').matchAll(/[ML]([\d.]+),([\d.]+)/g)]
+      .flatMap(match => [Number(match[1]), Number(match[2])]);
+    expect(coordinates.some(value => value % 17.5 !== 0)).toBe(true);
+    expect(coast.indexOf('opacity=".72"')).toBeLessThan(coast.indexOf('data-player'));
+  });
+
   it('shows every growth tier and clamps the live meter without changing simulation state', () => {
     const state = input();
     for (const tier of ['Kid', 'Billy', 'Big', 'GIGGA'] as const) {
