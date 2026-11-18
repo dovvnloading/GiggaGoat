@@ -5,7 +5,6 @@ import { loadLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import type { PropDescriptor, PropKind } from './types';
 import { buildArchitecture, isArchitecturalKind } from './visual-architecture';
-import { PINES_GLADE_CASCADE } from './visual-water';
 import type { IslandData } from './types';
 import { WORLD_LOD, completelyOccluded, isSmallWorldModel,
   simplifiedWorldGeometry } from './lod';
@@ -682,7 +681,7 @@ function sways(kind: PropKind): boolean {
 
 /** Spatially batched instancing; LOD/culling works without per-object draw calls. */
 export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 96,
-  island?: IslandData): PropVisuals {
+  island?: IslandData, replacedCascadeIds?: ReadonlySet<string>): PropVisuals {
   const group = new THREE.Group();
   group.name = 'handcrafted-props';
   // A full-detail far batch uses the near mesh. Preserve existing far-name
@@ -777,9 +776,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       const p = prop.transform.position;
       dummy.position.set(p.x, p.y, p.z);
       dummy.rotation.set(0, prop.transform.rotationY, 0);
-      // The glade's wet step is drawn with the river. Keep the stored index
-      // and descriptor, but omit the old stepped model at this one site.
-      if (prop.id === PINES_GLADE_CASCADE) dummy.scale.setScalar(0);
+      // A connected cascade is drawn with the river at the reserved site.
+      if (replacedCascadeIds?.has(prop.id)) dummy.scale.setScalar(0);
       else dummy.scale.set(prop.size.x, prop.size.y, prop.size.z);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);

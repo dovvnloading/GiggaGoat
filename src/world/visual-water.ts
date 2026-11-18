@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData, PropDescriptor, RiverPoint, Vec2, Vec3 } from './types';
-import { gridSample } from './terrain';
+import { gridIndex, gridSample, segmentProjection } from './terrain';
 import { skyColorGLSL, skyUniforms } from './visual-sky';
 import { damHeadwaterSurface, getDamHeadwater } from './dam-landscape';
 import { findBookmark } from './viewer/bookmarks';
@@ -116,7 +116,9 @@ type LightUniform = { value: THREE.Vector3 };
 export interface WaterVisuals {
   sea: THREE.Mesh;
   inland: THREE.Group;
+  mountain: THREE.Group;
   light: THREE.Vector3;
+  replacedCascadeIds: ReadonlySet<string>;
   update(time: number, tide: number): void;
   setLighting(daylight: number, golden: number): void;
 }
@@ -293,22 +295,23 @@ function resampleRiver(points: readonly RiverPoint[], spacing: number): RiverPoi
 const FOREST_OUTFLOW_START = 11;
 export const PINES_GLADE_CASCADE = 'whispering-pines-glade-cascade';
 
-function riverMaterial(stream: THREE.ShaderMaterial): THREE.ShaderMaterial {
+function riverMaterial(stream: THREE.ShaderMaterial, tide: { value: number }): THREE.ShaderMaterial {
   const material = stream.clone();
   // The reservoir retains its own shader. All river reaches share this flow
   // program and the existing lighting/time uniforms in one merged draw.
-  material.uniforms = stream.uniforms;
+  material.uniforms = { ...stream.uniforms, uStreamTide: tide };
   material.vertexShader = stream.vertexShader
-    .replace('varying vec2 vUv;', 'attribute vec2 streamStyle; varying vec2 vStreamStyle; varying vec2 vUv;')
+    .replace('varying vec2 vUv;', 'attribute vec3 streamStyle; varying vec3 vStreamStyle; varying vec2 vUv;')
     .replace('vUv = uv;', 'vUv = uv; vStreamStyle = streamStyle;');
   material.fragmentShader = stream.fragmentShader.replace('void main() {', `
-varying vec2 vStreamStyle;
+varying vec3 vStreamStyle;
+uniform float uStreamTide;
 float forestRipple(float phase) {
   return sin(phase) * (1.0 - smoothstep(0.55, 1.9, fwidth(phase)));
 }
 void main() {
   if (vStreamStyle.x > 0.5) {
-    float falling = step(1.5, vStreamStyle.x);
+    float falling = vStreamStyle.z;
     float across = abs(vUv.x * 2.0 - 1.0);
     float bend = vUv.x + 0.10 * sin(vUv.y * 1.5 + 0.45 * uTime);
     float current = forestRipple(1.7 * vUv.y + 13.0 * bend - uTime * 2.05);
@@ -325,6 +328,7 @@ void main() {
       0.32 * broken * smoothstep(0.7, 1.0, vUv.y));
     vec3 col = mix(shaded, vec3(0.70, 0.87, 0.81), foam);
     float cover = 1.0 - smoothstep(0.77, 1.0, across);
+    if (vStreamStyle.x > 2.5) cover *= 1.0 - smoothstep(-0.04, 0.23, uStreamTide - vWorld.y);
     gl_FragColor = vec4(col * uLight, 0.94 * cover);
     return;
   }`);
@@ -394,12 +398,12 @@ function riverMesh(points: readonly RiverPoint[], material: THREE.Material,
         const y = Math.min(ground, THREE.MathUtils.lerp(centreY, ground, 0.46)) + 0.19 * scale;
         vertices.push(x, y, z);
       }
-      style.push(1, rapids, 1, rapids);
+      style.push(1, rapids, 0, 1, rapids, 0);
     } else {
       // The original mountain ribbon keeps its independently draped banks.
       vertices.push(left.x, gridSample(island, left.x, left.z) + 0.15 * scale, left.z,
         right.x, gridSample(island, right.x, right.z) + 0.15 * scale, right.z);
-      style.push(0, 0, 0, 0);
+      style.push(0, 0, 0, 0, 0, 0);
     }
     uvs.push(0, accumulated / 10, 1, accumulated / 10);
     if (i > 0) {
@@ -424,7 +428,7 @@ function riverMesh(points: readonly RiverPoint[], material: THREE.Material,
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  geometry.setAttribute('streamStyle', new THREE.Float32BufferAttribute(style, 2));
+  geometry.setAttribute('streamStyle', new THREE.Float32BufferAttribute(style, 3));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   const mesh = new THREE.Mesh(geometry, material);
@@ -471,7 +475,7 @@ function forestCascade(island: IslandData, prop: PropDescriptor, outflow: THREE.
       const point = at(t, (u * 2 - 1) * wetHalf);
       wet.push(point.x, point.y + Math.sin(u * Math.PI) * 0.035 * scale, point.z);
       wetUv.push(u, t);
-      wetStyle.push(2, 0.48 + 0.52 * t);
+      wetStyle.push(2, 0.48 + 0.52 * t, 1);
     }
     for (let column = 0; column <= rockColumns; column++) {
       const u = (column / rockColumns) * 2 - 1;
@@ -497,7 +501,7 @@ function forestCascade(island: IslandData, prop: PropDescriptor, outflow: THREE.
   const water = new THREE.BufferGeometry();
   water.setAttribute('position', new THREE.Float32BufferAttribute(wet, 3));
   water.setAttribute('uv', new THREE.Float32BufferAttribute(wetUv, 2));
-  water.setAttribute('streamStyle', new THREE.Float32BufferAttribute(wetStyle, 2));
+  water.setAttribute('streamStyle', new THREE.Float32BufferAttribute(wetStyle, 3));
   water.setIndex(wetIndex);
   water.computeVertexNormals();
   const rock = new THREE.BufferGeometry();
@@ -509,6 +513,94 @@ function forestCascade(island: IslandData, prop: PropDescriptor, outflow: THREE.
   bed.name = 'whispering-pines-rock-step';
   bed.receiveShadow = true;
   return { water, bed };
+}
+
+/** Interpolate the same native triangles that the near-view terrain draws. */
+function cliffHeight(island: IslandData, x: number, z: number): number {
+  const { resolution: n, size, heights } = island;
+  const gx = THREE.MathUtils.clamp((x / size + 0.5) * (n - 1), 0, n - 1);
+  const gz = THREE.MathUtils.clamp((z / size + 0.5) * (n - 1), 0, n - 1);
+  const i = Math.min(Math.floor(gx), n - 2), j = Math.min(Math.floor(gz), n - 2);
+  const u = gx - i, v = gz - j;
+  const a = heights[gridIndex(n, i, j)]!, b = heights[gridIndex(n, i + 1, j)]!;
+  const c = heights[gridIndex(n, i, j + 1)]!, d = heights[gridIndex(n, i + 1, j + 1)]!;
+  return u + v <= 1 ? a + (b - a) * u + (c - a) * v
+    : d + (c - d) * (1 - u) + (b - d) * (1 - v);
+}
+
+/** One connected sheet across the cliff face and the receiving terrace basin. */
+function terraceCascade(island: IslandData, prop: PropDescriptor): THREE.BufferGeometry | undefined {
+  const scale = island.size / 600;
+  const start = cascadePoolCentre(prop, scale);
+  const yaw = prop.transform.rotationY;
+  const sin = Math.sin(yaw), cos = Math.cos(yaw);
+  const ground = (x: number, z: number) => cliffHeight(island, x, z);
+  const place = (run: number, across: number): Vec2 => ({
+    x: start.x + (sin * run + cos * across) * scale,
+    z: start.z + (cos * run - sin * across) * scale,
+  });
+  const trails = island.roads.filter(road => road.type === 'trail')
+    .flatMap(road => road.points.slice(1).map((b, i) =>
+      ({ a: road.points[i]!, b, radius: road.width / 2 })));
+  const protectedProps = island.props.filter(item => item.collidable &&
+    item.poiId === 'mt-gigga' && ['ledge', 'ramp', 'platform', 'bridge'].includes(item.kind));
+  function clearance(point: Vec2): number {
+    let space = Infinity;
+    for (const { a, b, radius } of trails) {
+      space = Math.min(space, segmentProjection(point, a, b).distance - radius);
+    }
+    for (const item of protectedProps) {
+      const p = item.transform.position;
+      const x = point.x - p.x, z = point.z - p.z;
+      const angle = item.transform.rotationY, c = Math.cos(angle), s = Math.sin(angle);
+      const dx = Math.max(0, Math.abs(x * c - z * s) - item.size.x / 2);
+      const dz = Math.max(0, Math.abs(x * s + z * c) - item.size.z / 2);
+      space = Math.min(space, Math.hypot(dx, dz));
+    }
+    return space / scale;
+  }
+  const lip = place(-7.35, 0);
+  const basin = place(2.32, 1.10);
+  const basinY = ground(basin.x, basin.z) + 0.26 * scale;
+  if (ground(lip.x, lip.z) - basinY < 3 * scale) return undefined;
+
+  const vertices: number[] = [], uv: number[] = [], style: number[] = [], indices: number[] = [];
+  const rows = 24, columns = 4;
+  for (let row = 0; row <= rows; row++) {
+    const t = row / rows;
+    const run = THREE.MathUtils.lerp(-7.35, 3.12, t);
+    const bias = 1.10 * THREE.MathUtils.smoothstep(t, 0.57, 0.93) + 0.21 * Math.sin(t * 8);
+    const centre = place(run, bias);
+    const pooling = THREE.MathUtils.smoothstep(run, 1.18, 2.08);
+    const shaft = THREE.MathUtils.smoothstep(t, 0, 0.15);
+    const narrowing = 1 - THREE.MathUtils.smoothstep(t, 0.89, 1);
+    const shape = 0.13 + narrowing * (0.96 * shaft + 0.84 * pooling + 0.12 * Math.sin(t * 14));
+    const width = Math.min(shape, clearance(centre) - 0.24);
+    if (width <= 0.08) return undefined;
+    for (let column = 0; column <= columns; column++) {
+      const u = column / columns;
+      const across = (u * 2 - 1);
+      const point = place(run + 0.22 * across * Math.sin(t * 11) * narrowing, bias + across * width);
+      if (clearance(point) < 0.19) return undefined;
+      const height = ground(point.x, point.z);
+      const offset = (0.10 + 0.28 * Math.sin(u * Math.PI)) * scale;
+      vertices.push(point.x, THREE.MathUtils.lerp(height + offset, basinY, pooling), point.z);
+      uv.push(u, t);
+      style.push(3, THREE.MathUtils.smoothstep(run, -0.3, 1.1) * narrowing, 1 - pooling);
+      if (row > 0 && column > 0) {
+        const d = row * (columns + 1) + column, c = d - 1;
+        const b = d - columns - 1, a = b - 1;
+        indices.push(a, c, b, b, c, d);
+      }
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geometry.setAttribute('streamStyle', new THREE.Float32BufferAttribute(style, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
 }
 
 /** One cliff curtain only where a 4 m stretch of real riverbed drops 3 m. */
@@ -853,8 +945,11 @@ export function buildWaterVisuals(island: IslandData,
   sea.add(skirt);
   const inland = new THREE.Group();
   inland.name = 'rivers-reservoir-and-falls';
+  const mountain = new THREE.Group();
+  mountain.name = 'mountain-terrace-falls';
   const stream = inlandMaterial(uLight);
-  const riverPaint = riverMaterial(stream.material);
+  const riverPaint = riverMaterial(stream.material, seaMat.uniforms.uLevel);
+  const replacedCascadeIds = new Set<string>();
   const damPlot = island.plots.find(plot => plot.poiId === 'the-dam');
   // The bespoke Dam plunge-pool surface occupies the middle reaches. Do
   // not draw the old thin river ribbon over it: its extra side vertices
@@ -874,7 +969,23 @@ export function buildWaterVisuals(island: IslandData,
   if (cascade) {
     riverParts.push(cascade.water);
     inland.add(cascade.bed);
+    replacedCascadeIds.add(PINES_GLADE_CASCADE);
   }
+  const terraceParts = new Map<string, THREE.BufferGeometry>();
+  for (const prop of island.props) {
+    if (!prop.id.startsWith('waterfall-cascade-front-terrace-waterfall-')) continue;
+    const connected = terraceCascade(island, prop);
+    if (connected) terraceParts.set(prop.id, connected);
+  }
+  const terraces = terraceParts.size ? mergeGeometries([...terraceParts.values()]) : null;
+  if (terraces) {
+    const terraceWater = new THREE.Mesh(terraces, riverPaint);
+    terraceWater.name = 'mountain-terrace-water';
+    mountain.add(terraceWater);
+    terraces.computeBoundingBox();
+    for (const id of terraceParts.keys()) replacedCascadeIds.add(id);
+  }
+  terraceParts.forEach(geometry => geometry.dispose());
   const riverGeometry = mergeGeometries(riverParts);
   if (riverGeometry) {
     riverParts.forEach(geometry => geometry.dispose());
@@ -882,7 +993,7 @@ export function buildWaterVisuals(island: IslandData,
     inland.add(upstream);
   } else {
     inland.add(upstream, forestOutflow);
-    if (cascade) inland.add(new THREE.Mesh(cascade.water, riverPaint));
+    for (const extra of riverParts.slice(2)) inland.add(new THREE.Mesh(extra, riverPaint));
   }
   const scale = island.size / 600;
   const reservoir = buildDamReservoir(island, uLight, stream.time);
@@ -894,7 +1005,9 @@ export function buildWaterVisuals(island: IslandData,
     if ((prop.kind === 'cascade' || prop.kind === 'cascade-tall') &&
         (prop.id.startsWith('waterfall-cascade-') ||
           prop.id === PINES_GLADE_CASCADE)) {
-      makeWaterfallFoam(inland, prop, scale);
+      if (prop.id === PINES_GLADE_CASCADE || !replacedCascadeIds.has(prop.id)) {
+        makeWaterfallFoam(inland, prop, scale);
+      }
     }
   }
   batchWaterfallFoam(inland);
@@ -909,7 +1022,7 @@ export function buildWaterVisuals(island: IslandData,
   // The four spillway sheets and their foam now come from the custom Dam GLB.
   // Keep the mountain and river cascades, but do not draw duplicate dam falls.
   return {
-    sea, inland, light: uLight.value,
+    sea, inland, mountain, light: uLight.value, replacedCascadeIds,
     setLighting(daylight: number, golden: number): void {
       const warmth = THREE.MathUtils.clamp(golden, 0, 1);
       dayLight.set(1, 1 - 0.14 * warmth, 1 - 0.26 * warmth);
@@ -928,6 +1041,7 @@ export function buildWaterVisuals(island: IslandData,
       skirt.position.z = -tide; // Keep the skirt fixed under the rising sea.
       reservoir.visible = tide < headwaterLevel;
       inland.visible = tide < island.reservoir.level + 2 * scale;
+      if (terraces) mountain.visible = tide < terraces.boundingBox!.max.y + 0.23;
     },
   };
 }

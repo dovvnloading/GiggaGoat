@@ -7,7 +7,7 @@ import {
 } from './visual-water';
 import { buildSkyVisuals, skyColorGLSL } from './visual-sky';
 import { getDamHeadwater, isDamHeadwater } from './dam-landscape';
-import { gridSample } from './terrain';
+import { gridSample, segmentProjection } from './terrain';
 import { findBookmark } from './viewer/bookmarks';
 
 describe('island sea, shoreline and horizon', () => {
@@ -376,12 +376,14 @@ describe('modelled Mt. Gigga cascades (MG-12, DM-1)', () => {
         .flatMap(road => road.points);
       const visuals = buildWaterVisuals(island);
       try {
+        const legacyFoam = cascades.filter(prop => prop.id === PINES_GLADE_CASCADE ||
+          !visuals.replacedCascadeIds.has(prop.id));
         const foam = visuals.inland.getObjectByName('waterfall-foam-batch') as
           THREE.InstancedMesh | undefined;
-        expect(foam?.count ?? 0).toBe(cascades.length * 5);
+        expect(foam?.count ?? 0).toBe(legacyFoam.length * 5);
         expect(visuals.inland.children.filter(object =>
           object.name.endsWith('-foam') && object.userData['instanceCount'] === 5))
-          .toHaveLength(cascades.length);
+          .toHaveLength(legacyFoam.length);
         for (const site of sites) {
           const prop = placed.find(p => p.id === 'waterfall-cascade-' + site.id);
           if (!prop) {
@@ -451,6 +453,10 @@ describe('modelled Mt. Gigga cascades (MG-12, DM-1)', () => {
 
           const id = prop.id.startsWith('waterfall-cascade-')
             ? prop.id.slice('waterfall-cascade-'.length) : prop.id;
+          if (!legacyFoam.includes(prop)) {
+            expect(visuals.inland.getObjectByName(id + '-foam')).toBeUndefined();
+            continue;
+          }
           expect(visuals.inland.getObjectByName(id)).toBeInstanceOf(THREE.Group);
           const flecks = visuals.inland.getObjectByName(id + '-foam') as THREE.Group;
           expect(flecks).toBeInstanceOf(THREE.Group);
@@ -526,7 +532,7 @@ function renderedRibbonQuads(inland: THREE.Group): RibbonQuad[] {
   const quads: RibbonQuad[] = [];
   for (let i = 0; i < index.count; i += 6) {
     const a = index.getX(i), b = index.getX(i + 1);
-    if (style.getX(a) === 2) continue;
+    if (style.getX(a) >= 2) continue;
     const c = index.getX(i + 2), d = index.getX(i + 4);
     expect(index.getX(i + 3)).toBe(b);
     expect(index.getX(i + 5)).toBe(c);
@@ -547,7 +553,7 @@ function ribbonMidpoint(quad: RibbonQuad): THREE.Vector3 {
 function disposeWaterMeshes(visuals: ReturnType<typeof buildWaterVisuals>): void {
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
-  for (const root of [visuals.sea, visuals.inland]) {
+  for (const root of [visuals.sea, visuals.inland, visuals.mountain]) {
     root.traverse(object => {
       if (!(object instanceof THREE.Mesh)) return;
       geometries.add(object.geometry);
@@ -598,8 +604,8 @@ describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
             Math.hypot(point.x - points[i]!.x, point.z - points[i]!.z) /
               (2 * scale))), 0));
         const ribbonCount = 2 * expectedStations.reduce((a, b) => a + b, 0);
-        const isGlade = island.props.some(prop => prop.id === PINES_GLADE_CASCADE);
-        expect(position.count).toBe(ribbonCount + (isGlade ? 75 : 0));
+        const hasGlade = visuals.replacedCascadeIds.has(PINES_GLADE_CASCADE);
+        expect(position.count).toBe(ribbonCount + (hasGlade ? 75 : 0));
         expect(uv.count).toBe(position.count);
         expect(style.count).toBe(position.count);
         const outsideForest = makeForestOutflowClearance(island);
@@ -787,6 +793,77 @@ describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
     }
   });
 
+  it('drapes the front Mt. Gigga cascade into a connected pool outside the trail and landing props', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const id = 'waterfall-cascade-front-terrace-waterfall-2';
+    const descriptor = island.props.find(prop => prop.id === id)!;
+    const course = structuredClone(island.colliders);
+    const view = createWorldScene(island);
+    try {
+      const river = view.group.getObjectByName('mountain-terrace-water') as
+        THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
+      const pos = river.geometry.getAttribute('position');
+      const style = river.geometry.getAttribute('streamStyle');
+      const indices = river.geometry.getIndex()!;
+      const pieces: THREE.Vector3[] = [], pool: THREE.Vector3[] = [];
+      const terraces = new Set<number>();
+      for (let i = 0; i < pos.count; i++) {
+        if (style.getX(i) !== 3) continue;
+        const point = new THREE.Vector3().fromBufferAttribute(pos, i);
+        terraces.add(i);
+        if (style.getZ(i) === 0) pool.push(point);
+        pieces.push(point);
+      }
+      expect(pieces).toHaveLength(125);
+      expect(pool.length).toBeGreaterThan(10);
+      expect(pool.every(point => point.y === pool[0]!.y)).toBe(true);
+      expect(Math.max(...pieces.map(point => point.y)) - pool[0]!.y).toBeGreaterThan(16);
+      const open = new Set([terraces.values().next().value!]);
+      for (let pass = 0; pass < 25; pass++) {
+        for (let i = 0; i < indices.count; i += 3) {
+          const tri = [indices.getX(i), indices.getX(i + 1), indices.getX(i + 2)];
+          if (!tri.every(index => terraces.has(index)) || !tri.some(index => open.has(index))) continue;
+          tri.forEach(index => open.add(index));
+        }
+      }
+      expect(open.size).toBe(terraces.size);
+
+      const trailEdges = island.roads.filter(road => road.type === 'trail')
+        .flatMap(road => road.points.slice(1).map((point, i) =>
+          ({ a: road.points[i]!, b: point, half: road.width / 2 })));
+      const landings = island.props.filter(prop => prop.poiId === 'mt-gigga' &&
+        ['ledge', 'ramp', 'platform', 'bridge'].includes(prop.kind));
+      for (const point of pieces) {
+        expect(Math.min(...trailEdges.map(({ a, b, half }) =>
+          segmentProjection(point, a, b).distance - half))).toBeGreaterThan(0.18);
+        for (const landing of landings) {
+          const x = point.x - landing.transform.position.x, z = point.z - landing.transform.position.z;
+          const angle = landing.transform.rotationY;
+          const across = x * Math.cos(angle) - z * Math.sin(angle);
+          const along = x * Math.sin(angle) + z * Math.cos(angle);
+          expect(Math.abs(across) > landing.size.x / 2 || Math.abs(along) > landing.size.z / 2)
+            .toBe(true);
+        }
+      }
+      const classic = view.group.getObjectByName('props-cascade-tall') as THREE.InstancedMesh;
+      const index = island.props.filter(prop => prop.kind === 'cascade-tall').indexOf(descriptor);
+      const matrix = new THREE.Matrix4();
+      classic.getMatrixAt(index, matrix);
+      expect(new THREE.Vector3().setFromMatrixScale(matrix).lengthSq()).toBe(0);
+      expect(view.group.getObjectByName('front-terrace-waterfall-2-foam')).toBeUndefined();
+      expect(island.colliders).toEqual(course);
+      view.setTideLevel(24);
+      expect(river.parent!.visible).toBe(true);
+      expect(view.group.getObjectByName('rivers-reservoir-and-falls')!.visible).toBe(false);
+      expect(river.material.uniforms['uStreamTide']!.value).toBe(24);
+      expect(river.material.fragmentShader).toContain('uStreamTide - vWorld.y');
+      view.setTideLevel(49);
+      expect(river.parent!.visible).toBe(false);
+    } finally {
+      view.dispose();
+    }
+  });
+
   it('does not turn authored level steps into falls on flat terrain', () => {
     const island = generateIsland({ seed: 'waterfall-flat-test', resolution: 65 });
     island.heights.fill(4);
@@ -803,7 +880,7 @@ describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
       const pos = ribbon.getAttribute('position');
       const style = ribbon.getAttribute('streamStyle');
       for (let i = 0; i < pos.count; i++) {
-        if (style.getX(i) === 2) continue; // Authored glade rock step, independent of river levels.
+        if (style.getX(i) >= 2) continue; // Authored cascades, independent of river levels.
         expect(pos.getY(i)).toBeCloseTo(4 + (style.getX(i) === 1 ? 0.19 : 0.15), 4);
       }
     } finally {

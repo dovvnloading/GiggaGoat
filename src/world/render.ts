@@ -377,15 +377,16 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const scenery = external?.size
     ? { ...island, props: island.props.filter(prop => !external.has(prop.kind)) }
     : island;
-  const props = buildPropVisuals(scenery.props, options.propChunkSize ?? 96, scenery);
+  const sky = buildSkyVisuals();
+  const waterVisuals = buildWaterVisuals(island, sky.atmosphere);
+  const props = buildPropVisuals(scenery.props, options.propChunkSize ?? 96, scenery,
+    waterVisuals.replacedCascadeIds);
   group.add(props.group);
   const hoofington = buildHoofingtonVisuals(scenery, props.group);
   group.add(hoofington.group);
   const downtown = buildDowntownVisuals(scenery, props.group);
   group.add(downtown.group);
-  const sky = buildSkyVisuals();
-  const waterVisuals = buildWaterVisuals(island, sky.atmosphere);
-  group.add(waterVisuals.inland, waterVisuals.sea);
+  group.add(waterVisuals.inland, waterVisuals.sea, waterVisuals.mountain);
   const dam = buildDamVisuals(island, waterVisuals.light);
   group.add(dam.group);
   const lighthouse = buildLighthouseVisuals(scenery, props.group);
