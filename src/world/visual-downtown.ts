@@ -50,6 +50,8 @@ export const DOWNTOWN_MODELS = {
   bread: 'assets/library/kenney/mini-shop/display-bread.glb',
   produce: 'assets/library/kenney/mini-shop/display-fruit.glb',
   clothes: 'assets/library/kenney/mini-shop/clothing-rack.glb',
+  produceStall: 'assets/library/kenney/fantasy-town-kit/stall-red.glb',
+  flowerStall: 'assets/library/kenney/fantasy-town-kit/stall-green.glb',
   lights: 'assets/library/custom/crane-yard/bunting.glb',
 } as const;
 export type DowntownModel = keyof typeof DOWNTOWN_MODELS;
@@ -245,6 +247,7 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
       case 'water-tower': model = 'waterTower'; break;
       case 'ac-unit': model = 'ac'; break;
       case 'fountain': model = 'fountain'; break;
+      case 'booth': model = source.id === 'downtown-market-stall-produce' ? 'produceStall' : 'flowerStall'; break;
       default: break;
     }
     if (model) plan.push({
@@ -267,29 +270,31 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
     });
   }
 
-  // The central road is kept open. Furniture sits on the pavements, and the
-  // smaller cones and shop-window displays have no new physics descriptors.
+  // The north cafe, south bakery and clothes shop display different uses
+  // instead of repeating the same cafe tables on both sides of the street.
+  for (const [x, z] of [[-13.4, -25], [-13.3, 4], [-12.9, 26],
+    [13.5, -31], [13.1, -2], [13.2, 22]] as const) {
+    scatter('trash', x, z, .85, 1.2, .85);
+  }
+  scatter('table', -11.8, -40, 1.55, 1.15, 1.55);
+  scatter('chair', -11.7, -41.6, .82, 1.4, .82, .3);
+  scatter('chair', -12.1, -38.3, .82, 1.4, .82, -.3);
+  scatter('table', 16.5, 52.4, 1.55, 1.15, 1.55);
+  scatter('chair', 16.3, 50.85, .82, 1.4, .82, .25);
+  scatter('chair', 16.6, 53.95, .82, 1.4, .82, -.4);
+  for (const [x, z] of [[-13.05,-33], [-12.9, 9.6], [-13.1, 30],
+    [13.2, -33.2], [13, -4.4], [12.9, 32.5]] as const) {
+    scatter(BUSH_VARIANTS[bushIndex++ % BUSH_VARIANTS.length]!, x, z, 2, 1.55, 1.8);
+  }
   for (const side of [-1, 1]) {
-    for (const dz of [-28, 2, 29]) {
-      scatter('trash', side * 13.9, dz, 0.85, 1.2, 0.85);
-    }
-    for (const dz of [-21, 13]) {
-      scatter('table', side * 13.4, dz, 1.55, 1.15, 1.55);
-      scatter('chair', side * 13.0, dz - 1.65, 0.82, 1.4, 0.82, side * 0.3);
-      scatter('chair', side * 13.0, dz + 1.65, 0.82, 1.4, 0.82, -side * 0.3);
-    }
-    for (const dz of [-34, 5, 32]) {
-      scatter(BUSH_VARIANTS[bushIndex++ % BUSH_VARIANTS.length]!,
-        side * 15, dz, 2.4, 1.6, 2.0);
-    }
     for (const dz of [-25, 9, 28]) {
       scatter(OAK_VARIANTS[oakIndex++ % OAK_VARIANTS.length]!,
         side * 43, dz, 6.8, 13.5, 6.8);
     }
   }
-  scatter('bread', -14.5, 35, 2.7, 2.05, 1.2, Math.PI / 2);
-  scatter('produce', 14.5, 15, 2.2, 1.85, 1.2, -Math.PI / 2);
-  scatter('clothes', 14.6, 34, 2.2, 2.4, 1.5, -Math.PI / 2);
+  scatter('bread', -12.85, 35.2, 2.7, 2.05, 1.2, Math.PI / 2);
+  scatter('produce', 20.3, 51.2, 2.2, 1.85, 1.2, -Math.PI / 2);
+  scatter('clothes', 12.65, 37.7, 2.2, 2.4, 1.5, -Math.PI / 2);
   for (const dz of [5, 22]) {
     scatter('cone', -2.1, dz, 0.45, 0.7, 0.45);
     scatter('cone', 2.2, dz + 1.4, 0.45, 0.7, 0.45);

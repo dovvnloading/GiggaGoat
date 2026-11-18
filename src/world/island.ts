@@ -53,13 +53,15 @@ function gradeBuildingFootprints(island: IslandData, props: readonly PropDescrip
     // Stalls above the pier must not stamp sand into the deck or drop to ground Y.
     if (prop.poiId === 'baa-ardwalk' && prop.kind === 'booth') continue;
     // A bounding circle covers every corner even when the facade is rotated.
-    const radius = Math.hypot(prop.size.x, prop.size.z) * 0.5 + 5 * scale;
+    // The market pads end before the neighboring shop foundations.
+    const downtownStall = prop.poiId === 'downtown-bleatsville' && prop.kind === 'booth';
+    const radius = Math.hypot(prop.size.x, prop.size.z) * 0.5 + (downtownStall ? 5.8 : 5) * scale;
     stampPlot(island, {
       poiId: prop.poiId ?? 'hoofington',
       center: { x: prop.transform.position.x, z: prop.transform.position.z },
       elevation: prop.transform.position.y - prop.size.y * 0.5,
       radius, flat: true,
-    });
+    }, downtownStall ? 1.7 * scale : undefined);
   }
   for (const prop of props) {
     if (!buildings.has(prop.kind) || prop.body.type !== 'static') continue;
@@ -144,6 +146,12 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   // Grade authored foundations first so nearby street furniture is placed
   // on the final terrain, not hovering at pre-grade elevations.
   gradeBuildingFootprints(island, island.props);
+  // Seat the corner furniture on the newly finished stall and shop grades.
+  for (const prop of island.props) {
+    if (!prop.id.startsWith('downtown-market-') && !prop.id.startsWith('downtown-square-')) continue;
+    const position = prop.transform.position;
+    position.y = gridSample(island, position.x, position.z) + prop.size.y / 2;
+  }
   const dressed = dressIsland(island, rng);
   gradeBuildingFootprints(island, dressed);
   island.props.push(...dressed, ...makeBridgeDecks(island));

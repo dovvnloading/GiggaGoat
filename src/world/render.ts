@@ -4,6 +4,7 @@ import { BIOMES } from './types';
 import { clamp, smoothstep } from './random';
 import { gridCoordinate, gridIndex } from './terrain';
 import { terrainRockMask } from './terrain-paint';
+import { paintDowntownGround } from './downtown-public-space';
 import { roadRibbonData } from './road-ribbons';
 import { buildPropVisuals, TOON_RAMP } from './visual-props';
 import { createEnvironmentLod } from './environment-lod';
@@ -274,6 +275,7 @@ uStone *= 0.96 + 0.04 * sin(elevation * 0.52 + 2.0 * exposure);
 float rock = smoothstep(0.19, 0.48, exposure + 0.04 * smoothstep(16.0, 85.0, elevation));
 diffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);`,
     );
+    paintDowntownGround(shader, island);
   };
   const lookup = roadGrid(island, 22);
   const chunks: Chunk[] = [];

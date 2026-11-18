@@ -1,5 +1,6 @@
 import type { IslandData, PoiId, PropDescriptor, PropKind, Vec2 } from './types';
 import { SeededRandom } from './random';
+import { downtownPublicSpaceAt, downtownPublicSpaces } from './downtown-public-space';
 import { gridSample, riverAt, segmentProjection, stampPlot } from './terrain';
 import { getDamPlacement } from './the-dam';
 import { roadSideOffset } from './roads';
@@ -277,8 +278,8 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       placeRoofEquipment(tankRoof, 'water-tower', tankMount);
     }
   }
-  // Fountain square is a side plaza, not an obstacle in the street.
-  at(city, 'fountain', -40, -35, 10, 2.3, 10,
+  // The original fountain now anchors a corner court beside the north approach.
+  at(city, 'fountain', -19.2, -52, 10, 2.3, 10,
     { shape: 'cylinder', color: 0x8bc5d4 });
   for (let i = 0; i < 20; i++) {
     const side = i % 2 ? 1 : -1;
@@ -560,6 +561,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
 
   // Seeded hedges, trees, flowers and windblown grass: consistent density, clear paths.
   const vegetationCount = Math.max(160, Math.round(440 * scale));
+  const publicGround = downtownPublicSpaces(island);
   for (let attempt = 0, accepted = 0; attempt < vegetationCount * 8 &&
       accepted < vegetationCount; attempt++) {
     const angle = turn();
@@ -593,8 +595,11 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     if (onBoardwalkDeck(position.x, position.z) ||
         inCraneYard(position.x, position.z) ||
         isInsideDowntownInfillFootprint(island, position.x, position.z)) continue;
-    place(kind, position.x, position.z, width, height, width, near?.id,
+    const detail = place(kind, position.x, position.z, width, height, width, near?.id,
       { shape: 'cylinder', yaw });
+    // Reserve the paved courtyards and alleys without advancing the old seeded layout.
+    if (result.at(-1) === detail &&
+        downtownPublicSpaceAt(publicGround, position.x, position.z, width * scale * .55)) result.pop();
     accepted++;
   }
   const nearbyFoliageSpot = (origin: Vec2, clear: (x: number, z: number) => boolean,

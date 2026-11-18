@@ -159,6 +159,34 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
       });
   }
 
+  // Public corners use named props so all authored buildings and gig roofs
+  // retain their previous IDs. The service lanes keep both old ramps open.
+  for (const [key, x, z, yaw] of [
+    ['produce', 23.3, 51.2, -Math.PI / 2], ['flowers', 30.3, 63.5, Math.PI],
+  ] as const) {
+    site(city, 'booth', x, z, 4.6, 3.5, 3.2, { id: 'downtown-market-stall-' + key, yaw });
+  }
+  site(city, 'crate', 25.9, 52.9, 1.15, 1.1, 1.15, {
+    id: 'downtown-market-produce-crate', dynamicMass: 12, yaw: .25,
+  });
+  site(city, 'crate', 31.6, 58.6, 1.15, 1.1, 1.15, {
+    id: 'downtown-market-flower-crate', dynamicMass: 11, yaw: -.2,
+  });
+  for (const [key, x, z, yaw] of [
+    ['square-west', -26.4, -54.6, -Math.PI / 2],
+    ['square-east', -11.9, -49.2, Math.PI / 2],
+    ['market', 15.9, 59.0, 0],
+  ] as const) {
+    site(city, 'bench', x, z, 2, .95, .75, { id: 'downtown-' + key + '-bench', yaw });
+  }
+  for (const [key, x, z] of [
+    ['square-west', -27.4, -47.7], ['square-east', -12.3, -57.8],
+    ['market-north', 11.5, 48.4], ['market-south', 11.8, 58.5],
+  ] as const) {
+    site(city, 'planter', x, z, 1.6, 1.1, 1.6,
+      { id: 'downtown-' + key + '-planter', shape: 'cylinder' });
+  }
+
   // MT. GIGGA: giant cliffs remain terrain, with intermittent stone shelf landings.
   const peak: PoiId = 'mt-gigga';
   const summit = byId.get(peak)!.center;

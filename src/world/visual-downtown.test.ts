@@ -357,13 +357,13 @@ describe('Downtown Bleatsville sourced streetscape', () => {
         expect(collider).toBeDefined();
       }
       const planters = props.filter(p => p.kind === 'planter');
-      expect(planters).toHaveLength(24);
+      expect(planters).toHaveLength(28);
       for (const planter of planters)
         expect(planter.size).toEqual({
           x: 1.6 * scale, y: 1.1 * scale, z: 1.6 * scale,
         });
       const benches = props.filter(p => p.kind === 'bench');
-      expect(benches).toHaveLength(8);
+      expect(benches).toHaveLength(11);
       for (const bench of benches)
         expect(bench.size).toEqual({
           x: 2.0 * scale, y: 0.95 * scale, z: 0.75 * scale,
@@ -384,8 +384,8 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       p.poiId === 'downtown-bleatsville' && p.kind === 'bench');
     const planters = island.props.filter(p =>
       p.poiId === 'downtown-bleatsville' && p.kind === 'planter');
-    expect(benches).toHaveLength(8);
-    expect(planters).toHaveLength(24);
+    expect(benches).toHaveLength(11);
+    expect(planters).toHaveLength(28);
     const footprint = (p: (typeof benches)[number]) => {
       const c = Math.abs(Math.cos(p.transform.rotationY));
       const s = Math.abs(Math.sin(p.transform.rotationY));
@@ -395,8 +395,8 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       };
     };
     for (const bench of benches) {
-      // Keep the bench on the same pavement, shifting along the road instead.
-      expect(Math.abs(bench.transform.position.x - centre.x)).toBeCloseTo(12.7, 6);
+      if (bench.id.startsWith('detail-'))
+        expect(Math.abs(bench.transform.position.x - centre.x)).toBeCloseTo(12.7, 6);
       const b = footprint(bench);
       for (const planter of planters) {
         const p = footprint(planter);
@@ -463,7 +463,7 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     const furniture = plan.filter(p => ['table','chair','trash','bread',
       'produce','clothes'].includes(p.model));
     expect(furniture.every(p =>
-      Math.abs(p.position.x - centre.x) >= 13 * scale)).toBe(true);
+      (Math.abs(p.position.x - centre.x) - Math.max(p.size.x, p.size.z) / 2) >= 10 * scale)).toBe(true);
     const renderer = readFileSync('src/world/visual-downtown.ts', 'utf8');
     expect(renderer).not.toContain('stripedAwningGeometry');
     expect(renderer).not.toContain('downtown-striped-awnings');
