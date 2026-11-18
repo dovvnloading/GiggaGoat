@@ -5,6 +5,7 @@ import { buildArtwork, goatArtwork, renderHudMinimap } from './HudArtwork';
 import { fitGigCardText } from './GigCardLayout';
 import { createHayHaulMapMarker, hayHaulMapPoint, type HayHaulGuidance } from './GigPresentation';
 import { HUD_SPRITES, hudSpriteImage, hudSpriteVariables } from './HudSprites';
+import { derivePartyHudState } from './PartyHudState';
 
 const CSS = `
 .gg-ui{position:absolute;inset:0;z-index:4;pointer-events:none;user-select:none;overflow:hidden;color:#fff9df;font-family:"Trebuchet MS","Arial Rounded MT Bold","Arial Black",system-ui,sans-serif;font-weight:900;text-shadow:1px 2px 1px #493049,0 3px 3px #38253b9a;-webkit-font-smoothing:antialiased}
@@ -38,6 +39,58 @@ const CSS = `
 .gg-score-ribbon{position:absolute;left:11%;right:21%;bottom:6%;height:28%;display:grid;place-items:center}
 .gg-score{font-variant-numeric:tabular-nums;font-size:clamp(27px,2.55vw,44px);letter-spacing:1px;color:#fff8df;text-shadow:2px 3px #3d203c}
 .gg-score-caption{position:absolute;left:32%;right:34%;bottom:1%;font-size:clamp(7px,.58vw,10px);letter-spacing:.4px;color:#fff0ba;white-space:nowrap}
+.gg-combo[data-party-active="true"]{background:none}
+.gg-combo[data-party-active="true"] > :not(.gg-party-scoreboard){display:none}
+.gg-party-scoreboard{
+ position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;
+ gap:clamp(2px,.32vw,6px);padding:clamp(4px,.45vw,9px) clamp(7px,1.1vw,20px);
+ border:2px solid #e8a847;border-radius:clamp(10px,1.5vw,24px);
+ background:linear-gradient(#522b40,#28192f);box-shadow:0 3px 5px #281b4866;
+ color:#fff8e3;line-height:1.05;text-shadow:none
+}
+.gg-party-head{display:flex;justify-content:space-between;align-items:center;gap:5px;text-align:left}
+.gg-party-title{min-width:0;color:#ffdf80;font-size:clamp(13px,1.65vw,29px);text-wrap:balance}
+.gg-party-clock{display:flex;align-items:baseline;gap:4px;color:#ffebad;white-space:nowrap}
+.gg-party-clock-label,.gg-party-metric-label{font-size:clamp(9px,.76vw,13px);letter-spacing:.2px}
+.gg-party-clock-time{font-size:clamp(23px,2.65vw,44px);font-variant-numeric:tabular-nums;color:#fff8e3}
+.gg-party-metrics{display:flex;justify-content:center;padding-block:2px;background:#251928aa;border-radius:6px}
+.gg-party-metric{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px}
+.gg-party-metric + .gg-party-metric{border-left:1px solid #f9d38855}
+.gg-party-metric[data-own="true"] .gg-party-metric-label{color:#ffdf80}
+.gg-party-metric-value{font-size:clamp(17px,2.1vw,37px);font-variant-numeric:tabular-nums;white-space:nowrap}
+.gg-party-goal{font-size:clamp(11px,1.14vw,20px)}
+.gg-party-status{font-size:clamp(9px,.85vw,15px);color:#ffe2ac}
+.gg-party-status[data-urgent="true"]{
+ background:#ffbd65;color:#422216;border-radius:4px;padding:2px 3px
+}
+@media(max-width:1100px),(max-height:680px){
+ .gg-party-metric{flex-direction:row-reverse;justify-content:center;gap:5px}
+}
+@media(max-width:760px){
+ .gg-party-scoreboard{gap:2px;padding:2px 4px;border-width:1px;line-height:1}
+ .gg-party-title{font-size:clamp(9px,1.9vw,14px)}
+ .gg-party-clock{gap:3px}
+ .gg-party-clock-label,.gg-party-metric-label{font-size:clamp(7px,1.6vw,11px);letter-spacing:0}
+ .gg-party-clock-time{font-size:clamp(16px,3.3vw,23px)}
+ .gg-party-metrics{padding-block:1px}
+ .gg-party-metric{gap:3px}
+ .gg-party-metric-value{font-size:clamp(12px,2.5vw,20px)}
+ .gg-party-goal{font-size:clamp(9px,1.8vw,13px)}
+ .gg-party-status{font-size:clamp(8px,1.65vw,12px)}
+ .gg-party-status[data-urgent="true"]{padding:1px 2px}
+}
+@media(max-width:760px) and (orientation:portrait){
+ .gg-combo[data-party-active="true"]{
+  left:8px;top:var(--gg-portrait-second-row,130px);width:calc(100% - 16px);transform:none
+ }
+ .gg-party-scoreboard{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;align-content:center;gap:2px 4px;padding:2px 7px
+ }
+ .gg-party-head,.gg-party-metrics{grid-column:1 / -1}
+ .gg-party-clock-label,.gg-party-metric-label{font-size:9px}
+ .gg-party-goal{text-align:left}
+ .gg-party-status{text-align:right}
+}
 /* Live SVG terrain is clipped inside the transparent PNG ring. */
 .gg-map-panel{position:absolute;right:clamp(8px,1.15vw,22px);top:clamp(6px,.7vw,12px);width:clamp(190px,17vw,290px);aspect-ratio:311/337}
 .gg-map-frame{position:absolute;left:4.5%;top:7.5%;width:91%;height:76%;overflow:hidden;border-radius:50%;background:#8abd75}
@@ -385,6 +438,15 @@ export class GameHud {
   private readonly comboCount: HTMLElement;
   private readonly comboInfo: HTMLElement;
   private readonly score: HTMLElement;
+  private readonly scorePanel: HTMLElement;
+  private readonly partyScoreboard: HTMLElement;
+  private readonly partyTitle: HTMLElement;
+  private readonly partyClock: HTMLElement;
+  private readonly partyClockLabel: HTMLElement;
+  private readonly partyMetrics: HTMLElement;
+  private readonly partyGoal: HTMLElement;
+  private readonly partyStatus: HTMLElement;
+  private partyHudKey: string | null = null;
   private readonly place: HTMLElement;
   private readonly mapCanvas: SVGElement;
   private playerArrow: SVGElement | null = null;
@@ -446,11 +508,18 @@ export class GameHud {
       '<div class="gg-meter-caption"><span class="gg-meter-tagline">CHAOS MAKES YOU BIGGER</span>' +
       '<span><b data-tier>KID</b><span class="gg-meter-separator"> · </span><b data-meter>0 / 100</b></span></div></section>' +
       '<section class="gg-combo" data-sprite="' + HUD_SPRITES.scoreStarburst +
-      '" aria-label="Chaos combo and score">' +
+      '" data-score-panel aria-label="Chaos combo and score">' +
       '<div class="gg-combo-title" data-combo-title>GIGGA-GOAT!</div>' +
       '<div class="gg-combo-count" data-combo-count>START A COMBO!</div>' +
       '<div class="gg-score-ribbon"><strong class="gg-score" data-score>0</strong></div>' +
-      '<div class="gg-score-caption" data-combo-info>STYLE SCORE</div></section>' +
+      '<div class="gg-score-caption" data-combo-info>STYLE SCORE</div>' +
+      '<div class="gg-party-scoreboard" data-party-scoreboard hidden>' +
+      '<div class="gg-party-head"><strong class="gg-party-title" data-party-title></strong>' +
+      '<div class="gg-party-clock"><span class="gg-party-clock-label" data-party-clock-label></span>' +
+      '<strong class="gg-party-clock-time" data-party-clock></strong></div></div>' +
+      '<div class="gg-party-metrics" data-party-metrics></div>' +
+      '<strong class="gg-party-goal" data-party-goal></strong>' +
+      '<span class="gg-party-status" data-party-status hidden></span></div></section>' +
       '<section class="gg-map-panel" data-sprite="' + HUD_SPRITES.minimapRing +
       '" aria-label="Island minimap">' +
       '<div class="gg-map-frame"><svg data-map viewBox="0 0 280 280" aria-hidden="true"></svg></div>' +
@@ -508,6 +577,10 @@ export class GameHud {
     this.stageElements = this.stages.concat(this.stageLabels);
     this.comboTitle = get('combo-title'); this.comboCount = get('combo-count');
     this.comboInfo = get('combo-info'); this.score = get('score');
+    this.scorePanel = get('score-panel'); this.partyScoreboard = get('party-scoreboard');
+    this.partyTitle = get('party-title'); this.partyClock = get('party-clock');
+    this.partyClockLabel = get('party-clock-label'); this.partyMetrics = get('party-metrics');
+    this.partyGoal = get('party-goal'); this.partyStatus = get('party-status');
     this.place = get('place');
     const map = this.root.querySelector<SVGElement>('[data-map]');
     if (!map) throw new Error('HUD minimap missing');
@@ -568,39 +641,50 @@ export class GameHud {
       point.y.toFixed(1) + ')');
   }
 
-  private updatePartyCard(game: Game): void {
+  private updatePartyScoreboard(game: Game): void {
     const match = game.party.match;
-    if (!match) return;
-    const view = match.view();
-    const you = view.players.find(p => p.id === 'player');
-    const seconds = Math.max(0, Math.ceil((view.config.durationTicks -
-      match.toJSON().playTicks) / 60));
-    let task = '', detail = '';
-    if (view.mode === 'rising-tide') {
-      const alive = view.players.filter(p => p.eliminatedAt === null).length;
-      task = alive + ' GOATS LEFT · SEA ' + view.tideLevel.toFixed(1) + 'm';
-      const tide = match.toJSON().tide;
-      const until = tide ? Math.ceil((tide.nextRiseTick - tide.modeTicks) / 60) : 0;
-      detail = match.phase === 'countdown' ? 'GET READY!' :
-        'NEXT RISE ' + Math.max(0, until) + 's · ' +
-        (until <= view.config.tideWarningTicks / 60 ? 'TIDE WARNING!' : 'FIND HIGH GROUND');
-    } else if (view.mode === 'king-of-the-peak') {
-      task = 'YOUR SCORE ' + (you?.score ?? 0) + ' · GOAL ' + view.config.peakTargetScore;
-      const peak = match.toJSON().peak;
-      detail = match.phase === 'countdown' ? 'GET READY TO CLIMB!' :
-        peak?.contested ? 'PEAK CONTESTED · PUSH THEM OUT!' :
-        peak?.ownerId === 'player' ? 'YOU CONTROL THE ZONE!' :
-        peak?.ownerId ? 'PEAK HELD BY ' +
-          (view.players.find(p => p.id === peak.ownerId)?.name ?? 'A RIVAL').toUpperCase() :
-          'ZONE EMPTY · CLIMB TO CAPTURE!';
-    } else {
-      task = Object.entries(view.teamScores)
-        .map(([team, score]) => team.toUpperCase() + ' ' + score).join(' · ');
-      detail = 'STEAL ENEMY HAY · ' +
-        (match.getEffects('player').carryingBaleId ? 'CARRYING!' : 'HOLD LICK TO PICK UP');
+    if (!match) {
+      if (this.partyHudKey !== null) {
+        this.partyHudKey = null;
+        delete this.scorePanel.dataset.partyActive;
+        this.scorePanel.setAttribute('aria-label', 'Chaos combo and score');
+        this.partyScoreboard.hidden = true;
+        this.gigCard.hidden = false;
+      }
+      return;
     }
-    this.gigTask.textContent = task;
-    this.gigDetail.textContent = detail + ' · ' + seconds + 's';
+
+    const state = derivePartyHudState(match.toJSON(), game.island.tideLevels, 'player');
+    const title = game.party.title;
+    const key = JSON.stringify([title, state]);
+    if (key === this.partyHudKey) return;
+    if (this.partyHudKey === null || this.partyTitle.textContent !== title) {
+      this.scorePanel.dataset.partyActive = 'true';
+      this.scorePanel.setAttribute('aria-label', title + ' scoreboard');
+      this.partyTitle.textContent = title;
+      this.partyScoreboard.hidden = false;
+      this.gigCard.hidden = true;
+    }
+    this.partyHudKey = key;
+    this.partyClockLabel.textContent = state.clockLabel;
+    this.partyClock.textContent = state.clock;
+    this.partyGoal.textContent = state.goal;
+    this.partyStatus.textContent = state.status;
+    this.partyStatus.hidden = !state.status;
+    this.partyStatus.dataset.urgent = String(state.urgent);
+    this.partyMetrics.replaceChildren(...state.metrics.map(metric => {
+      const item = document.createElement('div');
+      item.className = 'gg-party-metric';
+      if (metric.ownTeam) item.dataset.own = 'true';
+      const label = document.createElement('span');
+      label.className = 'gg-party-metric-label';
+      label.textContent = metric.label;
+      const value = document.createElement('strong');
+      value.className = 'gg-party-metric-value';
+      value.textContent = metric.value;
+      item.append(label, value);
+      return item;
+    }));
   }
 
 
@@ -666,7 +750,7 @@ export class GameHud {
     this.gigTask.textContent = hayHaul?.task ?? state.gig.task;
     this.gigDetail.textContent = state.gig.detail;
     this.gigCheckbox.hidden = run?.status !== 'running' || !!game.party.match;
-    this.updatePartyCard(game);
+    this.updatePartyScoreboard(game);
     // Refit only when copy or dimensions change, not every simulation frame.
     const gigLayoutKey = [this.gigTitle.textContent, this.gigTask.textContent,
       this.gigDetail.textContent, this.wallet.textContent, this.mode.textContent,

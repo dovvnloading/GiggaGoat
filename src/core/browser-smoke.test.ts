@@ -483,10 +483,41 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         'resume from pause');
 
       const modes = [
-        ['rising-tide', 'RISING TIDE'], ['king-of-the-peak', 'KING OF THE PEAK'],
-        ['hay-heist', 'HAY HEIST'],
+        ['rising-tide', 'RISING TIDE', 'Last goat standing', ['GOATS LEFT', 'SEA LEVEL']],
+        ['king-of-the-peak', 'KING OF THE PEAK', 'Hold the summit to score', ['YOUR POINTS', 'WIN TARGET']],
+        ['hay-heist', 'HAY HEIST', 'First to ', ['RED · YOU', 'BLUE']],
       ] as const;
-      for (const [index, [mode, title]] of modes.entries()) {
+      const partyHudIssues = (title: string, goal: string, metrics: readonly string[]) => {
+        const issues: string[] = [];
+        const board = document.querySelector<HTMLElement>('[data-party-scoreboard]')!;
+        const text = document.createRange();
+        const panel = board.getBoundingClientRect();
+        const selectors = ['[data-party-title]', '[data-party-clock-label]', '[data-party-clock]',
+          '[data-party-goal]', '[data-party-status]', '.gg-party-metric-label', '.gg-party-metric-value'];
+        for (const row of board.querySelectorAll(selectors.join(','))) {
+          text.selectNodeContents(row);
+          const rect = text.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0 || rect.left < panel.left - 1 ||
+            rect.right > panel.right + 1 || rect.top < panel.top - 1 || rect.bottom > panel.bottom + 1) {
+            issues.push('scoreboard text outside card: ' + row.textContent);
+          }
+        }
+        if (board.hidden || board.querySelector('[data-party-title]')?.textContent !== title ||
+          !board.querySelector('[data-party-goal]')?.textContent?.startsWith(goal)) {
+          issues.push('mode goal or title missing');
+        }
+        const clock = board.querySelector('[data-party-clock]')!;
+        if (!/^\d+:\d{2}$/.test(clock.textContent ?? '') ||
+          Number.parseFloat(getComputedStyle(clock).fontSize) < 16) issues.push('clock not prominent');
+        const labels = Array.from(board.querySelectorAll('.gg-party-metric-label'), row => row.textContent);
+        if (JSON.stringify(labels) !== JSON.stringify(metrics)) issues.push('incorrect mode metrics');
+        if (!document.querySelector<HTMLElement>('[data-gig-card]')?.hidden ||
+          getComputedStyle(document.querySelector('.gg-score-ribbon')!).display !== 'none') {
+          issues.push('free-roam HUD competes with scoreboard');
+        }
+        return issues;
+      };
+      for (const [index, [mode, title, goal, metrics]] of modes.entries()) {
         page.phase = 'party mode: ' + mode;
         if (index === 0) await page.tap('KeyP');
         else await page.click('[data-action="party"]');
@@ -500,7 +531,22 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         await page.click('[data-action="start-party"]');
         await page.waitFor('document.querySelector(".gg-shell")?.hidden === true',
           mode + ' round to start');
-        await sleep(1700);
+        await page.waitFor(
+          'document.querySelector("[data-party-clock-label]")?.textContent === "ROUND"',
+          mode + ' round clock', 20000);
+        try {
+          for (const [width, height] of [[1024, 576], [540, 360], [390, 844]] as const) {
+            await page.send('Emulation.setDeviceMetricsOverride',
+              { width, height, deviceScaleFactor: 1, mobile: false });
+            await page.waitFor('innerWidth === ' + width + ' && innerHeight === ' + height,
+              mode + ' compact viewport');
+            const issues = await page.evaluate<string[]>('(' + partyHudIssues.toString() + ')(...' +
+              JSON.stringify([title, goal, metrics]) + ')');
+            expect(issues.join(', '), mode + ' at ' + width + '×' + height).toBe('');
+          }
+        } finally {
+          await page.send('Emulation.clearDeviceMetricsOverride');
+        }
         await page.tap('Escape');
         await page.waitFor('document.querySelector(".gg-shell h2")?.textContent === "PAUSED"',
           mode + ' pause');
