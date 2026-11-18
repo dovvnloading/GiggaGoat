@@ -161,19 +161,6 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
     z: lighthouse.center.z + 23 * scale,
   });
   island.roads = makeRoads(island, rng);
-  const spiral = island.roads.find(road => road.id === MOUNTAIN_SPIRAL_TRAIL);
-  if (spiral) {
-    const northwest = spiral.points.findIndex(point => point.bridge && point.x < 0 &&
-      point.z > -82 * scale && point.z < -60 * scale);
-    if (northwest >= 0) {
-      let first = northwest, last = northwest;
-      while (spiral.points[first - 1]?.bridge) first--;
-      while (spiral.points[last + 1]?.bridge) last++;
-      // Fit the soil to the two abutments before placing scenery on this face.
-      clearTerrainUnderBridge(island, { ...spiral, points: spiral.points.slice(Math.max(first - 2, 0), last + 3) },
-        spiral.width + 1);
-    }
-  }
   sculptMountainCaveLanding(island);
   island.props = populateProps(island, rng);
   // Grade authored foundations first so nearby street furniture is placed
@@ -183,6 +170,20 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   gradeBuildingFootprints(island, dressed);
   gradeDowntownMarket(island);
   island.props.push(...dressed, ...makeBridgeDecks(island));
+  const spiral = island.roads.find(road => road.id === MOUNTAIN_SPIRAL_TRAIL);
+  if (spiral) {
+    const northwest = spiral.points.findIndex(point => point.bridge && point.x < 0 &&
+      point.z > -82 * scale && point.z < -60 * scale);
+    if (northwest >= 0) {
+      let first = northwest, last = northwest;
+      while (spiral.points[first - 1]?.bridge) first--;
+      while (spiral.points[last + 1]?.bridge) last++;
+      // Fit the abutments after seeded placement so the terrain cut cannot
+      // change scenery selection and random draws in other districts.
+      clearTerrainUnderBridge(island, { ...spiral, points: spiral.points.slice(Math.max(first - 2, 0), last + 3) },
+        spiral.width + 1);
+    }
+  }
   // Restore the full water gap after footings have feathered toward the bridge.
   preserveLighthouseChannel(island, lighthouse.center);
   const lighthouseRoad = island.roads.find(road => road.to === 'old-lighthouse' || road.from === 'old-lighthouse');
