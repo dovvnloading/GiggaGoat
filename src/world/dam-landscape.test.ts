@@ -8,7 +8,9 @@ import { damChannelAt, DAM_CHANNEL } from './dam-landscape';
 import { getDamPlacement } from './the-dam';
 import { buildDamVisuals } from './visual-dam';
 import { buildWaterVisuals } from './visual-water';
-import { DAM_BUOY_MODEL, DAM_BUOY_SIZE, buildDamLandscape, instanceDamAsset } from './visual-dam-landscape';
+import {
+  DAM_BUOY_MODEL, DAM_BUOY_SIZE, DAM_SPILLWAY_IMPACTS, buildDamLandscape, instanceDamAsset,
+} from './visual-dam-landscape';
 import { publicAssetUrl } from './public-assets';
 
 describe('The Dam downstream scenery', () => {
@@ -41,7 +43,7 @@ describe('The Dam downstream scenery', () => {
     }
   });
 
-  it('shows the headless pool, four foam outlets and the complete foreground', () => {
+  it('shows the headless pool and broken four-outlet foam in one surface draw', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
     const dam = buildDamVisuals(island);
     try {
@@ -50,21 +52,18 @@ describe('The Dam downstream scenery', () => {
       expect(landscape).toBeInstanceOf(THREE.Group);
       for (const part of [
         'dam-plunge-pool-and-downstream-river',
-        'dam-four-falls-white-foam',
-        'dam-plunge-spray-patches',
         'dam-foreground-winding-dirt-path',
         'dam-rocky-bank-underpainting',
         'dam-riverside-reeds',
         'dam-cattail-heads',
         'dam-two-orange-buoys-fallback',
       ]) expect(landscape.getObjectByName(part), part).toBeDefined();
-      const foam = landscape.getObjectByName(
-        'dam-four-falls-white-foam') as THREE.InstancedMesh;
       const reeds = landscape.getObjectByName(
         'dam-riverside-reeds') as THREE.InstancedMesh;
       const buoys = landscape.getObjectByName(
         'dam-two-orange-buoys-fallback') as THREE.InstancedMesh;
-      expect(foam.count).toBe(36);
+      expect(landscape.getObjectByName('dam-four-falls-white-foam')).toBeUndefined();
+      expect(landscape.getObjectByName('dam-plunge-spray-patches')).toBeUndefined();
       expect(reeds.count).toBe(38);
       expect(buoys.count).toBe(2);
       expect(landscape.children.filter(c => c instanceof THREE.Mesh).length)
@@ -74,8 +73,80 @@ describe('The Dam downstream scenery', () => {
         'dam-plunge-pool-and-downstream-river') as THREE.Mesh;
       const material = pool.material as THREE.ShaderMaterial;
       expect(material.uniforms['uTime']!.value).toBe(3.5);
+      expect(material.uniforms['uOutlets']!.value.toArray()).toEqual([...DAM_SPILLWAY_IMPACTS.x]);
+      expect(material.uniforms['uImpact']!.value.toArray())
+        .toEqual([DAM_SPILLWAY_IMPACTS.z, DAM_SPILLWAY_IMPACTS.halfWidth]);
+      const falls = dam.group.getObjectByName('dam-fallback-spillways')!;
+      const { position, scale } = getDamPlacement(island);
+      const { x: outlets, z: impactZ } = DAM_SPILLWAY_IMPACTS;
+      const impactY = damChannelAt(impactZ).level + 0.20;
+      dam.group.updateMatrixWorld(true);
+      for (const centre of outlets) {
+        const ray = new THREE.Raycaster(
+          new THREE.Vector3(position.x + centre * scale, position.y + impactY * scale,
+            position.z + (impactZ + 0.8) * scale),
+          new THREE.Vector3(0, 0, -1), 0, scale);
+        const hit = ray.intersectObject(falls)[0];
+        expect(hit!.point.z).toBeCloseTo(position.z + impactZ * scale, 4);
+      }
+      expect(material.fragmentShader).toContain('vChannel.y - 3.1 * uTime');
+      expect(material.fragmentShader).toContain('impact * (0.17 + 0.74 * clumps)');
+      expect(material.fragmentShader).toContain('trail * 0.26 * threads');
+      expect(material.fragmentShader).toContain('fwidth(vChannel.y)');
+      for (const [layer, near, far] of [['impact', 1.8, 9.5], ['trail', 7, 34]] as const) {
+        const falloff = material.fragmentShader.match(
+          new RegExp(layer + ' = entry \\* \\(1\\.0 - smoothstep\\(([\\d.]+), ([\\d.]+), run\\)\\)'));
+        expect(falloff?.slice(1).map(Number)).toEqual([near, far]);
+      }
     } finally {
       dam.dispose();
+    }
+  });
+
+  it('anchors the four foam impacts at the shipped spillway sheets where they meet the pool', () => {
+    const model = readFileSync(new URL('../../public/assets/library/custom/the-dam/the-dam.glb',
+      import.meta.url));
+    const jsonEnd = 20 + model.readUInt32LE(12);
+    const payload = jsonEnd + 8;
+    const gltf = JSON.parse(model.toString('utf8', 20, jsonEnd)) as {
+      nodes: Array<{ name: string; mesh: number }>;
+      meshes: Array<{ primitives: Array<{ attributes: { POSITION: number }; indices: number }> }>;
+      accessors: Array<{ bufferView: number; byteOffset?: number; count: number;
+        componentType: number }>;
+      bufferViews: Array<{ byteOffset?: number; byteStride?: number }>;
+    };
+    const bytesAt = (accessor: typeof gltf.accessors[number], stride: number, index: number) => {
+      const view = gltf.bufferViews[accessor.bufferView]!;
+      return payload + (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0) +
+        index * (view.byteStride ?? stride);
+    };
+    const poolDistance = (point: THREE.Vector3) => point.y - damChannelAt(point.z).level - 0.20;
+    for (const [outlet, centre] of DAM_SPILLWAY_IMPACTS.x.entries()) {
+      const node = gltf.nodes.find(part => part.name === 'Water_Fall_' + outlet)!;
+      const sheet = gltf.meshes[node.mesh]!.primitives[0]!;
+      const vertices = gltf.accessors[sheet.attributes.POSITION]!;
+      const indices = gltf.accessors[sheet.indices]!;
+      expect(vertices.componentType).toBe(5126);
+      expect(indices.componentType).toBe(5123);
+      const crossing = new THREE.Box3();
+      for (let i = 0; i < indices.count; i += 3) {
+        const corners = [0, 1, 2].map(offset => {
+          const vertex = model.readUInt16LE(bytesAt(indices, 2, i + offset));
+          const at = bytesAt(vertices, 12, vertex);
+          return new THREE.Vector3(model.readFloatLE(at), model.readFloatLE(at + 4),
+            model.readFloatLE(at + 8));
+        });
+        for (let c = 0; c < 3; c++) {
+          const from = corners[c]!, to = corners[(c + 1) % 3]!;
+          const start = poolDistance(from), end = poolDistance(to);
+          if (start * end < 0) crossing.expandByPoint(from.clone().lerp(to, start / (start - end)));
+        }
+      }
+      expect(crossing.isEmpty()).toBe(false);
+      expect(crossing.getCenter(new THREE.Vector3()).x).toBeCloseTo(centre, 2);
+      expect(crossing.getCenter(new THREE.Vector3()).z).toBeCloseTo(DAM_SPILLWAY_IMPACTS.z, 2);
+      expect(crossing.getSize(new THREE.Vector3()).x / 2)
+        .toBeCloseTo(DAM_SPILLWAY_IMPACTS.halfWidth, 2);
     }
   });
 
@@ -85,38 +156,30 @@ describe('The Dam downstream scenery', () => {
     try {
       const pool = world.group.getObjectByName('dam-plunge-pool-and-downstream-river') as
         THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
-      const foam = world.group.getObjectByName('dam-four-falls-white-foam') as
-        THREE.InstancedMesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
-      const spray = world.group.getObjectByName('dam-plunge-spray-patches') as
-        THREE.InstancedMesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
       const sea = world.group.getObjectByName('rising-sea') as
         THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
-      const litParts = [pool, foam, spray];
-      const dayFoam = foam.material.color.getHex();
-      const dayOpacity = foam.material.opacity;
-      expect(litParts.every(part => part.visible)).toBe(true);
+      const light = pool.material.uniforms['uLight']!.value as THREE.Vector3;
+      expect(pool.visible).toBe(true);
+      expect(light.toArray()).toEqual([1, 1, 1]);
       expect(pool.material.uniforms['uLight']!.value).toBe(sea.material.uniforms['uLight']!.value);
       expect(pool.material.fragmentShader).toContain('uTide - vHeight');
       expect(pool.material.fragmentShader).toContain('mix(0.42, 1.0,');
       expect(pool.material.fragmentShader).toContain('0.98 * exposed');
+      expect(pool.material.fragmentShader).toContain('vec4(color * uLight,');
 
       world.setLightingPreset('night');
-      const nightFoam = foam.material.color.clone().convertLinearToSRGB();
-      expect(nightFoam.r).toBeLessThan(0.16);
-      expect(nightFoam.g).toBeCloseTo(0.2, 4);
-      expect(nightFoam.b).toBeCloseTo(0.34, 4);
-      expect(foam.material.opacity).toBeCloseTo(dayOpacity * 0.55, 4);
+      expect(light.toArray()).toEqual([0.16, 0.20, 0.34]);
+      expect(pool.visible).toBe(true);
 
       world.setTideLevel(49);
       expect(pool.material.uniforms['uTide']!.value).toBe(49);
-      expect(litParts.every(part => !part.visible)).toBe(true);
+      expect(pool.visible).toBe(false);
       expect(world.group.getObjectByName('dam-front-rail')!.visible).toBe(true);
 
       world.setTideLevel(island.seaLevel);
       world.setLightingPreset('day');
-      expect(litParts.every(part => part.visible)).toBe(true);
-      expect(foam.material.color.getHex()).toBe(dayFoam);
-      expect(foam.material.opacity).toBe(dayOpacity);
+      expect(pool.visible).toBe(true);
+      expect(light.toArray()).toEqual([1, 1, 1]);
     } finally {
       world.dispose();
     }

@@ -17,6 +17,12 @@ interface Placement {
 /** Dam river markers use the Blender buoy from the shared props kit. */
 export const DAM_BUOY_MODEL = 'custom/props/buoy.glb';
 export const DAM_BUOY_SIZE = { width: 1.0, height: 1.8, depth: 1.0 } as const;
+/** Where the four authored Water_Fall sheets cross the visible pool in model metres. */
+export const DAM_SPILLWAY_IMPACTS = {
+  x: [-10.2, -1.4, 7.4, 16.2],
+  z: 7.88,
+  halfWidth: 3.37,
+} as const;
 interface AssetSet {
   name: string;
   path: string;
@@ -32,7 +38,6 @@ export interface DamLandscapeVisuals {
   group: THREE.Group;
   update(seconds: number): void;
   setWaterLevel(tide: number): void;
-  refreshWaterLight(): void;
   dispose(): void;
 }
 
@@ -67,13 +72,19 @@ function channelWater(light: THREE.Vector3, tide: { value: number }, scale: numb
   geometry.computeBoundingBox();
   const time = { value: 0 };
   const material = new THREE.ShaderMaterial({
-    uniforms: { uTime: time, uLight: { value: light }, uTide: tide, uScale: { value: scale } },
+    uniforms: {
+      uTime: time, uLight: { value: light }, uTide: tide, uScale: { value: scale },
+      uOutlets: { value: new THREE.Vector4(...DAM_SPILLWAY_IMPACTS.x) },
+      uImpact: { value: new THREE.Vector2(DAM_SPILLWAY_IMPACTS.z, DAM_SPILLWAY_IMPACTS.halfWidth) },
+    },
     transparent: true, depthWrite: true, side: THREE.DoubleSide,
     vertexShader: [
       'varying vec2 vUv;',
+      'varying vec2 vChannel;',
       'varying float vHeight;',
       'void main() {',
       ' vUv = uv;',
+      ' vChannel = position.xz;',
       ' vHeight = (modelMatrix * vec4(position, 1.0)).y;',
       ' gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
       '}',
@@ -81,18 +92,48 @@ function channelWater(light: THREE.Vector3, tide: { value: number }, scale: numb
     fragmentShader: [
       'uniform float uTime, uTide, uScale;',
       'uniform vec3 uLight;',
+      'uniform vec4 uOutlets;',
+      'uniform vec2 uImpact;',
       'varying vec2 vUv;',
+      'varying vec2 vChannel;',
       'varying float vHeight;',
+      'float foamHash(vec2 cell) {',
+      ' vec3 hash = fract(vec3(cell.xyx) * 0.1031);',
+      ' hash += dot(hash, hash.yzx + 33.33);',
+      ' return fract((hash.x + hash.y) * hash.z);',
+      '}',
+      'float foamNoise(vec2 point) {',
+      ' vec2 cell = floor(point), blend = fract(point);',
+      ' blend = blend * blend * (3.0 - 2.0 * blend);',
+      ' float south = mix(foamHash(cell), foamHash(cell + vec2(1.0, 0.0)), blend.x);',
+      ' float north = mix(foamHash(cell + vec2(0.0, 1.0)), foamHash(cell + 1.0), blend.x);',
+      ' return mix(south, north, blend.y);',
+      '}',
       'void main() {',
       ' float exposed = 1.0 - smoothstep(-0.18, 0.45, (uTide - vHeight) / uScale);',
       ' if (exposed <= 0.001) discard;',
       ' float flow = sin(vUv.y * 6.4 - uTime * 3.0 + sin(vUv.x * 16.0 + vUv.y * 1.3) * 1.7);',
       ' float wash = sin(vUv.y * 16.0 - uTime * 4.1 - vUv.x * 8.0);',
       ' float edge = smoothstep(0.70, 0.99, abs(vUv.x * 2.0 - 1.0));',
-      ' float head = 1.0 - smoothstep(0.9, 3.4, vUv.y);',
-      ' float flash = smoothstep(0.35, 0.92, flow * 0.68 + wash * 0.32);',
-      ' float foam = clamp(edge * 0.57 + head * (0.35 + flash * 0.38)',
-      '   + flash * 0.12, 0.0, 0.90);',
+      ' // Bright, broken impact patches lead into thinner, converging trails.',
+      ' float run = vChannel.y - uImpact.x;',
+      ' vec4 bend = vec4(1.5, 0.5, -0.5, -1.5) * smoothstep(3.0, 25.0, run);',
+      ' float curl = 0.55 * flow * smoothstep(2.0, 12.0, run);',
+      ' vec4 lanes = abs(vec4(vChannel.x + curl) - uOutlets - bend);',
+      ' float centre = min(min(lanes.x, lanes.y), min(lanes.z, lanes.w));',
+      ' float laneMask = 1.0 - smoothstep(0.78, 1.17, centre / uImpact.y);',
+      ' float entry = smoothstep(-1.35, 0.5, run) * laneMask;',
+      ' float impact = entry * (1.0 - smoothstep(1.8, 9.5, run));',
+      ' float trail = entry * (1.0 - smoothstep(7.0, 34.0, run));',
+      ' vec2 moving = vec2(vChannel.x, vChannel.y - 3.1 * uTime);',
+      ' float broad = foamNoise(moving * vec2(0.92, 0.31));',
+      ' float fine = foamNoise(moving * vec2(2.4, 1.25) + 17.0);',
+      ' float pixel = max(fwidth(vChannel.x), fwidth(vChannel.y));',
+      ' float mottle = mix(broad, fine, 0.35 * (1.0 - smoothstep(0.3, 1.3, pixel)));',
+      ' float clumps = smoothstep(0.23, 0.73, mottle);',
+      ' float threads = smoothstep(0.49, 0.80, mottle + 0.12 * wash);',
+      ' float foam = clamp(impact * (0.17 + 0.74 * clumps) + trail * 0.26 * threads',
+      '   + edge * 0.10 * threads, 0.0, 0.96);',
       ' foam *= mix(0.42, 1.0, smoothstep(0.16, 1.0, uLight.x));',
       ' vec3 turquoise = mix(vec3(0.01, 0.50, 0.61), vec3(0.13, 0.79, 0.86),',
       '   0.52 + 0.085 * flow + 0.035 * wash);',
@@ -108,56 +149,6 @@ function channelWater(light: THREE.Vector3, tide: { value: number }, scale: numb
   mesh.castShadow = false;
   mesh.receiveShadow = false;
   return { mesh, time };
-}
-
-function foamAtFalls(group: THREE.Group) {
-  // All four splashes and the downstream eddies share two small instance draws.
-  const splashes = new THREE.InstancedMesh(
-    new THREE.TorusGeometry(1, 0.11, 5, 20),
-    new THREE.MeshBasicMaterial({
-      color: 0xe6ffff, transparent: true, opacity: 0.83,
-      depthWrite: false, side: THREE.DoubleSide,
-    }), 36);
-  splashes.name = 'dam-four-falls-white-foam';
-  splashes.renderOrder = 4;
-  const soft = new THREE.InstancedMesh(
-    new THREE.CircleGeometry(1, 12),
-    new THREE.MeshBasicMaterial({
-      color: 0xf4ffff, transparent: true, opacity: 0.35,
-      depthWrite: false, side: THREE.DoubleSide,
-    }), 36);
-  soft.name = 'dam-plunge-spray-patches';
-  soft.renderOrder = 4;
-  const matrix = new THREE.Matrix4();
-  const rotation = new THREE.Quaternion().setFromEuler(
-    new THREE.Euler(-Math.PI / 2, 0, 0));
-  for (let i = 0; i < 36; i++) {
-    const outlet = [-7, 3, 13, 23][i % 4]!;
-    const ring = Math.floor(i / 4);
-    const theta = (ring * 2.4 + (i % 4) * 0.65);
-    const z = 10 + Math.sin(theta) * (2.0 + ring * 0.36) + ring * 0.13;
-    const section = damChannelAt(z);
-    const x = outlet + Math.cos(theta) * (1.1 + ring * 0.35);
-    const y = section.level + 0.35;
-    const radius = 1.5 + ring * 0.20;
-    matrix.compose(new THREE.Vector3(x, y, z), rotation,
-      new THREE.Vector3(radius, radius * 0.70, 1));
-    splashes.setMatrixAt(i, matrix);
-    matrix.compose(new THREE.Vector3(x + 0.45, y - 0.04, z + 0.3), rotation,
-      new THREE.Vector3(radius * 0.8, radius * 0.52, 1));
-    soft.setMatrixAt(i, matrix);
-  }
-  for (const mesh of [splashes, soft]) {
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-    mesh.computeBoundingBox();
-    group.add(mesh);
-  }
-  return [splashes, soft].map(mesh => ({
-    mesh,
-    displayColor: mesh.material.color.clone().convertLinearToSRGB(),
-    opacity: mesh.material.opacity,
-  }));
 }
 
 const PATH: readonly [number, number][] = [
@@ -513,7 +504,6 @@ export function buildDamLandscape(
   const tide = { value: island.seaLevel };
   const water = channelWater(light, tide, scale);
   group.add(water.mesh);
-  const foam = foamAtFalls(group);
   cliffUnderpainting(island, group, origin, scale);
   reeds(group);
   const fence = pathAndFence(island, group, origin, scale);
@@ -699,18 +689,6 @@ export function buildDamLandscape(
     }
   }
 
-  function refreshWaterLight(): void {
-    const strength = 0.55 + 0.45 * THREE.MathUtils.smoothstep(light.x, 0.16, 1);
-    for (const { mesh, displayColor, opacity } of foam) {
-      const highest = origin.y + mesh.boundingBox!.max.y * scale;
-      const exposed = 1 - THREE.MathUtils.smoothstep((tide.value - highest) / scale, -0.18, 0.45);
-      mesh.visible = exposed > 0.001;
-      mesh.material.opacity = opacity * strength * exposed;
-      mesh.material.color.setRGB(displayColor.r * light.x, displayColor.g * light.y,
-        displayColor.b * light.z, THREE.SRGBColorSpace);
-    }
-  }
-
   return {
     group,
     update(seconds: number): void { water.time.value = Math.max(0, seconds); },
@@ -718,9 +696,7 @@ export function buildDamLandscape(
       tide.value = level;
       const highest = origin.y + water.mesh.geometry.boundingBox!.max.y * scale;
       water.mesh.visible = level < highest + 0.45 * scale;
-      refreshWaterLight();
     },
-    refreshWaterLight,
     dispose(): void { disposed = true; },
   };
 }

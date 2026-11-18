@@ -5,7 +5,8 @@ import type { IslandData } from './types';
 import { gridSample } from './terrain';
 import { DAM_FRONT_GUARD, getDamPlacement, makeDamColliderDescriptors } from './the-dam';
 import { publicAssetUrl } from './public-assets';
-import { buildDamLandscape } from './visual-dam-landscape';
+import { buildDamLandscape, DAM_SPILLWAY_IMPACTS } from './visual-dam-landscape';
+import { damChannelAt } from './dam-landscape';
 
 export interface DamVisuals {
   group: THREE.Group;
@@ -232,10 +233,14 @@ function buildProceduralDamFallback(island: IslandData): THREE.Group {
     color: 0x40c9e6, transparent: true, opacity: 0.88,
     side: THREE.DoubleSide, depthWrite: false,
   });
-  const falls = [-7, 3, 13, 23].map(x => {
-    const geometry = new THREE.PlaneGeometry(7, 16);
-    geometry.rotateX(-0.16);
-    geometry.translate(x, 9.5, 4.2);
+  const { x: outlets, z: impactZ, halfWidth } = DAM_SPILLWAY_IMPACTS;
+  const impactY = damChannelAt(impactZ).level + 0.20;
+  const lipY = 12.68, lipZ = 3.7;
+  const drop = lipY - impactY, run = impactZ - lipZ;
+  const falls = outlets.map(x => {
+    const geometry = new THREE.PlaneGeometry(2 * halfWidth, Math.hypot(drop, run) + 0.55);
+    geometry.rotateX(-Math.atan2(run, drop));
+    geometry.translate(x, (lipY + impactY) / 2, (lipZ + impactZ) / 2);
     return geometry;
   });
   addBatch('dam-fallback-spillways', water, falls, false);
@@ -306,7 +311,6 @@ export function buildDamVisuals(island: IslandData,
     for (const { mesh, highest } of waterMeshes) mesh.visible = tide < highest;
   }
   function refreshWaterLight(): void {
-    landscape.refreshWaterLight();
     for (const [material, intensity] of emissive) material.emissiveIntensity = intensity * light.x;
   }
   trackWater(fallback);
