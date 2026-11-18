@@ -1,6 +1,7 @@
 import type { IslandData, PoiId, RoadDescriptor, RoadPoint, Vec2 } from './types';
 import { clamp, lerp, SeededRandom } from './random';
 import { gridSample, riverAt, stampRoad } from './terrain';
+import { CRANE_YARD_PLAN } from './crane-yard';
 
 interface Link { from: PoiId; to: PoiId; type: 'road' | 'trail'; via?: Vec2[] }
 /** Main asphalt loop traces the coastal settlements; dirt spurs access the summit and islet. */
@@ -9,10 +10,8 @@ const LINKS: Link[] = [
     via: [{ x: -147, z: 177 }, { x: -110, z: 185 }, { x: -35, z: 222 }, { x: 20, z: 226 }] },
   { from: 'baa-ardwalk', to: 'downtown-bleatsville', type: 'road',
     via: [{ x: 108, z: 205 }, { x: 145, z: 170 }] },
-  { from: 'downtown-bleatsville', to: 'crane-yard', type: 'road',
-    via: [{ x: 145, z: 55 }, { x: 200, z: 47 }, { x: 212, z: 8 }] },
-  { from: 'crane-yard', to: 'the-dam', type: 'road',
-    via: [{ x: 171, z: -112 }, { x: 107, z: -175 }, { x: 38, z: -213 }] },
+  // The continuous ring bypasses the Crane Yard; its gated access is a separate spur.
+  { from: 'downtown-bleatsville', to: 'the-dam', type: 'road' },
   { from: 'the-dam', to: 'whispering-pines', type: 'road',
     via: [{ x: -73, z: -217 }, { x: -112, z: -188 }] },
   { from: 'whispering-pines', to: 'hoofington', type: 'road',
@@ -127,25 +126,31 @@ export function makeRoads(island: IslandData, rng: SeededRandom): RoadDescriptor
   const byId = new Map(island.pois.map(p => [p.id, p]));
   const roads: RoadDescriptor[] = [];
   const scale = island.size / 600;
-  for (const link of LINKS) {
-    const from = byId.get(link.from)!, to = byId.get(link.to)!;
-    const waypoints: Vec2[] = link.from === 'mt-gigga'
-      ? mountainSwitchbacks(island, link.to)
-      : link.to === 'mt-gigga'
-        ? mountainSwitchbacks(island, link.from).reverse()
-        : catmullRom([
-        { x: from.center.x, z: from.center.z },
-        ...(link.via ?? []).map(p => ({
-          x: (p.x + rng.range(-2, 2)) * scale,
-          z: (p.z + rng.range(-2, 2)) * scale,
-        })),
-        { x: to.center.x, z: to.center.z },
-      ], 4.5 * scale);
+
+  // The fence is centred on the seed-jittered POI, not the old unjittered map
+  // anchor. Keep the full asphalt ribbon and its curved corners outside the
+  // fence plus 4 real metres; 12 scaled metres leave room for the road width.
+  const yard = byId.get('crane-yard')!.center;
+  const gate: Vec2 = {
+    x: yard.x + (CRANE_YARD_PLAN.frontGate.min + CRANE_YARD_PLAN.frontGate.max) * 0.5 * scale,
+    z: yard.z + CRANE_YARD_PLAN.halfDepth * scale,
+  };
+  const clearance = 4 + 12 * scale;
+  const junction: Vec2 = { x: gate.x, z: gate.z + clearance };
+  const westX = yard.x - CRANE_YARD_PLAN.halfWidth * scale - clearance;
+  const southZ = yard.z - CRANE_YARD_PLAN.halfDepth * scale - clearance;
+
+  // Keep all paths (including the short gate spur) in the same grading,
+  // bridge-lift and terrain-stamping pipeline.
+  const addRoad = (
+    link: Link, waypoints: Vec2[], startY: number, endY: number,
+    id = link.from + '--' + link.to,
+  ): RoadDescriptor => {
     const points: RoadPoint[] = waypoints.map(p => ({
       x: p.x, z: p.z, y: gridSample(island, p.x, p.z), bridge: false,
     }));
-    points[0]!.y = from.center.y;
-    points[points.length - 1]!.y = to.center.y;
+    points[0]!.y = startY;
+    points[points.length - 1]!.y = endY;
     gradeRoad(points, link.type === 'trail' ? 0.24 : 0.17);
     const width = (link.type === 'road' ? 7.5 : 3.8) * scale;
     for (const p of points) {
@@ -166,13 +171,70 @@ export function makeRoads(island: IslandData, rng: SeededRandom): RoadDescriptor
         stampRoad(island, points[i]!, points[i + 1]!, width, island.river);
       }
     }
-    roads.push({
-      id: link.from + '--' + link.to, from: link.from, to: link.to,
-      type: link.type, width, points,
-    });
+    const road: RoadDescriptor = {
+      id, from: link.from, to: link.to, type: link.type, width, points,
+    };
+    roads.push(road);
+    return road;
+  };
+
+  for (const link of LINKS) {
+    const from = byId.get(link.from)!, to = byId.get(link.to)!;
+    let waypoints: Vec2[];
+    if (link.from === 'downtown-bleatsville' && link.to === 'the-dam') {
+      // The old two road links used six jittered controls. Consume the same
+      // twelve random draws so downstream roads and seeded props do not move.
+      for (let i = 0; i < 6; i++) {
+        rng.range(-2, 2);
+        rng.range(-2, 2);
+      }
+      // Pass north of the front fence, then WEST of the whole compound before
+      // turning toward the Dam. This inland side remains dry for island seeds.
+      // The explicit junction control also gives the spur an exact road join.
+      waypoints = catmullRom([
+        { x: from.center.x, z: from.center.z },
+        { x: from.center.x, z: from.center.z - 65 * scale },
+        { x: junction.x, z: yard.z + 90 * scale },
+        junction,
+        { x: westX, z: junction.z },
+        { x: westX, z: southZ },
+        { x: 107 * scale, z: -175 * scale },
+        { x: 38 * scale, z: -213 * scale },
+        { x: to.center.x, z: to.center.z },
+      ], 4.5 * scale);
+    } else {
+      waypoints = link.from === 'mt-gigga'
+        ? mountainSwitchbacks(island, link.to)
+        : link.to === 'mt-gigga'
+          ? mountainSwitchbacks(island, link.from).reverse()
+          : catmullRom([
+            { x: from.center.x, z: from.center.z },
+            ...(link.via ?? []).map(p => ({
+              x: (p.x + rng.range(-2, 2)) * scale,
+              z: (p.z + rng.range(-2, 2)) * scale,
+            })),
+            { x: to.center.x, z: to.center.z },
+          ], 4.5 * scale);
+    }
+    addRoad(link, waypoints, from.center.y, to.center.y);
   }
-  // Stamp the village and city main roads without changing the public
-  // POI-to-POI road graph (whose edges must start/end at their POI centres).
+
+  // A single short asphalt spur joins the bypass to the front gate gap.
+  // It intentionally terminates at the fence (the only exception to the
+  // ring's four-metre exclusion zone), not in the middle of the yard.
+  const ring = roads.find(road => road.id === 'downtown-bleatsville--the-dam')!;
+  const joined = ring.points.reduce((best, p) =>
+    Math.hypot(p.x - junction.x, p.z - junction.z) <
+      Math.hypot(best.x - junction.x, best.z - junction.z) ? p : best, ring.points[0]!);
+  addRoad(
+    { from: 'downtown-bleatsville', to: 'crane-yard', type: 'road' },
+    catmullRom([junction, gate], 4.5 * scale),
+    joined.y, gridSample(island, gate.x, gate.z),
+    'crane-yard-gate-spur',
+  );
+
+  // Stamp village and city main roads separately from the public POI graph.
+  // Its regular links end at POI centres; the gated spur joins the ring.
   for (const street of makeLocalStreets(island)) {
     for (let j = 0; j < street.points.length - 1; j++) {
       stampRoad(island, street.points[j]!, street.points[j + 1]!,
