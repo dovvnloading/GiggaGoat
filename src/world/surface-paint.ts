@@ -114,10 +114,94 @@ uniform vec3 uVillagePaintBounds;`,
 vec2 villagePaintUV = (vWorld.xz - uVillagePaintBounds.xy) * uVillagePaintBounds.z + 0.5;
 if (all(greaterThan(villagePaintUV, vec2(0.0))) && all(lessThan(villagePaintUV, vec2(1.0)))) {
   vec2 villagePaint = texture2D(uVillageGroundPaint, villagePaintUV).rg;
-  diffuseColor.rgb *= 1.0 + (villagePaint.g - 0.5) * vec3(0.19, 0.23, 0.16);
+  diffuseColor.rgb *= 1.0 + (villagePaint.g - 0.5) * vec3(0.26, 0.31, 0.21);
   diffuseColor.rgb *= mix(vec3(1.0), vec3(0.70, 0.73, 0.63), villagePaint.r);
 }`,
       );
     },
+  };
+}
+
+const PAINTED_JOINT = `
+// Fade the drawn joint as its projected spacing approaches a pixel.
+float paintedJoint(float position, float width) {
+  float aa = max(fwidth(position), 0.004);
+  float distanceToJoint = abs(fract(position + 0.5) - 0.5);
+  return (1.0 - smoothstep(width, width + aa, distanceToJoint)) *
+    (1.0 - smoothstep(0.10, 0.30, aa));
+}`;
+
+export function paintHoofingtonFacades(material: THREE.MeshToonMaterial, scale: number): void {
+  material.onBeforeCompile = shader => {
+    shader.uniforms['uFacadeScale'] = { value: 1 / scale };
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>
+attribute vec4 hoofingtonFacade;
+varying vec4 vHoofingtonFacade;`).replace('#include <begin_vertex>', `#include <begin_vertex>
+vHoofingtonFacade = hoofingtonFacade;`);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+uniform float uFacadeScale;
+varying vec4 vHoofingtonFacade;
+${PAINTED_JOINT}`).replace('#include <color_fragment>', `#include <color_fragment>
+float facadeStyle = vHoofingtonFacade.w;
+if (facadeStyle > 0.5) {
+  vec3 metres = vHoofingtonFacade.xyz * uFacadeScale;
+  float wall = 1.0 - smoothstep(0.12, 0.35, abs(dot(normalize(vNormal), viewMatrix[1].xyz)));
+  float along = metres.x + metres.z * 0.82;
+  float weathering = 0.5 + 0.5 * sin(along * 0.69 + metres.y * 0.16) *
+    cos(along * 0.29 - metres.y * 0.75);
+  float footing = 1.0 - smoothstep(0.14, 0.82, metres.y);
+  float siding = 0.0;
+  if (facadeStyle < 1.5) {
+    // Soft plaster wash and low foundation courses. Dark doors/roofs and blue
+    // glass retain their baked palette.
+    wall *= smoothstep(0.23, 0.48, dot(diffuseColor.rgb, vec3(0.21, 0.72, 0.07))) *
+      smoothstep(-0.02, 0.12, diffuseColor.r - diffuseColor.b);
+    float course = metres.y / 0.30;
+    float stagger = mod(floor(course), 2.0) * 0.5;
+    siding = (paintedJoint(course, 0.035) +
+      paintedJoint(along / 0.85 + stagger, 0.025) * 0.65) * footing;
+  } else if (facadeStyle < 2.5) {
+    // The barn atlas also supplies ivory trim. Shade only the red board faces.
+    float redContrast = (diffuseColor.r - max(diffuseColor.g, diffuseColor.b)) /
+      max(0.01, diffuseColor.r);
+    wall *= smoothstep(0.20, 0.48, redContrast) * smoothstep(0.10, 0.25, diffuseColor.r);
+    siding = paintedJoint(along / 0.54, 0.032);
+  } else {
+    // Courses on mill masonry and subtle ring seams on the silo.
+    siding = paintedJoint(metres.y / 0.64, 0.024) *
+      (0.32 + 0.68 * (1.0 - smoothstep(1.5, 4.0, metres.y)));
+  }
+  vec3 footingTint = mix(vec3(1.0), vec3(0.78, 0.74, 0.67), footing * (0.45 + 0.55 * weathering));
+  diffuseColor.rgb *= mix(vec3(1.0), footingTint * (0.96 + 0.08 * weathering - 0.14 * siding), wall);
+}`);
+  };
+}
+
+export function paintHoofingtonVerge(material: THREE.MeshToonMaterial, scale: number): void {
+  material.onBeforeCompile = shader => {
+    shader.uniforms['uVergeScale'] = { value: 1 / scale };
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>
+attribute vec2 hoofingtonVerge;
+varying vec2 vVergeSection;
+varying vec2 vVergeXZ;`).replace('#include <begin_vertex>', `#include <begin_vertex>
+vVergeSection = hoofingtonVerge;
+vVergeXZ = (modelMatrix * vec4(transformed, 1.0)).xz;`);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+uniform float uVergeScale;
+varying vec2 vVergeSection;
+varying vec2 vVergeXZ;
+${PAINTED_JOINT}`).replace('#include <color_fragment>', `#include <color_fragment>
+if (vVergeSection.y > 0.5) {
+  vec2 paving = vVergeXZ * uVergeScale;
+  float slab = paving.y / 2.35;
+  float slabTone = 0.5 + 0.5 * sin(floor(slab) * 2.31 + paving.x * 0.24);
+  float wash = mix(0.5, slabTone, 1.0 - smoothstep(0.14, 0.45, fwidth(slab)));
+  float shoulder = 1.0 - smoothstep(0.01, 0.16, min(vVergeSection.x, 1.0 - vVergeSection.x));
+  float joint = paintedJoint(slab, 0.011);
+  diffuseColor.rgb *= mix(0.88, 1.04, wash);
+  diffuseColor.rgb *= mix(vec3(1.0), vec3(0.89, 0.85, 0.76),
+    shoulder * (vVergeSection.y < 1.5 ? 0.66 : 0.25));
+  diffuseColor.rgb *= 1.0 - 0.15 * joint;
+}`);
   };
 }

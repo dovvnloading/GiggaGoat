@@ -124,6 +124,27 @@ describe('Hoofington art / building slicing regressions', () => {
     const colours = Array.from({ length: paint.count }, (_, i) =>
       [paint.getX(i), paint.getY(i), paint.getZ(i)].join(','));
     expect(new Set(colours).size).toBe(3);
+    const surface = verge.geometry.getAttribute('hoofingtonVerge');
+    expect(surface.count).toBe(paint.count);
+    for (const style of [0, 1, 2]) {
+      const across = Array.from({ length: surface.count }, (_, i) => i)
+        .filter(i => surface.getY(i) === style).map(i => surface.getX(i));
+      expect(Math.min(...across)).toBeCloseTo(0);
+      expect(Math.max(...across)).toBeCloseTo(1);
+    }
+    const material = verge.material as THREE.MeshToonMaterial;
+    const shader = {
+      vertexShader: THREE.ShaderLib.toon!.vertexShader,
+      fragmentShader: THREE.ShaderLib.toon!.fragmentShader,
+      uniforms: {} as Record<string, { value: unknown }>,
+    };
+    material.onBeforeCompile(shader as unknown as Parameters<typeof material.onBeforeCompile>[0],
+      null as unknown as THREE.WebGLRenderer);
+    expect(shader.vertexShader).toContain('vVergeSection = hoofingtonVerge');
+    expect(shader.fragmentShader).toContain('if (vVergeSection.y > 0.5)');
+    expect(shader.fragmentShader).toContain('paintedJoint(slab, 0.011)');
+    expect(shader.fragmentShader).toContain('fwidth(slab)');
+    expect(shader.uniforms['uVergeScale']?.value).toBe(1);
     expect(view.group.getObjectByName('hoofington-zebra-crossing'))
       .toBeInstanceOf(THREE.Mesh);
     view.dispose();

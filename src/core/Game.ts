@@ -108,7 +108,7 @@ export class Game {
   private lastStyle = new Map<string, number>();
   private buildOrigin: Vec3;
   private readonly pierDecks: readonly PropDescriptor[];
-  private readonly damFrontGuardHandles = new Set<number>();
+  private readonly blockedClimbHandles = new Set<number>();
   private readonly spawnGround: number;
   private disposed = false;
 
@@ -132,7 +132,7 @@ export class Game {
     this.island = island;
     this.colliders = colliders;
     for (const [id, collider] of colliders.props) {
-      if (id.startsWith(DAM_FRONT_GUARD.prefix)) this.damFrontGuardHandles.add(collider.handle);
+      if (id.startsWith(DAM_FRONT_GUARD.prefix)) this.blockedClimbHandles.add(collider.handle);
     }
     this.pierDecks = boardwalkPierDecks(island);
     // Restore only validated, complete progression. Any corrupt save is ignored.
@@ -318,6 +318,7 @@ export class Game {
   private configureWorldProp(prop: PropDescriptor, body: RigidBody | undefined): void {
     const collider = this.colliders.props.get(prop.id)!;
     collider.setCollisionGroups(collisionGroups('prop'));
+    if (!prop.climbable) this.blockedClimbHandles.add(collider.handle);
     collider.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS);
     const material = prop.kind === 'rock' ? 'rock' :
       prop.kind === 'ramp' ? 'wood' : prop.kind === 'hay-bale' ? 'grass' :
@@ -335,6 +336,8 @@ export class Game {
       this.water.untrack(body);
       this.propByBody.delete(body.handle);
     }
+    const collider = this.colliders.props.get(id);
+    if (collider) this.blockedClimbHandles.delete(collider.handle);
     this.colliders.bodies.delete(id);
     this.colliders.props.delete(id);
     this.destroyedProps.add(id);
@@ -606,7 +609,16 @@ export class Game {
     const mz = Math.max(-1, Math.min(1, input.moveZ ?? 0)) * speed;
     const wish = V(Math.sin(cameraYaw) * mz + Math.cos(cameraYaw) * mx, 0,
       -Math.cos(cameraYaw) * mz + Math.sin(cameraYaw) * mx);
-    const steep = Math.hypot(wish.x, wish.z) > .1 && this.isFacingWall(wish, goat);
+    const held = goat.interactions.tongueBody;
+    const towingParcel = player && input.tongue === true && held !== null &&
+      this.physics.bodyData(held.handle)?.data === 'parcel';
+    const wall = goat.locomotion.findClimbSurface(wish);
+    // Rooftop Express was tuned around its active parcel making chest contact
+    // on a loaded approach. Keep that route independent of ordinary prop climbs.
+    const courierParcelContact = towingParcel && wall?.body?.handle === held.handle;
+    const blockedClimb = wall !== null && (this.blockedClimbHandles.has(wall.collider.handle) ||
+      (wall.body?.isDynamic() === true && !courierParcelContact));
+    const climbContact = blockedClimb ? null : wall;
     const head = goat.head.translation();
     const seekingTongueTarget = player && input.tongue && !goat.interactions.isTongueAttached;
     const courierAim = seekingTongueTarget && goat.size > 1
@@ -622,9 +634,9 @@ export class Game {
     const prop = hit ? [...this.colliders.props].find(([, c]) => c.handle === hit.collider.handle) : undefined;
     const lickable = !!hit && (!prop || this.island.props.find(p => p.id === prop[0])?.lickable !== false);
     const facts: GoatPhysicsFacts = {
-      grounded: goat.locomotion.grounded && !steep,
+      grounded: goat.locomotion.grounded && climbContact === null,
       airborneTime: goat.locomotion.airborneSeconds,
-      touchingSteepWall: steep || goat.locomotion.isClinging,
+      touchingSteepWall: !blockedClimb && (climbContact !== null || goat.locomotion.isClinging),
       speed: Math.hypot(velocity.x, velocity.z),
       size: sim.style.tier,
       tongueTarget: lickable && hit ? 'hit-' + hit.collider.handle : null,
@@ -641,12 +653,10 @@ export class Game {
     };
     const result = sim.update(dt, rulesIntent, facts);
     const commands = result.commands[0]!;
-    const held = goat.interactions.tongueBody;
-    const parcelHeld = player && input.tongue && commands.tongue?.action !== 'fling' &&
-      held !== null && this.physics.bodyData(held.handle)?.data === 'parcel';
+    const parcelHeld = towingParcel && commands.tongue?.action !== 'fling';
     goat.locomotion.setInput({
       x: mx, z: mz, cameraYaw, sprint: commands.setSprint,
-      canSprint: commands.setSprint, canClimb: commands.setClimb,
+      canSprint: commands.setSprint, canClimb: commands.setClimb, climbContact,
       acceptForwardSupport: parcelHeld ? this.gigs.isCourierRamp : undefined,
     });
     this.water.setPaddle(goat.torso, wish);
@@ -722,15 +732,6 @@ export class Game {
     return !!ground && ground.normal.y >= .55 &&
       torso.y - ground.point.y <= 1.5 * size &&
       torso.y >= ground.point.y - .25 * size;
-  }
-
-  private isFacingWall(wish: Vec3, goat = this.goat): boolean {
-    const origin = add(goat.torso.translation(), V(0, .1 * goat.size, 0));
-    const hit = this.physics.raycast(origin, wish, 1.05 * goat.size, {
-      predicate: collider => !goat.ownsBody(collider.parent()),
-    });
-    return !!hit && !this.damFrontGuardHandles.has(hit.collider.handle) &&
-      hit.normal.y < .46 && hit.normal.x * wish.x + hit.normal.z * wish.z < -.45;
   }
 
   /** Cosmetic events come from executed commands, never unaccepted input edges. */

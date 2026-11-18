@@ -3,6 +3,7 @@ import type { IslandData, RoadDescriptor } from './types';
 import { gridSample } from './terrain';
 import { makeLocalStreets } from './roads';
 import { TOON_RAMP } from './visual-props';
+import { paintHoofingtonVerge } from './surface-paint';
 
 interface StreetPiece {
   x: number; y: number; z: number;
@@ -72,16 +73,19 @@ function buildHoofingtonVerge(
   const edge = road.width / 2;
   const profiles = [
     { from: edge + .36 * scale, to: edge + 2.34 * scale,
-      color: 0xdcd4ba, y: (x: number, z: number) => gridSample(island, x, z) + .04 * scale },
+      color: 0xdcd4ba, surface: 1, y: (x: number, z: number) => gridSample(island, x, z) + .04 * scale },
     { from: edge + .022 * scale, to: edge + .36 * scale,
-      color: 0xf2e6ce, skirt: true,
+      color: 0xf2e6ce, surface: 2, skirt: true,
       y: (_x: number, _z: number, roadY: number) => roadY + .20 + .08 * scale },
     { from: edge - .39 * scale, to: edge - .30 * scale,
-      color: 0xf2e9cf, y: (_x: number, _z: number, roadY: number) => roadY + .214 },
+      color: 0xf2e9cf, surface: 0, y: (_x: number, _z: number, roadY: number) => roadY + .214 },
   ];
   const positions: number[] = [], indices: number[] = [], colors: number[] = [];
+  const section: number[] = [];
   for (const profile of profiles) {
     const startVertex = positions.length / 3;
+    const across = (offset: number): number =>
+      (Math.abs(offset) - profile.from) / (profile.to - profile.from);
     for (const side of [-1, 1]) {
       const first = positions.length / 3;
       const left = side < 0 ? -profile.to : profile.from;
@@ -90,6 +94,7 @@ function buildHoofingtonVerge(
         for (const offset of [left, right]) {
           const x = point.x + offset;
           positions.push(x, profile.y(x, point.z, point.y), point.z);
+          section.push(across(offset), profile.surface);
         }
       }
       for (let i = 1; i < road.points.length; i++) {
@@ -102,6 +107,7 @@ function buildHoofingtonVerge(
           const x = point.x + offset;
           positions.push(x, profile.y(x, point.z, point.y), point.z,
             x, gridSample(island, x, point.z) - .04 * scale, point.z);
+          section.push(across(offset), profile.surface, across(offset), profile.surface);
         }
         for (let i = 1; i < road.points.length; i++) {
           const a = start + (i - 1) * 2, b = a + 2;
@@ -116,12 +122,13 @@ function buildHoofingtonVerge(
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setAttribute('hoofingtonVerge', new THREE.Float32BufferAttribute(section, 2));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
-  const mesh = new THREE.Mesh(geometry, new THREE.MeshToonMaterial({
-    vertexColors: true, gradientMap: TOON_RAMP,
-  }));
+  const material = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_RAMP });
+  paintHoofingtonVerge(material, scale);
+  const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'hoofington-street-verge';
   mesh.receiveShadow = true;
   group.add(mesh);

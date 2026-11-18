@@ -172,7 +172,7 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
 
   // Containers hug the rear and side fence instead of covering the building.
   for (const [x, z, yaw, color] of [
-    [-31, -28, 0, 0x4589ba], [-17, -31, 0, 0x367da7],
+    [-31, -28, 0, 0x4589ba], [-17, -26, 0, 0x367da7],
     [33, 24, Math.PI / 2, 0xc95241], [33, 7, Math.PI / 2, 0xda6844],
     [33, -26, Math.PI / 2, 0x4c98ad],
   ] as const) {
@@ -200,7 +200,7 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
     put('pipe-stack', x, z, 6, 4.2, 6.2,
       { color: 0xb3b7b9 });
   }
-  for (const [x, z] of [[29, 16], [31, 12], [26, 17], [-29, 15]] as const) {
+  for (const [x, z] of [[29, 16], [28.5, 12], [26, 17], [-29, 15]] as const) {
     put('barrel', x, z, 1.9, 2.3, 1.9,
       { color: 0xdd9c35, dynamicMass: 12, climbable: false, shape: 'cylinder' });
   }

@@ -332,7 +332,16 @@ void main() {
       // Fade the rounded head and toe into the rock and receiving water.
       cover *= smoothstep(0.0, 0.16, vUv.y) * (1.0 - smoothstep(0.78, 1.0, vUv.y));
     }
-    if (vStreamStyle.x > 2.5) cover *= 1.0 - smoothstep(-0.04, 0.23, uStreamTide - vWorld.y);
+    if (vStreamStyle.x > 2.5) {
+      // The terrace fall spills into this water. Keep the impact in the
+      // connected surface, where it can soften into ripples at the shore.
+      float lace = smoothstep(-0.15, 0.74, 0.65 * current + 0.35 * crossFlow);
+      float impact = vStreamStyle.y * (1.0 - 0.70 * bank) * (0.38 + 0.41 * lace);
+      col = mix(col, vec3(0.29, 0.69, 0.75), 0.39 * falling + 0.16 * (1.0 - falling));
+      col = mix(col, vec3(0.78, 0.93, 0.89), impact);
+      cover *= (1.0 - smoothstep(0.94, 1.0, vUv.y)) *
+        (1.0 - smoothstep(-0.04, 0.23, uStreamTide - vWorld.y));
+    }
     gl_FragColor = vec4(col * uLight, 0.94 * cover);
     return;
   }`);
@@ -608,48 +617,85 @@ function terraceCascade(island: IslandData, prop: PropDescriptor): THREE.BufferG
     }
     return space / scale;
   }
-  const lip = place(-7.35, 0);
-  const basin = place(2.32, 1.10);
-  const basinY = ground(basin.x, basin.z) + 0.26 * scale;
-  if (ground(lip.x, lip.z) - basinY < 3 * scale) return undefined;
+  const lipRun = -7.35;
+  const originalToe = 3.12;
+  const poolStart = 2.08;
+  const lip = place(lipRun, 0);
 
-  const vertices: number[] = [], uv: number[] = [], style: number[] = [], indices: number[] = [];
-  const rows = 24, columns = 4;
-  for (let row = 0; row <= rows; row++) {
-    const t = row / rows;
-    const run = THREE.MathUtils.lerp(-7.35, 3.12, t);
-    const bias = 1.10 * THREE.MathUtils.smoothstep(t, 0.57, 0.93) + 0.21 * Math.sin(t * 8);
-    const centre = place(run, bias);
-    const pooling = THREE.MathUtils.smoothstep(run, 1.18, 2.08);
-    const shaft = THREE.MathUtils.smoothstep(t, 0, 0.15);
-    const narrowing = 1 - THREE.MathUtils.smoothstep(t, 0.89, 1);
-    const shape = 0.13 + narrowing * (0.96 * shaft + 0.84 * pooling + 0.12 * Math.sin(t * 14));
-    const width = Math.min(shape, clearance(centre) - 0.24);
-    if (width <= 0.08) return undefined;
-    for (let column = 0; column <= columns; column++) {
-      const u = column / columns;
-      const across = (u * 2 - 1);
-      const point = place(run + 0.22 * across * Math.sin(t * 11) * narrowing, bias + across * width);
-      if (clearance(point) < 0.19) return undefined;
-      const height = ground(point.x, point.z);
-      const offset = (0.10 + 0.28 * Math.sin(u * Math.PI)) * scale;
-      vertices.push(point.x, THREE.MathUtils.lerp(height + offset, basinY, pooling), point.z);
-      uv.push(u, t);
-      style.push(3, THREE.MathUtils.smoothstep(run, -0.3, 1.1) * narrowing, 1 - pooling);
-      if (row > 0 && column > 0) {
-        const d = row * (columns + 1) + column, c = d - 1;
-        const b = d - columns - 1, a = b - 1;
-        indices.push(a, c, b, b, c, d);
+  function fit(toe: number, wide: boolean): THREE.BufferGeometry | undefined {
+    const basin = place(wide ? 2.54 : 2.32, 1.10);
+    const basinY = ground(basin.x, basin.z) + (wide ? 0.17 : 0.26) * scale;
+    if (ground(lip.x, lip.z) - basinY < 3 * scale) return undefined;
+    const poolFitsGrade = (height: number): boolean =>
+      height <= basinY - 0.025 * scale && height >= basinY - 0.36 * scale;
+
+    const vertices: number[] = [], uv: number[] = [], style: number[] = [], indices: number[] = [];
+    const shaftRows = 24;
+    const rows = wide ? shaftRows + 8 : shaftRows, columns = wide ? 8 : 4;
+    for (let row = 0; row <= rows; row++) {
+      const run = row > shaftRows
+        ? THREE.MathUtils.lerp(poolStart, toe, (row - shaftRows) / (rows - shaftRows))
+        : THREE.MathUtils.lerp(lipRun, wide ? poolStart : toe, row / shaftRows);
+      const progress = (run - lipRun) / (toe - lipRun);
+      const t = THREE.MathUtils.clamp((run - lipRun) / (originalToe - lipRun), 0, 1);
+      const bias = 1.10 * THREE.MathUtils.smoothstep(t, 0.57, 0.93) + 0.21 * Math.sin(t * 8);
+      const centre = place(run, bias);
+      const pooling = THREE.MathUtils.smoothstep(run, 1.18, poolStart);
+      const shaft = THREE.MathUtils.smoothstep(t, 0, 0.15);
+      const narrowing = 1 - THREE.MathUtils.smoothstep(t, 0.89, 1);
+      const shape = 0.13 + narrowing * (0.96 * shaft + 0.84 * pooling + 0.12 * Math.sin(t * 14));
+      const lobe = wide ? 2.10 * THREE.MathUtils.smoothstep(run, 1.18, 2.68) *
+        (1 - THREE.MathUtils.smoothstep(run, 2.96, toe)) : 0;
+      // The lower lobe widens along the terrace. Check both banks against
+      // the real trail footprint, which runs roughly across the fall.
+      const width = lobe > shape ? lobe : Math.min(shape, clearance(centre) - 0.24);
+      if (width <= 0.08) return undefined;
+      const pointsAcross = (across: number, halfWidth: number): Vec2 => {
+        const bend = 0.22 * across * Math.sin(t * 11) * narrowing * (wide ? 1 - pooling : 1);
+        return place(run + bend, bias + across * halfWidth);
+      };
+      const banks = [-1, 1].map(side => {
+        if (!wide || run < 1.18) return width;
+        const samples = 12;
+        for (let j = 1; j <= samples; j++) {
+          const point = pointsAcross(side, width * j / samples);
+          if (clearance(point) < 0.21 || (pooling === 1 && !poolFitsGrade(ground(point.x, point.z)))) {
+            return width * (j - 1) / samples;
+          }
+        }
+        return width;
+      });
+      if (Math.min(...banks) <= 0.08) return undefined;
+      const impact = THREE.MathUtils.smoothstep(run, 0.52, 1.64) *
+        (1 - THREE.MathUtils.smoothstep(run, 2.25, toe));
+      for (let column = 0; column <= columns; column++) {
+        const u = column / columns;
+        const across = u * 2 - 1;
+        const point = pointsAcross(across, banks[across < 0 ? 0 : 1]!);
+        if (clearance(point) < 0.19) return undefined;
+        const height = ground(point.x, point.z);
+        if (wide && pooling === 1 && !poolFitsGrade(height)) return undefined;
+        const offset = (0.10 + 0.28 * Math.sin(u * Math.PI)) * scale;
+        vertices.push(point.x, THREE.MathUtils.lerp(height + offset, basinY, pooling), point.z);
+        uv.push(u, progress);
+        style.push(3, impact, 1 - pooling);
+        if (row > 0 && column > 0) {
+          const d = row * (columns + 1) + column, c = d - 1;
+          const b = d - columns - 1, a = b - 1;
+          indices.push(a, c, b, b, c, d);
+        }
       }
     }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geometry.setAttribute('streamStyle', new THREE.Float32BufferAttribute(style, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    return geometry;
   }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  geometry.setAttribute('streamStyle', new THREE.Float32BufferAttribute(style, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  return geometry;
+
+  return fit(4.25, true) ?? fit(3.82, true) ?? fit(originalToe, false);
 }
 
 /** One cliff curtain only where a 4 m stretch of real riverbed drops 3 m. */
@@ -1048,8 +1094,7 @@ export function buildWaterVisuals(island: IslandData,
   const reservoir = buildDamReservoir(island, uLight, stream.time);
   const headwaterLevel = getDamHeadwater(island).level;
   inland.add(reservoir);
-  // The authored cascade GLB owns all waterfall silhouettes and plunge pools.
-  // Keep the named mesh-free markers and the single instanced foam draw.
+  // Keep the named foam markers and the single instanced draw for authored falls.
   for (const prop of island.props) {
     if ((prop.kind === 'cascade' || prop.kind === 'cascade-tall') &&
         (prop.id.startsWith('waterfall-cascade-') ||

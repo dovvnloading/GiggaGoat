@@ -122,6 +122,7 @@ describe('Walkable roads and coastal routes', () => {
         game.step(movement);
         expect(game.goat.torso.translation().z).toBeLessThan(dam.z + 3.7 * scale);
         expect(game.goat.locomotion.isClinging).toBe(false);
+        expect(game.goat.isRagdoll).toBe(false);
       }
       expect(game.goat.torso.translation().y).toBeGreaterThan(deckTop);
 
@@ -162,6 +163,13 @@ describe('Walkable roads and coastal routes', () => {
       expect(game.respawns).toBe(0);
       expect(game.goat.torso.translation().z).toBeGreaterThan(finish - .65);
       expect(game.location).toBe('Baa-ardwalk');
+      for (let i = 0; i < 150; i++) {
+        game.step({ moveZ: 1, cameraYaw: Math.PI });
+        expect(game.goat.isRagdoll).toBe(false);
+        expect(game.goat.locomotion.isClinging).toBe(false);
+      }
+      expect(game.goat.torso.translation().z).toBeLessThan(wheel!.transform.position.z + wheel!.size.z / 2);
+      expect(game.respawns).toBe(0);
       const mapSvg = renderHudMinimap(game.island, { x, z: finish });
       expect(mapSvg.match(/data-pier-deck/g)).toHaveLength(decks.length);
 
@@ -381,6 +389,31 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
       off();
       expect(highest - startingY).toBeGreaterThan(.8);
       expect(awarded).toContain('wall-climb');
+    } finally { game.dispose(); }
+  });
+
+  it('climbs the northwest Mt Gigga face with normal movement from its base', async () => {
+    const game = await Game.create();
+    try {
+      ticks(game, 120);
+      const x = -96 / Math.sqrt(2), z = x;
+      const yaw = 3 * Math.PI / 4;
+      game.teleport(V(x, heightAt(game.island, x, z) + .05, z), -yaw);
+      ticks(game, 120);
+      expect(game.goat.locomotion.grounded).toBe(true);
+      const start = game.goat.torso.translation();
+      const contacts: number[] = [];
+      const off = game.goat.events.on(event => {
+        if (event.type === 'wallClingStart') contacts.push(event.normal.y);
+      });
+      ticks(game, 210, { moveZ: 1, cameraYaw: yaw });
+      off();
+      const finish = game.goat.torso.translation();
+      expect(contacts.some(y => y > .46 && y < .602)).toBe(true);
+      expect(finish.y - start.y).toBeGreaterThan(3);
+      expect(finish.x - start.x).toBeGreaterThan(2);
+      expect(finish.z - start.z).toBeGreaterThan(2);
+      expect(game.respawns).toBe(0);
     } finally { game.dispose(); }
   });
 

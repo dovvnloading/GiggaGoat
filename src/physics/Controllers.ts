@@ -119,6 +119,8 @@ export interface MovementInput {
   /** External gameplay can gate actions without physics owning stamina. */
   canSprint: boolean;
   canClimb: boolean;
+  /** The host may provide this tick's contact after applying world exclusions. */
+  climbContact?: RayHit | null;
   /** A known ramp may already support the front of the goat before its torso reaches it. */
   acceptForwardSupport?: (colliderHandle: number) => boolean;
 }
@@ -192,13 +194,49 @@ export class LocomotionController {
       this.jumpBufferUntil = this.clock + this.tuning.jumpBufferSeconds;
     }
   }
+  private get minWalkingNormalY(): number {
+    return Math.cos(this.tuning.maxSlopeDegrees * Math.PI / 180);
+  }
+
+  /** Classify the same actual contact for ability gating and for the motor. */
+  findClimbSurface(movement: Vec3): RayHit | null {
+    if (Math.hypot(movement.x, movement.z) <= .1) return null;
+    const wish = normalize(V(movement.x, 0, movement.z));
+    const g = this.goat;
+    const torso = g.torso.translation();
+    const query = { groups: GROUND_QUERY_GROUPS };
+    const canClimb = (hit: RayHit | null): hit is RayHit =>
+      hit !== null && hit.normal.y < this.minWalkingNormalY && dot(wish, hit.normal) < -.45;
+    const shoulder = g.world.raycast(add(torso, V(0, .09 * g.size, 0)), wish,
+      this.tuning.climbReach * g.size, query);
+    if (canClimb(shoulder)) return shoulder;
+
+    // The leading head can already touch a slope even when the chest ray
+    // still falls short. Sweep the actual head collider over a short reach.
+    const head = g.head;
+    const position = head.translation();
+    if (dot(sub(position, torso), wish) <= 0) return null;
+    const headCollider = head.collider(0);
+    const close = g.world.shapeCast(position, head.rotation(), wish, headCollider.shape,
+      .14 * g.size, query);
+    if (!canClimb(close) || close.body?.isDynamic()) return null;
+    // A swept sphere can contact a low edge or end cap. Require the same
+    // steep face ahead of the forehead, within the sphere's contact reach.
+    const aboveHead = .10 * g.size;
+    const faceReach = (headCollider.radius() + Math.max(0, close.normal.y) * aboveHead + .035 * g.size) /
+      -dot(wish, close.normal);
+    const face = g.world.raycast(add(position, V(0, aboveHead, 0)), wish,
+      close.distance + faceReach, query);
+    return canClimb(face) && face.collider.handle === close.collider.handle ? face : null;
+  }
+
   update(dt: number): void {
     this.clock += dt;
     const g = this.goat, torso = g.torso, s = g.size;
     const position = torso.translation();
     const rideHeight = g.balance.tuning.rideHeight * s;
     const groundedDistance = rideHeight + .16 * s;
-    const minGroundY = Math.cos(this.tuning.maxSlopeDegrees * Math.PI / 180);
+    const minGroundY = this.minWalkingNormalY;
     const movement = add(mul(forward(this.input.cameraYaw),this.input.z),
       mul(right(this.input.cameraYaw),this.input.x));
     const wishLength = Math.min(1,length(movement));
@@ -226,19 +264,16 @@ export class LocomotionController {
       this.flipAngle = 0;
       this.flipScored = false;
     }
-    const wall = wishLength > .1 ? g.world.raycast(
-      add(torso.translation(),V(0,.09*s,0)),wish,this.tuning.climbReach*s,
-      { groups: GROUND_QUERY_GROUPS },
-    ) : null;
-    const wallEligible = !!wall && wall.normal.y < .46 && dot(wish,wall.normal) < -.45;
-    if (wallEligible) {
+    const wall = this.input.climbContact === undefined
+      ? this.findClimbSurface(movement) : this.input.climbContact;
+    if (wall) {
       this.clingGrace = .34;
-      this.clingNormal = {...wall!.normal};
+      this.clingNormal = { ...wall.normal };
     } else {
       this.clingGrace = Math.max(0,this.clingGrace-dt);
     }
     const clinging = !g.isRagdoll && this.input.canClimb && wishLength > .1 &&
-      (wallEligible || (this.isClinging && this.clingGrace > 0));
+      (wall !== null || (this.isClinging && this.clingGrace > 0));
     // Steep-wall intent takes priority over ordinary ground contact, so a goat can
     // initiate a climb with its hooves still planted on flat terrain.
     if (clinging) this.grounded = false;

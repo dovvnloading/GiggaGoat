@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createWorldScene, generateIsland } from './index';
 import { gridSample } from './terrain';
+import { createDistrictLod, type BakedPlacement } from './district-lod';
 import {
   HOOFINGTON_MODELS, bakeHoofingtonGeometry,
   createLanternLampInstances, makeHoofingtonPlacements,
@@ -56,6 +57,92 @@ describe('Hoofington sourced village model integration', () => {
       });
     }
   });
+  it('carries the original village wall paint through the real merged district draw', async () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const source = makeHoofingtonPlacements(island);
+    const models: HoofModel[] = ['creamHome', 'barn', 'windmill', 'silo'];
+    const placements = models.map(id => source.find(entry => entry.model === id)!);
+    const roots = new Map<HoofModel, THREE.Group>();
+    const ranges: BakedPlacement<HoofModel>[] = [];
+    const group = new THREE.Group();
+    const control = new THREE.Group();
+    try {
+      vi.stubGlobal('self', globalThis);
+      vi.stubGlobal('createImageBitmap', async () => ({ width: 1, height: 1, close() {} }));
+      const loader = new GLTFLoader();
+      for (const id of models) {
+        const bytes = readFileSync('public/' + HOOFINGTON_MODELS[id]);
+        roots.set(id, (await loader.parseAsync(Uint8Array.from(bytes).buffer, '')).scene);
+      }
+      const geometry = bakeHoofingtonGeometry(placements, roots, (placement, start, count) =>
+        ranges.push({ placement, start, count }))!;
+      const baseline = bakeHoofingtonGeometry(placements, roots, undefined, {
+        creamHome: 'assets/library/custom/', barn: 'assets/library/polypizza/',
+        windmill: 'assets/library/custom/', silo: 'assets/library/custom/',
+      })!;
+      expect(geometry.getAttribute('position').array).toEqual(baseline.getAttribute('position').array);
+      expect(geometry.getAttribute('normal').array).toEqual(baseline.getAttribute('normal').array);
+      expect(baseline.hasAttribute('hoofingtonFacade')).toBe(false);
+      const surface = geometry.getAttribute('hoofingtonFacade');
+      const normal = geometry.getAttribute('normal');
+      expect(surface.count).toBe(geometry.getAttribute('position').count);
+      for (const { placement, start, count } of ranges) {
+        const style = placement.model === 'creamHome' ? 1 : placement.model === 'barn' ? 2 : 3;
+        let wall = 0, protectedDetail = 0;
+        for (let i = start; i < start + count; i += 3) {
+          const paint = surface.getW(i);
+          expect(paint).toBe(surface.getW(i + 1));
+          expect(paint).toBe(surface.getW(i + 2));
+          expect([0, style]).toContain(paint);
+          if (paint === 0) protectedDetail++;
+          if (paint > 0 && Math.abs(normal.getY(i)) < .12 && surface.getY(i) > 0.8) wall++;
+        }
+        expect(wall, placement.model).toBeGreaterThan(40);
+        if (placement.model !== 'barn') expect(protectedDetail, placement.model).toBeGreaterThan(20);
+      }
+      const painted = await createDistrictLod(island, geometry, ranges, group, 'painted-district');
+      const plain = await createDistrictLod(island, baseline, ranges, control, 'plain-district');
+      try {
+        expect(group.children.length).toBe(control.children.length);
+        expect(group.children.length).toBeGreaterThan(0);
+        for (const [index, object] of group.children.entries()) {
+          const mesh = object as THREE.Mesh<THREE.BufferGeometry, THREE.MeshToonMaterial>;
+          const original = control.children[index] as THREE.Mesh;
+          expect(mesh.geometry.getAttribute('position').array)
+            .toEqual(original.geometry.getAttribute('position').array);
+          expect(mesh.castShadow).toBe(original.castShadow);
+          expect(mesh.geometry.hasAttribute('hoofingtonFacade')).toBe(true);
+          const shader = {
+            vertexShader: THREE.ShaderLib.toon!.vertexShader,
+            fragmentShader: THREE.ShaderLib.toon!.fragmentShader,
+            uniforms: {} as Record<string, { value: unknown }>,
+          };
+          mesh.material.onBeforeCompile(
+            shader as unknown as Parameters<typeof mesh.material.onBeforeCompile>[0],
+            null as unknown as THREE.WebGLRenderer);
+          expect(shader.vertexShader).toContain('vHoofingtonFacade = hoofingtonFacade');
+          expect(shader.fragmentShader).toContain('paintedJoint(along / 0.54, 0.032)');
+          expect(shader.fragmentShader).toContain('paintedJoint(metres.y / 0.64, 0.024)');
+          expect(shader.fragmentShader).toContain('footingTint');
+          expect(shader.fragmentShader).toContain('fwidth(position)');
+          expect(shader.uniforms['uFacadeScale']?.value).toBe(1);
+        }
+      } finally {
+        painted.dispose();
+        plain.dispose();
+      }
+    } finally {
+      vi.unstubAllGlobals();
+      for (const root of roots.values()) root.traverse(object => {
+        if (!(object instanceof THREE.Mesh)) return;
+        object.geometry.dispose();
+        const material = object.material as THREE.MeshStandardMaterial;
+        material.map?.dispose();
+        material.dispose();
+      });
+    }
+  });
+
   it('references only existing CC0 GLBs without editing the library or credits', () => {
     const manifest = JSON.parse(readFileSync(
       'public/assets/library/manifest.json', 'utf8',
