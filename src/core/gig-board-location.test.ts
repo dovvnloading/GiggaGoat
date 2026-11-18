@@ -102,7 +102,7 @@ it('keeps the summit board clear of capture and restores the free-roam boards af
     expect(game.gigs.board('mt-gigga').some(offer => offer.gigId === 'summit-sprint')).toBe(true);
 
     const match = game.party.start('king-of-the-peak', 3, 'easy', {
-      countdownTicks: 2, durationTicks: 80, overtimeTicks: 2,
+      countdownTicks: 2, durationTicks: 80, overtimeTicks: 2, peakRadius: MODE_DEFAULTS.peakRadius,
     });
     expect(match.view().arena.summit).toEqual(summit);
     expect(match.view().config.peakRadius).toBe(MODE_DEFAULTS.peakRadius);

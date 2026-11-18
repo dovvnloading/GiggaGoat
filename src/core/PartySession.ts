@@ -62,8 +62,10 @@ export class PartySession {
         return { ...barn, position: { x, y: heightAt(island, x, z), z }, radius: 5.4 * scale };
       });
     }
+    const peakRadius = config?.peakRadius ?? 7.4 * scale;
     const roundConfig = mode === 'king-of-the-peak'
-      ? { peakRadius: 7.4 * scale, peakLeadDistance: .42 * scale, ...config } : config;
+      ? { peakRadius, peakLeadDistance: Math.min(.42 * scale, peakRadius * .15), ...config }
+      : config;
     const match = new PartyMatch({ mode, seed: 217, config: roundConfig }, arena);
     match.join({ id: 'player', name: 'YOU', teamId: mode === 'hay-heist' ? 'red' : undefined });
     const center = mode === 'king-of-the-peak' ? arena.summit :
