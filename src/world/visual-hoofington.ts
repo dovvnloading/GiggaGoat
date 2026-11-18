@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { IslandData, PropDescriptor, PropKind, Vec3 } from './types';
 import { gridSample } from './terrain';
+import { smoothstep } from './random';
 import { publicAssetUrl } from './public-assets';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import { createDistrictLod, type BakedPlacement, type DistrictLod } from './district-lod';
@@ -228,6 +229,7 @@ export function bakeLibraryGeometry<Model extends string>(
     const path = modelPaths?.[placement.model] ??
       HOOFINGTON_MODELS[placement.model as HoofModel] ?? '';
     const authored = isAuthoredLibraryAsset(path);
+    const paintedVillageHouse = path.startsWith('assets/library/custom/hoofington-houses/');
     const fit = fitLibraryModel(span,
       new THREE.Vector3(placement.size.x, placement.size.y, placement.size.z), path);
     const centre = bounds.getCenter(new THREE.Vector3());
@@ -243,6 +245,7 @@ export function bakeLibraryGeometry<Model extends string>(
     root.traverse(object => {
       if (!(object instanceof THREE.Mesh)) return;
       const mesh = object;
+      const plasterShell = paintedVillageHouse && mesh.name.startsWith('building-type-');
       const positions = mesh.geometry.getAttribute('position');
       if (!positions || positions.itemSize < 3) return;
       const indices = mesh.geometry.index;
@@ -333,6 +336,16 @@ export function bakeLibraryGeometry<Model extends string>(
           const roofVertex = /roof|tile|shingle|thatch/.test(hint) || height > 0.71;
           if (roofColor && roofVertex) tint.lerp(roofColor, 0.82);
           else if (wallColor && !detail) tint.lerp(wallColor, 0.68);
+          if (plasterShell && material.name.endsWith('_paint')) {
+            // Retain the atlas and use the authored plinth's existing vertices.
+            // A broad warmer fade connects the footing to the lawn contact.
+            const baseCourse = 1 - smoothstep(0.012, 0.08, height);
+            const weathering = 0.93 + 0.07 * Math.sin(
+              normalizedX * 5.1 + normalizedZ * 4.3 + placement.position.x * 0.13);
+            tint.r *= 1 - 0.17 * baseCourse * weathering;
+            tint.g *= 1 - 0.24 * baseCourse * weathering;
+            tint.b *= 1 - 0.31 * baseCourse * weathering;
+          }
           // Keep the source's lit windows and decorative contrast, even on
           // otherwise pastel/cream buildings.
           colours.push(tint.r, tint.g, tint.b);

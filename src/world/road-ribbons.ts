@@ -128,6 +128,7 @@ export function roadRibbonRuns(island: IslandData, type: RoadDescriptor['type'])
  */
 export function roadRibbonData(island: IslandData, type: RoadDescriptor['type']): {
   positions: number[]; indices: number[]; supportIndices: number[]; segments: RibbonSegment[];
+  crossSections: number[];
 } {
   const runs = roadRibbonRuns(island, type);
   const topOffset = type === 'road' ? 0.2 : 0.19;
@@ -135,6 +136,7 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'])
   const indices: number[] = [];
   const supportIndices: number[] = [];
   const segments: RibbonSegment[] = [];
+  const crossSections: number[] = [];
 
   for (const { points, width, widths } of runs) {
     const firstVertex = positions.length / 3;
@@ -174,6 +176,9 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'])
         point.x + x, bottom, point.z + z,
         point.x - x, bottom, point.z - z,
       );
+      // Signed width coordinates are shared by the asphalt top and its skirts.
+      if (type === 'road') crossSections.push(-1, halfWidth, 1, halfWidth,
+        -1, halfWidth, 1, halfWidth, -1, halfWidth, 1, halfWidth);
     }
 
     for (let i = 0; i < points.length - 1; i++) {
@@ -202,5 +207,5 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'])
       });
     }
   }
-  return { positions, indices, supportIndices, segments };
+  return { positions, indices, supportIndices, segments, crossSections };
 }

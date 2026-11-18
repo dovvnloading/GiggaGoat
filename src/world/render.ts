@@ -6,6 +6,7 @@ import { gridCoordinate, gridIndex } from './terrain';
 import { terrainRockMask } from './terrain-paint';
 import { paintDowntownGround } from './downtown-public-space';
 import { buildRoadsideSigns, paintRoadsideGravel } from './visual-roadside-stops';
+import { makeVillageGroundPaint, paintAsphalt } from './surface-paint';
 import { roadRibbonData } from './road-ribbons';
 import { buildPropVisuals, TOON_RAMP } from './visual-props';
 import { createEnvironmentLod } from './environment-lod';
@@ -243,6 +244,8 @@ function buildTerrain(island: IslandData, segments: number,
   rockMask.generateMipmaps = true;
   rockMask.needsUpdate = true;
   material.addEventListener('dispose', () => rockMask.dispose());
+  const villagePaint = makeVillageGroundPaint(island);
+  material.addEventListener('dispose', () => villagePaint.map.dispose());
   material.onBeforeCompile = shader => {
     shader.uniforms['uRockStone'] = { value: COLORS.rock };
     shader.uniforms['uMountainStone'] = { value: MT_GIGGA_STONE };
@@ -279,6 +282,7 @@ uStone *= 0.96 + 0.04 * sin(elevation * 0.52 + 2.0 * exposure);
 float rock = smoothstep(0.19, 0.48, exposure + 0.04 * smoothstep(16.0, 85.0, elevation));
 diffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);`,
     );
+    villagePaint.apply(shader);
     paintDowntownGround(shader, island);
     paintRoadsideGravel(shader, island);
     capeLighting.paint(shader);
@@ -332,7 +336,7 @@ function buildRoads(island: IslandData): THREE.Group {
   const matrix = new THREE.Matrix4();
 
   for (const type of ['road', 'trail'] as const) {
-    const { positions, indices, segments } = roadRibbonData(island, type);
+    const { positions, indices, segments, crossSections } = roadRibbonData(island, type);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setIndex(indices);
@@ -341,6 +345,10 @@ function buildRoads(island: IslandData): THREE.Group {
     const material = new THREE.MeshToonMaterial({
       color: type === 'road' ? 0x727e8a : 0xc3a06c, gradientMap: TOON_RAMP,
     });
+    if (type === 'road') {
+      geometry.setAttribute('roadCrossSection', new THREE.Float32BufferAttribute(crossSections, 2));
+      paintAsphalt(material, island);
+    }
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'paths-' + type;
     mesh.receiveShadow = true;

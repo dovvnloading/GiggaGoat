@@ -111,6 +111,54 @@ describe('IS-24 narrow beach tint and IS-15 per-fragment cliffs', () => {
     }
   });
 
+
+  it('adds a soft ground contact at the original house footings in the same terrain draw', () => {
+    const island = generateIsland();
+    const view = createWorldScene(island);
+    try {
+      const material = view.chunks[0]!.material as THREE.MeshToonMaterial;
+      const toon = THREE.ShaderLib.toon!;
+      const shader = {
+        vertexShader: toon.vertexShader,
+        fragmentShader: toon.fragmentShader,
+        uniforms: {} as Record<string, { value: unknown }>,
+      };
+      material.onBeforeCompile(shader as unknown as Parameters<typeof material.onBeforeCompile>[0],
+        null as unknown as THREE.WebGLRenderer);
+      expect(view.chunks.every(chunk => chunk.material === material)).toBe(true);
+      expect(shader.fragmentShader).toContain('texture2D(uVillageGroundPaint, villagePaintUV).rg');
+      expect(shader.fragmentShader).toContain('mix(diffuseColor.rgb, uStone, rock)');
+      const atlas = shader.uniforms['uVillageGroundPaint']!.value as THREE.DataTexture;
+      const bounds = shader.uniforms['uVillagePaintBounds']!.value as THREE.Vector3;
+      expect(atlas.format).toBe(THREE.RGFormat);
+      expect(atlas.generateMipmaps).toBe(true);
+      const { width, height } = atlas.image;
+      const data = atlas.image.data as Uint8Array;
+      const field = (x: number, z: number, channel: number): number => {
+        const col = Math.floor(((x - bounds.x) * bounds.z + .5) * width);
+        const row = Math.floor(((z - bounds.y) * bounds.z + .5) * height);
+        return data[(row * width + col) * 2 + channel]! / 255;
+      };
+      const houses = island.props.filter(p => p.poiId === 'hoofington' && p.kind === 'house');
+      expect(houses.length).toBeGreaterThan(2);
+      for (const { transform, size } of houses) {
+        const { x, z } = transform.position;
+        const sample = (extra: number): number => {
+          const d = size.x * .46 + extra;
+          return field(x + d * Math.cos(transform.rotationY), z - d * Math.sin(transform.rotationY), 0);
+        };
+        expect(field(x, z, 0)).toBeGreaterThan(.95);
+        expect(sample(.25)).toBeGreaterThan(.62);
+        expect(sample(.86)).toBeLessThan(sample(.25));
+        expect(sample(2)).toBeLessThan(.1);
+      }
+      const colours = Array.from({ length: 20 }, (_, i) => field(bounds.x + i - 10, bounds.y + 6, 1));
+      expect(Math.max(...colours) - Math.min(...colours)).toBeGreaterThan(.16);
+    } finally {
+      view.dispose();
+    }
+  });
+
   it('injects a filtered world-space rock atlas into the existing toon material', () => {
     const island = generateIsland({ seed: 'terrain-rock-shader', resolution: 33 });
     const scene = createWorldScene(island, { chunkSegments: 16 });
