@@ -610,6 +610,37 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     return undefined;
   };
 
+  // The authored control-house pier extends beyond the basic Dam wall
+  // collider. Its foliage-free footprint keeps full oak crowns off the face.
+  const damPier: Footprint = {
+    x: damOrigin.x + 36 * scale, z: damOrigin.z - 1.5 * scale,
+    sx: 11 * scale, sz: 8 * scale, yaw: 0,
+  };
+  const damBankProps = [...island.props, ...result];
+  for (const tree of result.filter(prop =>
+    prop.kind === 'tree-oak' || prop.kind === 'tree-pine' || prop.kind === 'bush')) {
+    const { position, rotationY } = tree.transform;
+    const footprint = { x: position.x, z: position.z, sx: tree.size.x, sz: tree.size.z, yaw: rotationY };
+    if (!footprintOverlaps(footprint, damPier)) continue;
+    const bank = nearbyFoliageSpot(position, (x, z) => {
+      if (x < damOrigin.x + 45 * scale || z < damOrigin.z + 11 * scale ||
+          gridSample(island, x, z) <= island.seaLevel + 1.2 * scale) return false;
+      if (island.roads.some(road => road.points.some((b, i) => i > 0 &&
+        segmentProjection({ x, z }, road.points[i - 1]!, b).distance <
+          road.width / 2 + tree.size.x / 2))) return false;
+      return !damBankProps.some(prop => prop !== tree && prop.collidable &&
+        footprintOverlaps({ ...footprint, x, z }, {
+          x: prop.transform.position.x, z: prop.transform.position.z,
+          sx: prop.size.x, sz: prop.size.z, yaw: prop.transform.rotationY,
+        }));
+    }, 40);
+    if (bank) {
+      Object.assign(position, bank, { y: gridSample(island, bank.x, bank.z) + tree.size.y / 2 });
+    } else {
+      result.splice(result.indexOf(tree), 1);
+    }
+  }
+
   // MG-7: Populate the grassy mountain tiers with the same low-poly foliage
   // family used in Whispering Pines. Run after island-wide scenery so that
   // existing authored placements and their RNG sequence stay unchanged.

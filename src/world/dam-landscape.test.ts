@@ -277,6 +277,33 @@ describe('The Dam downstream scenery', () => {
     }
   });
 
+  it('grounds the former Dam face oak on the bank, outside the actual GLB pier', () => {
+    const asset = readFileSync('public/assets/library/custom/the-dam/the-dam.glb');
+    const json = JSON.parse(asset.toString('utf8', 20, 20 + asset.readUInt32LE(12))) as {
+      nodes: { name: string; mesh: number }[];
+      meshes: { primitives: { attributes: { POSITION: number } }[] }[];
+      accessors: { min: [number, number, number]; max: [number, number, number] }[];
+    };
+    const pier = json.nodes.find(node => node.name === 'ControlHouse_Pillar')!;
+    const { min, max } = json.accessors[json.meshes[pier.mesh]!.primitives[0]!.attributes.POSITION]!;
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const origin = getDamPlacement(island).position;
+    const oak = island.props.find(prop => prop.id === 'detail-the-dam-tree-oak-845')!;
+    expect(oak.kind).toBe('tree-oak');
+    const p = oak.transform.position;
+    expect(p.x - origin.x - oak.size.x / 2).toBeGreaterThan(max[0]);
+    expect(p.z - origin.z - oak.size.z / 2).toBeGreaterThan(max[2]);
+    expect(p.y - oak.size.y / 2).toBeCloseTo(heightAt(island, p.x, p.z), 5);
+    for (const plant of island.props.filter(prop =>
+      prop.kind === 'tree-oak' || prop.kind === 'tree-pine' || prop.kind === 'bush')) {
+      const { x, z } = plant.transform.position;
+      const radius = Math.max(plant.size.x, plant.size.z) / 2;
+      const overlaps = x + radius > origin.x + min[0] && x - radius < origin.x + max[0] &&
+        z + radius > origin.z + min[2] && z - radius < origin.z + max[2];
+      expect(overlaps, plant.id).toBe(false);
+    }
+  });
+
   it('uses the painted custom buoy at its 1.0 x 1.8 x 1.0 metre scale', () => {
     expect(DAM_BUOY_MODEL).toBe('custom/props/buoy.glb');
     expect(DAM_BUOY_SIZE).toEqual({ width: 1, height: 1.8, depth: 1 });
