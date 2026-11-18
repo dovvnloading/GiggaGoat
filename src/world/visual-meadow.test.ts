@@ -64,7 +64,7 @@ afterEach(() => {
 });
 
 describe('island meadow painted clumps and paved-area exclusions (IS-19)', () => {
-  it('keeps the two-octahedron fallback until GLB load, then bakes 27 painted triangles into one draw', async () => {
+  it('keeps painted upright blades until GLB load and swaps geometry within one draw', async () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
     vi.stubGlobal('document', {});
     const load = vi.spyOn(GLTFLoader.prototype, 'loadAsync')
@@ -74,9 +74,19 @@ describe('island meadow painted clumps and paved-area exclusions (IS-19)', () =>
       const tuft = grass(group);
       const flowers = group.getObjectByName('meadow-daisy-flowers') as THREE.InstancedMesh;
       const fallback = tuft.geometry;
-      expect(triangleCount(fallback)).toBe(16);
-      expect(tuft.instanceColor).not.toBeNull();
-      expect((tuft.material as THREE.MeshToonMaterial).vertexColors).toBe(false);
+      const material = tuft.material as THREE.MeshToonMaterial;
+      const materialVersion = material.version;
+      expect(triangleCount(fallback)).toBe(12);
+      expect(tuft.instanceColor).toBeNull();
+      expect(material.vertexColors).toBe(true);
+      const positions = fallback.getAttribute('position');
+      const colors = fallback.getAttribute('color');
+      expect(colors.count).toBe(positions.count);
+      for (let i = 0; i < positions.count; i += 3) {
+        const heights = [positions.getY(i), positions.getY(i + 1), positions.getY(i + 2)];
+        expect(Math.max(...heights) - Math.min(...heights)).toBeGreaterThan(.2);
+        expect(colors.getY(i)).toBeGreaterThan(.4);
+      }
       expect(group.children).toHaveLength(2);
       expect(flowers).toBeInstanceOf(THREE.InstancedMesh);
       expect(flowers.count).toBeGreaterThan(100);
@@ -95,8 +105,9 @@ describe('island meadow painted clumps and paved-area exclusions (IS-19)', () =>
       expect(paint.getY(0)).toBeCloseTo(materialColor.g * 0.9, 5);
       expect(paint.getZ(0)).toBeCloseTo(materialColor.b, 5);
       expect(paint.getX(60)).not.toBeCloseTo(paint.getX(0), 2);
-      expect(tuft.instanceColor).toBeNull(); // GLB paint, not old randomized tint
-      expect((tuft.material as THREE.MeshToonMaterial).vertexColors).toBe(true);
+      expect(tuft.instanceColor).toBeNull();
+      expect(tuft.material).toBe(material);
+      expect(material.version).toBe(materialVersion); // Same shader for loaded and fallback paint.
       expect(group.children.filter(node => node instanceof THREE.InstancedMesh))
         .toHaveLength(2);
       expect(group.children.filter(node => node.name === 'meadow-grass-sprigs'))
@@ -206,8 +217,9 @@ describe('island meadow painted clumps and paved-area exclusions (IS-19)', () =>
       await Promise.resolve();
       for (const group of [offline, invalid]) {
         const tuft = grass(group);
-        expect(triangleCount(tuft.geometry)).toBe(16);
-        expect(tuft.instanceColor).not.toBeNull();
+        expect(triangleCount(tuft.geometry)).toBe(12);
+        expect(tuft.instanceColor).toBeNull();
+        expect((tuft.material as THREE.MeshToonMaterial).vertexColors).toBe(true);
         expect(group.children).toHaveLength(2);
       }
     } finally {

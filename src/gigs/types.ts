@@ -12,6 +12,8 @@ export const GIG_IDS: readonly GigId[] = [
   'dam-bomb', 'beacon-bleat',
 ];
 export type Difficulty = 'easy' | 'medium' | 'hard';
+/** A tongue grab registers for Hay Haul within this many goat-size units. */
+export const HAY_HAUL_TAG_RADIUS = 6;
 export const DIFFICULTIES: readonly Difficulty[] = ['easy', 'medium', 'hard'];
 export type Rating = 'bronze' | 'silver' | 'gold';
 export type GigStatus = 'running' | 'completed' | 'failed' | 'abandoned';

@@ -94,6 +94,18 @@ describe('island sea, shoreline and horizon', () => {
       expect(material.fragmentShader).toContain('#include <' + chunk + '>');
     }
     expect(material.fragmentShader).toContain('vec3(0.88, 0.96, 0.92)');
+    const shader = material.fragmentShader;
+    // Distinct directions and wavelengths prevent one shared comb across the sea.
+    const phases = [...shader.matchAll(/filteredRipple\(dot\(seaXZ, vec2\((-?[\d.]+), (-?[\d.]+)\)\)/g)]
+      .map(match => new THREE.Vector2(Number(match[1]), Number(match[2])));
+    expect(phases).toHaveLength(2);
+    const [swell, cross] = phases;
+    const alignment = swell!.dot(cross!) / (swell!.length() * cross!.length());
+    expect(Math.abs(alignment)).toBeLessThan(.6);
+    expect(cross!.length() / swell!.length()).toBeGreaterThan(1.2);
+    expect(shader).toContain('fwidth(phase)');
+    expect(shader).toContain('fwidth(depth)');
+    expect(shader.match(/texture2D\(/g)).toHaveLength(1);
     sea.geometry.dispose();
     material.dispose();
   });

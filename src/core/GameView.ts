@@ -17,6 +17,8 @@ import { CAMERA_TARGET_HEIGHT, PLAY_CAMERA_PITCH, SPAWN_CAMERA_PITCH, SPAWN_CAME
   goatCameraLookAhead, goatCameraOffset, goatCameraVerticalOffset, goatOrbitOffset,
   goatViewDirection } from './GoatCamera';
 import { GameHud, type FramePerformance } from './GameHud';
+import { hayHaulGuidance, type HayHaulGuidance } from './GigPresentation';
+import { MowDownPresentation } from './MowDownPresentation';
 import {
   WORLD_LIBRARY_KINDS, createWorldLibraryProp, createBoardLibraryProp,
   createSurfaceLibraryProp, createSpawnLibraryProp, createHeistHayLibraryProp,
@@ -58,6 +60,10 @@ export class GameView {
   private readonly heistBales = new Map<string, THREE.Group>();
   private readonly textTextures = new Set<THREE.Texture>();
   private displayedGig = -1;
+  private hayHaul: HayHaulGuidance | null = null;
+  private hayHaulPickup: THREE.Sprite | null = null;
+  private hayHaulDelivery: THREE.Group | null = null;
+  private mowDown: MowDownPresentation | null = null;
   private displayedMode: string | null = null;
   private currentSettings: GameSettings = { ...DEFAULT_SETTINGS };
   paused = false;
@@ -67,7 +73,6 @@ export class GameView {
   private readonly instancedProps = new InstancedPropRenderer(this.scene);
   private readonly propVisuals: PropVisual[] = [];
   private readonly libraryWorldProps: LibraryWorldVisual[] = [];
-  private readonly suppressedWorldLabKinds = new Set<string>();
   private readonly buildVisuals = new Map<number, THREE.Group>();
   private readonly debrisVisuals = new Map<number, THREE.Group>();
   private readonly activeBuildIds = new Set<number>();
@@ -123,7 +128,11 @@ export class GameView {
     this.camera.position.set(0, 5, 8);
     this.scene.background = new THREE.Color(0x87c5f0);
     this.scene.fog = new THREE.FogExp2(SKY_HORIZON_COLOR, .0016);
-    this.world = createWorldScene(game.island, { chunkSegments: 24, cullingDistance: 340 });
+    this.world = createWorldScene(game.island, {
+      chunkSegments: 24,
+      cullingDistance: 340,
+      externallyRenderedPropKinds: WORLD_LIBRARY_KINDS,
+    });
     this.scene.add(this.world.group);
     if (this.scene.fog) this.scene.fog.color.copy(this.world.fogColor);
     this.renderer.setClearColor(this.world.fogColor);
@@ -182,16 +191,17 @@ export class GameView {
     this.applyCameraFraming(this.desiredCameraFraming());
   }
 
-  /** Keep only unsupported world batches on the procedural renderer.
-   * Disabling layer 0 is permanent even when world.updateCulling toggles visible. */
+  /** Bind physics bodies to the view that owns their art. */
   private bindWorldProps(): void {
     const batches = new Map<string, PropDescriptor[]>();
     for (const prop of this.game.island.props) {
-      const list = batches.get(prop.kind) ?? [];
-      list.push(prop);
-      batches.set(prop.kind, list);
       const root = createWorldLibraryProp(this.propFactory, prop);
-      if (!root) continue;
+      if (!root) {
+        const list = batches.get(prop.kind) ?? [];
+        list.push(prop);
+        batches.set(prop.kind, list);
+        continue;
+      }
       root.position.copy(vec(prop.transform.position));
       root.rotation.y = prop.transform.rotationY;
       this.instancedProps.add(root);
@@ -202,10 +212,6 @@ export class GameView {
     this.world.group.traverse(object => {
       if (!(object instanceof THREE.InstancedMesh) || !object.name.startsWith('props-')) return;
       const kind = object.name.substring('props-'.length);
-      if (WORLD_LIBRARY_KINDS.has(kind as PropDescriptor['kind'])) {
-        object.layers.disable(0);
-        return;
-      }
       const entries = batches.get(kind);
       if (!entries) return;
       for (let index = 0; index < Math.min(entries.length, object.count); index++) {
@@ -216,20 +222,6 @@ export class GameView {
       }
       object.frustumCulled = true;
     });
-  }
-
-  /** Loaded World Lab near/far draws arrive after bindWorldProps. Layer-mask
-   * them once as well, so the dynamic per-prop roots never double-render. */
-  private hideWorldLabLoadedProps(): void {
-    for (const kind of WORLD_LIBRARY_KINDS) {
-      if (this.suppressedWorldLabKinds.has(kind)) continue;
-      const near = this.world.group.getObjectByName('render-near-' + kind);
-      if (!(near instanceof THREE.InstancedMesh)) continue;
-      near.layers.disable(0);
-      const far = this.world.group.getObjectByName('render-far-' + kind);
-      if (far instanceof THREE.InstancedMesh) far.layers.disable(0);
-      this.suppressedWorldLabKinds.add(kind);
-    }
   }
 
   private updateProps(alpha: number): void {
@@ -339,7 +331,8 @@ export class GameView {
   private clearGroup(group: THREE.Group): void {
     for (const child of [...group.children]) {
       child.traverse(object => {
-        if (object instanceof THREE.Mesh) {
+        if (object instanceof THREE.Mesh || object instanceof THREE.Line) {
+          if (object instanceof THREE.InstancedMesh) object.dispose();
           object.geometry.dispose();
           if (Array.isArray(object.material)) object.material.forEach(m => m.dispose());
           else object.material.dispose();
@@ -359,17 +352,33 @@ export class GameView {
     if (attempt !== this.displayedGig) {
       this.displayedGig = attempt;
       this.clearGroup(this.gigMarkers);
+      this.hayHaulPickup = this.hayHaulDelivery = null;
+      this.mowDown = null;
       for (const root of this.gigProps.values()) this.releaseLibraryProp(root);
       this.gigProps.clear();
       if (run?.status === 'running') {
-        const markers = [...run.setup.markers];
-        if (run.setup.config.kind === 'hay-haul') {
-          for (const bale of run.setup.config.bales) {
-            markers.push({ id: bale.id, label: 'HAY TARGET', position: bale.start,
-              radius: 2.1, type: 'checkpoint' });
-          }
+        const config = run.setup.config;
+        if (config.kind === 'hay-haul') {
+          const pickup = this.textSprite('PICK UP BALE', 2.6, .65, 0);
+          this.hayHaulPickup = pickup;
+          this.gigMarkers.add(pickup);
+          const delivery = new THREE.Group();
+          const radius = config.radius * .65;
+          const ring = new THREE.Mesh(new THREE.RingGeometry(radius, radius + .24, 40),
+            new THREE.MeshBasicMaterial({ color: 0x88ffcb, side: THREE.DoubleSide,
+              transparent: true, opacity: .7, depthWrite: false }));
+          ring.rotation.x = -Math.PI / 2;
+          ring.position.y = -.85;
+          delivery.add(ring, this.textSprite('BARN DROP', 3.2, .8, 2.25));
+          this.hayHaulDelivery = delivery;
+          this.gigMarkers.add(delivery);
+        } else if (config.kind === 'mow-down') {
+          this.mowDown = new MowDownPresentation(this.game.island, config.patches,
+            this.textSprite('G / X GRAZE', 2.4, .6, 0));
+          this.gigMarkers.add(this.mowDown);
         }
-        for (const marker of markers) {
+        const customMarkers = config.kind === 'hay-haul' || config.kind === 'mow-down';
+        for (const marker of customMarkers ? [] : run.setup.markers) {
           const group = new THREE.Group();
           group.position.copy(vec(marker.position));
           const ring = new THREE.Mesh(new THREE.RingGeometry(
@@ -390,6 +399,24 @@ export class GameView {
         }
       }
     }
+    this.hayHaul = hayHaulGuidance(this.game, run);
+    if (this.hayHaulPickup) {
+      this.hayHaulPickup.visible = this.hayHaul?.kind === 'pickup';
+      if (this.hayHaul?.kind === 'pickup') {
+        const { x, y, z } = this.hayHaul.position;
+        this.hayHaulPickup.position.set(x, y + 1.25, z);
+      }
+    }
+    if (this.hayHaulDelivery) {
+      this.hayHaulDelivery.visible = this.hayHaul?.kind === 'delivery';
+      if (this.hayHaul?.kind === 'delivery') {
+        const { x, y, z } = this.hayHaul.position;
+        this.hayHaulDelivery.position.set(x, y, z);
+      }
+    }
+    if (this.mowDown && run?.status === 'running') {
+      this.mowDown.update(run.finishedIds, this.game.goat.torso.translation());
+    }
     for (const [id, root] of this.gigProps) {
       const prop = this.game.gigs.props.get(id);
       if (!prop) { root.visible = false; continue; }
@@ -399,6 +426,7 @@ export class GameView {
       root.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
     }
     for (const group of this.gigMarkers.children) {
+      if (group === this.mowDown) continue;
       const ring = group.children[0];
       if (ring instanceof THREE.Mesh && ring.material instanceof THREE.MeshBasicMaterial) {
         ring.material.opacity = .6 + .22 * Math.sin(this.game.physics.time * 3);
@@ -628,7 +656,7 @@ export class GameView {
 
   private updateHud(): void {
     this.hud.update(this.game, this.fps, this.simMs, this.input.debugVisible,
-      document.pointerLockElement === this.renderer.domElement, this.perfStats);
+      document.pointerLockElement === this.renderer.domElement, this.perfStats, this.hayHaul);
   }
 
   private updateCamera(alpha: number, dt: number): void {
@@ -740,7 +768,6 @@ export class GameView {
       this.updateHud();
     }
     this.world.updateCulling(this.camera);
-    this.hideWorldLabLoadedProps();
     this.limitDrawDistance();
     this.instancedProps.update(this.camera, range);
     this.shadowTimer += dt;

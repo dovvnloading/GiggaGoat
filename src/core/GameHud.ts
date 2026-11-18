@@ -2,6 +2,7 @@ import type { Game } from './Game';
 import { HUD_PIECES, deriveHudState, projectHudMap } from './GameHudState';
 import { buildArtwork, goatArtwork, renderHudMinimap } from './HudArtwork';
 import { fitGigCardText } from './GigCardLayout';
+import { createHayHaulMapMarker, hayHaulMapPoint, type HayHaulGuidance } from './GigPresentation';
 import { HUD_SPRITES, hudSpriteImage, hudSpriteVariables } from './HudSprites';
 
 const CSS = `
@@ -276,6 +277,7 @@ export class GameHud {
   private playerArrow: SVGElement | null = null;
   private mapOrigin: { x: number; z: number } | null = null;
   private mapZone = '';
+  private hayHaulMapMarker: SVGGElement | null = null;
   private readonly stamina: HTMLElement;
   private readonly staminaNumber: HTMLElement;
   private readonly charge: HTMLElement;
@@ -409,7 +411,7 @@ export class GameHud {
     this.hotbar = get('hotbar');
   }
 
-  private updateMap(game: Game, location: string): void {
+  private updateMap(game: Game, location: string, hayHaul: HayHaulGuidance | null): void {
     const position = game.goat.torso.translation();
     const site = game.island.pois.find(poi => poi.name.toUpperCase() === location);
     const zone = site?.id ?? 'open-island';
@@ -423,6 +425,7 @@ export class GameHud {
       }
       this.mapZone = zone;
       this.mapCanvas.innerHTML = renderHudMinimap(game.island, this.mapOrigin);
+      this.hayHaulMapMarker = null;
       this.playerArrow = this.mapCanvas.querySelector<SVGElement>('[data-player]');
     }
     if (this.playerArrow && this.mapOrigin) {
@@ -431,6 +434,22 @@ export class GameHud {
       this.playerArrow.setAttribute('transform', 'translate(' + point.x.toFixed(1) + ' ' +
         point.y.toFixed(1) + ') rotate(' + degrees.toFixed(0) + ')');
     }
+    this.updateHayHaulMap(hayHaul);
+  }
+
+  private updateHayHaulMap(hayHaul: HayHaulGuidance | null): void {
+    if (this.hayHaulMapMarker && this.hayHaulMapMarker.dataset.hayHaulMarker !== hayHaul?.kind) {
+      this.hayHaulMapMarker.remove();
+      this.hayHaulMapMarker = null;
+    }
+    if (!hayHaul || !this.mapOrigin) return;
+    if (!this.hayHaulMapMarker) {
+      this.hayHaulMapMarker = createHayHaulMapMarker(hayHaul.kind);
+      this.mapCanvas.append(this.hayHaulMapMarker);
+    }
+    const point = hayHaulMapPoint(hayHaul.position, this.mapOrigin);
+    this.hayHaulMapMarker.setAttribute('transform', 'translate(' + point.x.toFixed(1) + ' ' +
+      point.y.toFixed(1) + ')');
   }
 
   private updatePartyCard(game: Game): void {
@@ -470,7 +489,7 @@ export class GameHud {
 
 
   update(game: Game, fps: number, stepMilliseconds: number, debugVisible: boolean,
-    pointerLocked: boolean, perf?: FramePerformance): void {
+    pointerLocked: boolean, perf?: FramePerformance, hayHaul: HayHaulGuidance | null = null): void {
     const rules = game.rules;
     const run = game.gigs.active;
     const state = deriveHudState({
@@ -504,7 +523,7 @@ export class GameHud {
     this.score.textContent = state.score;
     this.place.textContent = state.location;
     this.wallet.textContent = state.coins + ' CUD COINS';
-    this.updateMap(game, state.location);
+    this.updateMap(game, state.location, hayHaul);
 
     this.stamina.style.setProperty('--gg-stamina', state.stamina.toFixed(2) + '%');
     this.staminaNumber.textContent = Math.floor(state.stamina) + ' / 100';
@@ -526,7 +545,7 @@ export class GameHud {
     }
     this.supply.textContent = '×' + rules.inventory.get('scrap');
     this.gigTitle.textContent = state.gig.title;
-    this.gigTask.textContent = state.gig.task;
+    this.gigTask.textContent = hayHaul?.task ?? state.gig.task;
     this.gigDetail.textContent = state.gig.detail;
     this.gigCheckbox.hidden = run?.status !== 'running' || !!game.party.match;
     this.updatePartyCard(game);

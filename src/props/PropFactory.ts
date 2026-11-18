@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PROP_LIBRARY_MODELS, bakeLibraryPropGeometry } from '../world/library-props';
 import { fitLibraryModel, isAuthoredLibraryAsset } from '../world/library-fit';
-import { TOON_RAMP } from '../world/visual-props';
+import { buildProceduralPropGeometry, TOON_RAMP } from '../world/visual-props';
 
 /**
  * Visuals only: callers still own their Rapier bodies and update these roots'
@@ -290,20 +290,27 @@ export class PropFactory {
     return fitted;
   }
 
-  /** One full-size placeholder; replace it with the exact World Lab GLB on load. */
+  /** Draw one placeholder, then swap in the exact World Lab GLB. */
   createWorldProp(kind: WorldLibraryPropKind, size: Size3, color: number | undefined,
     legacyFallback: () => THREE.Group): THREE.Group {
     const root = this.root('world-' + kind, size);
     const slot = new THREE.Group();
     slot.name = 'library-slot';
     root.add(slot);
-    const placeholder = this.cachedGeometry(`box:${size.x}:${size.y}:${size.z}`,
-      () => new THREE.BoxGeometry(size.x, size.y, size.z));
-    const box = new THREE.Mesh(placeholder,
-      this.worldMaterial(color ?? WORLD_PROP_COLORS[kind], false));
-    box.castShadow = true;
-    box.receiveShadow = true;
-    slot.add(box);
+    const isFence = kind === 'fence';
+    const placeholder = isFence
+      ? this.cachedGeometry('world-picket-fence', () => buildProceduralPropGeometry('fence'))
+      : this.cachedGeometry(`box:${size.x}:${size.y}:${size.z}`,
+        () => new THREE.BoxGeometry(size.x, size.y, size.z));
+    const proxy = new THREE.Mesh(placeholder,
+      this.worldMaterial(isFence ? 0xffffff : color ?? WORLD_PROP_COLORS[kind], isFence));
+    if (isFence) {
+      proxy.name = 'world-picket-fence';
+      proxy.scale.set(size.x, size.y, size.z);
+    }
+    proxy.castShadow = true;
+    proxy.receiveShadow = true;
+    slot.add(proxy);
 
     const path = PROP_LIBRARY_MODELS[kind];
     void this.request(path.replace(/^assets\/library\//, '')).then(prototype => {
@@ -319,6 +326,8 @@ export class PropFactory {
         slot.add(model);
         slot.userData.assetPath = path;
         root.userData.assetStatus = 'ready';
+      } else if (isFence) {
+        root.userData.assetStatus = 'fallback';
       } else {
         // Keep the existing PropFactory toy shape only when the Lab GLB fails.
         try {
