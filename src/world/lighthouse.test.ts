@@ -205,7 +205,11 @@ describe('Old Lighthouse painting rebuild', () => {
             b.z - end.transform.position.z)).toBeLessThan(0.05);
           expect(a.y).toBeCloseTo(start.transform.position.y + start.size.y / 2 - drop, 2);
           expect(b.y).toBeCloseTo(end.transform.position.y + end.size.y / 2 - drop, 2);
-          expect(Math.abs((a.y + b.y) / 2 - mid.y - 0.04 * span)).toBeLessThan(0.02);
+          // TubeGeometry samples by arc length. On a slope its middle ring
+          // need not lie halfway along the horizontal chord.
+          const t = ((mid.x - a.x) * (b.x - a.x) + (mid.z - a.z) * (b.z - a.z)) / span ** 2;
+          const chordHeight = THREE.MathUtils.lerp(a.y, b.y, t);
+          expect(chordHeight - mid.y).toBeCloseTo(0.16 * span * t * (1 - t), 2);
         }
       });
     } finally {

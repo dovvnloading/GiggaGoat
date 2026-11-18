@@ -3,6 +3,7 @@ import type {
   ColliderBuild, ColliderDescriptor, IslandData, PropColliderDescriptor, PropDescriptor,
 } from './types';
 import { makeDamColliderDescriptors } from './the-dam';
+import { makeLighthouseBridgeColliders } from './roads';
 
 function hull(prop: PropDescriptor): Float32Array {
   const { x, y, z } = prop.size;
@@ -40,8 +41,14 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
     scale: { x: island.size, y: 1, z: island.size },
     position: { x: 0, y: 0, z: 0 },
   }];
+  const bridgeDecks = makeLighthouseBridgeColliders(island);
   for (const prop of island.props) {
     if (!prop.collidable) continue;
+    const bridgeDeck = bridgeDecks.get(prop.id);
+    if (bridgeDeck) {
+      colliders.push(bridgeDeck);
+      continue;
+    }
     const shape = prop.kind === 'ramp' ? 'convex' : prop.shape;
     const size = { ...prop.size };
     if (prop.kind === 'tree-pine' || prop.kind === 'tree-oak') {
