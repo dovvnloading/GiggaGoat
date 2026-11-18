@@ -8,6 +8,7 @@ import {
   preserveLighthouseChannel, sculptLighthouseSeaCave, stampPlot,
 } from './terrain';
 import { makeRoads, makeBridgeDecks } from './roads';
+import { makeRoadsideProps } from './roadside-stops';
 import { populateProps } from './layouts';
 import { dressIsland } from './dressing';
 import { makeRelics, makeSpawns } from './collectibles';
@@ -202,6 +203,7 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   assignBiomes(island);
   island.spawns = makeSpawns(island);
   island.relics = makeRelics(island, rng);
+  island.props.push(...makeRoadsideProps(island));
   island.colliders = makeColliderDescriptors(island);
   // The last round leaves only the mountain's highest scramble.
   const summit = island.pois.find(p => p.id === 'mt-gigga')!.center.y;

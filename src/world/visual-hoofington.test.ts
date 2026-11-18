@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createWorldScene, generateIsland } from './index';
 import { gridSample } from './terrain';
 import {
@@ -10,6 +11,51 @@ import {
 } from './visual-hoofington';
 
 describe('Hoofington sourced village model integration', () => {
+
+  it('keeps the shipped cream cottage silhouette and upper paint while shading its base course', async () => {
+    const island = generateIsland();
+    const placement = makeHoofingtonPlacements(island).find(entry => entry.model === 'creamHome')!;
+    const rootAndBakes: THREE.BufferGeometry[] = [];
+    let root: THREE.Group | undefined;
+    try {
+      vi.stubGlobal('self', globalThis);
+      vi.stubGlobal('createImageBitmap', async () => ({ width: 1, height: 1, close() {} }));
+      const bytes = readFileSync('public/' + HOOFINGTON_MODELS.creamHome);
+      root = (await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, '')).scene;
+      const models = new Map([[placement.model, root]]);
+      const surfaced = bakeHoofingtonGeometry([placement], models)!;
+      // The control selects the same authored fit and bypasses the house-only paint.
+      const baseline = bakeHoofingtonGeometry([placement], models, undefined,
+        { [placement.model]: 'assets/library/custom/' })!;
+      rootAndBakes.push(surfaced, baseline);
+      const positions = surfaced.getAttribute('position');
+      expect(positions.array).toEqual(baseline.getAttribute('position').array);
+      const paint = surfaced.getAttribute('color'), original = baseline.getAttribute('color');
+      let plinth = 0, upper = 0;
+      for (let i = 0; i < positions.count; i++) {
+        const y = (positions.getY(i) - placement.position.y) / (.98 * placement.size.y) + .5;
+        if (y < .015 && original.getY(i) > .4 && paint.getY(i) < original.getY(i) * .82) plinth++;
+        if (y > .1) {
+          expect(paint.getX(i)).toBe(original.getX(i));
+          expect(paint.getY(i)).toBe(original.getY(i));
+          expect(paint.getZ(i)).toBe(original.getZ(i));
+          upper++;
+        }
+      }
+      expect(plinth).toBeGreaterThan(20);
+      expect(upper).toBeGreaterThan(500);
+    } finally {
+      vi.unstubAllGlobals();
+      for (const bake of rootAndBakes) bake.dispose();
+      root?.traverse(object => {
+        if (!(object instanceof THREE.Mesh)) return;
+        object.geometry.dispose();
+        const material = object.material as THREE.MeshStandardMaterial;
+        material.map?.dispose();
+        material.dispose();
+      });
+    }
+  });
   it('references only existing CC0 GLBs without editing the library or credits', () => {
     const manifest = JSON.parse(readFileSync(
       'public/assets/library/manifest.json', 'utf8',

@@ -192,6 +192,19 @@ describe('Walkable roads and coastal routes', () => {
     } finally { game.dispose(); }
   });
 
+  it('reaches the Lighthouse job board outside the tower footing', async () => {
+    const game = await Game.create();
+    try {
+      const tower = game.island.props.find(prop => prop.kind === 'lighthouse')!;
+      const { position } = game.gigs.boards.find(board => board.poiId === 'old-lighthouse')!;
+      const p = tower.transform.position;
+      expect(Math.hypot(position.x - p.x, position.z - p.z)).toBeGreaterThan(tower.size.x / 2 + 2);
+      standAt(game, position.x + 2, position.z);
+      expect(game.gigs.nearBoard()).toBe('old-lighthouse');
+      expect(game.gigs.board('old-lighthouse')[0]?.gigId).toBe('beacon-bleat');
+    } finally { game.dispose(); }
+  });
+
   it('keeps the lighthouse bridge above the cliff along the uphill lane', async () => {
     const game = await Game.create();
     try {

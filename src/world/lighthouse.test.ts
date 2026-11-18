@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createWorldScene, generateIsland, heightAt, isSafeCollectiblePosition } from './index';
 import { findBookmark } from './viewer/bookmarks';
-import { instantiateLibraryModel } from './visual-lighthouse';
+import { instantiateLibraryModel, makeLighthouseFooting } from './visual-lighthouse';
 import { BUILDING_RAMP, TOON_RAMP } from './visual-props';
 import { bakeLibraryPropGeometry } from './library-props';
 import { gridSample } from './terrain';
@@ -19,6 +19,27 @@ function renderedCapeSurface(view: ReturnType<typeof createWorldScene>, scale: n
 }
 
 describe('Old Lighthouse painting rebuild', () => {
+  it('fits a stone base against the actual cliff triangles beneath the tower', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const view = createWorldScene(island);
+    const tower = island.props.find(prop => prop.kind === 'lighthouse')!;
+    const geometry = makeLighthouseFooting(island, tower);
+    try {
+      expect(view.group.getObjectByName('lighthouse-stone-footing')).toBeDefined();
+      const positions = geometry.getAttribute('position');
+      const cap = tower.transform.position.y - .49 * tower.size.y;
+      const ground = renderedCapeSurface(view, island.size / 600);
+      for (let i = 0; i < positions.count; i++) {
+        const x = positions.getX(i), z = positions.getZ(i), y = positions.getY(i);
+        if (y < cap) expect(y).toBeLessThan(ground(x, z) - .29);
+        else expect(y).toBeCloseTo(cap + .025, 5);
+      }
+    } finally {
+      geometry.dispose();
+      view.dispose();
+    }
+  });
+
   it('keeps a tall physically collidable cape, cut-back cave and safe secret relic', () => {
     for (const seed of ['billy-isle', 'lighthouse-cape', 'sea-cave']) {
       const island = generateIsland({ seed, resolution: 193 });

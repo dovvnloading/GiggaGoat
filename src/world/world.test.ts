@@ -6,6 +6,7 @@ import {
   createWorldScene, generateIsland, hashIsland, heightAt, isPointInsideProps,
   isSafeCollectiblePosition, landAreaAtTideLevel, zoneAt,
 } from './index';
+import { ROOFTOP_SPAN_PREFIX } from './rooftop-course';
 
 describe('Billy Isle deterministic world generation', () => {
   it('is byte-for-byte reproducible and changes with the seed', () => {
@@ -117,9 +118,14 @@ describe('Billy Isle deterministic world generation', () => {
     }
     expect(island.props.filter(p => p.kind === 'shop').length).toBeGreaterThanOrEqual(7);
     const ramps = island.props.filter(p => p.kind === 'ramp');
-    expect(ramps.filter(p => p.poiId === 'downtown-bleatsville')).toHaveLength(4);
+    const downtown = ramps.filter(p => p.poiId === 'downtown-bleatsville');
+    expect(downtown.filter(p => p.id.startsWith(ROOFTOP_SPAN_PREFIX))).toHaveLength(4);
+    expect(downtown.filter(p => !p.id.startsWith(ROOFTOP_SPAN_PREFIX))).toHaveLength(4);
     expect(ramps.filter(p => p.poiId === 'crane-yard')).toHaveLength(4);
-    expect(ramps).toHaveLength(8);
+    expect(ramps.filter(p => !p.poiId)).toMatchObject([
+      { id: 'roadside-yard-layby-runup-ramp' },
+    ]);
+    expect(ramps).toHaveLength(13);
     expect(island.colliders.some(p => p.shape === 'convex')).toBe(true);
     expect(island.props.filter(p => p.kind.startsWith('tree-')).length).toBeGreaterThan(70);
   });

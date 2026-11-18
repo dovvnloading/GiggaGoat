@@ -65,6 +65,8 @@ export interface RulesConfig {
   submergeTicks: number;
   knockoutWindowTicks: number;
   peakRadius: number;
+  /** Positive lead distance the nearest goat must keep over the next contender. */
+  peakLeadDistance?: number;
   peakPointsPerSecond: number;
   peakTargetScore: number;
   peakComebackGap: number;

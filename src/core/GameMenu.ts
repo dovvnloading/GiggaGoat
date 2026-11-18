@@ -203,14 +203,14 @@ const nice = (value: string): string => value.replace(/-/g, ' ').toUpperCase();
 const PARTY_ROUNDS: Record<ModeId, { name: string; venue: string; objective: string }> = {
   'rising-tide': {
     name: 'Rising Tide', venue: 'Billy Isle · start in Hoofington',
-    objective: 'Climb to higher ground as the sea rises. Outlast the other goats.',
+    objective: 'As the sea rises, follow amber arrows uphill. Outlast the other goats.',
   },
   'king-of-the-peak': {
     name: 'King of the Peak', venue: 'Mt. Gigga summit',
-    objective: `Hold the summit zone alone to score. First to ${MODE_DEFAULTS.peakTargetScore} points wins.`,
+    objective: `Hold the center of the summit. First to ${MODE_DEFAULTS.peakTargetScore} points wins.`,
   },
   'hay-heist': {
-    name: 'Hay Heist', venue: 'Hoofington and Crane Yard',
+    name: 'Hay Heist', venue: 'Crane Yard · haul lane',
     objective: `Steal rival hay and bring it to your barn. First team to ${MODE_DEFAULTS.hayTargetScore} deliveries wins.`,
   },
 };
@@ -433,12 +433,14 @@ export class GameMenu {
     } else if (key.startsWith('offer:')) {
       try {
         this.game.gigs.accept(key.slice(6));
+        if (this.game.gigs.active?.setup.config.kind === 'rooftop-express') this.view.alignCameraForPlay();
         this.save();
         this.resume();
       } catch (error) { this.error(error); }
     } else if (key === 'retry-gig' && this.screen === 'gig-results') {
       try {
         this.game.gigs.retryFailed();
+        if (this.game.gigs.active?.setup.config.kind === 'rooftop-express') this.view.alignCameraForPlay();
         // The new attempt replaces the failed one. Leaving results saves the
         // running attempt through the same acknowledgement path as Free Roam.
         this.resume();

@@ -25,6 +25,9 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
   const runs = roadRibbonRuns(island, type);
   const segments = runs.reduce((sum, run) => sum + run.points.length - 1, 0);
   const positions = surface.geometry.getAttribute('position');
+  const crossSections = surface.geometry.getAttribute('roadCrossSection');
+  if (type === 'road') expect(crossSections.count).toBe(positions.count);
+  else expect(crossSections).toBeUndefined();
   const normals = surface.geometry.getAttribute('normal');
   const indices = surface.geometry.getIndex()!;
   expect(indices.count / 3).toBe(6 * segments);
@@ -57,6 +60,11 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
       expect(positions.getZ(vertex + 3)).toBe(rz);
       expect(normals.getY(vertex)).toBeGreaterThan(0);
       expect(normals.getY(vertex + 1)).toBeGreaterThan(0);
+      if (crossSections) for (let side = 0; side < 6; side++) {
+        expect(crossSections.getX(vertex + side)).toBe(side % 2 ? 1 : -1);
+        expect(crossSections.getY(vertex + side)).toBeCloseTo(
+          (run.widths?.[pointIndex] ?? run.width) / 2, 5);
+      }
       vertex += 6;
     }
     let priorLeft = -1, priorRight = -1;
@@ -91,6 +99,39 @@ function isCrossingDash(island: IslandData, a: RoadPoint, b: RoadPoint): boolean
 }
 
 describe('IS-6 joined road/trail visual ribbons', () => {
+
+  it('shows world-space asphalt wear and a narrow shoulder on the original strip', () => {
+    const island = generateIsland();
+    const view = createWorldScene(island);
+    try {
+      const path = view.group.getObjectByName('paths-road') as
+        THREE.Mesh<THREE.BufferGeometry, THREE.MeshToonMaterial>;
+      const toon = THREE.ShaderLib.toon!;
+      const shader = {
+        vertexShader: toon.vertexShader,
+        fragmentShader: toon.fragmentShader,
+        uniforms: {} as Record<string, { value: unknown }>,
+      };
+      path.material.onBeforeCompile(shader as unknown as
+        Parameters<typeof path.material.onBeforeCompile>[0], null as unknown as THREE.WebGLRenderer);
+      expect(shader.vertexShader).toContain('vAsphaltSection = roadCrossSection;');
+      expect(shader.fragmentShader).toContain('smoothstep(0.04, 0.29, metresToRoadEdge)');
+      expect(shader.fragmentShader).toContain('vAsphaltXZ * uAsphaltMapScale + 0.5');
+      const map = shader.uniforms['uAsphaltWear']!.value as THREE.DataTexture;
+      expect(map.format).toBe(THREE.RedFormat);
+      expect(map.generateMipmaps).toBe(true);
+      expect(map.minFilter).toBe(THREE.LinearMipmapLinearFilter);
+      const { x, z } = island.spawns[0]!.position;
+      const { width } = map.image;
+      const data = map.image.data as Uint8Array;
+      const cell = (world: number): number => Math.floor((world / island.size + .5) * width);
+      const values = Array.from({ length: 10 }, (_, i) =>
+        data[cell(z - 10 + i * 2) * width + cell(x)]!);
+      expect(Math.max(...values) - Math.min(...values)).toBeGreaterThan(25);
+    } finally {
+      view.dispose();
+    }
+  });
   it('merges kept runs per type with six triangles per segment and shared mitred joints', () => {
     for (const [seed, size] of [
       ['billy-isle', 600], ['ribbon-curves', 400], ['ribbon-alt', 900],

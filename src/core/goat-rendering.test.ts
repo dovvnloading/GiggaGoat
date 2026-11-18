@@ -27,6 +27,35 @@ function expectApprovedSculpt(character: GoatCharacter): void {
 }
 
 describe('Game scene uses the approved src/character goat, not proxy primitives', () => {
+  it('grounds four idle hoof marks and clears them when the goat jumps', async () => {
+    const game = await create();
+    const scene = new THREE.Scene();
+    const characters = new GameCharacters(scene, game);
+    try {
+      for (let i = 0; i < 110; i++) game.step();
+      characters.update(1 / 60, game.physics.alpha);
+      const contacts = scene.getObjectByName('player hoof contacts') as THREE.InstancedMesh;
+      expect(contacts).toBeInstanceOf(THREE.InstancedMesh);
+      expect(characters.player.root.getObjectByName(contacts.name)).toBeUndefined();
+      expect(contacts.count).toBe(4);
+      const centers = Array.from({ length: contacts.count }, (_, index) => {
+        const matrix = new THREE.Matrix4();
+        contacts.getMatrixAt(index, matrix);
+        return new THREE.Vector3().setFromMatrixPosition(matrix);
+      });
+      for (const [i, point] of centers.entries()) for (const other of centers.slice(i + 1)) {
+        expect(point.distanceTo(other)).toBeGreaterThan(.22 * game.goat.size);
+      }
+      game.step({ jump: true });
+      for (let i = 0; i < 6; i++) game.step();
+      characters.update(1 / 60, game.physics.alpha);
+      expect(contacts.count).toBe(0);
+    } finally {
+      characters.dispose();
+      game.dispose();
+    }
+  });
+
   it('renders the real player sculpt on all four physical tiers, bound to replaced rigid bodies', async () => {
     const game = await create();
     const scene = new THREE.Scene();
@@ -34,7 +63,8 @@ describe('Game scene uses the approved src/character goat, not proxy primitives'
     try {
       expectApprovedSculpt(characters.player);
       const root = characters.player.root;
-      expect(scene.children).toEqual([root]);
+      const contacts = scene.getObjectByName('player hoof contacts');
+      expect(scene.children).toEqual([root, contacts]);
       // The first game tick can independently spawn dynamic island props.
       // Compare body counts around the render update, not across physics.
       game.step();
@@ -52,7 +82,7 @@ describe('Game scene uses the approved src/character goat, not proxy primitives'
         expect(characters.player.tier).toBe(tier);
         expect(torso.scale.x).toBeCloseTo(size, 6);
         expect(root.getObjectByName('GIGGA violet aura')?.visible).toBe(tier === 'GIGGA');
-        expect(scene.children).toEqual([root]); // no proxy added on resize
+        expect(scene.children).toEqual([root, contacts]); // no proxy added on resize
       }
       // All approved poses can be expressed by the same in-game sculpt; the
       // authoritative rigid-body transforms are never replaced by art poses.
@@ -60,7 +90,7 @@ describe('Game scene uses the approved src/character goat, not proxy primitives'
         characters.player.play(action, .2);
         characters.update(.016, game.physics.alpha);
         expect(characters.player.action).toBe(action);
-        expect(scene.children).toEqual([root]);
+        expect(scene.children).toEqual([root, contacts]);
       }
     } finally {
       characters.dispose();
@@ -79,7 +109,7 @@ describe('Game scene uses the approved src/character goat, not proxy primitives'
       });
       characters.update(1 / 60, game.physics.alpha);
       expect(characters.bots.size).toBe(3);
-      expect(scene.children).toHaveLength(4);
+      expect(scene.children).toHaveLength(5);
       for (const [id, bot] of game.party.bots) {
         const art = characters.bots.get(id)!;
         expectApprovedSculpt(art);
@@ -100,7 +130,7 @@ describe('Game scene uses the approved src/character goat, not proxy primitives'
       expect(characters.bots.size).toBe(0);
       expect(oldBot.root.parent).toBeNull();
       expect(oldBot.physics).toBeNull();
-      expect(scene.children).toEqual([characters.player.root]);
+      expect(scene.children).toEqual([characters.player.root, scene.getObjectByName('player hoof contacts')]);
     } finally {
       characters.dispose();
       game.dispose();

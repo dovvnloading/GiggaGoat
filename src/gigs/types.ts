@@ -211,6 +211,8 @@ export interface GigRun {
   /** Serialisable rule memory, not engine references. */
   seenIds: string[];
   finishedIds: string[];
+  /** Most recent Hay Haul delivery completed while holding the bale. */
+  lastHeldHayDeliveryTick?: number;
   checkpointIndex: number;
   stableTicks: number;
   streetStarted: boolean;

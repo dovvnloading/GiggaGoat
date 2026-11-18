@@ -3,7 +3,7 @@ import { getDamHeadwater } from '../world/dam-landscape';
 import { V } from '../physics';
 import { Game } from './Game';
 
-it('splashes into the visible upper lake and keeps the rear road and back shore dry', async () => {
+it('splashes into the visible upper lake and keeps the rear road, shore and wall footing dry', async () => {
   const game = await Game.create();
   try {
     const { position, level } = getDamHeadwater(game.island);
@@ -11,11 +11,14 @@ it('splashes into the visible upper lake and keeps the rear road and back shore 
       V(.3, .3, .3), 12, 'prop');
     const dryBank = game.physics.createBox(V(position.x + 29, level - .5, position.z - 42),
       V(.3, .3, .3), 12, 'prop');
+    const dryFooting = game.physics.createBox(V(position.x - 10, level - .5, position.z - 5),
+      V(.3, .3, .3), 12, 'prop');
     const oldRoad = game.island.roads.find(road =>
       road.id === 'the-dam--whispering-pines')!.points.find(point => point.x < position.x - 5)!;
     const dryCauseway = game.physics.createBox(V(oldRoad.x, level - .5, oldRoad.z),
       V(.3, .3, .3), 12, 'prop');
     expect(game.water.sample(dryBank).fraction).toBe(0);
+    expect(game.water.sample(dryFooting).fraction).toBe(0);
     expect(game.water.sample(dryCauseway).fraction).toBe(0);
     expect(game.water.sample(wet).fraction).toBe(0);
 

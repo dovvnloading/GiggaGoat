@@ -125,6 +125,18 @@ describe('real Rapier physics simulation', () => {
     expect(big.mass/kid.mass).toBeCloseTo((1.6/.6)**3,5);
   });
 
+  it('reels safely after the attached dynamic target is destroyed externally', async () => {
+    const w = await scene(), g = goat(w);
+    const bale = w.createBox(V(0, .42, -2.5), V(.4, .4, .4), 8);
+    simulate(w, .6);
+    expect(g.interactions.attachTongue(V(0, -.75, -2.4))).toBe(true);
+    w.removeBody(bale);
+    expect(g.interactions.tongueBody).toBeNull();
+    g.interactions.setReel(-1);
+    expect(() => simulate(w, .2)).not.toThrow();
+    expect(g.interactions.tongueJoint).toBeNull();
+  });
+
   it('uses a physical Rapier rope joint to drag a crate with the tongue', async () => {
     const w = await scene(), g = goat(w);
     const crate = w.createBox(V(0,.42,-2.5),V(.4,.4,.4),8);
@@ -135,6 +147,31 @@ describe('real Rapier physics simulation', () => {
     g.locomotion.setInput({z:-1});
     simulate(w,2.5);
     expect(crate.translation().z).toBeGreaterThan(before+.35);
+  });
+
+  it('can keep the same held body when size progression rebuilds the head', async () => {
+    const w = await scene(), g = goat(w, .6);
+    const crate = w.createBox(V(0, .42, -2.5), V(.4, .4, .4), 2.5);
+    simulate(w, .6);
+    const head = g.head.translation(), target = crate.translation();
+    expect(g.interactions.attachTongue(V(target.x - head.x, target.y - head.y, target.z - head.z))).toBe(true);
+    expect(g.interactions.tongueBody?.handle).toBe(crate.handle);
+    const oldHead = g.head.handle;
+    const releases: string[] = [];
+    const unsubscribe = g.events.on(event => {
+      if (event.type === 'tongueDetach') releases.push(event.reason);
+    });
+    g.resize(1, true);
+    expect(g.head.handle).not.toBe(oldHead);
+    expect(g.interactions.tongueBody?.handle).toBe(crate.handle);
+    expect(g.interactions.tongueJoint?.isValid()).toBe(true);
+    simulate(w, .2);
+    expect(g.interactions.tongueBody?.handle).toBe(crate.handle);
+    expect(releases).toEqual([]);
+    g.resize(.6);
+    expect(g.interactions.tongueBody).toBeNull();
+    expect(releases).toEqual(['replaced']);
+    unsubscribe();
   });
 
   it('moves the same crate further with a charged headbutt than a tap', async () => {

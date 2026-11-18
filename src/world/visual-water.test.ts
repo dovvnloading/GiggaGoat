@@ -273,8 +273,9 @@ describe('island sea, shoreline and horizon', () => {
 });
 
 describe('DM-01 terrain-bound Dam reservoir', () => {
-  it.each([400, 600, 900])('follows the banks and keeps the rear road dry at %i m', size => {
-    const island = generateIsland({ seed: 'billy-isle', resolution: 97, size });
+  it.each([[400, 97], [600, 97], [600, 193], [900, 97]])(
+    'follows the banks and keeps the wall footing and rear road dry at %i m / %i samples', (size, resolution) => {
+    const island = generateIsland({ seed: 'billy-isle', resolution, size });
     const previousLanding = structuredClone(island.reservoir);
     const { position, scale, level, front } = getDamHeadwater(island);
     const { sea, inland, update } = buildWaterVisuals(island);
@@ -296,10 +297,11 @@ describe('DM-01 terrain-bound Dam reservoir', () => {
         ray.ray.origin.set(x, level + 20, z);
         return ray.intersectObject(water).length > 0;
       };
-      for (const [x, z] of [[-10, -42], [-18, -36], [-10, -5]] as const) {
+      for (const [x, z] of [[-10, -42], [-18, -36]] as const) {
         expect(hitsSurface(position.x + x * scale, position.z + z * scale)).toBe(true);
       }
-      for (const [x, z] of [[-40, -55], [28, -48], [-10, -71], [-10, 0]] as const) {
+      for (const [x, z] of [[-40, -55], [28, -48], [-10, -71], [-10, 0],
+        [-15, -6], [-10, -5], [-5, -4], [-2, -4]] as const) {
         expect(hitsSurface(position.x + x * scale, position.z + z * scale)).toBe(false);
       }
 

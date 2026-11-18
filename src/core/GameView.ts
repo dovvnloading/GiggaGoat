@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {
-  createWorldScene, type PropDescriptor, type WorldScene,
+  createWorldScene, heightAt, type PropDescriptor, type WorldScene,
 } from '../world';
 import { Q, RAPIER, type Vec3 } from '../physics';
 import { SKY_HORIZON_COLOR } from '../world/visual-sky';
@@ -54,6 +54,7 @@ export class GameView {
   readonly hud: GameHud;
   readonly characters: GameCharacters;
   readonly vfx: GameVfx;
+  private readonly boardRoots: THREE.Group[] = [];
   private readonly boardMarkers = new THREE.Group();
   private readonly gigMarkers = new THREE.Group();
   private readonly partyMarkers = new THREE.Group();
@@ -86,6 +87,7 @@ export class GameView {
   private shadowTimer = 1;
   private hudTimer = 1;
   private lastTide = Number.NaN;
+  private showingTideRoutes = false;
   private readonly perfStats: FramePerformance = {
     fps: 60, frameMs: 16.67, renderMs: 0, physicsMs: 0,
     drawCalls: 0, triangles: 0, textures: 0, pixelRatio: 1,
@@ -280,31 +282,49 @@ export class GameView {
     }
   }
 
-  /** Factory signposts share geometry; the original text/ring remain independent UI. */
+  /** Factory signposts share geometry while their wayfinding overlays are separate. */
   private createBoardMarkers(): void {
+    this.boardMarkers.name = 'gig-board-markers';
     this.scene.add(this.boardMarkers);
     for (const board of this.game.gigs.boards) {
       const root = createBoardLibraryProp(this.propFactory);
-      const roadside = board.poiId === 'hoofington' || board.poiId === 'downtown-bleatsville';
-      if (roadside) {
+      const mountain = board.poiId === 'mt-gigga';
+      const lighthouse = board.poiId === 'old-lighthouse';
+      const compact = board.poiId === 'hoofington' || board.poiId === 'downtown-bleatsville' ||
+        lighthouse || mountain;
+      if (compact) {
         root.scale.multiplyScalar(.58);
-        root.rotation.y = -Math.PI / 2;
+        // The summit notice faces the last climb from Hoofington.
+        root.rotation.y = mountain ? 2.67 : lighthouse ? Math.PI / 2 : -Math.PI / 2;
       }
-      root.position.set(board.position.x, board.position.y + .15, board.position.z);
+      const base = mountain || lighthouse ? 0 : .15;
+      root.position.set(board.position.x, board.position.y + base, board.position.z);
       this.instancedProps.add(root);
-      if (roadside) continue;
+      this.boardRoots.push(root);
+      if (compact && !mountain) continue;
 
       const overlay = new THREE.Group();
       overlay.position.copy(root.position);
-      overlay.add(this.textSprite('E · GIGS', 4.8, 1.2, 3.4));
-      const ring = new THREE.Mesh(new THREE.RingGeometry(3.8, 4.25, 28),
-        new THREE.MeshBasicMaterial({ color: 0xffd833, side: THREE.DoubleSide,
-          transparent: true, opacity: .7 }));
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.y = .09;
-      overlay.add(ring);
+      if (mountain) {
+        overlay.add(this.textSprite('E · GIGS', 2.4, .64, 2.9));
+      } else {
+        overlay.add(this.textSprite('E · GIGS', 4.8, 1.2, 3.4));
+        const ring = new THREE.Mesh(new THREE.RingGeometry(3.8, 4.25, 28),
+          new THREE.MeshBasicMaterial({ color: 0xffd833, side: THREE.DoubleSide,
+            transparent: true, opacity: .7 }));
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = .09;
+        overlay.add(ring);
+      }
       this.boardMarkers.add(overlay);
     }
+  }
+
+  private updateBoardMarkers(): void {
+    const visible = this.game.party.match === null;
+    if (this.boardMarkers.visible === visible) return;
+    this.boardMarkers.visible = visible;
+    for (const root of this.boardRoots) root.visible = visible;
   }
 
   private releaseLibraryProp(root: THREE.Group): void {
@@ -438,6 +458,23 @@ export class GameView {
     }
   }
 
+  private partyGroundRing(center: Vec3, radius: number, color: number): THREE.Mesh {
+    const geometry = new THREE.RingGeometry(radius - .32, radius, 80).rotateX(-Math.PI / 2);
+    const positions = geometry.attributes['position']!;
+    const { terrain, paths } = this.game.colliders;
+    const surfaceHandles = new Set([terrain.handle, ...paths.map(path => path.handle)]);
+    for (let index = 0; index < positions.count; index++) {
+      const x = center.x + positions.getX(index), z = center.z + positions.getZ(index);
+      const ground = this.game.physics.raycast({ x, y: center.y + 18, z }, { x: 0, y: -1, z: 0 }, 42,
+        { predicate: collider => surfaceHandles.has(collider.handle) });
+      const y = ground?.point.y ?? heightAt(this.game.island, x, z);
+      positions.setY(index, y - center.y + .065);
+    }
+    geometry.computeBoundingSphere();
+    return new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide,
+      transparent: true, opacity: .87, depthWrite: false }));
+  }
+
   private updatePartyVisuals(alpha: number): void {
     const roster = this.game.party.bots;
     const match = this.game.party.match;
@@ -451,23 +488,15 @@ export class GameView {
         const radius = match.view().config.peakRadius;
         const zone = new THREE.Group();
         zone.position.copy(vec(summit));
-        const ring = new THREE.Mesh(new THREE.RingGeometry(radius - .35, radius, 64),
-          new THREE.MeshBasicMaterial({ color: 0xffd833, side: THREE.DoubleSide,
-            transparent: true, opacity: .8, depthWrite: false }));
-        ring.rotation.x = -Math.PI / 2;
-        zone.add(ring);
-        zone.add(this.textSprite('HOLD THE PEAK!', 6, 1.3, 4));
+        zone.add(this.partyGroundRing(summit, radius, 0xffd833));
+        zone.add(this.partyGroundRing(summit, 1.05 * this.game.island.size / 600, 0xffedaa));
         this.partyMarkers.add(zone);
       } else if (match?.mode === 'hay-heist') {
         for (const barn of match.view().arena.barns) {
           const zone = new THREE.Group();
           zone.position.copy(vec(barn.position));
           const color = barn.teamId === 'red' ? 0xff7890 : 0x68cdff;
-          const ring = new THREE.Mesh(new THREE.RingGeometry(3.7, 4.2, 36),
-            new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide,
-              transparent: true, opacity: .8, depthWrite: false }));
-          ring.rotation.x = -Math.PI / 2;
-          zone.add(ring);
+          zone.add(this.partyGroundRing(barn.position, barn.radius, color));
           zone.add(this.textSprite(barn.teamId.toUpperCase() + ' GOAL', 4.7, 1.1, 3.6));
           this.partyMarkers.add(zone);
         }
@@ -479,7 +508,6 @@ export class GameView {
         const peak = match.toJSON().peak;
         zone.material.color.setHex(peak?.contested ? 0xff7590 :
           peak?.ownerId === 'player' ? 0x79ffd1 : 0xffd833);
-        zone.material.opacity = .62 + .28 * Math.sin(this.game.physics.time * 3);
       }
     }
     if (match?.mode === 'hay-heist') {
@@ -754,13 +782,17 @@ export class GameView {
     this.characters.update(dt, alpha, this.camera, range);
     this.vfx.frame(dt, this.camera, range);
     this.updatePartyVisuals(alpha);
+    this.updateBoardMarkers();
     this.updateGigVisuals(alpha);
     this.updateProps(alpha);
     this.updateBuildings();
     this.updateDebris(alpha);
-    if (this.lastTide !== this.game.water.seaLevel) {
+    const match = this.game.party.match;
+    const showTideRoutes = match?.mode === 'rising-tide' && match.phase !== 'results';
+    if (this.lastTide !== this.game.water.seaLevel || this.showingTideRoutes !== showTideRoutes) {
       this.lastTide = this.game.water.seaLevel;
-      this.world.setTideLevel(this.lastTide);
+      this.showingTideRoutes = showTideRoutes;
+      this.world.setTideLevel(this.lastTide, showTideRoutes);
     }
     this.world.update(this.game.physics.time);
     const dayPhase = .5 + Math.sin(this.game.physics.time / 150) * .035;
@@ -818,6 +850,7 @@ export class GameView {
     this.vfx.dispose();
     this.characters.dispose();
     this.clearGroup(this.boardMarkers);
+    this.boardRoots.length = 0;
     this.clearGroup(this.gigMarkers);
     this.clearGroup(this.partyMarkers);
     this.gigProps.clear(); this.heistBales.clear();

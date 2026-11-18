@@ -64,7 +64,8 @@ describe('Billy Isle hi-fi environment map', () => {
     for (const size of [600, 900]) {
       const island = generateIsland({ seed: 'billy-isle', size, resolution: 97 });
       const scale = size / 600;
-      const flags = island.props.filter(p => p.kind === 'flag');
+      const flags = island.props.filter(p => p.kind === 'flag' &&
+        (p.poiId === 'mt-gigga' || p.poiId === 'old-lighthouse'));
       expect(flags).toHaveLength(2);
       for (const [poiId, dx, dz, poleX] of [
         ['mt-gigga', -5.75, 4, -7],

@@ -18,6 +18,7 @@ import {
 } from '../chaos';
 import { addRapierPropCollider } from '../world/colliders';
 import { boardwalkPierDecks } from '../world/boardwalk';
+import { HOOFINGTON_HAUL_BALE_PREFIX } from '../world/hoofington-entrances';
 import { getDamHeadwater, isDamHeadwater } from '../world/dam-landscape';
 import { DAM_FRONT_GUARD } from '../world/the-dam';
 import { GigSession } from './GigSession';
@@ -231,7 +232,8 @@ export class Game {
     for (const piece of this.rules.build.pieces) this.addBuildBody(piece);
     // Both deterministic lanes are stepped only at completed Rapier tick boundaries.
     try {
-      this.gigs = new GigSession(this, island.seed, options.progress?.gigs, options.progress?.gigBodies);
+      this.gigs = new GigSession(this, island.seed, options.progress?.gigs,
+        options.progress?.gigBodies, options.progress?.rooftopPose);
     } catch {
       this.gigs = new GigSession(this, island.seed);
     }
@@ -367,7 +369,9 @@ export class Game {
       if (!prop) continue;
       this.water.track(body, { buoyancyScale: prop.kind === 'barrel' || prop.kind === 'hay-bale' ? 1.15 : .8 });
       if (prop.breakable) {
-        const threshold = Math.max(9, Math.min(38, body.mass() * .92));
+        // Packed loading bales endure routine handling and still break on a hard hit.
+        const threshold = id.startsWith(HOOFINGTON_HAUL_BALE_PREFIX) ? 36 :
+          Math.max(9, Math.min(38, body.mass() * .92));
         this.breakables.register(body, {
           impulseThreshold: threshold, damageThreshold: threshold * 2.5,
           chunks: prop.kind === 'hay-bale' ? 4 : 6, burstImpulse: 13,
@@ -555,7 +559,18 @@ export class Game {
   private beforeTick(dt: number): void {
     if (this.pendingSize !== null && this.goat.size !== this.pendingSize) {
       this.water.untrack(this.goat.torso);
-      this.goat.resize(this.pendingSize);
+      const run = this.gigs.active;
+      const held = this.goat.interactions.tongueBody;
+      const courier = run?.setup.config;
+      const keepParcel = !!this.intent.tongue && !!held && run?.status === 'running' &&
+        courier?.kind === 'rooftop-express' &&
+        this.gigs.props.get(courier.parcelId)?.body.handle === held.handle;
+      const previousSize = this.goat.size;
+      this.goat.resize(this.pendingSize, keepParcel);
+      if (keepParcel && previousSize > this.goat.size &&
+          this.goat.interactions.tongueBody?.handle === held.handle) {
+        this.gigs.noteCourierShrink(previousSize);
+      }
       this.water.track(this.goat.torso, { buoyancyScale: .7, paddleSpeed: 2.6 });
       this.lastY = this.goat.torso.translation().y;
       this.pendingSize = null;
@@ -570,13 +585,24 @@ export class Game {
     const torso = goat.torso;
     const velocity = torso.linvel();
     const cameraYaw = input.cameraYaw ?? goat.locomotion.heading;
-    const mx = Math.max(-1, Math.min(1, input.moveX ?? 0));
-    const mz = Math.max(-1, Math.min(1, input.moveZ ?? 0));
+    const match = this.party.match;
+    const hayHeist = match?.mode === 'hay-heist';
+    // PartySession already applies the carrying effect to bot movement. The
+    // human enters here with raw input and needs the same effect once.
+    const carryEffects = hayHeist && player ? match.getEffects(goat.id) : undefined;
+    const speed = carryEffects?.speedMultiplier ?? 1;
+    const mx = Math.max(-1, Math.min(1, input.moveX ?? 0)) * speed;
+    const mz = Math.max(-1, Math.min(1, input.moveZ ?? 0)) * speed;
     const wish = V(Math.sin(cameraYaw) * mz + Math.cos(cameraYaw) * mx, 0,
       -Math.cos(cameraYaw) * mz + Math.sin(cameraYaw) * mx);
     const steep = Math.hypot(wish.x, wish.z) > .1 && this.isFacingWall(wish, goat);
     const head = goat.head.translation();
-    const hit = this.physics.raycast(head, add(forward(goat.locomotion.heading), V(0, -.10, 0)),
+    const courierAim = player && goat.size > 1 && input.tongue && !goat.interactions.isTongueAttached
+      ? this.rooftopParcelAim(goat) : undefined;
+    // PartyMatch owns Hay Heist pickup/drop from the original tongue input.
+    // The generic tongue ray would also tether the goat to nearby terrain.
+    const hit = hayHeist ? null : this.physics.raycast(courierAim ? goat.interactions.tongueOrigin : head,
+      courierAim ?? add(forward(goat.locomotion.heading), V(0, -.10, 0)),
       9 * goat.size, { predicate: collider => !goat.ownsBody(collider.parent()) });
     const prop = hit ? [...this.colliders.props].find(([, c]) => c.handle === hit.collider.handle) : undefined;
     const lickable = !!hit && (!prop || this.island.props.find(p => p.id === prop[0])?.lickable !== false);
@@ -591,24 +617,45 @@ export class Game {
     };
     if (player) this.climbMetres = 0;
     const rulesIntent: GoatIntent = {
-      sprint: input.sprint, climb: input.climb ?? Math.hypot(mx, mz) > .1,
+      sprint: input.sprint && (carryEffects?.canSprint ?? true),
+      climb: input.climb ?? Math.hypot(mx, mz) > .1,
       chargeHeadbutt: (player ? !this.buildMode : true) && input.chargeHeadbutt,
-      tongue: input.tongue, reelTongue: input.reelTongue,
-      flingTongue: input.flingTongue, bleat: input.bleat, flop: input.flop,
+      tongue: !hayHeist && input.tongue, reelTongue: !hayHeist && input.reelTongue,
+      flingTongue: !hayHeist && input.flingTongue, bleat: input.bleat, flop: input.flop,
       jump: input.jump, glide: input.glide,
     };
     const result = sim.update(dt, rulesIntent, facts);
     const commands = result.commands[0]!;
+    const held = goat.interactions.tongueBody;
+    const parcelHeld = player && input.tongue && commands.tongue?.action !== 'fling' &&
+      held !== null && this.physics.bodyData(held.handle)?.data === 'parcel';
     goat.locomotion.setInput({
       x: mx, z: mz, cameraYaw, sprint: commands.setSprint,
       canSprint: commands.setSprint, canClimb: commands.setClimb,
+      acceptForwardSupport: parcelHeld ? this.gigs.isCourierRamp : undefined,
     });
     this.water.setPaddle(goat.torso, wish);
-    this.executeCommands(commands, goat, player);
+    this.executeCommands(commands, goat, player, courierAim);
     if (player && input.graze && this.canGraze() &&
         this.gigs.active?.setup.config.kind === 'mow-down') {
       this.gigs.noteAbility({ type: 'eat' });
     }
+  }
+
+  /** The courier can lick the parcel below a grown goat's normal shallow aim.
+   * The usual first-hit ray still needs a clear path from the mouth. */
+  private rooftopParcelAim(goat: GoatRagdoll): Vec3 | undefined {
+    const run = this.gigs.active;
+    const course = run?.setup.config;
+    if (run?.status !== 'running' || course?.kind !== 'rooftop-express') return;
+    const parcel = this.gigs.props.get(course.parcelId);
+    if (!parcel || parcel.broken) return;
+    const target = parcel.body.translation();
+    const offset = sub(target, goat.torso.translation());
+    if (Math.hypot(offset.x, offset.y, offset.z) >= 5 * goat.size) return;
+    const facing = forward(goat.locomotion.heading);
+    if (facing.x * offset.x + facing.z * offset.z < Math.hypot(offset.x, offset.z) * .7) return;
+    return sub(target, goat.interactions.tongueOrigin);
   }
 
   /** Test terrain proximity (not an overlapping prop's zero-normal ray).
@@ -654,7 +701,8 @@ export class Game {
     for (const listener of this.visualCueListeners) listener(cue);
   }
 
-  private executeCommands(commands: AbilityCommands, g = this.goat, player = true): void {
+  private executeCommands(commands: AbilityCommands, g = this.goat, player = true,
+    tongueAim?: Vec3): void {
     if (commands.jump) {
       g.locomotion.requestJump();
       if (commands.jump.kind === 'wall-kick') {
@@ -725,7 +773,7 @@ export class Game {
     if (commands.tongue) {
       const cmd = commands.tongue;
       if (cmd.action === 'attach') {
-        if (g.interactions.attachTongue()) {
+        if (g.interactions.attachTongue(tongueAim)) {
           if (player) {
             this.lastTongueTime = this.physics.time;
             const body = g.interactions.tongueBody;
@@ -903,8 +951,15 @@ export class Game {
   }
 
   exportProgress(): GameProgress {
-    return { gameplay: this.rules.toJSON(), gigs: this.gigs.director.toJSON(),
+    const progress: GameProgress = { gameplay: this.rules.toJSON(), gigs: this.gigs.director.toJSON(),
       gigBodies: this.gigs.saveBodies(), acknowledgedGigAttempt: this.acknowledgedGigAttempt };
+    const run = this.gigs.active;
+    if (run?.status === 'running' && run.setup.config.kind === 'rooftop-express') {
+      const { x, y, z } = this.goat.torso.translation();
+      progress.rooftopPose = { position: { x, y: y - .92 * this.goat.size, z },
+        heading: this.goat.locomotion.heading };
+    }
+    return progress;
   }
 
   get pendingGigResult() {

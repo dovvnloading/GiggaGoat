@@ -169,6 +169,12 @@ export function sculptDamHeadwater(island: IslandData): void {
         const floor = level + Math.max(-3.4, Math.min(2.6, bankDistance * .56)) * scale;
         h = lerp(src, floor, 1 - smoothstep(4, 14, bankDistance));
       }
+      // The road berm separates this wall footing from the upstream lake.
+      // Grade the shallow inner pocket dry while letting the road set its own shoulder.
+      const apron = smoothstep(-12, -8, localPoint.z) *
+        (1 - smoothstep(-.5, 3, localPoint.z)) *
+        (1 - smoothstep(12, 17, Math.abs(localPoint.x + 8)));
+      h = lerp(h, Math.max(h, level + .55 * scale), apron);
       let bestDistance = Infinity;
       let roadHeight = h;
       for (const { a, b, width } of segments) {
@@ -191,6 +197,10 @@ export function sculptDamHeadwater(island: IslandData): void {
   // Re-seat the back-bank scenery and cull detached plants in the new water.
   island.props = island.props.filter(prop => {
     const { x, z } = prop.transform.position;
+    // The authored wall spans X −30..30 and Z −3.5..3.5 locally.
+    // Trees rooted inside it otherwise put their crowns through the rear face.
+    if ((prop.kind === 'tree-oak' || prop.kind === 'tree-pine') &&
+        Math.abs(x - position.x) < 30 * scale && Math.abs(z - position.z) < 3.5 * scale) return false;
     if (z < basin.rear || z > position.z + 3 * scale ||
         x < position.x - 64 * scale || x > position.x + 60 * scale) return true;
     if (!['rock', 'bush', 'tree-pine', 'tree-oak', 'grass-tuft', 'flower', 'lamp'].includes(prop.kind)) return true;

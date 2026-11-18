@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { BOARD_CYCLE_TICKS, type GigConfig } from '../gigs';
+import { BOARD_CYCLE_TICKS, GigCatalog, type GigConfig } from '../gigs';
 import { add, forward, mul, RAPIER, V } from '../physics';
 import { generateIsland, heightAt } from '../world';
+import { HOOFINGTON_HAUL_BALE_PREFIX } from '../world/hoofington-entrances';
 import { Game } from './Game';
 import { hayHaulGuidance } from './GigPresentation';
 import type { GameProgress } from './Persistence';
@@ -155,7 +156,9 @@ describe('Hay Haul assigned bales', () => {
       tag(game, first!.id);
       placeAtDrop(game, first!.id, 0);
       expect(game.gigs.active?.objective).toMatchObject({ kind: 'deliver', done: 1 });
-      expect(game.breakables.shatter(game.colliders.bodies.get(first!.id)!)).toBe(true);
+      const collected = game.colliders.bodies.get(first!.id)!;
+      expect(collected.isEnabled()).toBe(false);
+      expect(collected.translation().z).toBeGreaterThan(config.barn.z + config.radius);
 
       tag(game, second!.id);
       expect(game.colliders.bodies.get(second!.id)).toBe(original);
@@ -166,21 +169,39 @@ describe('Hay Haul assigned bales', () => {
       const replacement = game.colliders.bodies.get(second!.id)!;
       expect(replacement.isValid()).toBe(true);
       expect(replacement.handle).not.toBe(original.handle);
-      expect(game.colliders.bodies.get(first!.id)).toBeUndefined();
+      expect(game.colliders.bodies.get(first!.id)).toBe(collected);
       expect(game.gigs.active?.finishedIds).toEqual([first!.id]);
       expect(game.gigs.active?.seenIds).toEqual([first!.id, second!.id]);
       expect(game.gigs.active?.metrics.stylePoints).toBeGreaterThan(0);
       const location = replacement.translation();
       replacement.setTranslation({ ...location, x: location.x + 3 }, true);
       snapshot = JSON.parse(JSON.stringify(game.exportProgress()));
+      expect(snapshot.gigBodies.some(body => body.id === first!.id)).toBe(false);
       expect(snapshot.gigBodies.find(body => body.id === second!.id)?.position.x).toBeCloseTo(location.x + 3);
     } finally {
       game.dispose();
     }
 
-    const legacy: GameProgress = structuredClone(snapshot);
-    const oldRun = legacy.gigs.run!;
     const island = generateIsland({ ...options, seed: 'billy-isle' });
+    const pastCatalog = new GigCatalog({ ...island, props: island.props.filter(prop =>
+      !prop.id.startsWith(HOOFINGTON_HAUL_BALE_PREFIX)) }, island.seed);
+    const previous: GameProgress = structuredClone(snapshot);
+    const fieldRun = previous.gigs.run!;
+    const currentBales = hayHaulConfig(fieldRun.setup.config).bales;
+    fieldRun.setup = pastCatalog.build(fieldRun.setup.offer);
+    fieldRun.setup.info.instruction = 'Drag the marked bales to the drop beside the barn. Chain-tow two for a combo.';
+    const idMap = new Map(currentBales.map(({ id }, index) =>
+      [id, hayHaulConfig(fieldRun.setup.config).bales[index]!.id]));
+    fieldRun.seenIds = fieldRun.seenIds.map(id => idMap.get(id)!);
+    fieldRun.finishedIds = fieldRun.finishedIds.map(id => idMap.get(id)!);
+    previous.gigBodies = previous.gigBodies.map(body => ({ ...body, id: idMap.get(body.id)! }));
+    // A pre-collection save can still retain a received bale's old drop pose.
+    previous.gigBodies.push({ id: fieldRun.finishedIds[0]!,
+      position: hayHaulConfig(fieldRun.setup.config).barn,
+      rotation: { x: 0, y: 0, z: 0, w: 1 }, velocity: V(), broken: false });
+
+    const legacy: GameProgress = structuredClone(previous);
+    const oldRun = legacy.gigs.run!;
     const barn = island.props.find(p => p.poiId === 'hoofington' && p.kind === 'barn')!;
     const oldDrop = { ...barn.transform.position, y: barn.transform.position.y - barn.size.y / 2 + 1 };
     const oldConfig = hayHaulConfig(oldRun.setup.config);
@@ -193,18 +214,22 @@ describe('Hay Haul assigned bales', () => {
     oldRun.objective = { ...oldRun.objective, label: 'Bales inside the barn', destination: oldDrop };
     legacy.gigBodies = [];
 
-    for (const progress of [snapshot, legacy]) {
+    for (const [progress, expected] of [[snapshot, snapshot], [previous, previous], [legacy, previous]] as const) {
       const resumed = await Game.create({ ...options, progress });
       try {
         const run = resumed.gigs.active!;
-        expect(run).toEqual(snapshot.gigs.run);
-        const [first, second, ...remaining] = hayHaulConfig(run.setup.config).bales;
+        expect(run).toEqual(expected.gigs.run);
+        const config = hayHaulConfig(run.setup.config);
+        const [first, second, ...remaining] = config.bales;
+        const received = resumed.colliders.bodies.get(first!.id)!;
+        expect(received.isEnabled()).toBe(false);
+        expect(received.translation().z).toBeGreaterThan(config.barn.z + config.radius);
         const savedBale = progress.gigBodies.find(body => body.id === second!.id);
         expect(resumed.colliders.bodies.get(second!.id)?.translation().x)
           .toBeCloseTo(savedBale?.position.x ?? second!.start.x);
         expect(run.objective).toMatchObject({ kind: 'deliver', done: 1, required: 4 });
         const wallet = resumed.rules.wallet.coins;
-        placeAtDrop(resumed, first!.id, 0);
+        resumed.step();
         expect(resumed.gigs.active?.objective).toMatchObject({ kind: 'deliver', done: 1 });
         placeAtDrop(resumed, second!.id, 1);
         expect(resumed.gigs.active?.objective).toMatchObject({ kind: 'deliver', done: 2 });

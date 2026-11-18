@@ -5,6 +5,8 @@ import { clamp, smoothstep } from './random';
 import { gridCoordinate, gridIndex } from './terrain';
 import { terrainRockMask } from './terrain-paint';
 import { paintDowntownGround } from './downtown-public-space';
+import { buildRoadsideSigns, paintRoadsideGravel } from './visual-roadside-stops';
+import { makeVillageGroundPaint, paintAsphalt } from './surface-paint';
 import { roadRibbonData } from './road-ribbons';
 import { buildPropVisuals, TOON_RAMP } from './visual-props';
 import { createEnvironmentLod } from './environment-lod';
@@ -12,10 +14,12 @@ import { buildGroundDetails } from './visual-ground';
 import { buildStreetDetails } from './visual-streets';
 import { buildMeadowScatter } from './visual-meadow';
 import { buildWaterVisuals } from './visual-water';
+import { buildTideRouteCues } from './visual-tide-routes';
 import { buildDamVisuals } from './visual-dam';
 import { buildLighthouseVisuals, makeCapeLighting } from './visual-lighthouse';
 import { buildHoofingtonVisuals } from './visual-hoofington';
 import { buildDowntownVisuals } from './visual-downtown';
+import { buildMountainWayfinding } from './visual-mountain';
 import { buildSkyVisuals, type LightingPreset } from './visual-sky';
 
 export { isDowntownRoadOverlay, isHoofingtonTrailOverlay } from './road-ribbons';
@@ -41,8 +45,8 @@ export interface WorldScene {
   setDayNight(phase: number): void;
   /** Day, painterly golden hour and starry night bookmarks. */
   setLightingPreset(preset: LightingPreset): void;
-  /** Sea shader and surface position both follow the mutable tide level. */
-  setTideLevel(level: number): void;
+  /** Set the sea level. The Lab shows escape cues above baseline unless the host opts out. */
+  setTideLevel(level: number, showRoutes?: boolean): void;
   /** Call with elapsed seconds to animate sea, waterfalls and foliage. */
   update(time: number): void;
   /** Frustum/terrain LOD; true when camera culling changed shadow-caster visibility. */
@@ -240,6 +244,8 @@ function buildTerrain(island: IslandData, segments: number,
   rockMask.generateMipmaps = true;
   rockMask.needsUpdate = true;
   material.addEventListener('dispose', () => rockMask.dispose());
+  const villagePaint = makeVillageGroundPaint(island);
+  material.addEventListener('dispose', () => villagePaint.map.dispose());
   material.onBeforeCompile = shader => {
     shader.uniforms['uRockStone'] = { value: COLORS.rock };
     shader.uniforms['uMountainStone'] = { value: MT_GIGGA_STONE };
@@ -276,7 +282,9 @@ uStone *= 0.96 + 0.04 * sin(elevation * 0.52 + 2.0 * exposure);
 float rock = smoothstep(0.19, 0.48, exposure + 0.04 * smoothstep(16.0, 85.0, elevation));
 diffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);`,
     );
+    villagePaint.apply(shader);
     paintDowntownGround(shader, island);
+    paintRoadsideGravel(shader, island);
     capeLighting.paint(shader);
   };
   const lookup = roadGrid(island, 22);
@@ -328,7 +336,7 @@ function buildRoads(island: IslandData): THREE.Group {
   const matrix = new THREE.Matrix4();
 
   for (const type of ['road', 'trail'] as const) {
-    const { positions, indices, segments } = roadRibbonData(island, type);
+    const { positions, indices, segments, crossSections } = roadRibbonData(island, type);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setIndex(indices);
@@ -337,6 +345,10 @@ function buildRoads(island: IslandData): THREE.Group {
     const material = new THREE.MeshToonMaterial({
       color: type === 'road' ? 0x727e8a : 0xc3a06c, gradientMap: TOON_RAMP,
     });
+    if (type === 'road') {
+      geometry.setAttribute('roadCrossSection', new THREE.Float32BufferAttribute(crossSections, 2));
+      paintAsphalt(material, island);
+    }
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'paths-' + type;
     mesh.receiveShadow = true;
@@ -371,7 +383,14 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const capeLighting = makeCapeLighting(island);
   const chunks = buildTerrain(island, segments, capeLighting);
   for (const chunk of chunks) group.add(chunk.mesh);
-  group.add(buildRoads(island));
+  const roads = buildRoads(island);
+  group.add(roads);
+  const roadsideSigns = buildRoadsideSigns(island);
+  if (roadsideSigns) group.add(roadsideSigns);
+  const tideRoutes = buildTideRouteCues(island, roads, chunks.map(chunk => ({
+    geometry: chunk.low, x: chunk.mesh.position.x, z: chunk.mesh.position.z,
+  })));
+  group.add(tideRoutes.mesh);
   group.add(buildStreetDetails(island));
   // Coalesce unchanged ground decals to keep the extra zebra mesh within the draw budget.
   group.add(buildGroundDetails(island, 192));
@@ -394,6 +413,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(dam.group);
   const lighthouse = buildLighthouseVisuals(scenery, props.group, capeLighting);
   group.add(lighthouse.group);
+  group.add(buildMountainWayfinding(island));
   const fogColor = new THREE.Color();
   group.add(sky.group);
   const sun = new THREE.DirectionalLight(0xffe9c5, 1.65);
@@ -445,11 +465,12 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     };
     setDayNight(phases[preset]);
   }
-  function setTideLevel(level: number): void {
+  function setTideLevel(level: number, showRoutes = level > island.seaLevel): void {
     if (!Number.isFinite(level)) throw new RangeError('Tide height must be finite');
     tide = level;
     waterVisuals.update(elapsed, tide);
     dam.setWaterLevel(tide);
+    tideRoutes.update(tide, showRoutes);
   }
   function update(time: number): void {
     elapsed = Number.isFinite(time) ? Math.max(0, time) : elapsed;

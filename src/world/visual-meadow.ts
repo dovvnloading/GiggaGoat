@@ -1,4 +1,5 @@
 import { downtownPublicSpaceAt, downtownPublicSpaces } from './downtown-public-space';
+import { roadsideGravelAt, roadsideStops } from './roadside-stops';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -74,7 +75,9 @@ export function buildMeadowScatter(island: IslandData): THREE.Group {
       x: point.x, z: point.z, margin: road.width * 0.5 + 3.4 * scale,
     })));
 
+  const roadside = roadsideStops(island);
   function outsideObstacles(x: number, z: number): boolean {
+    if (roadsideGravelAt(roadside, x, z)) return false;
     for (const road of roadSamples) {
       const dx = x - road.x, dz = z - road.z;
       if (dx * dx + dz * dz < road.margin * road.margin) return false;

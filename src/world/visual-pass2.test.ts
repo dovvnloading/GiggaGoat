@@ -104,7 +104,7 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
     // This detects the previous ~600-call pattern even without a GPU.
     // These features each contribute a single non-shadow draw.
     const featureNames = ['props-fern', 'props-lily-pads', 'whispering-pines-rock-step',
-      'mountain-terrace-water'];
+      'mountain-terrace-water', 'mountain-wayfinding-batched', 'rising-tide-escape-route-cues'];
     for (const name of featureNames) {
       const feature = meshes.filter(mesh => mesh.name === name);
       expect(feature, name).toHaveLength(1);

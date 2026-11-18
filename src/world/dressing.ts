@@ -3,7 +3,8 @@ import { SeededRandom } from './random';
 import { downtownPublicSpaceAt, downtownPublicSpaces } from './downtown-public-space';
 import { gridSample, riverAt, segmentProjection, stampPlot } from './terrain';
 import { getDamPlacement } from './the-dam';
-import { HOOFINGTON_FIELD_ENTRANCES, HOOFINGTON_FIELD_RAILS, HOOFINGTON_YARD_ENTRANCES } from './hoofington-entrances';
+import { HOOFINGTON_FIELD_ENTRANCES, HOOFINGTON_FIELD_RAILS,
+  HOOFINGTON_HAUL_LANE, HOOFINGTON_YARD_ENTRANCES } from './hoofington-entrances';
 import { roadSideOffset } from './roads';
 import { damChannelAt } from './dam-landscape';
 import { DOWNTOWN_ROOF_MOUNTS, downtownBuildingModel, isInsideDowntownInfillFootprint } from './visual-downtown';
@@ -160,7 +161,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     return true;
   }
   const farmCenter = sites.get(farm)!;
-  const farmEntrances: Footprint[] = [...HOOFINGTON_FIELD_ENTRANCES, ...HOOFINGTON_YARD_ENTRANCES]
+  const farmEntrances: Footprint[] = [...HOOFINGTON_FIELD_ENTRANCES, ...HOOFINGTON_YARD_ENTRANCES, HOOFINGTON_HAUL_LANE]
     .map(p => ({ x: farmCenter.x + p.x * scale, z: farmCenter.z + p.z * scale,
       sx: (p.length + ('towing' in p && p.towing ? 2.3 : 1.5)) * scale,
       sz: p.width * scale, yaw: 0 }));

@@ -277,7 +277,7 @@ describe('The Dam downstream scenery', () => {
     }
   });
 
-  it('grounds the former Dam face oak on the bank, outside the actual GLB pier', () => {
+  it('keeps the bank oaks outside the loaded Dam pier and the rear masonry', () => {
     const asset = readFileSync('public/assets/library/custom/the-dam/the-dam.glb');
     const json = JSON.parse(asset.toString('utf8', 20, 20 + asset.readUInt32LE(12))) as {
       nodes: { name: string; mesh: number }[];
@@ -286,6 +286,8 @@ describe('The Dam downstream scenery', () => {
     };
     const pier = json.nodes.find(node => node.name === 'ControlHouse_Pillar')!;
     const { min, max } = json.accessors[json.meshes[pier.mesh]!.primitives[0]!.attributes.POSITION]!;
+    const wall = json.nodes.find(node => node.name === 'Dam_Wall')!;
+    const wallBounds = json.accessors[json.meshes[wall.mesh]!.primitives[0]!.attributes.POSITION]!;
     const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
     const origin = getDamPlacement(island).position;
     const oak = island.props.find(prop => prop.id === 'detail-the-dam-tree-oak-845')!;
@@ -301,6 +303,11 @@ describe('The Dam downstream scenery', () => {
       const overlaps = x + radius > origin.x + min[0] && x - radius < origin.x + max[0] &&
         z + radius > origin.z + min[2] && z - radius < origin.z + max[2];
       expect(overlaps, plant.id).toBe(false);
+      if (plant.kind !== 'bush') {
+        const insideMasonry = x > origin.x + wallBounds.min[0] && x < origin.x + wallBounds.max[0] &&
+          z > origin.z + wallBounds.min[2] && z < origin.z + wallBounds.max[2];
+        expect(insideMasonry, plant.id).toBe(false);
+      }
     }
   });
 

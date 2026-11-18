@@ -106,6 +106,8 @@ export interface MovementInput {
   /** External gameplay can gate actions without physics owning stamina. */
   canSprint: boolean;
   canClimb: boolean;
+  /** A known ramp may already support the front of the goat before its torso reaches it. */
+  acceptForwardSupport?: (colliderHandle: number) => boolean;
 }
 export interface LocomotionTuning {
   walkSpeed: number;
@@ -180,16 +182,30 @@ export class LocomotionController {
   update(dt: number): void {
     this.clock += dt;
     const g = this.goat, torso = g.torso, s = g.size;
-    const ground = g.world.raycast(torso.translation(),V(0,-1,0),1.8*s,
-      { groups: GROUND_QUERY_GROUPS });
-    this.groundHit = ground;
-    const walkable = !!ground && ground.normal.y >= Math.cos(this.tuning.maxSlopeDegrees*Math.PI/180);
+    const position = torso.translation();
     const rideHeight = g.balance.tuning.rideHeight * s;
+    const groundedDistance = rideHeight + .16 * s;
+    const minGroundY = Math.cos(this.tuning.maxSlopeDegrees * Math.PI / 180);
+    const movement = add(mul(forward(this.input.cameraYaw),this.input.z),
+      mul(right(this.input.cameraYaw),this.input.x));
+    const wishLength = Math.min(1,length(movement));
+    const wish = wishLength > 0 ? normalize(movement) : V();
+    let ground = g.world.raycast(position,V(0,-1,0),1.8*s,
+      { groups: GROUND_QUERY_GROUPS });
+    const acceptsRamp = this.input.acceptForwardSupport;
+    if (acceptsRamp && ground && ground.distance > groundedDistance &&
+        ground.distance <= rideHeight + .4 * s && wishLength > .1 && this.clock >= this.jumpLockUntil) {
+      const ahead = add(position, mul(wish, .6 * s));
+      const support = g.world.raycast(ahead, V(0,-1,0), groundedDistance, { groups: GROUND_QUERY_GROUPS });
+      if (support && support.normal.y >= minGroundY && acceptsRamp(support.collider.handle)) ground = support;
+    }
+    this.groundHit = ground;
+    const walkable = !!ground && ground.normal.y >= minGroundY;
     // A small upward gait impulse can still leave the goat at ride height.
     // Apply the usual takeoff cutoff as soon as it has moved clear of that support.
     const takeoffSpeed = ground && ground.distance <= rideHeight + .08 * s ? 1.6 : 1.2;
     this.grounded = !!(walkable && ground && ground.distance <=
-      rideHeight + .16 * s && this.clock >= this.jumpLockUntil && torso.linvel().y < takeoffSpeed);
+      groundedDistance && this.clock >= this.jumpLockUntil && torso.linvel().y < takeoffSpeed);
     if (this.grounded) {
       this.lastGroundAt = this.clock;
       this.jumpConsumed = false;
@@ -197,10 +213,6 @@ export class LocomotionController {
       this.flipAngle = 0;
       this.flipScored = false;
     }
-    const movement = add(mul(forward(this.input.cameraYaw),this.input.z),
-      mul(right(this.input.cameraYaw),this.input.x));
-    const wishLength = Math.min(1,length(movement));
-    const wish = wishLength > 0 ? normalize(movement) : V();
     const wall = wishLength > .1 ? g.world.raycast(
       add(torso.translation(),V(0,.09*s,0)),wish,this.tuning.climbReach*s,
       { groups: GROUND_QUERY_GROUPS },

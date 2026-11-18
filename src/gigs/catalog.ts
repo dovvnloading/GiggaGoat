@@ -1,4 +1,6 @@
+import { HOOFINGTON_HAUL_BALE_PREFIX } from '../world/hoofington-entrances';
 import type { IslandData, PoiDescriptor, PropDescriptor, PoiId } from '../world';
+import { rooftopDecks } from '../world/rooftop-course';
 import {
   DIFFICULTIES, GIG_IDS,
 } from './types';
@@ -15,15 +17,15 @@ export const GIG_INFO: Readonly<Record<GigId, GigInfo>> = {
   'hay-haul': {
     id: 'hay-haul', title: 'HAY HAUL', poiId: 'hoofington',
     pitch: 'One tongue. Too much hay. Nobody said it had to be tidy.',
-    instruction: 'Drag the marked bales to the drop beside the barn. Chain-tow two for a combo.',
+    instruction: 'Drag marked bales to the barn drop. Link two quick tows for Gold.',
     verbs: ['tongue'], baseCoins: 64,
     cosmetic: { id: 'hay-hat', name: 'Haywire Hat', slot: 'hat', color: '#F2C14F' },
   },
   'rooftop-express': {
     id: 'rooftop-express', title: 'ROOFTOP EXPRESS', poiId: 'downtown-bleatsville',
     pitch: 'Next-day delivery. Rooftop-only. The recipient is a pigeon.',
-    instruction: 'Tongue-carry the parcel across the roof markers. Never touch the street.',
-    verbs: ['tongue', 'climb', 'flop'], baseCoins: 78,
+    instruction: 'Hold lick to tow the parcel along the roof ramps. Keep it off the street.',
+    verbs: ['tongue'], baseCoins: 78,
     cosmetic: { id: 'courier-trail', name: 'Express Streak', slot: 'trail', color: '#7A4CFF' },
   },
   'demolition-contract': {
@@ -323,12 +325,17 @@ export class GigCatalog {
     const current = this.build(saved.offer);
     const serialized = JSON.stringify(saved);
     if (JSON.stringify(current) === serialized) return saved;
-    if ((current.config.kind === 'hay-haul' || current.config.kind === 'mow-down') &&
+    if (current.config.kind === 'hay-haul') {
+      const fieldSupply = this.buildVariant(saved.offer, false, true);
+      if (JSON.stringify(fieldSupply) === serialized) return saved;
+      if (JSON.stringify(this.buildVariant(saved.offer, true, true)) === serialized) return fieldSupply;
+    }
+    if ((current.config.kind === 'mow-down' || current.config.kind === 'rooftop-express') &&
         JSON.stringify(this.buildVariant(saved.offer, true)) === serialized) return current;
     return null;
   }
 
-  private buildVariant(offer: GigOffer, legacyLayout: boolean): GigSetup {
+  private buildVariant(offer: GigOffer, legacyLayout: boolean, fieldSupply = false): GigSetup {
     if (offer.poiId !== GIG_INFO[offer.gigId]?.poiId ||
       offer.variantSeed !== this.makeOffer(offer.gigId, offer.difficulty, offer.cycle,
         Number(offer.id.split(':')[2])).variantSeed) throw new RangeError('Offer does not match catalog');
@@ -343,8 +350,12 @@ export class GigCatalog {
     switch (offer.gigId) {
       case 'hay-haul': {
         const barn = requireKind(this.props, 'hoofington', 'barn')[0]!;
-        const bales = rng.shuffle(requireKind(this.props, 'hoofington', 'hay-bale')
-          .filter(p => p.body.type === 'dynamic')).slice(0, [3, 4, 5][tier]!);
+        const supply = requireKind(this.props, 'hoofington', 'hay-bale').filter(p => p.body.type === 'dynamic');
+        const loadLine = supply.filter(p => p.id.startsWith(HOOFINGTON_HAUL_BALE_PREFIX));
+        const useField = fieldSupply || loadLine.length < 5;
+        const eligible = useField ? supply.filter(p => !p.id.startsWith(HOOFINGTON_HAUL_BALE_PREFIX))
+          : loadLine.slice(0, [4, 6, 7][tier]);
+        const bales = rng.shuffle(eligible).slice(0, [3, 4, 5][tier]!);
         const { position, rotationY } = barn.transform;
         const scale = this.islandSize / 600;
         // In the open apron south-east of the barn, between the silo and the house.
@@ -364,23 +375,47 @@ export class GigCatalog {
         break;
       }
       case 'rooftop-express': {
-        const roofs = this.props.filter(p => p.poiId === 'downtown-bleatsville' &&
-          (p.kind === 'shop' || p.kind === 'house'));
-        const row = rng.int(3);
-        const rowZ = poi.center.z + (row - 1) * 19;
-        const rowRoofs = roofs.filter(p => Math.abs(p.transform.position.z - rowZ) < 3)
-          .sort((a, b) => a.transform.position.x - b.transform.position.x);
-        if (rowRoofs.length < 4) throw new Error('Downtown requires four roof buildings per street');
-        const count = tier === 0 ? 3 : 4;
-        const selected = rowRoofs.slice(tier === 0 ? rng.int(2) : 0,
-          tier === 0 ? undefined : 4).slice(0, count);
-        const checkpoints = selected.map(p => plus(p.transform.position, 0, p.size.y / 2 + 0.65, 0));
         const parcelId = 'gig-parcel-' + s;
-        start = plus(checkpoints[0]!, 1.2, 0, 0);
-        spawns = [{ id: parcelId, role: 'parcel', position: copy(checkpoints[0]!),
-          size: { x: 0.8, y: 0.7, z: 0.8 }, mass: 2.5, fragile: true, color: '#FFD833' }];
+        let checkpoints: Point[];
+        let parcel: Point;
+        let size: Point;
+        if (legacyLayout) {
+          // Rebuild the former route verbatim to authenticate saved attempts.
+          const rowZ = poi.center.z + (rng.int(3) - 1) * 19;
+          const row = this.props.filter(p => p.poiId === 'downtown-bleatsville' &&
+            (p.kind === 'shop' || p.kind === 'house') &&
+            Math.abs(p.transform.position.z - rowZ) < 3)
+            .sort((a, b) => a.transform.position.x - b.transform.position.x);
+          if (row.length < 4) throw new Error('Downtown requires four roof buildings per street');
+          const selected = row.slice(tier === 0 ? rng.int(2) : 0,
+            tier === 0 ? undefined : 4).slice(0, tier === 0 ? 3 : 4);
+          checkpoints = selected.map(p => plus(p.transform.position, 0, p.size.y / 2 + .65, 0));
+          parcel = copy(checkpoints[0]!);
+          start = plus(parcel, 1.2, 0, 0);
+          size = { x: .8, y: .7, z: .8 };
+          markers = checkpoints.map((p, i) => marker('roof-' + i, 'Roof ' + (i + 1), p, 3.8, 'checkpoint'));
+        } else {
+          const decks = rooftopDecks(this.props);
+          if (decks.length !== 5) throw new Error('Downtown requires five linked courier roofs');
+          const count = 3 + tier;
+          const first = rng.int(decks.length - count + 1);
+          const route = decks.slice(first, first + count);
+          if (rng.int(2)) route.reverse();
+          const launch = route[0]!;
+          const direction = Math.sign(route[1]!.transform.position.z - launch.transform.position.z);
+          const deckTop = launch.transform.position.y + launch.size.y / 2;
+          const startOffset = 1.8 * this.islandSize / 600;
+          size = { x: .9, y: 1.22, z: .9 };
+          parcel = { ...launch.transform.position, y: deckTop + size.y / 2 + .035 };
+          start = { x: parcel.x, y: deckTop + .025, z: parcel.z - direction * startOffset };
+          checkpoints = route.map(deck => plus(deck.transform.position, 0, deck.size.y / 2 + .5, 0));
+          markers = checkpoints.map((p, i) => marker('roof-' + i,
+            i === 0 ? 'Pick up parcel' : i === count - 1 ? 'Deliver parcel' : 'Roof ' + (i + 1),
+            p, 3.8, i === 0 ? 'start' : i === count - 1 ? 'destination' : 'checkpoint'));
+        }
+        spawns = [{ id: parcelId, role: 'parcel', position: parcel,
+          size, mass: 2.5, fragile: true, color: '#FFD833' }];
         config = { kind: 'rooftop-express', parcelId, checkpoints, streetY: poi.center.y };
-        markers = checkpoints.map((p, i) => marker('roof-' + i, 'Roof ' + (i + 1), p, 3.8, 'checkpoint'));
         break;
       }
       case 'demolition-contract': {
@@ -514,11 +549,16 @@ export class GigCatalog {
     }
     const maxTicks = LIMIT_SECONDS[offer.gigId][tier]! * TICKS_PER_SECOND;
     const info = this.info(offer.gigId);
-    if (legacyLayout && offer.gigId === 'hay-haul') {
-      info.instruction = 'Lick the marked bales into the barn. Chain-tow two for a combo.';
+    if (offer.gigId === 'hay-haul') {
+      if (legacyLayout) info.instruction = 'Lick the marked bales into the barn. Chain-tow two for a combo.';
+      else if (fieldSupply) info.instruction = 'Drag the marked bales to the drop beside the barn. Chain-tow two for a combo.';
     }
     if (legacyLayout && offer.gigId === 'mow-down') {
       info.instruction = 'Eat every glowing grass patch. Plan an efficient bite path.';
+    }
+    if (legacyLayout && offer.gigId === 'rooftop-express') {
+      info.instruction = 'Tongue-carry the parcel across the roof markers. Never touch the street.';
+      info.verbs = ['tongue', 'climb', 'flop'];
     }
     return {
       offer: structuredClone(offer), info, start, config,
