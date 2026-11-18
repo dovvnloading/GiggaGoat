@@ -88,12 +88,19 @@ it.each([
         : [[-26.75, z], [-26.1, -17.05], [-24.6, -21.8]] as const;
       for (const [x, along] of route) {
         walk(x, along, { tongue: true });
-        expect(bale.isValid(), id).toBe(true);
-        expect(game.goat.interactions.tongueBody?.handle, id).toBe(bale.handle);
+        if (!game.gigs.active!.finishedIds.includes(id)) {
+          expect(bale.isValid(), id).toBe(true);
+          expect(game.goat.interactions.tongueBody?.handle, id).toBe(bale.handle);
+        }
       }
       for (let i = 0; i < 100 && !game.gigs.active!.finishedIds.includes(id); i++)
         game.step({ tongue: true, reelTongue: true });
       expect(game.gigs.active!.finishedIds).toContain(id);
+      expect(game.goat.interactions.tongueBody).toBeNull();
+      if (game.gigs.active!.status === 'running') {
+        expect(bale.isEnabled()).toBe(false);
+        expect(bale.translation().z).toBeGreaterThan(config.barn.z + config.radius);
+      }
       game.step({ tongue: false });
     }
 

@@ -2,7 +2,7 @@ import type { Collider, CoefficientCombineRule, RigidBody } from '@dimforge/rapi
 import { GigCatalog, GigDirector, GigGameplayBridge, type AbilityFact, type GigEvent,
   type GigOffer, type GigRun, type GigPropSpawn, type GigSetup, type GigSnapshot,
   type PropFact, type StyleFact } from '../gigs';
-import { RAPIER, collisionGroups, type PhysicsContact } from '../physics';
+import { RAPIER, V, collisionGroups, type PhysicsContact } from '../physics';
 import { heightAt, type PoiId } from '../world';
 import { ROOFTOP_DECK_PREFIX, ROOFTOP_SPAN_PREFIX, rooftopDecks } from '../world/rooftop-course';
 import type { Game } from './Game';
@@ -25,6 +25,7 @@ export class GigSession {
   private readonly bridge: GigGameplayBridge;
   private readonly temporary = new Map<string, TemporaryProp>();
   private readonly restockedHayBales = new Map<string, RigidBody>();
+  private readonly collectedHay = new Map<string, RigidBody>();
   private towingHay: { collider: Collider; friction: number; combine: CoefficientCombineRule } | null = null;
   private readonly impacts = new Map<number, number>();
   private readonly courierSupports = new Set<number>();
@@ -82,12 +83,13 @@ export class GigSession {
         for (const { id } of run.setup.config.bales) {
           const state = saved.get(id);
           const body = game.colliders.bodies.get(id);
-          if (!state || state.broken || !body) continue;
+          if (run.finishedIds.includes(id) || !state || state.broken || !body) continue;
           body.setTranslation(state.position, true);
           body.setRotation(state.rotation, true);
           body.setLinvel(state.velocity, true);
           game.physics.registerBody(body, { kind: 'prop', owner: id, data: 'hay-bale' });
         }
+        this.collectHayDeliveries(run);
       }
     }
     // A snapshot can contain a pending, verified award. Settle it once on load.
@@ -232,6 +234,55 @@ export class GigSession {
     }
   }
 
+  private collectHayDeliveries(run: GigRun): void {
+    if (run.setup.config.kind !== 'hay-haul') return;
+    const { barn } = run.setup.config;
+    const { game } = this;
+    const scale = game.island.size / 600;
+    for (const [i, id] of run.finishedIds.entries()) {
+      if (this.collectedHay.has(id)) continue;
+      // Older active saves can have already destroyed the received bale.
+      const replacement = game.restockHayBale(id);
+      if (replacement) this.restockedHayBales.set(id, replacement);
+      const body = game.colliders.bodies.get(id);
+      if (!body?.isValid()) continue;
+      const prop = game.propByBody.get(body.handle);
+      if (!prop) continue;
+      if (game.goat.interactions.tongueBody?.handle === body.handle) {
+        game.goat.interactions.detachTongue('replaced');
+        this.setHayTowCollider(null);
+      }
+
+      // Received bales are shown on the apron beside the barn, clear of the
+      // unloading approach. They leave the physics course as soon as counted.
+      const upperRow = i >= 3;
+      const x = barn.x + (2.5 + (upperRow ? i - 2.5 : i) * 2.35) * scale;
+      const z = barn.z + 4 * scale;
+      const y = heightAt(game.island, x, z) + prop.size.y * (upperRow ? 1.5 : .5);
+      body.setEnabled(false);
+      body.setTranslation(V(x, y, z), true);
+      body.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
+      game.physics.registerBody(body, { kind: 'prop', owner: id, data: 'hay-bale' });
+      this.collectedHay.set(id, body);
+    }
+  }
+
+  private resetCollectedHay(): void {
+    for (const [id, body] of this.collectedHay) {
+      if (this.restockedHayBales.has(id) || !body.isValid()) continue;
+      const prop = this.game.propByBody.get(body.handle);
+      if (!prop) continue;
+      const { position, rotationY } = prop.transform;
+      body.setTranslation(position, true);
+      body.setRotation({ x: 0, y: Math.sin(rotationY / 2), z: 0, w: Math.cos(rotationY / 2) }, true);
+      body.setLinvel(V(), true);
+      body.setAngvel(V(), true);
+      body.setEnabled(true);
+      this.game.physics.registerBody(body, { kind: 'prop', owner: id, data: 'hay-bale' });
+    }
+    this.collectedHay.clear();
+  }
+
   private setHayTowCollider(collider: Collider | null): void {
     const previous = this.towingHay;
     if ((previous?.collider ?? null) === collider) return;
@@ -336,6 +387,10 @@ export class GigSession {
         grounded: this.game.goat.locomotion.grounded },
       abilities, style, props,
     });
+    if (run?.setup.config.kind === 'hay-haul' && events.some(event => event.type === 'objective.progress')) {
+      const updated = this.active;
+      if (updated) this.collectHayDeliveries(updated);
+    }
     this.latestEvents = events;
     const awards = this.bridge.settle();
     this.latestPayout = awards.reduce((sum, award) => sum + award.coins, 0);
@@ -352,6 +407,7 @@ export class GigSession {
     const run = this.active;
     if (run?.status === 'running' && run.setup.config.kind === 'hay-haul') {
       for (const { id } of run.setup.config.bales) {
+        if (run.finishedIds.includes(id)) continue;
         const body = this.game.colliders.bodies.get(id);
         if (body?.isValid()) bodies.push(save(id, body, false));
       }
@@ -366,6 +422,7 @@ export class GigSession {
       if (this.game.physics.raw.getRigidBody(body.handle)) this.game.physics.removeBody(body);
     }
     this.temporary.clear();
+    this.resetCollectedHay();
     for (const [id, body] of this.restockedHayBales) this.game.removeRestockedHayBale(id, body);
     this.restockedHayBales.clear();
     this.impacts.clear();
