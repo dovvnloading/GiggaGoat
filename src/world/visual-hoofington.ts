@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { IslandData, PropDescriptor, PropKind, Vec3 } from './types';
 import { gridSample } from './terrain';
+import { treeArtCenterY } from './visual-tree-grounding';
 import { smoothstep } from './random';
 import { publicAssetUrl } from './public-assets';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
@@ -67,6 +68,8 @@ export interface HoofPlacement<Model extends string = HoofModel> {
   /** Optional legacy overrides; Blender-painted Hoofington props never use these. */
   wall?: number;
   roof?: number;
+  /** Optional visual soil fit, separate from the source collider position. */
+  treeCenterY?: number;
   /** Original descriptor/collider is retained; only its old art is hidden. */
   source?: PropDescriptor;
 }
@@ -86,6 +89,12 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
   const scale = island.size / 600;
   const plan: HoofPlacement[] = [];
   let flowerIndex = 0, bushIndex = 0, oakIndex = 0;
+  const treeCenterY = (model: HoofModel, position: Vec3, height: number): number | undefined => {
+    if (model !== 'pine' && !OAK_VARIANTS.some(variant => variant === model)) return undefined;
+    // The native pine uses a uniform fit with its full floor at -0.50.
+    return treeArtCenterY(island, position, height, model === 'pine' ? -.50 : -.49);
+  };
+
 
   for (const prop of island.props) {
     if (prop.poiId !== 'hoofington' || prop.kind === 'hay-bale') continue;
@@ -120,6 +129,7 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
     }
     if (model) plan.push({
       model, source: prop, position: prop.transform.position,
+      treeCenterY: treeCenterY(model, prop.transform.position, prop.size.y),
       size: prop.size,
       yaw: prop.transform.rotationY + (prop.kind === 'bench' ? Math.PI : 0),
     });
@@ -130,8 +140,9 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
     yaw = 0): void {
     const x = farm.x + dx * scale, z = farm.z + dz * scale;
     const h = height * scale;
+    const position = { x, y: gridSample(island, x, z) + h / 2, z };
     plan.push({
-      model, position: { x, y: gridSample(island, x, z) + h / 2, z },
+      model, position, treeCenterY: treeCenterY(model, position, h),
       size: { x: width * scale, y: h, z: depth * scale }, yaw,
     });
   }
@@ -249,6 +260,7 @@ export function bakeLibraryGeometry<Model extends string>(
     if (bounds.isEmpty()) continue;
     const span = bounds.getSize(new THREE.Vector3());
     if (Math.min(span.x, span.y, span.z) <= 0.00001) continue;
+    const drawY = placement.treeCenterY ?? placement.position.y;
     const path = pathFor(placement.model);
     const surface = facadeSource(path);
     const authored = isAuthoredLibraryAsset(path);
@@ -310,7 +322,7 @@ export function bakeLibraryGeometry<Model extends string>(
           facade?.push(local.x, height * modelHeight, local.z, facadeStyles?.[materialIndex] ?? 0);
           local.applyQuaternion(quat);
           coordinates.push(placement.position.x + local.x,
-            placement.position.y + local.y, placement.position.z + local.z);
+            drawY + local.y, placement.position.z + local.z);
 
           const base = (material as THREE.MeshStandardMaterial).color;
           tint.copy(base instanceof THREE.Color ? base : white);

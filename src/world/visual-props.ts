@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { isTerrainTreeAnchor, treeArtCenterY } from './visual-tree-grounding';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { loadLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
@@ -762,6 +763,13 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     let geometry = geometries.get(kind);
     if (!geometry) {
       geometry = architecture?.shell ?? buildProceduralPropGeometry(kind);
+      // A small local embed also seats the procedural trees while the GLBs
+      // load. Keep stable source matrices for the renderer's prop bindings.
+      if (island && (kind === 'tree-oak' || kind === 'tree-pine') &&
+        entries.every(prop => prop.body.type === 'static' &&
+          isTerrainTreeAnchor(island, prop.transform.position, prop.size.y))) {
+        geometry.translate(0, -.02, 0);
+      }
       geometries.set(kind, geometry);
     }
     let material = materials.get(kind);
@@ -916,6 +924,14 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
                 .multiply(new THREE.Matrix4().makeRotationY(fit.yaw))
                 .multiply(new THREE.Matrix4().makeScale(
                   fit.scale.x, fit.scale.y, fit.scale.z));
+            });
+          } else if (island && (job.kind === 'tree-oak' || job.kind === 'tree-pine')) {
+            const base = libraryGeometry.boundingBox!.min.y;
+            job.adjustments = job.entries.map(prop => {
+              const anchor = prop.transform.position;
+              const y = prop.body.type === 'static'
+                ? treeArtCenterY(island, anchor, prop.size.y, base) : anchor.y;
+              return new THREE.Matrix4().makeTranslation(0, (y - anchor.y) / prop.size.y, 0);
             });
           }
           job.mesh.geometry = libraryGeometry;
