@@ -148,7 +148,7 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
       .toBe(high.getAttribute('position').count);
   });
 
-  it('makes legible grassy benches between grey Mt. Gigga rock faces', () => {
+  it('keeps Mt. Gigga benches and risers grassy in the vertex buffer', () => {
     const average = (radius: number): THREE.Color => {
       const color = new THREE.Color(0, 0, 0);
       let count = 0;
@@ -170,8 +170,15 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
     };
     const green = average(32);
     const cliff = average(42);
-    expect(green.g).toBeGreaterThan(cliff.g * 1.12);
-    expect(cliff.b).toBeGreaterThan(green.b * 1.4);
+    // IS-15: even the steep grey-looking faces stay grassy at vertices.
+    // The normal-based fragment shader makes those faces stone, eliminating
+    // the old 3.1 m-spaced green saw-teeth at the boundary.
+    for (const tint of [green, cliff]) {
+      expect(tint.g).toBeGreaterThan(tint.r * 1.5);
+      expect(tint.g).toBeGreaterThan(tint.b * 2.0);
+    }
+    expect(Math.abs(green.g - cliff.g)).toBeLessThan(0.1);
+    expect(Math.abs(green.b - cliff.b)).toBeLessThan(0.1);
     const shelves = island.props.filter(p => p.kind === 'ledge');
     expect(shelves.length).toBeGreaterThan(30);
     for (const shelf of shelves) {
