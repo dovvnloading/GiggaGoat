@@ -3,7 +3,7 @@ import type {
   ColliderBuild, ColliderDescriptor, IslandData, PropColliderDescriptor, PropDescriptor,
 } from './types';
 import { makeDamColliderDescriptors } from './the-dam';
-import { makeLighthouseBridgeColliders } from './roads';
+import { makeGradedBridgeColliders } from './roads';
 import { roadRibbonData } from './road-ribbons';
 
 function hull(prop: PropDescriptor): Float32Array {
@@ -42,7 +42,7 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
     scale: { x: island.size, y: 1, z: island.size },
     position: { x: 0, y: 0, z: 0 },
   }];
-  const bridgeDecks = makeLighthouseBridgeColliders(island);
+  const bridgeDecks = makeGradedBridgeColliders(island);
   for (const prop of island.props) {
     if (!prop.collidable) continue;
     const bridgeDeck = bridgeDecks.get(prop.id);

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createWorldScene, generateIsland } from './index';
 import { gridIndex, gridSample, segmentProjection } from './terrain';
 import { mountainCuts } from './visual-mountain';
+import { MOUNTAIN_SPIRAL_BRIDGE_PREFIX } from './roads';
 import { Game } from '../core/Game';
 
 describe('Mt. Gigga grassy tiers and fragment stone (MG-7 / IS-15)', () => {
@@ -171,6 +172,60 @@ it('keeps both marked shortcuts visible from their entry and traversable at Kid 
       }
       expect(frame, id).toBeLessThan(540);
       expect(game.goat.torso.translation().y - down!.point.y, id).toBeGreaterThan(2.2);
+    }
+    expect(game.respawns).toBe(0);
+  } finally {
+    world.dispose();
+    game.dispose();
+  }
+});
+
+it('walks through the bridge after the northwest shortcut and renders its real deck grade', async () => {
+  const game = await Game.create();
+  const world = createWorldScene(game.island);
+  try {
+    game.step();
+    world.group.updateMatrixWorld(true);
+    const road = game.island.roads.find(r => r.id === 'downtown-bleatsville--mt-gigga')!;
+    const span = road.points.slice(95, 102);
+    const mesh = world.group.getObjectByName('mountain-spiral-bridge-decks')!;
+    const flatDecks = world.group.getObjectByName('props-bridge')!;
+    expect(mesh).toBeInstanceOf(THREE.Mesh);
+    expect(flatDecks).toBeInstanceOf(THREE.InstancedMesh);
+    const deckHandles = new Set([...game.colliders.props]
+      .filter(([id]) => id.startsWith(MOUNTAIN_SPIRAL_BRIDGE_PREFIX)).map(([, collider]) => collider.handle));
+
+    const [before, seam, after] = road.points.slice(96, 99);
+    const heading = new THREE.Vector3(after!.x - before!.x, 0, after!.z - before!.z).normalize();
+    const lateral = new THREE.Vector3(-heading.z, 0, heading.x);
+    for (const offset of [-1.4, 0, 1.4]) {
+      const sampledHeights = [-.25, .25].map(distance => {
+        const origin = new THREE.Vector3(seam!.x, 65, seam!.z)
+          .addScaledVector(heading, distance).addScaledVector(lateral, offset);
+        const down = new THREE.Vector3(0, -1, 0);
+        const support = game.physics.raycast(origin, down, 60, {
+          predicate: collider => deckHandles.has(collider.handle),
+        });
+        const ray = new THREE.Raycaster(origin, down, 0, 60);
+        const visible = ray.intersectObject(mesh)[0];
+        expect(visible?.point.y).toBeCloseTo(support!.point.y, 1);
+        expect(ray.intersectObject(flatDecks)).toHaveLength(0);
+        return support!.point.y;
+      });
+      expect(Math.abs(sampledHeights[1]! - sampledHeights[0]!)).toBeLessThan(.16);
+    }
+
+    const start = span[0]!;
+    const startGround = game.physics.raycast({ ...start, y: 65 }, { x: 0, y: -1, z: 0 }, 60)!;
+    game.teleport({ ...start, y: startGround.point.y });
+    for (const target of [...span.slice(1), ...span.slice(0, -1).reverse()]) {
+      let reached = false;
+      for (let tick = 0; tick < 240; tick++) {
+        const p = game.goat.torso.translation();
+        if (Math.hypot(target.x - p.x, target.z - p.z) < .65) { reached = true; break; }
+        game.step({ moveZ: 1, cameraYaw: Math.atan2(target.x - p.x, p.z - target.z) });
+      }
+      expect(reached, 'near bridge station ' + target.x.toFixed(2)).toBe(true);
     }
     expect(game.respawns).toBe(0);
   } finally {
