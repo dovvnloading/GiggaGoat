@@ -155,10 +155,15 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
     place('lamp', x, 65, 0.72, 7.8, 0.72,
       { floor: headY, shape: 'cylinder', color: 0xffedc2 });
   }
-  for (const z of [-19, 3, 25]) {
-    place('bunting', 0, z, 22.8, 2.4, 0.3, {
-      centreY: deckY + 7.4 * scale, collidable: false,
-      lickable: false, climbable: false,
+  const pennants = { yaw: Math.PI / 2, collidable: false, lickable: false, climbable: false };
+  // Keep the strings attached to the west-side lamps and rail posts so
+  // the approach opens onto the wheel and the full width of the promenade.
+  place('bunting', -11.3, -20, 18.0, 1.5, 0.22, {
+    ...pennants, centreY: deckY + 6.2 * scale,
+  });
+  for (const z of [-25, -9]) {
+    place('bunting', -13.08, z, 7.6, 1.0, 0.16, {
+      ...pennants, centreY: deckY + 1.9 * scale,
     });
   }
 

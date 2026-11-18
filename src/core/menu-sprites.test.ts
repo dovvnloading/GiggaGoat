@@ -204,7 +204,7 @@ describe('sprite-backed menu DOM', () => {
       setScreen('pause'); check();
       setScreen('settings'); check();
       expect(root.innerHTML).toContain('data-sprite="menu/toggle_off"');
-      expect(root.innerHTML).toContain('data-sprite="menu/button_close"');
+      expect(root.innerHTML).not.toContain('data-sprite="menu/button_close"');
       expect(root.innerHTML).toContain('data-sprite="menu/button_back"');
       root.querySelector<ButtonStub>('[data-tab="video"]')!.click(); check();
       expect(root.innerHTML).toContain('data-sprite="menu/checkbox_empty"');
@@ -219,6 +219,53 @@ describe('sprite-backed menu DOM', () => {
       expect(seen).toContain(MENU_SPRITES.yellowNormal);
       expect(seen).toContain(MENU_SPRITES.purpleNormal);
       expect(menuSpriteUrl(MENU_SPRITES.panel)).toMatch(/assets\/ui\/sprites\/menu\/panel_tall\.png$/);
+    } finally { menu.dispose(); }
+  });
+
+  it('uses matching inactive tabs, one selected palette, and a single labeled Back action', () => {
+    const { menu, doc, win, root, view, setScreen } = setup();
+    try {
+      root.querySelector<ButtonStub>('[data-action="settings"]')!.click();
+      const tabs = () => root.querySelectorAll<ButtonStub>('[data-tab]');
+      const checkTabs = (selected: string) => {
+        expect(tabs().map(tab => tab.dataset.tab)).toEqual(['controls', 'video', 'audio']);
+        expect(tabs().filter(tab => tab.attrs.get('aria-selected') === 'true')).toHaveLength(1);
+        for (const tab of tabs()) {
+          const active = tab.dataset.tab === selected;
+          expect(tab.attrs.get('aria-selected')).toBe(String(active));
+          expect(tab.dataset.spriteNormal).toBe(active ? MENU_SPRITES.yellowNormal : MENU_SPRITES.purpleNormal);
+          expect(tab.dataset.spriteHover).toBe(active ? MENU_SPRITES.yellowHover : MENU_SPRITES.purpleHover);
+          expect(tab.dataset.spritePressed).toBe(active ? MENU_SPRITES.yellowPressed : MENU_SPRITES.purplePressed);
+        }
+      };
+      checkTabs('controls');
+      expect(root.innerHTML).toContain('<span>CONTROLS</span>');
+      expect(root.innerHTML).toContain('<span>VIDEO</span>');
+      expect(root.innerHTML).toContain('<span>AUDIO</span>');
+      const backs = root.querySelectorAll<ButtonStub>('[data-action="back"]');
+      expect(backs).toHaveLength(1);
+      expect(backs[0]!.attrs.get('aria-label')).toBe('Back to title');
+      expect(root.innerHTML).toContain('>Back</button>');
+
+      tabs()[0]!.focus();
+      win.dispatch('keydown', { code: 'ArrowRight', repeat: false,
+        preventDefault: vi.fn(), stopPropagation: vi.fn() });
+      checkTabs('video');
+      expect(doc.activeElement).toBe(tabs()[1]);
+      tabs()[2]!.click();
+      checkTabs('audio');
+
+      root.querySelector<ButtonStub>('[data-action="back"]')!.click();
+      expect(root.querySelector('[data-action="play"]')).not.toBeNull();
+
+      setScreen('pause');
+      root.querySelector<ButtonStub>('[data-action="settings"]')!.click();
+      expect(root.querySelector('[data-action="back"]')!.attrs.get('aria-label')).toBe('Back to pause');
+      vi.stubGlobal('navigator', { getGamepads: () => [
+        { connected: true, buttons: [{ pressed: false }, { pressed: true }], axes: [] },
+      ] });
+      view.onFrame?.();
+      expect(root.querySelector('[data-action="resume"]')).not.toBeNull();
     } finally { menu.dispose(); }
   });
 

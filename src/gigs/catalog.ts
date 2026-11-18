@@ -36,7 +36,7 @@ export const GIG_INFO: Readonly<Record<GigId, GigInfo>> = {
   'mow-down': {
     id: 'mow-down', title: 'MOW-DOWN', poiId: 'hoofington',
     pitch: 'A zero-emissions lawnmower with four stomachs.',
-    instruction: 'Eat every glowing grass patch. Plan an efficient bite path.',
+    instruction: 'Follow the village road south to the lawn. Eat every glowing patch.',
     verbs: ['eat'], baseCoins: 58,
     cosmetic: { id: 'grass-crown', name: 'Fresh-Cut Crown', slot: 'hat', color: '#77B754' },
   },
@@ -141,6 +141,35 @@ function requireKind(props: readonly PropDescriptor[], poi: PoiId, kind: PropDes
   if (!found.length) throw new Error('Billy Isle is missing ' + kind + ' at ' + poi);
   return found;
 }
+interface LawnObstacle {
+  x: number; z: number; halfX: number; halfZ: number; cos: number; sin: number;
+}
+
+function overlapsLawn(obstacle: LawnObstacle, x: number, z: number, halfX: number, halfZ: number): boolean {
+  const dx = obstacle.x - x, dz = obstacle.z - z;
+  const { cos, sin } = obstacle;
+  const c = Math.abs(cos), s = Math.abs(sin);
+  return Math.abs(dx) < halfX + obstacle.halfX * c + obstacle.halfZ * s &&
+    Math.abs(dz) < halfZ + obstacle.halfX * s + obstacle.halfZ * c &&
+    Math.abs(dx * cos - dz * sin) < obstacle.halfX + halfX * c + halfZ * s &&
+    Math.abs(dx * sin + dz * cos) < obstacle.halfZ + halfX * s + halfZ * c;
+}
+
+const MOW_SPACING = 2.1;
+// The displayed boundary extends 1.3 m past the outside row. Leave extra
+// room for a goat to turn at the edge rather than grazing against a fence.
+const MOW_EDGE = 1.8;
+const MOW_LAWN_CANDIDATES: Array<{ x: number; z: number; distance: number }> = [];
+for (let z = 39; z <= 68; z++) {
+  for (let x = 8; x <= 38; x++) {
+    const distance = z + x * .65;
+    MOW_LAWN_CANDIDATES.push({ x: -x, z, distance }, { x, z, distance });
+  }
+}
+MOW_LAWN_CANDIDATES.sort((a, b) =>
+  a.distance - b.distance || a.z - b.z || Number(a.x > 0) - Number(b.x > 0) ||
+  Math.abs(a.x) - Math.abs(b.x));
+
 /** Data is captured at construction so another team can mutate world visuals without changing a run. */
 export class GigCatalog {
   readonly seed: number;
@@ -151,7 +180,10 @@ export class GigCatalog {
   private readonly terrain: Float32Array;
   private readonly resolution: number;
   private readonly islandSize: number;
-  constructor(island: Pick<IslandData, 'seed' | 'pois' | 'props' | 'seaLevel' | 'reservoir' | 'heights' | 'resolution' | 'size'>, seed: number | string = 1) {
+  private readonly mowProps: LawnObstacle[];
+  private readonly mowRoads: LawnObstacle[];
+  constructor(island: Pick<IslandData, 'seed' | 'pois' | 'props' | 'seaLevel' | 'reservoir' | 'heights' |
+    'resolution' | 'size'> & Partial<Pick<IslandData, 'roads'>>, seed: number | string = 1) {
     this.seed = hash(String(island.seed) + ':' + String(seed));
     this.seaLevel = island.seaLevel;
     this.reservoirLevel = island.reservoir.level;
@@ -166,6 +198,22 @@ export class GigCatalog {
         position: copy(p.transform.position), rotationY: p.transform.rotationY,
       }, body: { ...p.body },
     }));
+    const farm = this.poi('hoofington').center;
+    const scale = this.islandSize / 600;
+    const nearFarm = (x: number, z: number): boolean => Math.hypot(x - farm.x, z - farm.z) < 95 * scale + 10;
+    this.mowProps = this.props.filter(prop => prop.collidable && prop.kind !== 'grass-tuft' &&
+      nearFarm(prop.transform.position.x, prop.transform.position.z)).map(prop => {
+      const { position, rotationY } = prop.transform;
+      return { x: position.x, z: position.z, halfX: prop.size.x / 2, halfZ: prop.size.z / 2,
+        cos: Math.cos(rotationY), sin: Math.sin(rotationY) };
+    });
+    this.mowRoads = (island.roads ?? []).flatMap(road => road.points.slice(1).flatMap((b, i) => {
+      const a = road.points[i]!, dx = b.x - a.x, dz = b.z - a.z;
+      const x = (a.x + b.x) / 2, z = (a.z + b.z) / 2, length = Math.hypot(dx, dz);
+      if (length <= 1e-6 || !nearFarm(x, z)) return [];
+      return [{ x, z, halfX: road.width / 2 + 1.7 * scale, halfZ: length / 2 + scale,
+        cos: dz / length, sin: dx / length }];
+    }));
   }
   /** Billy Isle row-major bilinear terrain lookup, duplicated as plain data to avoid engine imports. */
   private terrainY(x: number, z: number): number {
@@ -179,6 +227,60 @@ export class GigCatalog {
     const c = this.terrain[(iz + 1) * n + ix]!, d = this.terrain[(iz + 1) * n + ix + 1]!;
     return (a + (b - a) * u) * (1 - v) + (c + (d - c) * u) * v;
   }
+  private mowPatches(poi: PoiDescriptor, cols: number, rows: number, rng: Random): Point[] {
+    const scale = this.islandSize / 600;
+    const layout: Point[][] = [];
+    let bestDistance = Infinity;
+    const halfCols = (cols - 1) * MOW_SPACING / 2;
+    const halfRows = (rows - 1) * MOW_SPACING / 2;
+    for (const offset of MOW_LAWN_CANDIDATES) {
+      if (offset.distance > bestDistance + 4) break;
+      const x = poi.center.x + offset.x * scale, z = poi.center.z + offset.z * scale;
+      // Start on the village road, walk past the final pickets, then turn
+      // directly onto the lawn. The approach can cross pavement.
+      const entranceX = (x + poi.center.x) / 2;
+      const entranceHalfX = Math.abs(x - poi.center.x) / 2 + .75;
+      if (this.mowProps.some(prop => overlapsLawn(prop, entranceX, z, entranceHalfX, .75))) continue;
+
+      for (const sideways of [false, true]) {
+        const halfX = (sideways ? halfRows : halfCols) + MOW_EDGE;
+        const halfZ = (sideways ? halfCols : halfRows) + MOW_EDGE;
+        if (this.mowProps.some(prop => overlapsLawn(prop, x, z, halfX, halfZ)) ||
+            this.mowRoads.some(road => overlapsLawn(road, x, z, halfX, halfZ))) continue;
+        const patches = this.mowGrid({ x, y: 0, z }, cols, rows, sideways);
+        if (!patches.every(patch => this.mowPatchOnLawn(patch))) continue;
+        bestDistance = Math.min(bestDistance, offset.distance);
+        layout.push(patches);
+      }
+    }
+    if (!layout.length) throw new Error('Hoofington has no clear lawn south of the village');
+    return layout[rng.int(layout.length)]!;
+  }
+
+  private mowGrid(center: Point, cols: number, rows: number, sideways = false): Point[] {
+    const patches: Point[] = [];
+    for (let row = 0; row < rows; row++) for (let col = 0; col < cols; col++) {
+      const along = (col - (cols - 1) / 2) * MOW_SPACING;
+      const across = (row - (rows - 1) / 2) * MOW_SPACING;
+      const p = plus(center, sideways ? across : along, 0, sideways ? along : across);
+      p.y = this.terrainY(p.x, p.z) + .15;
+      patches.push(p);
+    }
+    return patches;
+  }
+
+  private mowPatchOnLawn({ x, y, z }: Point): boolean {
+    if (y - .15 <= this.seaLevel + .65) return false;
+    // Flat patch rings have a .93 m outer radius and are .15 m above the centre.
+    // Keep both the painted rim and the graze radius on gentle terrain.
+    for (let side = 0; side < 8; side++) {
+      const angle = side * Math.PI / 4;
+      const height = this.terrainY(x + Math.cos(angle), z + Math.sin(angle));
+      if (Math.abs(height - (y - .15)) >= .14) return false;
+    }
+    return true;
+  }
+
   get ids(): readonly GigId[] { return GIG_IDS; }
   info(id: GigId): GigInfo { return structuredClone(GIG_INFO[id]); }
   private poi(id: PoiId): PoiDescriptor {
@@ -221,12 +323,12 @@ export class GigCatalog {
     const current = this.build(saved.offer);
     const serialized = JSON.stringify(saved);
     if (JSON.stringify(current) === serialized) return saved;
-    if (current.config.kind === 'hay-haul' &&
+    if ((current.config.kind === 'hay-haul' || current.config.kind === 'mow-down') &&
         JSON.stringify(this.buildVariant(saved.offer, true)) === serialized) return current;
     return null;
   }
 
-  private buildVariant(offer: GigOffer, legacyHayDrop: boolean): GigSetup {
+  private buildVariant(offer: GigOffer, legacyLayout: boolean): GigSetup {
     if (offer.poiId !== GIG_INFO[offer.gigId]?.poiId ||
       offer.variantSeed !== this.makeOffer(offer.gigId, offer.difficulty, offer.cycle,
         Number(offer.id.split(':')[2])).variantSeed) throw new RangeError('Offer does not match catalog');
@@ -250,9 +352,9 @@ export class GigCatalog {
         const front = 2.75 * scale;
         const x = position.x + Math.cos(rotationY) * side + Math.sin(rotationY) * front;
         const z = position.z - Math.sin(rotationY) * side + Math.cos(rotationY) * front;
-        const target = legacyHayDrop ? plus(position, 0, -barn.size.y / 2 + 1, 0) :
+        const target = legacyLayout ? plus(position, 0, -barn.size.y / 2 + 1, 0) :
           { x, y: this.terrainY(x, z) + .9 * scale, z };
-        const radius = legacyHayDrop ? 6.5 : 2.6 * scale;
+        const radius = legacyLayout ? 6.5 : 2.6 * scale;
         config = { kind: 'hay-haul', barn: target, radius,
           bales: bales.map(b => ({ id: b.id, start: copy(b.transform.position) })),
           required: bales.length };
@@ -302,13 +404,9 @@ export class GigCatalog {
       }
       case 'mow-down': {
         const cols = 4 + tier, rows = 3 + (tier === 2 ? 1 : 0);
-        const center = plus(poi.center, 13 + rng.int(3), 0.2, 8 + rng.int(3));
-        const patches: Point[] = [];
-        for (let z = 0; z < rows; z++) for (let x = 0; x < cols; x++) {
-          const p = plus(center, (x - (cols - 1) / 2) * 2.1, 0, (z - (rows - 1) / 2) * 2.1);
-          p.y = this.terrainY(p.x, p.z) + 0.15;
-          patches.push(p);
-        }
+        const patches = legacyLayout
+          ? this.mowGrid(plus(poi.center, 13 + rng.int(3), .2, 8 + rng.int(3)), cols, rows)
+          : this.mowPatches(poi, cols, rows, rng);
         config = { kind: 'mow-down', patches, biteRadius: 2.4 };
         start = copy(patches[0]!);
         markers = patches.map((p, i) => marker('grass-' + i, 'Munch ' + (i + 1), p, 1, 'patch'));
@@ -416,7 +514,12 @@ export class GigCatalog {
     }
     const maxTicks = LIMIT_SECONDS[offer.gigId][tier]! * TICKS_PER_SECOND;
     const info = this.info(offer.gigId);
-    if (legacyHayDrop) info.instruction = 'Lick the marked bales into the barn. Chain-tow two for a combo.';
+    if (legacyLayout && offer.gigId === 'hay-haul') {
+      info.instruction = 'Lick the marked bales into the barn. Chain-tow two for a combo.';
+    }
+    if (legacyLayout && offer.gigId === 'mow-down') {
+      info.instruction = 'Eat every glowing grass patch. Plan an efficient bite path.';
+    }
     return {
       offer: structuredClone(offer), info, start, config,
       spawns, markers, maxTicks, goldTicks: Math.round(maxTicks * 0.55),

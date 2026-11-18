@@ -522,7 +522,8 @@ export class GameHud {
     pointerLocked: boolean, perf?: FramePerformance, hayHaul: HayHaulGuidance | null = null): void {
     const rules = game.rules;
     const inventory = rules.inventory.all;
-    const run = game.gigs.active;
+    const activeGig = game.gigs.active;
+    const run = activeGig?.status === 'running' ? activeGig : game.pendingGigResult;
     const state = deriveHudState({
       tier: rules.style.tier, meter: rules.style.meter, score: rules.style.score,
       combo: rules.style.combo, stamina: rules.abilities.stamina,

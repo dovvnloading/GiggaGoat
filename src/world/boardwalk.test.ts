@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { buildRapierColliders, createWorldScene, generateIsland, heightAt } from './index';
 import type { PropDescriptor } from './types';
@@ -132,9 +134,6 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
       const shift = (pier.transform.position.z - pier.size.z / 2 - centre.z) /
         (island.size / 600) + 38;
       expect(props.filter(p => p.kind === 'bunting')).toHaveLength(3);
-      expect(props.filter(p => p.kind === 'bunting').map(p =>
-        (p.transform.position.z - centre.z) / (island.size / 600) - shift))
-        .toEqual([-19, 3, 25]);
       expect(props.filter(p => p.kind === 'scaffold' &&
         Math.abs((p.transform.position.z - centre.z) / (island.size / 600) -
           shift - 55) < 0.001)).toHaveLength(0);
@@ -205,9 +204,96 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
       }
       expect(props.filter(p => p.kind === 'pier-rail').length).toBeGreaterThan(20);
       expect(props.filter(p => p.kind === 'bunting')
-        .every(p => !p.collidable && floorOf(p) > topOf(pier) + 5)).toBe(true);
+        .every(p => !p.collidable && floorOf(p) > topOf(pier) + scale)).toBe(true);
       expect(props.filter(p => p.kind === 'scaffold')
         .some(p => floorOf(p) < 0 && topOf(p) < topOf(pier) + 8)).toBe(true);
+    }
+  });
+
+  it('gives the authored pier two continuous end sills inside the original deck bounds', async () => {
+    const path = new URL('../../public/assets/library/custom/baaardwalk/boardwalk-pier.glb',
+      import.meta.url);
+    const file = Uint8Array.from(readFileSync(path));
+    const { scene } = await new GLTFLoader().parseAsync(file.buffer, '');
+    scene.updateMatrixWorld(true);
+    try {
+      const bounds = new THREE.Box3().setFromObject(scene);
+      for (const axis of ['x', 'y', 'z'] as const) {
+        const target = { x: 27, y: 0.92, z: 83 };
+        expect(bounds.getSize(new THREE.Vector3())[axis]).toBeCloseTo(target[axis], 5);
+      }
+      const edge = new THREE.Raycaster();
+      edge.far = 0.3;
+      const top = new THREE.Raycaster();
+      top.far = 0.25;
+      top.ray.direction.set(0, -1, 0);
+      for (const sign of [-1, 1]) {
+        edge.ray.direction.set(0, 0, -sign);
+        for (let x = -13.37; x < 13.5; x += 0.17) {
+          edge.ray.origin.set(x, 0.83, 41.63 * sign);
+          top.ray.origin.set(x, 1.05, 41.31 * sign);
+          for (const [ray, axis, surface] of [
+            [edge, 'z', 41.5 * sign], [top, 'y', 0.92],
+          ] as const) {
+            const hits = ray.intersectObject(scene, true);
+            expect(hits.length, `pier ${axis} at X=${x}`).toBeGreaterThan(0);
+            expect(hits.every(hit => {
+              const mesh = hit.object as THREE.Mesh<THREE.BufferGeometry, THREE.Material>;
+              return mesh.material.name === 'beam' && Math.abs(hit.point[axis] - surface) < 1e-5;
+            })).toBe(true);
+          }
+        }
+      }
+    } finally {
+      scene.traverse(object => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+          (object.material as THREE.Material).dispose();
+        }
+      });
+    }
+  });
+
+  it('hangs the pennants from side posts clear of the wheel in the default approach', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const props = island.props.filter(prop => prop.poiId === 'baa-ardwalk');
+    const pier = props.find(prop => prop.kind === 'pier')!;
+    const wheel = props.find(prop => prop.kind === 'ferris-wheel')!;
+    const bunting = props.filter(prop => prop.kind === 'bunting');
+    const deckTop = topOf(pier);
+    const [atLamps] = bunting.filter(prop => floorOf(prop) > deckTop + 5);
+    const atRails = bunting.filter(prop => topOf(prop) < deckTop + 2.65);
+    expect(atLamps).toBeDefined();
+    expect(atRails).toHaveLength(2);
+    for (const endpoint of [-1, 1]) {
+      const { x, z } = atLamps!.transform.position;
+      expect(props.some(prop => prop.kind === 'lamp' &&
+        Math.abs(prop.transform.position.x - x) < 0.01 &&
+        Math.abs(prop.transform.position.z - z - endpoint * atLamps!.size.x / 2) < 0.01 &&
+        topOf(prop) > topOf(atLamps!))).toBe(true);
+    }
+    for (const span of atRails) {
+      expect(props.some(prop => prop.kind === 'pier-rail' &&
+        Math.abs(prop.transform.position.x - span.transform.position.x) < 0.2 &&
+        Math.abs(prop.transform.position.z - span.transform.position.z) < 0.01 &&
+        prop.size.x >= span.size.x && topOf(prop) > topOf(span))).toBe(true);
+    }
+
+    const mark = ART_BOOKMARKS.find(bookmark => bookmark.id === '09')!;
+    const camera = new THREE.PerspectiveCamera(mark.fov, 1542 / 883, 0.25, 4000);
+    camera.position.copy(mark.camera);
+    camera.lookAt(mark.target.x, mark.target.y, mark.target.z);
+    camera.updateMatrixWorld();
+    const projectionX = (prop: PropDescriptor): number[] => {
+      const extents = boundsXZ(prop);
+      return [extents.minX, extents.maxX].flatMap(x =>
+        [floorOf(prop), topOf(prop)].flatMap(y => [extents.minZ, extents.maxZ]
+          .map(z => new THREE.Vector3(x, y, z).project(camera).x)));
+    };
+    const rightmostWheel = Math.max(...projectionX(wheel));
+    for (const span of bunting) {
+      expect(Math.min(...projectionX(span))).toBeGreaterThan(rightmostWheel + 0.04);
+      expect(span.collidable).toBe(false);
     }
   });
 

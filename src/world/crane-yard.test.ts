@@ -109,6 +109,31 @@ describe('Crane Yard concept-art construction site', () => {
     expect(props.length).toBeGreaterThan(85);
   });
 
+  it('sets breakable ground-level freight outside a clear gate-to-yard lane', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const props = yardProps(island);
+    const crates = props.filter(prop => prop.kind === 'crate');
+    const breakables = crates.filter(prop => prop.breakable);
+    expect(breakables).toHaveLength(8);
+    expect(crates.filter(prop => prop.body.type === 'static')).toHaveLength(3);
+    for (const prop of breakables) {
+      const { x, y, z } = prop.transform.position;
+      const local = rel(island, prop);
+      expect(prop.body.type).toBe('dynamic');
+      expect(prop.lickable).toBe(true);
+      expect(Math.max(prop.size.x, prop.size.y, prop.size.z)).toBeLessThan(1.4);
+      expect(y - prop.size.y / 2).toBeCloseTo(heightAt(island, x, z), 6);
+      const cornerRadius = Math.hypot(prop.size.x, prop.size.z) / 2;
+      expect(Math.abs(local.x - 20) - cornerRadius).toBeGreaterThan(5);
+      for (const other of breakables) {
+        if (other === prop) continue;
+        const point = other.transform.position;
+        const otherRadius = Math.hypot(other.size.x, other.size.z) / 2;
+        expect(Math.hypot(x - point.x, z - point.z)).toBeGreaterThan(cornerRadius + otherRadius);
+      }
+    }
+  });
+
   it('anchors the authored site banner without replacing the peak or cape flags', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 129 });
     const banners = yardProps(island).filter(p => p.kind === 'site-banner');

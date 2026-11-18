@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { IslandData, PropDescriptor, RiverPoint, Vec3 } from './types';
+import type { IslandData, PropDescriptor, RiverPoint, Vec2, Vec3 } from './types';
 import { gridSample } from './terrain';
 import { skyColorGLSL, skyUniforms } from './visual-sky';
 import { findBookmark } from './viewer/bookmarks';
@@ -289,33 +289,61 @@ function resampleRiver(points: readonly RiverPoint[], spacing: number): RiverPoi
   return stations;
 }
 
-function riverMesh(points: readonly RiverPoint[], material: THREE.Material,
-  island: IslandData, damCenter?: { x: number; z: number }): THREE.Mesh {
-  const scale = island.size / 600;
+const FOREST_OUTFLOW_START = 11;
+
+function riverRibbonSections(points: readonly RiverPoint[], scale: number) {
   const stations = resampleRiver(points, 2 * scale);
-  const vertices: number[] = [], uvs: number[] = [], indices: number[] = [];
-  let accumulated = 0;
-  for (let i = 0; i < stations.length; i++) {
-    const p = stations[i]!, a = stations[Math.max(0, i - 1)]!;
-    const b = stations[Math.min(stations.length - 1, i + 1)]!;
+  return stations.map((center, i) => {
+    const a = stations[Math.max(0, i - 1)]!, b = stations[Math.min(stations.length - 1, i + 1)]!;
     const dx = b.x - a.x, dz = b.z - a.z;
     const length = Math.hypot(dx, dz) || 1;
     const nx = -dz / length, nz = dx / length;
+    return {
+      center,
+      left: { x: center.x - nx * center.width / 2, z: center.z - nz * center.width / 2 },
+      right: { x: center.x + nx * center.width / 2, z: center.z + nz * center.width / 2 },
+    };
+  });
+}
+
+/** Clearance from the XZ footprint built by the forest river mesh. */
+export function makeForestOutflowClearance(island: IslandData): (x: number, z: number, radius: number) => boolean {
+  const sections = riverRibbonSections(island.river.slice(FOREST_OUTFLOW_START), island.size / 600);
+  const triangles: THREE.Triangle[] = [];
+  const vertex = (point: Vec2) => new THREE.Vector3(point.x, 0, point.z);
+  for (let i = 1; i < sections.length; i++) {
+    const a = sections[i - 1]!, b = sections[i]!;
+    const leftA = vertex(a.left), rightA = vertex(a.right);
+    const leftB = vertex(b.left), rightB = vertex(b.right);
+    triangles.push(new THREE.Triangle(leftA, rightA, leftB), new THREE.Triangle(rightA, rightB, leftB));
+  }
+  const probe = new THREE.Vector3(), closest = new THREE.Vector3();
+  return (x, z, radius) => {
+    probe.set(x, 0, z);
+    return triangles.every(triangle =>
+      triangle.closestPointToPoint(probe, closest).distanceToSquared(probe) >= radius ** 2);
+  };
+}
+
+function riverMesh(points: readonly RiverPoint[], material: THREE.Material,
+  island: IslandData, damCenter?: { x: number; z: number }): THREE.Mesh {
+  const scale = island.size / 600;
+  const sections = riverRibbonSections(points, scale);
+  const vertices: number[] = [], uvs: number[] = [], indices: number[] = [];
+  let accumulated = 0;
+  for (let i = 0; i < sections.length; i++) {
+    const { center: p, left, right } = sections[i]!;
     if (i) {
-      const prev = stations[i - 1]!;
+      const prev = sections[i - 1]!.center;
       accumulated += Math.hypot(p.x - prev.x, p.z - prev.z);
     }
-    const leftX = p.x - nx * p.width * 0.5;
-    const leftZ = p.z - nz * p.width * 0.5;
-    const rightX = p.x + nx * p.width * 0.5;
-    const rightZ = p.z + nz * p.width * 0.5;
     // Sample each bank independently: a shared centreline Y would still
     // leave the wide outer bank floating above uneven ground.
-    vertices.push(leftX, gridSample(island, leftX, leftZ) + 0.15 * scale, leftZ,
-      rightX, gridSample(island, rightX, rightZ) + 0.15 * scale, rightZ);
+    vertices.push(left.x, gridSample(island, left.x, left.z) + 0.15 * scale, left.z,
+      right.x, gridSample(island, right.x, right.z) + 0.15 * scale, right.z);
     uvs.push(0, accumulated / 10, 1, accumulated / 10);
     if (i > 0) {
-      const prev = stations[i - 1]!;
+      const prev = sections[i - 1]!.center;
       const horizontalRun = Math.hypot(p.x - prev.x, p.z - prev.z);
       const nearDam = damCenter !== undefined && Math.hypot(
         (prev.x + p.x) / 2 - damCenter.x,
@@ -645,7 +673,7 @@ export function buildWaterVisuals(island: IslandData,
   const upstream = riverMesh(island.river.slice(0, 5), stream.material,
     island, damPlot?.center);
   upstream.name = 'rippling-river';
-  const forestOutflow = riverMesh(island.river.slice(11), stream.material,
+  const forestOutflow = riverMesh(island.river.slice(FOREST_OUTFLOW_START), stream.material,
     island, damPlot?.center);
   forestOutflow.name = 'forest-river-after-dam';
   // Both reaches use the same animated shader. Merge their disconnected

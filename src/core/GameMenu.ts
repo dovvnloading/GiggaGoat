@@ -104,20 +104,21 @@ const CSS = `
 .gg-shell .gg-control-table thead{color:#ffe092;background:#19173194}
 .gg-shell .gg-control-table td{color:#fff3e8;font-weight:700}
 .gg-shell .gg-settings-head{display:flex;align-items:start;justify-content:space-between;gap:12px}
-.gg-shell .gg-icon-button{display:grid;place-items:center;flex:0 0 auto;
-  width:53px;height:53px;border:0;padding:0;color:#fff7df;
-  background:var(--gg-sprite) center/contain no-repeat;transition:transform .08s}
-.gg-shell .gg-icon-button:hover{transform:scale(1.06)}
-.gg-shell .gg-icon-button:active{transform:scale(.96)}
+.gg-shell .gg-settings-back{display:inline-flex;align-items:center;flex:0 0 auto;
+  min-height:44px;border:0;border-radius:9px;padding:0 6px 0 40px;color:#fff7df;
+  background:var(--gg-sprite) left center/34px 34px no-repeat;
+  font-size:13px;text-shadow:1px 2px #493277;transition:transform .08s}
+.gg-shell .gg-settings-back:hover{color:#ffe092}
+.gg-shell .gg-settings-back:active{transform:translateY(1px)}
 .gg-shell .gg-settings-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:3px;margin:1px 0 13px}
-.gg-shell .gg-tab{display:grid;place-items:end center;min-width:0;min-height:62px;
-  padding:9px 2px 6px;border:17px solid transparent;
-  border-image:var(--gg-sprite) 47 fill / 17px / 0 stretch;
-  background:transparent;color:#fff5df;text-shadow:1px 2px #6f3d30;
-  font-size:clamp(10px,1.15vw,13px);letter-spacing:.2px}
+  gap:5px;margin:1px 0 13px}
+.gg-shell .gg-tab{display:grid;place-items:center;min-width:0;min-height:49px;
+  padding:4px 1px;border:11px solid transparent;
+  border-image:var(--gg-sprite) 42 fill / 11px / 0 stretch;
+  background:transparent;color:#fff5df;text-shadow:1px 2px #493277;
+  font-size:clamp(11px,1.3vw,14px);letter-spacing:.2px;text-align:center}
 .gg-shell .gg-tab[aria-selected="true"]{color:#4c2b1a;text-shadow:0 1px #ffe39c}
-.gg-shell .gg-tab>span{display:block;transform:translateY(8px);pointer-events:none}
+.gg-shell .gg-tab>span{pointer-events:none}
 .gg-shell .gg-settings-content{min-height:210px;padding:4px 2px}
 .gg-shell .gg-settings-content>.gg-setting{margin:0 0 20px}
 .gg-shell .gg-setting-row{display:flex;align-items:center;justify-content:space-between;
@@ -126,8 +127,7 @@ const CSS = `
   background:var(--gg-sprite) center/100% 100% no-repeat}
 .gg-shell .gg-check{flex:0 0 auto;width:48px;height:48px;padding:0;border:0;
   background:var(--gg-sprite) center/100% 100% no-repeat}
-.gg-shell .gg-settings-bottom{display:flex;align-items:center;gap:12px;margin-top:7px}
-.gg-shell .gg-settings-bottom span{font-size:11px;line-height:1.4;color:#dfd0e8}
+.gg-shell .gg-settings-note{margin:7px 0 0;font-size:12px;line-height:1.4;color:#dfd0e8}
 .gg-shell .gg-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;
   clip-path:inset(50%);white-space:nowrap}
 @media(max-height:660px) and (min-width:511px){
@@ -154,7 +154,7 @@ const CSS = `
  .gg-shell .gg-title-actions{grid-template-columns:1fr}
  .gg-shell .gg-quick-start dl{grid-template-columns:repeat(2,minmax(0,1fr))}
  .gg-shell .gg-control-table :is(th,td){padding:4px}
- .gg-shell .gg-tab{min-height:54px;border-width:13px;border-image-width:13px}
+ .gg-shell .gg-tab{min-height:44px;border-width:9px;border-image-width:9px}
 }
 `;
 const esc = (value: unknown): string => String(value).replace(/[&<>"']/g, c =>
@@ -167,9 +167,6 @@ const menuButton = (action: string, label: string, primary = false): string => {
     ` ${menuSkin(normal)} data-sprite-normal="${normal}" data-sprite-hover="${hover}"` +
     ` data-sprite-pressed="${pressed}"><span>${label}</span></button>`;
 };
-const iconButton = (name: MenuSpriteName, label: string): string =>
-  `<button type="button" data-action="back" class="gg-icon-button" aria-label="${label}"` +
-  ` title="${label}" ${menuSkin(name)}><span class="gg-visually-hidden">${label}</span></button>`;
 type SettingsTab = 'controls' | 'video' | 'audio';
 const SETTINGS_TABS: readonly SettingsTab[] = ['controls', 'video', 'audio'];
 const nice = (value: string): string => value.replace(/-/g, ' ').toUpperCase();
@@ -223,7 +220,6 @@ export class GameMenu {
   private mode: ModeId = 'rising-tide';
   private botCount = 3;
   private difficulty: BotDifficulty = 'normal';
-  private lastGigAttempt = 0;
   private lastSavedTick = 0;
   private padDirection = 0;
   private padHorizontal = 0;
@@ -344,6 +340,10 @@ export class GameMenu {
 
   private save(): void { saveGame(this.game, this.settings); }
   private setScreen(next: Screen): void {
+    if (this.screen === 'gig-results' && next !== 'gig-results') {
+      this.game.acknowledgeGigResult();
+      this.save();
+    }
     this.screen = next;
     // Leaving gameplay intentionally can asynchronously release pointer lock.
     // Forget that lock before a later menu action resumes the game.
@@ -597,11 +597,7 @@ export class GameMenu {
     if (this.screen === 'playing' && this.game.party.match?.phase === 'results') {
       this.setScreen('party-results');
     }
-    const gig = this.game.gigs.active;
-    if (this.screen === 'playing' && gig &&
-      (gig.status === 'completed' || gig.status === 'failed') &&
-      gig.attemptId !== this.lastGigAttempt) {
-      this.lastGigAttempt = gig.attemptId;
+    if (this.screen === 'playing' && this.game.pendingGigResult) {
       this.save();
       this.setScreen('gig-results');
     }
@@ -677,14 +673,15 @@ export class GameMenu {
         ` step="${step}" value="${value}" ${menuSkin(MENU_SPRITES.slider, '--gg-pct:' + pct + '%;')}>` +
         `<output for="gg-setting-${key}">${output}</output></div></label>`;
     };
-    const tabs = SETTINGS_TABS.map((tab, index) => {
+    const tabs = SETTINGS_TABS.map(tab => {
       const selected = tab === this.settingsTab;
-      const normal = selected ? MENU_SPRITES.tabGold :
-        index === 0 ? MENU_SPRITES.tabBrown : MENU_SPRITES.tabPurple;
+      const normal = selected ? MENU_SPRITES.yellowNormal : MENU_SPRITES.purpleNormal;
+      const hover = selected ? MENU_SPRITES.yellowHover : MENU_SPRITES.purpleHover;
+      const pressed = selected ? MENU_SPRITES.yellowPressed : MENU_SPRITES.purplePressed;
       return `<button type="button" role="tab" id="gg-tab-${tab}" data-tab="${tab}"` +
         ` aria-selected="${selected}" aria-controls="gg-settings-panel" class="gg-tab"` +
         ` ${menuSkin(normal)} data-sprite-normal="${normal}"` +
-        ` data-sprite-hover="${MENU_SPRITES.tabGold}" data-sprite-pressed="${MENU_SPRITES.tabGold}">` +
+        ` data-sprite-hover="${hover}" data-sprite-pressed="${pressed}">` +
         `<span>${nice(tab)}</span></button>`;
     }).join('');
     const controls = slider('mouseSensitivity', 'MOUSE SENSITIVITY', .25, 3, .05,
@@ -718,13 +715,14 @@ export class GameMenu {
         Math.round(s.effectsVolume * 100) + '%');
     const content = this.settingsTab === 'controls' ? controls :
       this.settingsTab === 'video' ? video : audio;
+    const backTarget = this.settingsReturn === 'pause' ? 'pause' : 'title';
     return `<div class="gg-settings-head"><div><div class="gg-shell-eyebrow">TUNE YOUR GOAT</div>` +
-      `<h2>SETTINGS</h2></div>${iconButton(MENU_SPRITES.close, 'Close settings')}</div>` +
+      `<h2>SETTINGS</h2></div><button type="button" data-action="back" class="gg-settings-back"` +
+      ` aria-label="Back to ${backTarget}" ${menuSkin(MENU_SPRITES.back)}>Back</button></div>` +
       `<nav class="gg-settings-tabs" role="tablist" aria-label="Settings sections">${tabs}</nav>` +
       `<div class="gg-settings-content" role="tabpanel" id="gg-settings-panel"` +
       ` aria-labelledby="gg-tab-${this.settingsTab}">${content}</div>` +
-      `<div class="gg-settings-bottom">${iconButton(MENU_SPRITES.back, 'Back')}` +
-      `<span>Changes apply immediately and save with your game.</span></div>`;
+      `<p class="gg-settings-note">Changes apply immediately and save with your game.</p>`;
   }
   private boardBody(): string {
     const poi = this.boardPoi;
