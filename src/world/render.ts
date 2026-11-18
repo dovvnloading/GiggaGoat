@@ -17,6 +17,7 @@ import { buildDamVisuals } from './visual-dam';
 import { buildLighthouseVisuals, makeCapeLighting } from './visual-lighthouse';
 import { buildHoofingtonVisuals } from './visual-hoofington';
 import { buildDowntownVisuals } from './visual-downtown';
+import { buildMountainWayfinding } from './visual-mountain';
 import { buildSkyVisuals, type LightingPreset } from './visual-sky';
 
 export { isDowntownRoadOverlay, isHoofingtonTrailOverlay } from './road-ribbons';
@@ -398,6 +399,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(dam.group);
   const lighthouse = buildLighthouseVisuals(scenery, props.group, capeLighting);
   group.add(lighthouse.group);
+  group.add(buildMountainWayfinding(island));
   const fogColor = new THREE.Color();
   group.add(sky.group);
   const sun = new THREE.DirectionalLight(0xffe9c5, 1.65);
