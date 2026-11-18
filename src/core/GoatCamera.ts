@@ -1,5 +1,4 @@
 import type { Vec3 } from '../physics';
-import type { ScreenRect } from './HudOcclusion';
 
 // At the title/start frame the goat should show its face and both horn curls,
 // not only its back. Gameplay camera controls remain freely orbitable after play.
@@ -29,13 +28,22 @@ export function goatCameraLookAhead(size: number, yaw: number, clearance = 1): V
   };
 }
 
-/** Keep the entire projected goat above the compact build tray, at roughly
- * 78% of the viewport height like the HUD reference. The camera's view offset
- * changes framing only; it never changes the physics/orbit collision ray. */
-export function goatCameraVerticalOffset(goat: ScreenRect, viewport: ScreenRect): number {
-  const height = viewport.bottom - viewport.top;
-  if (height <= 0 || !Number.isFinite(height)) return 0;
-  // 150px leaves space for the tray, raised title badge, and a gap at 720p.
-  const safeBottom = Math.min(viewport.top + height * .775, viewport.bottom - 150);
-  return goat.bottom - safeBottom;
+/** Frame a nominal heel in the unobstructed chase pose. The lens only responds
+ * to the chosen orbit, size and viewport, so the animated ragdoll cannot move it. */
+export function goatCameraVerticalOffset(size: number, pitch: number, fov: number,
+  height: number): number {
+  if (!(height > 0)) return 0;
+  const eye = goatCameraOffset(size, 0, pitch);
+  const aim = goatCameraLookAhead(size, 0);
+  const forwardY = aim.y - eye.y, forwardZ = aim.z - eye.z;
+  const heelY = -.38 * size - eye.y, heelZ = .5 * size - eye.z;
+  // Camera-space up and depth share the same normalisation, which cancels in
+  // the perspective divide.
+  const up = -forwardZ * heelY + forwardY * heelZ;
+  const depth = forwardY * heelY + forwardZ * heelZ;
+  if (depth <= 0) return 0;
+  const bottom = .5 * (1 - up / (depth * Math.tan(fov * Math.PI / 360)));
+  const safeBottom = Math.min(.775, 1 - 150 / height);
+  const lift = (bottom - safeBottom) * height;
+  return Number.isFinite(lift) ? Math.max(0, Math.min(height * .1, lift)) : 0;
 }
