@@ -71,17 +71,30 @@ export class BalanceController {
     const torso = g.torso;
     const q = torso.rotation();
     const omega = torso.angvel();
-    const tilt = cross(rotate(q,V(0,1,0)),V(0,1,0));
-    const currentForward = rotate(q,V(0,0,-1));
+    const bodyUp = rotate(q, V(0, 1, 0));
+    const tilt = cross(bodyUp, V(0, 1, 0));
+    const currentForward = rotate(q, V(0, 0, -1));
     const wanted = forward(g.locomotion.heading);
-    const yawError = Math.atan2(cross(currentForward,wanted).y,dot(currentForward,wanted));
-    const restoring = V(
-      tilt.x*this.tuning.uprightStiffness - omega.x*this.tuning.uprightDamping,
-      yawError*this.tuning.turnStiffness - omega.y*this.tuning.turnDamping,
-      tilt.z*this.tuning.uprightStiffness - omega.z*this.tuning.uprightDamping,
+    const yawError = Math.atan2(cross(currentForward, wanted).y, dot(currentForward, wanted));
+    // Ground contacts from the driven legs can exert much more pitch torque
+    // than the air controller. Keep steering from consuming the tilt budget.
+    const supported = g.locomotion.grounded;
+    // A loaded tongue needs room to pull the head and torso through a ramp.
+    const tethered = g.interactions.isTongueAttached;
+    const tiltGain = supported ? (tethered ? 2.5 : 6) : 1;
+    const turnGain = supported ? (tethered ? 2 : 5) : 1;
+    const pitchRoll = V(
+      tilt.x * this.tuning.uprightStiffness * tiltGain - omega.x * this.tuning.uprightDamping * Math.sqrt(tiltGain),
+      0,
+      tilt.z * this.tuning.uprightStiffness * tiltGain - omega.z * this.tuning.uprightDamping * Math.sqrt(tiltGain),
     );
-    // Accelerations are clamped. Angular inertia scales as mass * length^2.
-    const angularImpulse = mul(clampLength(restoring,30),g.mass*g.size*g.size*.11*dt);
+    const turn = yawError * this.tuning.turnStiffness * turnGain -
+      omega.y * this.tuning.turnDamping * Math.sqrt(turnGain);
+    const angularAcceleration = supported
+      ? add(clampLength(pitchRoll, 180), V(0, clamp(turn, -130, 130), 0))
+      : clampLength(V(pitchRoll.x, turn, pitchRoll.z), 30);
+    // Angular inertia scales as mass * length^2.
+    const angularImpulse = mul(angularAcceleration, g.mass * g.size * g.size * .11 * dt);
     torso.applyTorqueImpulse(angularImpulse,true);
 
     const hit = g.locomotion.groundHit;

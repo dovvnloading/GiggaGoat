@@ -51,12 +51,13 @@ export interface LocomotionBlend {
   readonly Run: number;
 }
 
-/** Piecewise crossfade: at 1.2 m/s Walk is 100%, at 3.5 m/s Run is 100%. */
-export function locomotionBlend(speed: number): LocomotionBlend {
+// Travel speed fades the goat into motion. The controller decides whether the
+// gait is a walk or a gallop, so normal movement cannot select the Run clip.
+export function locomotionBlend(speed: number, galloping: boolean): LocomotionBlend {
   const s = Number.isFinite(speed) ? Math.max(0, speed) : 0;
-  if (s <= 1.2) return { Idle: 1 - s / 1.2, Walk: s / 1.2, Run: 0 };
-  if (s < 3.5) return { Idle: 0, Walk: (3.5 - s) / 2.3, Run: (s - 1.2) / 2.3 };
-  return { Idle: 0, Walk: 0, Run: 1 };
+  const moving = Math.min(1, s / 1.2);
+  const run = galloping ? Math.max(0, Math.min(1, (s - 4.4) / 2.1)) : 0;
+  return { Idle: 1 - moving, Walk: moving * (1 - run), Run: moving * run };
 }
 
 /** Legacy pose vocabulary plus a direct "jump" alias for gameplay callers. */

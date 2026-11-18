@@ -263,7 +263,7 @@ export class GoatCharacter {
       tongueAttached: goat.interactions.isTongueAttached,
       clinging: goat.locomotion.isClinging,
       pose: goat.pose,
-      sprinting: goat.locomotion.input.sprint,
+      sprinting: goat.pose === 'gallop',
       grounded: goat.locomotion.grounded,
     }) : this.previewAction;
 
@@ -315,7 +315,8 @@ export class GoatCharacter {
       // cadence size-independent while still responding to actual ground speed.
       const velocity = goat.torso.linvel();
       const speed = Math.hypot(velocity.x, velocity.z) / goat.size ** .16;
-      const desired = locomotionBlend(speed);
+      const groundedStride = goat.locomotion.grounded && !goat.isRagdoll;
+      const desired = locomotionBlend(groundedStride ? speed : 0, goat.pose === 'gallop');
       const smoothing = frameDt ? 1 - Math.exp(-12 * frameDt) : 1;
       for (const clip of LOCOMOTION) {
         rig.weights[clip] += (desired[clip] - rig.weights[clip]) * smoothing;

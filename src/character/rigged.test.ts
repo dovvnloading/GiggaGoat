@@ -45,20 +45,20 @@ describe('GLB variant selection', () => {
 });
 
 describe('physics speed to rig locomotion', () => {
-  it('keeps the blend normalized and honors the Walk / Run authored speeds', () => {
-    expect(locomotionBlend(0)).toEqual({ Idle: 1, Walk: 0, Run: 0 });
-    expect(locomotionBlend(1.2)).toEqual({ Idle: 0, Walk: 1, Run: 0 });
-    expect(locomotionBlend(3.5)).toEqual({ Idle: 0, Walk: 0, Run: 1 });
-    expect(locomotionBlend(9)).toEqual({ Idle: 0, Walk: 0, Run: 1 });
-    const between = locomotionBlend(2.35);
-    expect(between.Idle).toBe(0);
-    expect(between.Walk).toBeCloseTo(.5, 8);
-    expect(between.Run).toBeCloseTo(.5, 8);
-    expect(locomotionBlend(.6)).toEqual({ Idle: .5, Walk: .5, Run: 0 });
-    for (const speed of [0, .2, 1, 1.2, 1.8, 3.1, 3.5, 12, -3, NaN]) {
-      const weights = Object.values(locomotionBlend(speed));
-      expect(weights.reduce((sum, value) => sum + value, 0)).toBeCloseTo(1, 8);
-      for (const weight of weights) expect(weight).toBeGreaterThanOrEqual(0);
+  it('keeps the same walk up to full ground speed and crossfades into a genuine gallop', () => {
+    expect(locomotionBlend(0, false)).toEqual({ Idle: 1, Walk: 0, Run: 0 });
+    expect(locomotionBlend(.6, false)).toEqual({ Idle: .5, Walk: .5, Run: 0 });
+    expect(locomotionBlend(4.4, false)).toEqual({ Idle: 0, Walk: 1, Run: 0 });
+    expect(locomotionBlend(4.4, true)).toEqual({ Idle: 0, Walk: 1, Run: 0 });
+    expect(locomotionBlend(5.45, true).Run).toBeCloseTo(.5, 8);
+    expect(locomotionBlend(7.6, true)).toEqual({ Idle: 0, Walk: 0, Run: 1 });
+    expect(locomotionBlend(7.6, false).Run).toBe(0);
+    for (const speed of [0, .2, 1, 1.2, 1.8, 4.4, 5.45, 6.5, 12, -3, NaN]) {
+      for (const galloping of [false, true]) {
+        const weights = Object.values(locomotionBlend(speed, galloping));
+        expect(weights.reduce((sum, value) => sum + value, 0)).toBeCloseTo(1, 8);
+        for (const weight of weights) expect(weight).toBeGreaterThanOrEqual(0);
+      }
     }
   });
 });
