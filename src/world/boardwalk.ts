@@ -1,6 +1,11 @@
 import type { IslandData, PropDescriptor, PropKind } from './types';
 import { gridSample } from './terrain';
 
+export function boardwalkPierDecks(island: IslandData): PropDescriptor[] {
+  return island.props.filter(prop =>
+    prop.poiId === 'baa-ardwalk' && prop.kind === 'pier' && prop.collidable);
+}
+
 interface Detail {
   /** The ground or deck surface supporting the bottom of this object. */
   floor?: number;

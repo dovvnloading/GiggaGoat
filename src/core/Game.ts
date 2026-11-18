@@ -17,6 +17,7 @@ import {
   DynamicBodyBudget, applyPhysicsMaterial,
 } from '../chaos';
 import { addRapierPropCollider } from '../world/colliders';
+import { boardwalkPierDecks } from '../world/boardwalk';
 import { DAM_FRONT_GUARD } from '../world/the-dam';
 import { GigSession } from './GigSession';
 import { PartySession } from './PartySession';
@@ -128,8 +129,7 @@ export class Game {
     for (const [id, collider] of colliders.props) {
       if (id.startsWith(DAM_FRONT_GUARD.prefix)) this.damFrontGuardHandles.add(collider.handle);
     }
-    this.pierDecks = island.props.filter(prop =>
-      prop.poiId === 'baa-ardwalk' && prop.kind === 'pier' && prop.collidable);
+    this.pierDecks = boardwalkPierDecks(island);
     // Restore only validated, complete progression. Any corrupt save is ignored.
     try {
       this.rules = options.progress ? GameSimulation.fromJSON(options.progress.gameplay) :
@@ -830,7 +830,7 @@ export class Game {
 
   get location(): string {
     const p = this.goat.torso.translation();
-    const zone = zoneAt(this.island, p.x, p.z);
+    const zone = this.isAbovePierDeck(p) ? 'baa-ardwalk' : zoneAt(this.island, p.x, p.z);
     const poi = this.island.pois.find(site => site.id === zone) ??
       this.island.pois.find(site => Math.hypot(site.center.x - p.x, site.center.z - p.z) < site.radius * 1.25);
     return poi?.name ?? 'Billy Isle';

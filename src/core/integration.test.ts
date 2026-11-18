@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Raycaster, Vector3 } from 'three';
 import { Game, FIXED_DT } from './Game';
+import { renderHudMinimap } from './HudArtwork';
 import { V, forward, RAPIER, collisionGroups } from '../physics';
 import { createWorldScene, heightAt } from '../world';
 import { DAM_DECK_HEIGHT, getDamPlacement } from '../world/the-dam';
@@ -135,13 +136,20 @@ describe('Walkable roads and coastal routes', () => {
       const finish = wheel!.transform.position.z + wheel!.size.z / 2 - 2;
       expect(finish).toBeGreaterThan(game.island.size * .57);
       standAt(game, x, start);
-      for (let z = start + 6; z < finish; z += 6) walkTo(game, { x, z });
+      for (let z = start + 6; z < finish; z += 6) {
+        walkTo(game, { x, z });
+        expect(game.location).toBe('Baa-ardwalk');
+      }
       walkTo(game, { x, z: finish });
       expect(game.respawns).toBe(0);
       expect(game.goat.torso.translation().z).toBeGreaterThan(finish - .65);
+      expect(game.location).toBe('Baa-ardwalk');
+      const mapSvg = renderHudMinimap(game.island, { x, z: finish });
+      expect(mapSvg.match(/data-pier-deck/g)).toHaveLength(decks.length);
 
       // The exception must stay on the pier, even at the same offshore Z.
       game.teleport(V(x + wheel!.size.x, game.goat.torso.translation().y, finish), 0);
+      expect(game.location).toBe('Billy Isle');
       game.step();
       expect(game.respawns).toBe(1);
     } finally { game.dispose(); }

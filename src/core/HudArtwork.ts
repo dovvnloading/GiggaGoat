@@ -1,4 +1,5 @@
 import { biomeAt, type IslandData, type PropDescriptor } from '../world';
+import { boardwalkPierDecks } from '../world/boardwalk';
 import { projectHudMap } from './GameHudState';
 import { HUD_SPRITES, hudSpriteImage, hudSpriteUrl, type HudSpriteName } from './HudSprites';
 
@@ -69,6 +70,19 @@ export function renderHudMinimap(island: IslandData, origin: { x: number; z: num
       '<polyline points="' + points + '" stroke="' + (road.type === 'road' ? '#c3b79c' : '#f3e6b5') +
       '" stroke-width="' + width + '" fill="none" stroke-linecap="round" stroke-linejoin="round"/>');
   }
+  const decking = boardwalkPierDecks(island).map(deck => {
+    const { position, rotationY } = deck.transform;
+    const c = Math.cos(rotationY), s = Math.sin(rotationY);
+    const w = deck.size.x / 2, d = deck.size.z / 2;
+    const corners = [[-w, -d], [w, -d], [w, d], [-w, d]] as const;
+    const points = corners.map(([x, z]) => {
+      const m = projectHudMap({ x: position.x + c * x + s * z,
+        z: position.z + c * z - s * x }, origin);
+      return n(m.x) + ',' + n(m.y);
+    }).join(' ');
+    return '<polygon data-pier-deck points="' + points +
+      '" fill="#d6a072" stroke="#775537" stroke-width="2" stroke-linejoin="round"/>';
+  }).join('');
   const trees: string[] = [], structures: string[] = [];
   let count = 0;
   for (const prop of island.props) {
@@ -88,7 +102,7 @@ export function renderHudMinimap(island: IslandData, origin: { x: number; z: num
     return mapImage(HUD_SPRITES.mapPin, point.x, point.y - 2, 16, 20);
   }).join('');
   return '<defs><clipPath id="gg-hud-map-clip"><circle cx="140" cy="140" r="132"/></clipPath></defs>' +
-    '<g clip-path="url(#gg-hud-map-clip)">' + terrain.join('') + roads.join('') +
+    '<g clip-path="url(#gg-hud-map-clip)">' + terrain.join('') + roads.join('') + decking +
     trees.join('') + structures.join('') + boards +
     '<g data-player><path d="M0 -17 L12 14 L0 8 L-12 14Z" fill="#fff7df" stroke="#88411d" stroke-width="6" stroke-linejoin="round"/>' +
     '<path d="M0 -17 L12 14 L0 8 L-12 14Z" fill="#ff8e28" stroke="#ffe883" stroke-width="2"/></g></g>' +
