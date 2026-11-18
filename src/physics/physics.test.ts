@@ -176,6 +176,28 @@ describe('real Rapier physics simulation', () => {
     expect(g.isRagdoll).toBe(false);
   });
 
+  it('rejects a steep sphere contact at a short barrier with no face ahead of the head', async () => {
+    const w = await scene(), g = goat(w, .6);
+    const cap = w.raw.createCollider(RAPIER.ColliderDesc.cuboid(3, .24, .15)
+      .setTranslation(0, .24, -2.5).setCollisionGroups(collisionGroups('terrain')));
+    simulate(w, 80 / 60);
+    const motion = V(0, 0, -1);
+    const head = g.head;
+    let sawEdge = false;
+    g.locomotion.setInput({ z: .65, cameraYaw: 0, canClimb: true });
+    for (let tick = 0; tick < 120; tick++) {
+      const hit = w.shapeCast(head.translation(), head.rotation(), motion, head.collider(0).shape,
+        .14 * g.size, { predicate: collider => !g.ownsBody(collider.parent()) });
+      if (hit?.collider.handle === cap.handle && hit.normal.y < .60 && hit.normal.z > .45) {
+        sawEdge = true;
+        expect(g.locomotion.findClimbSurface(motion)).toBeNull();
+      }
+      w.step(1 / 60);
+      expect(g.locomotion.isClinging).toBe(false);
+    }
+    expect(sawEdge).toBe(true);
+  });
+
   it('scales jump height and mass sensibly across size tiers', async () => {
     const measure = async (size: GoatSize): Promise<{height:number;mass:number}> => {
       const w = await scene(), g = goat(w,size);

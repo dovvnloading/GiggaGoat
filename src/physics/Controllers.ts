@@ -216,9 +216,18 @@ export class LocomotionController {
     const head = g.head;
     const position = head.translation();
     if (dot(sub(position, torso), wish) <= 0) return null;
-    const close = g.world.shapeCast(position, head.rotation(), wish, head.collider(0).shape,
+    const headCollider = head.collider(0);
+    const close = g.world.shapeCast(position, head.rotation(), wish, headCollider.shape,
       .14 * g.size, query);
-    return canClimb(close) ? close : null;
+    if (!canClimb(close) || close.body?.isDynamic()) return null;
+    // A swept sphere can contact a low edge or end cap. Require the same
+    // steep face ahead of the forehead, within the sphere's contact reach.
+    const aboveHead = .10 * g.size;
+    const faceReach = (headCollider.radius() + Math.max(0, close.normal.y) * aboveHead + .035 * g.size) /
+      -dot(wish, close.normal);
+    const face = g.world.raycast(add(position, V(0, aboveHead, 0)), wish,
+      close.distance + faceReach, query);
+    return canClimb(face) && face.collider.handle === close.collider.handle ? face : null;
   }
 
   update(dt: number): void {

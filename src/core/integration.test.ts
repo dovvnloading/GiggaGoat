@@ -166,6 +166,7 @@ describe('Walkable roads and coastal routes', () => {
       for (let i = 0; i < 150; i++) {
         game.step({ moveZ: 1, cameraYaw: Math.PI });
         expect(game.goat.isRagdoll).toBe(false);
+        expect(game.goat.locomotion.isClinging).toBe(false);
       }
       expect(game.goat.torso.translation().z).toBeLessThan(wheel!.transform.position.z + wheel!.size.z / 2);
       expect(game.respawns).toBe(0);

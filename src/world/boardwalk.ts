@@ -96,23 +96,23 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
     }
   }
 
-  // Painted white two-rail balustrades are solid climbable edge protection.
+  // Painted white two-rail balustrades keep ordinary walking on the deck.
   // Leave the landward entrance open; return around the widened wheel deck.
   for (let z = -33; z <= 39; z += 8) {
     for (const side of [-1, 1]) {
       place('pier-rail', side * 13.2, z, 8.0, 2.65, 0.5,
-        { floor: deckY, yaw: Math.PI / 2, color: 0xffffff });
+        { floor: deckY, yaw: Math.PI / 2, color: 0xffffff, climbable: false });
     }
   }
   for (let z = 48; z <= 64; z += 8) {
     for (const side of [-1, 1]) {
       place('pier-rail', side * 19.1, z, 8.1, 2.65, 0.5,
-        { floor: headY, yaw: Math.PI / 2, color: 0xffffff });
+        { floor: headY, yaw: Math.PI / 2, color: 0xffffff, climbable: false });
     }
   }
   for (const x of [-15, -7.5, 0, 7.5, 15]) {
     place('pier-rail', x, 70.6, 7.6, 2.65, 0.5,
-      { floor: headY, color: 0xffffff });
+      { floor: headY, color: 0xffffff, climbable: false });
   }
 
   // Painted life rings face out along their local +Z on both main-pier rails.
