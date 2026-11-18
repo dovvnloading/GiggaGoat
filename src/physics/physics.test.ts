@@ -136,6 +136,46 @@ describe('real Rapier physics simulation', () => {
     expect(maxHeight).toBeGreaterThan(2);
   });
 
+  it.each([[58, .55], [58, 1], [65, .55], [65, 1]])(
+    'climbs a %i degree face when the leading head reaches it at input %f', async (angle, input) => {
+      const w = await scene(), g = goat(w, .6);
+      const rise = 4 * Math.tan(angle * Math.PI / 180);
+      w.raw.createCollider(RAPIER.ColliderDesc.trimesh(
+        new Float32Array([-4, 0, -2, 4, 0, -2, -4, rise, -6, 4, rise, -6]),
+        new Uint32Array([0, 1, 2, 1, 3, 2]), RAPIER.TriMeshFlags.FIX_INTERNAL_EDGES)
+        .setFriction(.92).setCollisionGroups(collisionGroups('terrain')));
+      simulate(w, 80 / 60);
+      const initial = g.torso.translation();
+      const surfaces: number[] = [];
+      g.events.on(event => {
+        if (event.type === 'wallClingStart') surfaces.push(event.normal.y);
+      });
+      g.locomotion.setInput({ z: input, cameraYaw: 0, canClimb: true });
+      for (let tick = 0; tick < 125 && g.torso.translation().y - initial.y < 2.2; tick++) {
+        w.step(1 / 60);
+      }
+      expect(g.torso.translation().y - initial.y).toBeGreaterThanOrEqual(2.2);
+      expect(surfaces[0]).toBeCloseTo(Math.cos(angle * Math.PI / 180), 3);
+      expect(g.isRagdoll).toBe(false);
+      g.locomotion.setInput({ z: 0 });
+      w.step(1 / 60);
+      expect(g.locomotion.isClinging).toBe(false);
+    });
+
+  it('keeps an ordinary low curb outside the climb motor', async () => {
+    const w = await scene(), g = goat(w, .6);
+    w.raw.createCollider(RAPIER.ColliderDesc.cuboid(3, .07, .15)
+      .setTranslation(0, .07, -2.5).setCollisionGroups(collisionGroups('terrain')));
+    simulate(w, 80 / 60);
+    const climbs: string[] = [];
+    g.events.on(event => { if (event.type === 'wallClingStart') climbs.push(event.type); });
+    g.locomotion.setInput({ z: 1, cameraYaw: 0, canClimb: true });
+    simulate(w, 2);
+    expect(g.torso.translation().z).toBeLessThan(-4);
+    expect(climbs).toHaveLength(0);
+    expect(g.isRagdoll).toBe(false);
+  });
+
   it('scales jump height and mass sensibly across size tiers', async () => {
     const measure = async (size: GoatSize): Promise<{height:number;mass:number}> => {
       const w = await scene(), g = goat(w,size);

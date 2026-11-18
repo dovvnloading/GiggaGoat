@@ -391,6 +391,31 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
     } finally { game.dispose(); }
   });
 
+  it('climbs the northwest Mt Gigga face with normal movement from its base', async () => {
+    const game = await Game.create();
+    try {
+      ticks(game, 120);
+      const x = -96 / Math.sqrt(2), z = x;
+      const yaw = 3 * Math.PI / 4;
+      game.teleport(V(x, heightAt(game.island, x, z) + .05, z), -yaw);
+      ticks(game, 120);
+      expect(game.goat.locomotion.grounded).toBe(true);
+      const start = game.goat.torso.translation();
+      const contacts: number[] = [];
+      const off = game.goat.events.on(event => {
+        if (event.type === 'wallClingStart') contacts.push(event.normal.y);
+      });
+      ticks(game, 210, { moveZ: 1, cameraYaw: yaw });
+      off();
+      const finish = game.goat.torso.translation();
+      expect(contacts.some(y => y > .46 && y < .602)).toBe(true);
+      expect(finish.y - start.y).toBeGreaterThan(3);
+      expect(finish.x - start.x).toBeGreaterThan(2);
+      expect(finish.z - start.z).toBeGreaterThan(2);
+      expect(game.respawns).toBe(0);
+    } finally { game.dispose(); }
+  });
+
   it('keeps the Hoofington street clear and launches a goat from the adjacent lawn', async () => {
     const game = await Game.create();
     try {

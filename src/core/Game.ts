@@ -606,7 +606,9 @@ export class Game {
     const mz = Math.max(-1, Math.min(1, input.moveZ ?? 0)) * speed;
     const wish = V(Math.sin(cameraYaw) * mz + Math.cos(cameraYaw) * mx, 0,
       -Math.cos(cameraYaw) * mz + Math.sin(cameraYaw) * mx);
-    const steep = Math.hypot(wish.x, wish.z) > .1 && this.isFacingWall(wish, goat);
+    const wall = goat.locomotion.findClimbSurface(wish);
+    const blockedRail = wall !== null && this.damFrontGuardHandles.has(wall.collider.handle);
+    const climbContact = blockedRail ? null : wall;
     const head = goat.head.translation();
     const seekingTongueTarget = player && input.tongue && !goat.interactions.isTongueAttached;
     const courierAim = seekingTongueTarget && goat.size > 1
@@ -622,9 +624,9 @@ export class Game {
     const prop = hit ? [...this.colliders.props].find(([, c]) => c.handle === hit.collider.handle) : undefined;
     const lickable = !!hit && (!prop || this.island.props.find(p => p.id === prop[0])?.lickable !== false);
     const facts: GoatPhysicsFacts = {
-      grounded: goat.locomotion.grounded && !steep,
+      grounded: goat.locomotion.grounded && climbContact === null,
       airborneTime: goat.locomotion.airborneSeconds,
-      touchingSteepWall: steep || goat.locomotion.isClinging,
+      touchingSteepWall: !blockedRail && (climbContact !== null || goat.locomotion.isClinging),
       speed: Math.hypot(velocity.x, velocity.z),
       size: sim.style.tier,
       tongueTarget: lickable && hit ? 'hit-' + hit.collider.handle : null,
@@ -646,7 +648,7 @@ export class Game {
       held !== null && this.physics.bodyData(held.handle)?.data === 'parcel';
     goat.locomotion.setInput({
       x: mx, z: mz, cameraYaw, sprint: commands.setSprint,
-      canSprint: commands.setSprint, canClimb: commands.setClimb,
+      canSprint: commands.setSprint, canClimb: commands.setClimb, climbContact,
       acceptForwardSupport: parcelHeld ? this.gigs.isCourierRamp : undefined,
     });
     this.water.setPaddle(goat.torso, wish);
@@ -722,15 +724,6 @@ export class Game {
     return !!ground && ground.normal.y >= .55 &&
       torso.y - ground.point.y <= 1.5 * size &&
       torso.y >= ground.point.y - .25 * size;
-  }
-
-  private isFacingWall(wish: Vec3, goat = this.goat): boolean {
-    const origin = add(goat.torso.translation(), V(0, .1 * goat.size, 0));
-    const hit = this.physics.raycast(origin, wish, 1.05 * goat.size, {
-      predicate: collider => !goat.ownsBody(collider.parent()),
-    });
-    return !!hit && !this.damFrontGuardHandles.has(hit.collider.handle) &&
-      hit.normal.y < .46 && hit.normal.x * wish.x + hit.normal.z * wish.z < -.45;
   }
 
   /** Cosmetic events come from executed commands, never unaccepted input edges. */
