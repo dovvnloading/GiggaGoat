@@ -3,8 +3,9 @@ import type { GigPropSpawn } from '../gigs';
 import type { PropDescriptor } from '../world';
 import {
   PropFactory, BUILD_PIECE_SIZES, DEFAULT_CRATE_SIZE, SURFACE_HALF_EXTENTS,
-  type BuildPieceType, type Size3, type WorldLibraryPropKind,
+  type BuildPieceType, type Size3,
 } from '../props';
+import type { WorldLibraryPropKind } from '../props/PropFactory';
 import type { SurfaceMarker } from './Game';
 
 /** Only world kinds with a corresponding library-backed factory shape are replaced. */
