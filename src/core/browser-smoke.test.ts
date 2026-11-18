@@ -310,7 +310,8 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
           '[data-gig-title], [data-gig-task], [data-gig-detail], [data-wallet], [data-mode]',
         )];
         const original = { look: look.hidden, board: board.hidden, name: name.textContent,
-          copy: portraitCopy.map(node => node.textContent), low: stamina.dataset.low };
+          copy: portraitCopy.map(node => node.textContent), low: stamina.dataset.low,
+          fontSize: portraitCopy.slice(0, 3).map(node => node.style.fontSize) };
         const inside = (a: DOMRect, b: DOMRect) => a.left >= b.left - 1 &&
           a.top >= b.top - 1 && a.right <= b.right + 1 && a.bottom <= b.bottom + 1;
         try {
@@ -321,6 +322,8 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
               'PEAK HELD BY NOODLE · CLIMB TO CAPTURE · 135s LEFT',
               '123,456 CUD COINS', 'KING OF THE PEAK'];
             portraitCopy.forEach((node, index) => { node.textContent = sample[index]!; });
+            // Simulate sizes retained in the first portrait frame from landscape's compact card.
+            portraitCopy.slice(0, 3).forEach(node => { node.style.fontSize = '8px'; });
             stamina.dataset.low = 'true';
           }
           const boxes = Object.entries(selectors).map(([id, selector]) =>
@@ -403,6 +406,7 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
           name.textContent = original.name;
           if (portrait) {
             portraitCopy.forEach((node, index) => { node.textContent = original.copy[index] ?? ''; });
+            portraitCopy.slice(0, 3).forEach((node, index) => { node.style.fontSize = original.fontSize[index]!; });
             if (original.low === undefined) delete stamina.dataset.low;
             else stamina.dataset.low = original.low;
           }

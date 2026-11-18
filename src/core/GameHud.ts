@@ -309,12 +309,14 @@ const CSS = `
   position:static;display:grid;gap:3px;min-height:52px;
   padding:7px 8px 6px;align-content:start
  }
- .gg-gig-title{font-size:clamp(10px,2.6vw,13px)}
- .gg-gig-task{font-size:clamp(12px,3.1vw,15px)}
- .gg-gig-detail{font-size:clamp(10px,2.6vw,12px)}
+ /* The illustrated card's inline fit can survive until the next HUD update
+    after rotation. The flowing portrait card must take its readable size immediately. */
+ .gg-gig-title{font-size:clamp(10px,2.6vw,13px)!important}
+ .gg-gig-task{font-size:clamp(12px,3.1vw,15px)!important}
+ .gg-gig-detail{font-size:clamp(10px,2.6vw,12px)!important}
  .gg-gig-footer{
   position:static;height:auto;min-height:23px;margin:0 8px;padding:4px 0;flex-wrap:wrap;row-gap:2px;
-  border-top:1px solid #b88658;white-space:normal;font-size:clamp(9px,2.3vw,11px);line-height:1.15
+  border-top:1px solid #b88658;white-space:normal;font-size:clamp(9px,2.3vw,11px)!important;line-height:1.15
  }
  .gg-gig-footer :is(.gg-gig-wallet,[data-mode]){min-width:0;flex-shrink:1;overflow-wrap:anywhere}
  .gg-coin{width:12px;height:12px}
