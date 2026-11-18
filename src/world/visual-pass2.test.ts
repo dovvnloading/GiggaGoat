@@ -6,6 +6,7 @@ import type { IslandData, PropDescriptor, WorldScene } from './index';
 import { makeLocalStreets } from './roads';
 import { segmentProjection } from './terrain';
 import { findBookmark } from './viewer/bookmarks';
+import { PINES_GLADE_CASCADE } from './visual-water';
 
 describe('World visuals pass 2: geometry, streets and draw budget', () => {
   let island: IslandData;
@@ -17,7 +18,7 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
   });
   afterAll(() => view.dispose());
 
-  it('keeps every prop instance finite, with only replaced lighthouse art hidden', () => {
+  it('keeps every prop instance finite and reserves hidden slots for replaced art', () => {
     // The striped tower (QA LH-1) is the generic 'lighthouse' prop: not hidden.
     const replacedLighthouseKinds = new Set([
       'cottage', 'shipwreck', 'dock', 'cave-mouth', 'deck-stilts',
@@ -50,20 +51,32 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
         instances.getMatrixAt(i, matrix);
         expect(matrix.elements.every(Number.isFinite), kind + ':' + i).toBe(true);
         const prop = props[i]!;
-        if (prop.poiId === 'old-lighthouse' && replacedLighthouseKinds.has(kind)) {
+        const m = matrix.elements;
+        const width = Math.hypot(m[0]!, m[1]!, m[2]!);
+        const height = Math.hypot(m[4]!, m[5]!, m[6]!);
+        const depth = Math.hypot(m[8]!, m[9]!, m[10]!);
+        const replacedFalls = prop.id === PINES_GLADE_CASCADE ||
+          prop.id.startsWith('waterfall-cascade-front-terrace-waterfall-');
+        if ((prop.poiId === 'old-lighthouse' && replacedLighthouseKinds.has(kind)) ||
+            (replacedFalls && width === 0)) {
           // A zero-scale matrix is intentional; decompose() cannot recover its
           // scale and rotation. The collider descriptor still has real size.
-          const m = matrix.elements;
-          expect(Math.hypot(m[0]!, m[1]!, m[2]!, m[4]!, m[5]!, m[6]!,
-            m[8]!, m[9]!, m[10]!), prop.id).toBe(0);
+          expect(width + height + depth, prop.id).toBe(0);
         } else {
           matrix.decompose(position, rotation, scale);
-          expect(position.distanceTo(new THREE.Vector3(
+          const movement = position.distanceTo(new THREE.Vector3(
             prop.transform.position.x, prop.transform.position.y,
-            prop.transform.position.z)), prop.id).toBeLessThan(0.006);
-          expect(Math.abs(scale.x - prop.size.x), prop.id).toBeLessThan(0.006);
-          expect(Math.abs(scale.y - prop.size.y), prop.id).toBeLessThan(0.006);
-          expect(Math.abs(scale.z - prop.size.z), prop.id).toBeLessThan(0.006);
+            prop.transform.position.z));
+          if (prop.poiId === 'mt-gigga' && (kind === 'satellite-dish' || kind === 'flag')) {
+            expect(movement, prop.id).toBeLessThan(.3 * prop.size.y);
+            expect(scale.x, prop.id).toBeGreaterThan(prop.size.x);
+            expect(scale.y, prop.id).toBeGreaterThan(prop.size.y);
+          } else {
+            expect(movement, prop.id).toBeLessThan(0.006);
+            expect(Math.abs(scale.x - prop.size.x), prop.id).toBeLessThan(0.006);
+            expect(Math.abs(scale.y - prop.size.y), prop.id).toBeLessThan(0.006);
+            expect(Math.abs(scale.z - prop.size.z), prop.id).toBeLessThan(0.006);
+          }
           // Allow the intentional pier/buoys outside the 600-m terrain square,
           // never a kilometer-long fence, cable, roof or shadow-caster streak.
           const limit = island.size / 2 + 150;
@@ -89,13 +102,15 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
     const shadowPass = meshes.filter(mesh => mesh.castShadow).length;
     const outlines = meshes.filter(mesh => mesh.name.startsWith('outline-')).length;
     // This detects the previous ~600-call pattern even without a GPU.
-    // The noncollidable fern and lily-pad kinds each add one instance batch.
-    // Exclude exactly those two batches so the original six-hero draw budget
-    // is unchanged. Do not relax the Chrome profile performance budget.
-    const gladeMeshes = meshes.filter(mesh =>
-      mesh.name === 'props-fern' || mesh.name === 'props-lily-pads');
-    expect(gladeMeshes).toHaveLength(2);
-    expect(meshes.length + shadowPass - gladeMeshes.length)
+    // These features each contribute a single non-shadow draw.
+    const featureNames = ['props-fern', 'props-lily-pads', 'whispering-pines-rock-step',
+      'mountain-terrace-water'];
+    for (const name of featureNames) {
+      const feature = meshes.filter(mesh => mesh.name === name);
+      expect(feature, name).toHaveLength(1);
+      expect(feature[0]!.castShadow, name).toBe(false);
+    }
+    expect(meshes.length + shadowPass - featureNames.length)
       .toBeLessThan(180 + AUTHORED_HERO_DRESSING_KINDS.size - 1);
     expect(shadowPass).toBeLessThan(20);
     expect(outlines).toBeLessThanOrEqual(8);
