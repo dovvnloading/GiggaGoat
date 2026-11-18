@@ -5,11 +5,9 @@ import { GameMenu } from './GameMenu';
 import { MENU_SPRITES, menuSpriteUrl } from './MenuSprites';
 import { DEFAULT_SETTINGS } from './Persistence';
 import { MODE_DEFAULTS, type PartyMatch } from '../modes';
-import { GigCatalog, type GigBoard } from '../gigs';
+import { GigCatalog, GigDirector, type GigBoard, type GigOffer, type GigRun } from '../gigs';
 import { generateIsland, type PoiId } from '../world';
 import { frame, goat, readyMatch } from '../modes/test-utils';
-import { GigCatalog, GigDirector, type GigOffer, type GigRun } from '../gigs';
-import { generateIsland } from '../world';
 
 const manifest = JSON.parse(readFileSync(
   resolve(process.cwd(), 'public/assets/ui/sprites/sprites.json'), 'utf8',
