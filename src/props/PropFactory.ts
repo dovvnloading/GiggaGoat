@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { PROP_LIBRARY_MODELS, bakeLibraryPropGeometry } from '../world/library-props';
+import { fitLibraryModel, isAuthoredLibraryAsset } from '../world/library-fit';
+import { TOON_RAMP } from '../world/visual-props';
 
 /**
  * Visuals only: callers still own their Rapier bodies and update these roots'
@@ -10,6 +13,14 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 export type BuildPieceType = 'floor' | 'wall' | 'ramp' | 'launch-pad';
 export type GigPropType = 'crate' | 'barrel' | 'hay';
 export interface Size3 { x: number; y: number; z: number }
+export type WorldLibraryPropKind =
+  'crate' | 'barrel' | 'hay-bale' | 'fence' | 'ramp' | 'trampoline';
+
+/** Same descriptor colours as the World Lab's procedural loading placeholders. */
+const WORLD_PROP_COLORS: Readonly<Record<WorldLibraryPropKind, number>> = {
+  crate: 0xc4915f, barrel: 0xe67d5d, 'hay-bale': 0xf2c14f,
+  fence: 0xe5c587, ramp: 0xe5b974, trampoline: 0x7960d9,
+};
 
 export const BUILD_PIECE_SIZES: Readonly<Record<BuildPieceType, Readonly<Size3>>> = {
   floor: { x: 2, y: .46, z: 2 },
@@ -95,6 +106,8 @@ export class PropFactory {
   private readonly materials = new Set<THREE.Material>();
   private readonly colors = new Map<ColorName, THREE.MeshToonMaterial>();
   private readonly geometryCache = new Map<string, THREE.BufferGeometry>();
+  private readonly worldGeometries = new Map<WorldLibraryPropKind, THREE.BufferGeometry>();
+  private readonly worldMaterials = new Map<string, THREE.MeshToonMaterial>();
   private readonly convertedMaterials = new WeakMap<THREE.Material, THREE.Material>();
   private disposed = false;
 
@@ -218,6 +231,115 @@ export class PropFactory {
         ? object.material.map(toon) : toon(object.material);
     });
     return fitted;
+  }
+
+  /** World Lab model geometry, source paint, fitting and tint, shared by every instance. */
+  private worldMaterial(color: number, vertexColors: boolean): THREE.MeshToonMaterial {
+    const key = (vertexColors ? 'paint:' : 'box:') + color;
+    let material = this.worldMaterials.get(key);
+    if (!material) {
+      material = new THREE.MeshToonMaterial({
+        color, vertexColors, gradientMap: TOON_RAMP, side: THREE.FrontSide,
+      });
+      this.worldMaterials.set(key, material);
+      this.materials.add(material);
+    }
+    return material;
+  }
+
+  private fittedWorld(prototype: THREE.Object3D, kind: WorldLibraryPropKind,
+    size: Size3, color?: number): THREE.Group | null {
+    let geometry = this.worldGeometries.get(kind);
+    if (!geometry) {
+      // Use the same multi-mesh/atlas/vertex-colour baker as World Lab.
+      const baked = bakeLibraryPropGeometry(kind, prototype);
+      if (!baked) return null;
+      geometry = baked;
+      this.worldGeometries.set(kind, geometry);
+      this.geometries.add(geometry);
+    }
+    const nativeBounds = geometry.boundingBox;
+    if (!nativeBounds || nativeBounds.isEmpty()) return null;
+    const path = PROP_LIBRARY_MODELS[kind];
+    const fit = fitLibraryModel(nativeBounds.getSize(new THREE.Vector3()),
+      new THREE.Vector3(size.x, size.y, size.z), path);
+    // Authored paint is not recoloured. Kenney props use the Lab's subtle
+    // descriptor tint (18% descriptor colour, 82% white).
+    const tint = new THREE.Color(0xffffff);
+    if (!isAuthoredLibraryAsset(path) && color !== undefined) {
+      tint.setHex(color).lerp(new THREE.Color(0xffffff), .82);
+    }
+    const mesh = new THREE.Mesh(geometry, this.worldMaterial(tint.getHex(), true));
+    mesh.name = 'world-library-model';
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    const fitted = new THREE.Group();
+    fitted.name = 'world-library-fitted';
+    fitted.rotation.y = fit.yaw;
+    fitted.scale.copy(fit.scale);
+    fitted.add(mesh);
+    fitted.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(fitted);
+    if (bounds.isEmpty()) return null;
+    // World roots are collider-centred: centre X/Z, put the lowest point
+    // at the collider floor, and leave descriptor yaw on the caller's root.
+    fitted.position.set(
+      -(bounds.min.x + bounds.max.x) / 2,
+      -size.y / 2 - bounds.min.y,
+      -(bounds.min.z + bounds.max.z) / 2);
+    return fitted;
+  }
+
+  /** One full-size placeholder; replace it with the exact World Lab GLB on load. */
+  createWorldProp(kind: WorldLibraryPropKind, size: Size3, color: number | undefined,
+    legacyFallback: () => THREE.Group): THREE.Group {
+    const root = this.root('world-' + kind, size);
+    const slot = new THREE.Group();
+    slot.name = 'library-slot';
+    root.add(slot);
+    const placeholder = this.cachedGeometry(`box:${size.x}:${size.y}:${size.z}`,
+      () => new THREE.BoxGeometry(size.x, size.y, size.z));
+    const box = new THREE.Mesh(placeholder,
+      this.worldMaterial(color ?? WORLD_PROP_COLORS[kind], false));
+    box.castShadow = true;
+    box.receiveShadow = true;
+    slot.add(box);
+
+    const path = PROP_LIBRARY_MODELS[kind];
+    void this.request(path.replace(/^assets\/library\//, '')).then(prototype => {
+      if (this.disposed || !this.instances.has(root)) return;
+      let model: THREE.Group | null = null;
+      try {
+        if (prototype) model = this.fittedWorld(prototype, kind, size, color);
+      } catch {
+        // A malformed GLB is treated exactly like a failed network request.
+      }
+      if (model) {
+        slot.clear();
+        slot.add(model);
+        slot.userData.assetPath = path;
+        root.userData.assetStatus = 'ready';
+      } else {
+        // Keep the existing PropFactory toy shape only when the Lab GLB fails.
+        try {
+          const fallback = legacyFallback();
+          slot.clear();
+          slot.add(fallback);
+          // The legacy shape has its own async slots: rebuild its batch if
+          // those requests finish after the failed world-model request.
+          void this.whenReady().then(() => {
+            if (this.instances.has(root)) {
+              root.userData.assetRevision = (root.userData.assetRevision as number) + 1;
+            }
+          });
+        } catch {
+          // The descriptor-coloured box is still safe to draw.
+        }
+        root.userData.assetStatus = 'fallback';
+      }
+      root.userData.assetRevision = (root.userData.assetRevision as number) + 1;
+    });
+    return root;
   }
 
   /** A model occupies only its allotted slot; all trim remains independent. */
@@ -438,6 +560,8 @@ export class PropFactory {
     for (const mat of this.materials) mat.dispose();
     this.cache.clear();
     this.geometryCache.clear();
+    this.worldGeometries.clear();
+    this.worldMaterials.clear();
     this.prototypes.clear();
     this.geometries.clear();
     this.materials.clear();
