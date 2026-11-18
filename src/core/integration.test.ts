@@ -3,6 +3,7 @@ import { Raycaster, Vector3 } from 'three';
 import { Game, FIXED_DT } from './Game';
 import { V, forward, RAPIER, collisionGroups } from '../physics';
 import { createWorldScene, heightAt } from '../world';
+import { DAM_DECK_HEIGHT, getDamPlacement } from '../world/the-dam';
 
 const create = (): Promise<Game> => Game.create({ seed: 'first-playable-test', resolution: 97 });
 const ticks = (game: Game, count: number, input: Parameters<Game['step']>[0] = {}): void => {
@@ -84,6 +85,43 @@ describe('Walkable roads and coastal routes', () => {
     } finally {
       game.dispose();
     }
+  });
+
+  it('blocks a straight walk into the Dam rail and keeps all Dam Bomb launches clear', async () => {
+    const game = await Game.create();
+    try {
+      const { position: dam, scale } = getDamPlacement(game.island);
+      const deckTop = dam.y + DAM_DECK_HEIGHT * scale;
+      const movement = { moveZ: 1, cameraYaw: Math.PI };
+      const standOnDeck = (x: number) => {
+        game.teleport(V(x, deckTop, dam.z - .5 * scale), Math.PI);
+        ticks(game, 35);
+      };
+
+      standOnDeck(dam.x + 10 * scale);
+      for (let i = 0; i < 240; i++) {
+        game.step(movement);
+        expect(game.goat.torso.translation().z).toBeLessThan(dam.z + 3.7 * scale);
+        expect(game.goat.locomotion.isClinging).toBe(false);
+      }
+      expect(game.goat.torso.translation().y).toBeGreaterThan(deckTop);
+
+      for (const difficulty of ['easy', 'medium', 'hard'] as const) {
+        const { config } = game.gigs.director.startPractice('dam-bomb', difficulty);
+        if (config.kind !== 'splash-dive') throw new Error('Expected a Dam Bomb splash dive');
+        standOnDeck(config.jumpPoint.x);
+        const takeoffZ = dam.z + 3.88 * scale;
+        for (let i = 0; i < 130 && game.goat.torso.translation().z <= takeoffZ; i++) {
+          game.step(movement);
+        }
+        expect(game.goat.torso.translation().z, difficulty).toBeGreaterThan(takeoffZ);
+        game.step({ ...movement, flop: true });
+        for (let i = 0; i < 120 && game.gigs.active?.status === 'running'; i++) game.step();
+        expect(game.gigs.active?.status, difficulty).toBe('completed');
+        expect(game.gigs.active?.metrics.splashDrop).toBeGreaterThanOrEqual(config.minDrop);
+      }
+      expect(game.respawns).toBe(0);
+    } finally { game.dispose(); }
   });
 
   it('walks from dry sand to the far end of the Baa-ardwalk without a rescue', async () => {

@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData } from './types';
 import { gridSample } from './terrain';
-import { getDamPlacement, makeDamColliderDescriptors } from './the-dam';
+import { DAM_FRONT_GUARD, getDamPlacement, makeDamColliderDescriptors } from './the-dam';
 import { publicAssetUrl } from './public-assets';
 import { buildDamLandscape } from './visual-dam-landscape';
 
@@ -44,6 +44,30 @@ function needsAbutmentRock(mesh: THREE.Mesh, island: IslandData): boolean {
   return !steep && !buried;
 }
 
+/** Rebuild the authored front rail with the same opening as the physics guards. */
+function buildDamFrontRail(material: THREE.Material): THREE.Mesh {
+  const parts: THREE.BufferGeometry[] = [];
+  for (const [left, right] of DAM_FRONT_GUARD.spans) {
+    for (const y of [19.45, 20.10]) {
+      parts.push(new THREE.BoxGeometry(right - left, .22, .22)
+        .translate((left + right) / 2, y, DAM_FRONT_GUARD.z));
+    }
+  }
+  for (let i = 0; i < 23; i++) {
+    const x = -29.7 + i * 2.6;
+    if (!DAM_FRONT_GUARD.spans.some(([left, right]) => x >= left && x <= right)) continue;
+    parts.push(new THREE.BoxGeometry(.30, 1.35, DAM_FRONT_GUARD.depth)
+      .translate(x, 19.48, DAM_FRONT_GUARD.z));
+  }
+  const geometry = mergeGeometries(parts, false);
+  for (const part of parts) part.dispose();
+  if (!geometry) throw new Error('Could not batch the Dam front rail');
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = 'dam-front-rail';
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
 /**
  * Reduce the GLB's many static parts to a draw per material and vertex layout.
  * Keep water sheets in their own material buckets so their texture transform
@@ -61,6 +85,7 @@ export function prepareDamModel(root: THREE.Object3D, island: IslandData): DamMe
   const clonedFalls = new Map<THREE.Material, THREE.Material>();
   const waterfallMaps: THREE.Texture[] = [];
   const oldGeometries = new Set<THREE.BufferGeometry>();
+  let frontRailMaterial: THREE.Material | undefined;
 
   function waterfallMaterial(original: THREE.Material): THREE.Material {
     const existing = clonedFalls.get(original);
@@ -81,6 +106,11 @@ export function prepareDamModel(root: THREE.Object3D, island: IslandData): DamMe
 
   root.traverse(object => {
     if (!(object instanceof THREE.Mesh)) return;
+    if (namedPart(object, /^RailFront_(?:Bar|Post)_/i)) {
+      oldGeometries.add(object.geometry);
+      if (!Array.isArray(object.material)) frontRailMaterial ??= object.material;
+      return;
+    }
     const isFall = namedPart(object, /^Water_Fall_/i);
     const isRock = namedPart(object, /^Abutment_Rock_/i);
     const shadow = namedPart(object, /^(?:Wall_|Dam_Wall|ControlHouse_)/i);
@@ -140,6 +170,7 @@ export function prepareDamModel(root: THREE.Object3D, island: IslandData): DamMe
   }
   // No longer needed after baking every source node's world transform.
   oldGeometries.forEach(geometry => geometry.dispose());
+  if (frontRailMaterial) group.add(buildDamFrontRail(frontRailMaterial));
   return { group, waterfallMaps };
 }
 
@@ -161,6 +192,7 @@ function buildProceduralDamFallback(island: IslandData): THREE.Group {
   const houseParts: THREE.BufferGeometry[] = [];
 
   for (const collider of makeDamColliderDescriptors(island)) {
+    if (collider.id.startsWith(DAM_FRONT_GUARD.prefix)) continue;
     const geometry = new THREE.BoxGeometry(
       collider.size.x / scale, collider.size.y / scale, collider.size.z / scale,
     );
@@ -189,6 +221,7 @@ function buildProceduralDamFallback(island: IslandData): THREE.Group {
   addBatch('dam-fallback-stone', stone, stoneParts, true);
   addBatch('dam-fallback-deck', deck, deckParts, false);
   addBatch('dam-fallback-house', house, houseParts, false);
+  fallback.add(buildDamFrontRail(new THREE.MeshToonMaterial({ color: 0xf2c12e })));
 
   const water = new THREE.MeshToonMaterial({
     color: 0x40c9e6, transparent: true, opacity: 0.88,
