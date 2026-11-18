@@ -295,7 +295,7 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
       const compactHudIssues = () => {
         const selectors = {
           meter: '.gg-meter', score: '.gg-combo', map: '.gg-map-panel',
-          gig: '.gg-gig-card', clipboard: '.gg-gig-clipboard', stamina: '.gg-stamina',
+          gig: '.gg-gig-card', stamina: '.gg-stamina',
           tray: '.gg-hotbar', look: '.gg-hint', board: '.gg-board-hint',
         };
         const look = document.querySelector<HTMLElement>(selectors.look)!;
@@ -316,7 +316,6 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
               issues.push(id + ' outside viewport');
             }
             for (const [other, b] of boxes.slice(i + 1)) {
-              if (id === 'gig' && other === 'clipboard') continue;
               if (Math.min(rect.right, b.right) - Math.max(rect.left, b.left) > 1 &&
                   Math.min(rect.bottom, b.bottom) - Math.max(rect.top, b.top) > 1) {
                 issues.push(id + ' overlaps ' + other);
@@ -327,6 +326,12 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
           text.selectNodeContents(name);
           if (!inside(text.getBoundingClientRect(), name.parentElement!.getBoundingClientRect())) {
             issues.push('district name exceeds minimap plaque');
+          }
+          // The cream portion of the card illustration ends at 88% of its height.
+          const card = document.querySelector(selectors.gig)!.getBoundingClientRect();
+          text.selectNodeContents(document.querySelector('.gg-gig-footer')!);
+          if (text.getBoundingClientRect().bottom > card.top + card.height * .88) {
+            issues.push('gig footer touches frame art');
           }
           return issues;
         } finally {

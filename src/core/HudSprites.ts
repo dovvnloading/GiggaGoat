@@ -20,7 +20,6 @@ export const HUD_SPRITES = {
   hayRamp: 'icons/hay_ramp',
   launchPad: 'icons/launch_pad',
   suppliesCrate: 'icons/supplies_crate',
-  gigClipboard: 'icons/gig_clipboard',
   cudCoin: 'icons/cud_coin',
   compassN: 'icons/compass_n',
   mapPin: 'icons/map_pin',
