@@ -361,6 +361,27 @@ describe('Gig-specific anti-cheat physics fact requirements', () => {
     d.step(f);
     expect(d.active?.objective).toMatchObject({ kind: 'deliver', done: 0 });
   });
+  it.each([[120, true, 1], [840, true, 0], [120, false, 0]] as const)(
+    'chains real distinct held drops within the saved time window (%s ticks, held %s)',
+    (wait, held, expected) => {
+      let director = new GigDirector(catalog);
+      const config = configOf(director.startPractice('hay-haul', 'easy'), 'hay-haul');
+      const deliver = (bale: typeof config.bales[number], heldByTongue: boolean) => {
+        director.step({ ...frame(bale.start), abilities: [{ type: 'tongue', targetId: bale.id }],
+          props: [{ id: bale.id, position: bale.start, heldByTongue }] });
+        director.step({ ...frame(config.barn),
+          props: [{ id: bale.id, position: config.barn, heldByTongue }] });
+      };
+      deliver(config.bales[0]!, true);
+      expect(director.active?.metrics.multideliveries).toBe(0);
+      director = GigDirector.fromJSON(director.toJSON(), catalog);
+      for (let i = 0; i < wait; i++) director.step(frame(config.barn));
+      deliver(config.bales[1]!, held);
+      expect(director.active?.objective).toMatchObject({ kind: 'deliver', done: 2 });
+      expect(director.active?.metrics.multideliveries).toBe(expected);
+    },
+  );
+
   it('rooftop delivery fails if goat touches street after first roof', () => {
     const d = new GigDirector(catalog);
     const s = d.startPractice('rooftop-express', 'easy');

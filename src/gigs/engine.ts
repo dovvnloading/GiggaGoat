@@ -60,6 +60,8 @@ function freshRun(setup: GigSetup, attemptId: number): GigRun {
   run.objective = objective(run);
   return run;
 }
+const HAY_TOW_CHAIN_TICKS = 13 * TICKS_PER_SECOND;
+
 function judgedSkill(run: GigRun): { silver: boolean; gold: boolean; bonus: number } {
   const c = run.setup.config, m = run.metrics;
   switch (c.kind) {
@@ -296,9 +298,17 @@ export class GigDirector {
             delivered.push(bale.id);
           }
         }
-        if (delivered.length >= 2 &&
-          delivered.every(id => props.get(id)?.heldByTongue === true)) {
-          run.metrics.multideliveries++;
+        if (delivered.length > 0) {
+          if (delivered.every(id => props.get(id)?.heldByTongue === true)) {
+            const last = run.lastHeldHayDeliveryTick;
+            if (delivered.length >= 2 ||
+                (last !== undefined && run.elapsedTicks - last <= HAY_TOW_CHAIN_TICKS)) {
+              run.metrics.multideliveries++;
+            }
+            run.lastHeldHayDeliveryTick = run.elapsedTicks;
+          } else {
+            delete run.lastHeldHayDeliveryTick;
+          }
         }
         done = run.finishedIds.length >= c.required;
         break;
@@ -488,6 +498,8 @@ export class GigDirector {
       if (!expected ||
         !isInt(run.attemptId) || run.attemptId > s.attemptCounter ||
         !isInt(run.elapsedTicks) || run.elapsedTicks > expected.maxTicks ||
+        (run.lastHeldHayDeliveryTick !== undefined &&
+          (!isInt(run.lastHeldHayDeliveryTick) || run.lastHeldHayDeliveryTick > run.elapsedTicks)) ||
         !['running', 'completed', 'failed', 'abandoned'].includes(run.status) ||
         !Array.isArray(run.seenIds) || !Array.isArray(run.finishedIds) ||
         !isInt(run.checkpointIndex) || !isInt(run.stableTicks) ||
