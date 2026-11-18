@@ -1,6 +1,10 @@
 import * as THREE from 'three';
-import { describe, expect, it } from 'vitest';
-import { PropFactory, BUILD_PIECE_SIZES, DEFAULT_CRATE_SIZE } from '../props';
+import { describe, expect, it, vi } from 'vitest';
+import { PropFactory, BUILD_PIECE_SIZES, DEFAULT_CRATE_SIZE,
+  type WorldLibraryPropKind } from '../props';
+import { generateIsland } from '../world';
+import { PROP_LIBRARY_MODELS } from '../world/library-props';
+import { fitLibraryModel, isAuthoredLibraryAsset } from '../world/library-fit';
 import type { GigPropSpawn } from '../gigs';
 import {
   WORLD_LIBRARY_KINDS, createWorldLibraryProp, createBoardLibraryProp,
@@ -24,12 +28,12 @@ describe('GameView factory prop mapping', () => {
   it('maps the supported world kinds, leaving unrelated world art alone', () => {
     const f = factory();
     const cases = [
-      ['crate', 'crate'],
-      ['barrel', 'gig-barrel'],
-      ['hay-bale', 'gig-hay'],
-      ['fence', 'build-wall'],
-      ['ramp', 'build-ramp'],
-      ['trampoline', 'trampoline'],
+      ['crate', 'world-crate'],
+      ['barrel', 'world-barrel'],
+      ['hay-bale', 'world-hay-bale'],
+      ['fence', 'world-fence'],
+      ['ramp', 'world-ramp'],
+      ['trampoline', 'world-trampoline'],
     ] as const;
     expect([...WORLD_LIBRARY_KINDS].sort()).toEqual(cases.map(x => x[0]).sort());
     for (const [kind, name] of cases) {
@@ -38,8 +42,7 @@ describe('GameView factory prop mapping', () => {
       });
       expect(root?.userData.propKind).toBe(name);
       expect(root).toBeInstanceOf(THREE.Group);
-      expect(root!.scale.x).toBeGreaterThan(0);
-      expect(root!.scale.y).toBeGreaterThan(0);
+      expect(root!.scale.toArray()).toEqual([1, 1, 1]);
     }
     expect(createWorldLibraryProp(f, {
       kind: 'tree-pine', size: DEFAULT_CRATE_SIZE,
@@ -51,16 +54,16 @@ describe('GameView factory prop mapping', () => {
     const f = factory();
     const cases = [
       ['gig clipboard board', createBoardLibraryProp(f), 'gig-board'],
-      ['iron-banded crate', createWorldLibraryProp(f,
-        { kind: 'crate', size: DEFAULT_CRATE_SIZE }), 'crate'],
+      ['world crate', createWorldLibraryProp(f,
+        { kind: 'crate', size: DEFAULT_CRATE_SIZE }), 'world-crate'],
       ['breakable debris', createDebrisLibraryProp(f, .42), 'crate-debris'],
       ['red trampoline', createSurfaceLibraryProp(f,
         { kind: 'trampoline', halfExtents: { x: 2.1, y: .23, z: 2.1 } }), 'trampoline'],
       ['launch marker', createSurfaceLibraryProp(f,
         { kind: 'launch', halfExtents: { x: 2.1, y: .23, z: 2.1 } }), 'launch'],
       ['gig hay bale', createHeistHayLibraryProp(f), 'gig-hay'],
-      ['gig barrel', createWorldLibraryProp(f,
-        { kind: 'barrel', size: DEFAULT_CRATE_SIZE }), 'gig-barrel'],
+      ['world barrel', createWorldLibraryProp(f,
+        { kind: 'barrel', size: DEFAULT_CRATE_SIZE }), 'world-barrel'],
       ['gig supplies', createSpawnLibraryProp(f,
         { role: 'parcel', size: DEFAULT_CRATE_SIZE }), 'crate'],
       ['Hay-Build floor', createBuildLibraryProp(f, 'floor'), 'build-floor'],
@@ -88,6 +91,156 @@ describe('GameView factory prop mapping', () => {
       expect(root.scale.x).toBeCloseTo(2.1 / DEFAULT_CRATE_SIZE.x);
       expect(root.scale.y).toBeCloseTo(.8 / DEFAULT_CRATE_SIZE.y);
     }
+    f.dispose();
+  });
+});
+
+const worldKinds = [
+  'crate', 'barrel', 'hay-bale', 'fence', 'ramp', 'trampoline',
+] as const satisfies readonly WorldLibraryPropKind[];
+const native: Record<WorldLibraryPropKind, [number, number, number]> = {
+  crate: [2, 1, 1], barrel: [1, 2, 1], 'hay-bale': [1.8, 1.1, .9],
+  fence: [4, 1, .4], ramp: [1.7, .5, 2.2], trampoline: [2, .3, 2],
+};
+const assetBase = 'https://game.example/GiggaGoat/';
+
+function mockWorldModel(url: string): THREE.Object3D {
+  const kind = worldKinds.find(k => url.endsWith(PROP_LIBRARY_MODELS[k]));
+  const dims = kind ? native[kind] : [1, 1, 1];
+  const root = new THREE.Group();
+  // Offset and non-cubic native meshes exercise centroid correction, grounding
+  // and the aspect-preserving quarter-turn path.
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(...dims),
+    new THREE.MeshStandardMaterial({ color: 0x89b1d5 }));
+  mesh.position.set(2, 3, -1);
+  root.add(mesh);
+  return root;
+}
+
+function loadedMesh(root: THREE.Group): THREE.Mesh {
+  const mesh = root.getObjectByName('world-library-model');
+  expect(mesh).toBeInstanceOf(THREE.Mesh);
+  return mesh as THREE.Mesh;
+}
+
+describe('world props use World Lab art rather than gig/build toys', () => {
+  it('requests the exact World Lab GLB for all six kinds, with descriptor-coloured placeholders', async () => {
+    const load = vi.fn(async (url: string) => mockWorldModel(url));
+    const f = new PropFactory({ loadModel: load, assetBaseUrl: assetBase });
+    for (const kind of worldKinds) {
+      const root = createWorldLibraryProp(f, {
+        kind, color: 0x728f43, size: { x: 3, y: 1.5, z: .9 },
+      })!;
+      const box = root.children[0]!.children[0] as THREE.Mesh;
+      expect((box.material as THREE.MeshToonMaterial).color.getHex()).toBe(0x728f43);
+      expect(root.userData.assetStatus).toBe('loading');
+    }
+    await f.whenReady();
+    expect(load.mock.calls.map(call => call[0]).sort())
+      .toEqual(worldKinds.map(kind => assetBase + PROP_LIBRARY_MODELS[kind]).sort());
+    f.dispose();
+  });
+
+  it('uses the Lab fit, footprint, floor and paint for every model', async () => {
+    const f = new PropFactory({
+      loadModel: async url => mockWorldModel(url), assetBaseUrl: assetBase,
+    });
+    const size = { x: 9.2, y: 1.85, z: .35 };
+    const cases = worldKinds.map(kind => {
+      const root = createWorldLibraryProp(f, { kind, size, color: 0x8e6739 })!;
+      root.position.set(12, 4, -8);
+      return { kind, root };
+    });
+    await f.whenReady();
+    for (const { kind, root } of cases) {
+      expect(root.userData.assetStatus, kind).toBe('ready');
+      expect(root.children[0]!.userData.assetPath).toBe(PROP_LIBRARY_MODELS[kind]);
+      const mesh = loadedMesh(root);
+      expect(mesh.geometry.getAttribute('color'), kind).toBeDefined();
+      const painted = (mesh.material as THREE.MeshToonMaterial).color;
+      if (isAuthoredLibraryAsset(PROP_LIBRARY_MODELS[kind])) {
+        expect(painted.getHex(), kind).toBe(0xffffff);
+      } else {
+        const labTint = new THREE.Color(0x8e6739).lerp(new THREE.Color(0xffffff), .82);
+        expect(painted.getHex(), kind).toBe(labTint.getHex());
+      }
+      const bounds = new THREE.Box3().setFromObject(root);
+      const span = bounds.getSize(new THREE.Vector3());
+      const fit = fitLibraryModel(new THREE.Vector3(...native[kind]),
+        new THREE.Vector3(size.x, size.y, size.z), PROP_LIBRARY_MODELS[kind]);
+      const expected = isAuthoredLibraryAsset(PROP_LIBRARY_MODELS[kind])
+        ? new THREE.Vector3(size.x, size.y, size.z)
+        : new THREE.Vector3(
+          (fit.yaw ? native[kind][2] : native[kind][0]) * fit.scale.x,
+          native[kind][1] * fit.scale.y,
+          (fit.yaw ? native[kind][0] : native[kind][2]) * fit.scale.z);
+      for (const axis of ['x', 'y', 'z'] as const) {
+        expect(Math.abs(span[axis] - expected[axis]), kind + ':' + axis)
+          .toBeLessThan(size[axis] * .02);
+        expect(span[axis], kind + ':' + axis).toBeLessThanOrEqual(size[axis] * 1.02);
+      }
+      expect(bounds.min.y, kind).toBeCloseTo(4 - size.y / 2, 5);
+      expect(bounds.getCenter(new THREE.Vector3()).x, kind).toBeCloseTo(12, 5);
+      expect(bounds.getCenter(new THREE.Vector3()).z, kind).toBeCloseTo(-8, 5);
+    }
+    const fence = cases.find(item => item.kind === 'fence')!.root;
+    expect(fence.userData.propKind).toBe('world-fence');
+    expect(fence.getObjectByName('prop-build-wall')).toBeUndefined();
+    expect(fence.getObjectByName('prop-wall')).toBeUndefined();
+    f.dispose();
+  });
+
+  it('fits every Hoofington picket fence on the default island, including yaw', async () => {
+    const island = generateIsland();
+    const fences = island.props.filter(p => p.poiId === 'hoofington' && p.kind === 'fence');
+    expect(fences.length).toBeGreaterThan(3);
+    const f = new PropFactory({
+      loadModel: async url => mockWorldModel(url), assetBaseUrl: assetBase,
+    });
+    const roots = fences.map(prop => {
+      const root = createWorldLibraryProp(f, prop)!;
+      root.position.set(prop.transform.position.x, prop.transform.position.y,
+        prop.transform.position.z);
+      root.rotation.y = prop.transform.rotationY;
+      return root;
+    });
+    await f.whenReady();
+    for (const [i, prop] of fences.entries()) {
+      const root = roots[i]!;
+      expect(root.userData.assetStatus, prop.id).toBe('ready');
+      const bounds = new THREE.Box3().setFromObject(root);
+      const span = bounds.getSize(new THREE.Vector3());
+      const c = Math.abs(Math.cos(prop.transform.rotationY));
+      const s = Math.abs(Math.sin(prop.transform.rotationY));
+      const size = {
+        x: c * prop.size.x + s * prop.size.z,
+        y: prop.size.y,
+        z: s * prop.size.x + c * prop.size.z,
+      };
+      for (const axis of ['x', 'y', 'z'] as const) {
+        expect(Math.abs(span[axis] - size[axis]), prop.id + ':' + axis)
+          .toBeLessThan(size[axis] * .02);
+      }
+      expect(bounds.min.y, prop.id)
+        .toBeCloseTo(prop.transform.position.y - prop.size.y / 2, 4);
+      expect(root.getObjectByName('prop-build-wall'), prop.id).toBeUndefined();
+    }
+    f.dispose();
+  });
+
+  it('uses the original PropFactory toy art only after a failed GLB request', async () => {
+    const fail = vi.fn(async (): Promise<THREE.Object3D> => {
+      throw new Error('asset unavailable');
+    });
+    const f = new PropFactory({ loadModel: fail, assetBaseUrl: assetBase });
+    const root = createWorldLibraryProp(f, {
+      kind: 'fence', size: { x: 9.2, y: 1.85, z: .35 },
+    })!;
+    expect(root.getObjectByName('prop-build-wall')).toBeUndefined();
+    await f.whenReady();
+    expect(root.userData.assetStatus).toBe('fallback');
+    expect(root.getObjectByName('prop-build-wall')).toBeInstanceOf(THREE.Group);
+    expect(new THREE.Box3().setFromObject(root).isEmpty()).toBe(false);
     f.dispose();
   });
 });
