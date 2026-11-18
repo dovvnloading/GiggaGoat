@@ -18,7 +18,33 @@ interface Sprig {
   y: number;
   z: number;
   size: number;
-  color: number;
+}
+
+/** Small folded blades keep a grassy silhouette while the authored mesh loads. */
+function makeGrassBlades(): THREE.BufferGeometry {
+  const positions: number[] = [], colors: number[] = [];
+  const palette = [0x6fae4f, 0x8cc65c, 0xa9d77a].map(hex => new THREE.Color(hex));
+  for (let blade = 0; blade < 6; blade++) {
+    const angle = blade * Math.PI / 3;
+    const x = Math.cos(angle), z = Math.sin(angle);
+    const root = 0.045 + 0.02 * (blade % 2);
+    const width = 0.027 + 0.009 * (blade % 3);
+    const reach = 0.15 + 0.018 * ((blade + 1) % 3);
+    const height = 0.23 + 0.045 * ((blade * 2) % 5);
+    const left = [x * root - z * width, 0, z * root + x * width];
+    const right = [x * root + z * width, 0, z * root - x * width];
+    const ridge = [x * (root + 0.055), height * 0.38, z * (root + 0.055)];
+    const tip = [x * reach, height, z * reach];
+    positions.push(...left, ...tip, ...ridge, ...ridge, ...tip, ...right);
+    for (const shade of [palette[blade % 3]!, palette[(blade + 1) % 3]!]) {
+      for (let vertex = 0; vertex < 3; vertex++) colors.push(shade.r, shade.g, shade.b);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.computeVertexNormals();
+  return geometry;
 }
 
 /**
@@ -96,11 +122,11 @@ export function buildMeadowScatter(island: IslandData): THREE.Group {
       gridSample(island, x, z - 0.75 * scale);
     if (Math.hypot(dx, dz) > 0.83 * scale) continue;
     if (!outsideObstacles(x, z)) continue;
-    const color = [0x84bf59, 0x9bcc6b, 0xb5d681, 0x6eac54][
-      Math.floor(rng.next() * 4)]!;
+    // Advance the old tint draw so existing seeds keep the same placements.
+    rng.next();
     const sample: Sprig = {
       x, y: y + 0.03 * scale, z,
-      size: rng.range(0.52, 1.25) * scale, color,
+      size: rng.range(0.52, 1.25) * scale,
     };
     grasses.push(sample);
     if (rng.next() < (biome === 'farmland' || biome === 'meadow' ? 0.22 : 0.09)) {
@@ -108,19 +134,7 @@ export function buildMeadowScatter(island: IslandData): THREE.Group {
     }
   }
 
-  // Preserve the original two-octahedron tuft, its RNG transforms and tints
-  // while the painted grass-clump GLB loads. Flowers remain unchanged.
-  const leafParts: THREE.BufferGeometry[] = [
-    new THREE.OctahedronGeometry(0.2, 0),
-    new THREE.OctahedronGeometry(0.15, 0),
-  ];
-  leafParts[0]!.scale(1.35, 0.5, 1.35);
-  leafParts[0]!.translate(0, 0.1, 0);
-  leafParts[1]!.scale(1.3, 0.55, 1.3);
-  leafParts[1]!.translate(0.14, 0.08, -0.06);
-  const tuft = mergeGeometries(leafParts, false);
-  leafParts.forEach(p => p.dispose());
-  if (!tuft) throw new Error('Failed to assemble meadow tufts');
+  const tuft = makeGrassBlades();
 
   const flowerParts: THREE.BufferGeometry[] = [];
   const petals: number[] = [];
@@ -155,7 +169,7 @@ export function buildMeadowScatter(island: IslandData): THREE.Group {
   const rotation = new THREE.Quaternion(), scaling = new THREE.Vector3();
   const axis = new THREE.Vector3(0, 1, 0);
   function instances(geometry: THREE.BufferGeometry, samples: Sprig[],
-    name: string, material: THREE.MeshToonMaterial, instanceTint: boolean): THREE.InstancedMesh {
+    name: string, material: THREE.MeshToonMaterial): THREE.InstancedMesh {
     const mesh = new THREE.InstancedMesh(geometry, material, samples.length);
     mesh.name = name;
     mesh.castShadow = false;
@@ -167,18 +181,16 @@ export function buildMeadowScatter(island: IslandData): THREE.Group {
       rotation.setFromAxisAngle(axis, rng.range(0, Math.PI * 2));
       transform.compose(position, rotation, scaling);
       mesh.setMatrixAt(i, transform);
-      if (instanceTint) mesh.setColorAt(i, new THREE.Color(item.color));
     }
     mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingSphere();
     group.add(mesh);
     return mesh;
   }
   const grassMesh = instances(tuft, grasses, 'meadow-grass-sprigs',
-    new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: TOON_RAMP }), true);
+    new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_RAMP, side: THREE.DoubleSide }));
   instances(blossom, flowers, 'meadow-daisy-flowers',
-    new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_RAMP }), false);
+    new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_RAMP }));
 
   // Use the library's native-metre colour baker (also used for clouds), not
   // the prop baker's normalized 0.98-m envelope. The GLB already has nine
@@ -216,10 +228,6 @@ export function buildMeadowScatter(island: IslandData): THREE.Group {
         grassMesh.setMatrixAt(i, matrix);
       }
       grassMesh.geometry = clump;
-      grassMesh.instanceColor = null;
-      const material = grassMesh.material as THREE.MeshToonMaterial;
-      material.vertexColors = true;
-      material.needsUpdate = true;
       grassMesh.instanceMatrix.needsUpdate = true;
       grassMesh.computeBoundingSphere();
       tuft.dispose();
