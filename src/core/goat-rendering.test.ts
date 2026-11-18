@@ -11,7 +11,7 @@ const create = (): Promise<Game> => Game.create({
 function expectApprovedSculpt(character: GoatCharacter): void {
   expect(character).toBeInstanceOf(GoatCharacter);
   expect(character.root.name).toBe('Gigga-Goat | seven-body sculpt');
-  expect(character.root.children.map(part => part.name)).toEqual([
+  expect(character.root.children.map(part => part.name).filter(name => name !== 'player hoof contacts')).toEqual([
     'ragdoll torso', 'ragdoll neck', 'ragdoll head', 'ragdoll front-left',
     'ragdoll front-right', 'ragdoll hind-left', 'ragdoll hind-right',
   ]);
@@ -27,6 +27,34 @@ function expectApprovedSculpt(character: GoatCharacter): void {
 }
 
 describe('Game scene uses the approved src/character goat, not proxy primitives', () => {
+  it('grounds four idle hoof marks and clears them when the goat jumps', async () => {
+    const game = await create();
+    const characters = new GameCharacters(new THREE.Scene(), game);
+    try {
+      for (let i = 0; i < 110; i++) game.step();
+      characters.update(1 / 60, game.physics.alpha);
+      const contacts = characters.player.root.getObjectByName('player hoof contacts') as
+        THREE.InstancedMesh;
+      expect(contacts).toBeInstanceOf(THREE.InstancedMesh);
+      expect(contacts.count).toBe(4);
+      const centers = Array.from({ length: contacts.count }, (_, index) => {
+        const matrix = new THREE.Matrix4();
+        contacts.getMatrixAt(index, matrix);
+        return new THREE.Vector3().setFromMatrixPosition(matrix);
+      });
+      for (const [i, point] of centers.entries()) for (const other of centers.slice(i + 1)) {
+        expect(point.distanceTo(other)).toBeGreaterThan(.22 * game.goat.size);
+      }
+      game.step({ jump: true });
+      for (let i = 0; i < 6; i++) game.step();
+      characters.update(1 / 60, game.physics.alpha);
+      expect(contacts.count).toBe(0);
+    } finally {
+      characters.dispose();
+      game.dispose();
+    }
+  });
+
   it('renders the real player sculpt on all four physical tiers, bound to replaced rigid bodies', async () => {
     const game = await create();
     const scene = new THREE.Scene();
