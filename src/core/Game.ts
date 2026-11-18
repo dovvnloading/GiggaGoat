@@ -585,15 +585,23 @@ export class Game {
     const torso = goat.torso;
     const velocity = torso.linvel();
     const cameraYaw = input.cameraYaw ?? goat.locomotion.heading;
-    const mx = Math.max(-1, Math.min(1, input.moveX ?? 0));
-    const mz = Math.max(-1, Math.min(1, input.moveZ ?? 0));
+    const match = this.party.match;
+    const hayHeist = match?.mode === 'hay-heist';
+    // PartySession already applies the carrying effect to bot movement. The
+    // human enters here with raw input and needs the same effect once.
+    const carryEffects = hayHeist && player ? match.getEffects(goat.id) : undefined;
+    const speed = carryEffects?.speedMultiplier ?? 1;
+    const mx = Math.max(-1, Math.min(1, input.moveX ?? 0)) * speed;
+    const mz = Math.max(-1, Math.min(1, input.moveZ ?? 0)) * speed;
     const wish = V(Math.sin(cameraYaw) * mz + Math.cos(cameraYaw) * mx, 0,
       -Math.cos(cameraYaw) * mz + Math.sin(cameraYaw) * mx);
     const steep = Math.hypot(wish.x, wish.z) > .1 && this.isFacingWall(wish, goat);
     const head = goat.head.translation();
     const courierAim = player && goat.size > 1 && input.tongue && !goat.interactions.isTongueAttached
       ? this.rooftopParcelAim(goat) : undefined;
-    const hit = this.physics.raycast(courierAim ? goat.interactions.tongueOrigin : head,
+    // PartyMatch owns Hay Heist pickup/drop from the original tongue input.
+    // The generic tongue ray would also tether the goat to nearby terrain.
+    const hit = hayHeist ? null : this.physics.raycast(courierAim ? goat.interactions.tongueOrigin : head,
       courierAim ?? add(forward(goat.locomotion.heading), V(0, -.10, 0)),
       9 * goat.size, { predicate: collider => !goat.ownsBody(collider.parent()) });
     const prop = hit ? [...this.colliders.props].find(([, c]) => c.handle === hit.collider.handle) : undefined;
@@ -609,10 +617,11 @@ export class Game {
     };
     if (player) this.climbMetres = 0;
     const rulesIntent: GoatIntent = {
-      sprint: input.sprint, climb: input.climb ?? Math.hypot(mx, mz) > .1,
+      sprint: input.sprint && (carryEffects?.canSprint ?? true),
+      climb: input.climb ?? Math.hypot(mx, mz) > .1,
       chargeHeadbutt: (player ? !this.buildMode : true) && input.chargeHeadbutt,
-      tongue: input.tongue, reelTongue: input.reelTongue,
-      flingTongue: input.flingTongue, bleat: input.bleat, flop: input.flop,
+      tongue: !hayHeist && input.tongue, reelTongue: !hayHeist && input.reelTongue,
+      flingTongue: !hayHeist && input.flingTongue, bleat: input.bleat, flop: input.flop,
       jump: input.jump, glide: input.glide,
     };
     const result = sim.update(dt, rulesIntent, facts);
