@@ -231,7 +231,8 @@ export class Game {
     for (const piece of this.rules.build.pieces) this.addBuildBody(piece);
     // Both deterministic lanes are stepped only at completed Rapier tick boundaries.
     try {
-      this.gigs = new GigSession(this, island.seed, options.progress?.gigs, options.progress?.gigBodies);
+      this.gigs = new GigSession(this, island.seed, options.progress?.gigs,
+        options.progress?.gigBodies, options.progress?.rooftopPose);
     } catch {
       this.gigs = new GigSession(this, island.seed);
     }
@@ -903,8 +904,15 @@ export class Game {
   }
 
   exportProgress(): GameProgress {
-    return { gameplay: this.rules.toJSON(), gigs: this.gigs.director.toJSON(),
+    const progress: GameProgress = { gameplay: this.rules.toJSON(), gigs: this.gigs.director.toJSON(),
       gigBodies: this.gigs.saveBodies(), acknowledgedGigAttempt: this.acknowledgedGigAttempt };
+    const run = this.gigs.active;
+    if (run?.status === 'running' && run.setup.config.kind === 'rooftop-express') {
+      const { x, y, z } = this.goat.torso.translation();
+      progress.rooftopPose = { position: { x, y: y - .92 * this.goat.size, z },
+        heading: this.goat.locomotion.heading };
+    }
+    return progress;
   }
 
   get pendingGigResult() {

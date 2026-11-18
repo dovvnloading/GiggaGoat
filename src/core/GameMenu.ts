@@ -433,12 +433,14 @@ export class GameMenu {
     } else if (key.startsWith('offer:')) {
       try {
         this.game.gigs.accept(key.slice(6));
+        if (this.game.gigs.active?.setup.config.kind === 'rooftop-express') this.view.alignCameraForPlay();
         this.save();
         this.resume();
       } catch (error) { this.error(error); }
     } else if (key === 'retry-gig' && this.screen === 'gig-results') {
       try {
         this.game.gigs.retryFailed();
+        if (this.game.gigs.active?.setup.config.kind === 'rooftop-express') this.view.alignCameraForPlay();
         // The new attempt replaces the failed one. Leaving results saves the
         // running attempt through the same acknowledgement path as Free Roam.
         this.resume();

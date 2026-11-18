@@ -2,12 +2,19 @@ import { GameSimulation, type GameSnapshot } from '../gameplay';
 import type { GigSnapshot } from '../gigs';
 import type { GigBodySave } from './GigSession';
 import type { Game } from './Game';
+import type { Vec3 } from '../physics';
+
+export interface RooftopPose {
+  position: Vec3;
+  heading: number;
+}
 
 export interface GameProgress {
   gameplay: GameSnapshot;
   gigs: GigSnapshot;
   gigBodies: GigBodySave[];
   acknowledgedGigAttempt?: number;
+  rooftopPose?: RooftopPose;
 }
 export interface GameSettings {
   mouseSensitivity: number;

@@ -5,6 +5,40 @@ import { Game } from './Game';
 const create = () => Game.create({ resolution: 97 });
 
 describe('retrying a failed gig', () => {
+  it('starts Rooftop Express above the street on acceptance, retry, and reload', async () => {
+    const game = await create();
+    try {
+      const board = game.gigs.boards.find(entry => entry.poiId === 'downtown-bleatsville')!;
+      game.teleport(board.position);
+      const offer = game.gigs.board(board.poiId).find(entry => entry.gigId === 'rooftop-express')!;
+      game.gigs.accept(offer.id);
+      const run = game.gigs.active!;
+      expect(run.setup.config.kind).toBe('rooftop-express');
+      for (let tick = 0; tick < 45; tick++) game.step();
+      const roof = game.goat.torso.translation();
+      expect(roof.y).toBeGreaterThan(board.position.y + 4);
+      expect(game.goat.locomotion.grounded).toBe(true);
+      expect(game.gigs.active?.status).toBe('running');
+
+      const restored = await Game.create({ resolution: 97, progress: game.exportProgress() });
+      try {
+        expect(restored.goat.torso.translation()).toEqual(roof);
+        restored.step();
+        expect(restored.gigs.active?.attemptId).toBe(run.attemptId);
+        expect(restored.gigs.active?.status).toBe('running');
+      } finally { restored.dispose(); }
+
+      game.teleport(board.position);
+      game.step();
+      expect(game.gigs.active?.status).toBe('failed');
+      game.gigs.retryFailed();
+      expect(game.gigs.active?.attemptId).toBeGreaterThan(run.attemptId);
+      game.step();
+      expect(game.gigs.active?.status).toBe('running');
+      expect(game.goat.torso.translation().y).toBeGreaterThan(board.position.y + 4);
+    } finally { game.dispose(); }
+  });
+
   it('restarts the exact posted Hay Haul offer from the field and saves only the new attempt', async () => {
     const game = await create();
     try {

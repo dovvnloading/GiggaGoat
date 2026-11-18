@@ -1,9 +1,11 @@
 import type { RigidBody } from '@dimforge/rapier3d-compat';
 import { GigCatalog, GigDirector, GigGameplayBridge, type AbilityFact, type GigEvent,
-  type GigOffer, type GigRun, type GigPropSpawn, type GigSnapshot, type PropFact, type StyleFact } from '../gigs';
+  type GigOffer, type GigRun, type GigPropSpawn, type GigSetup, type GigSnapshot,
+  type PropFact, type StyleFact } from '../gigs';
 import { RAPIER, collisionGroups, type PhysicsContact } from '../physics';
 import { heightAt, type PoiId } from '../world';
 import type { Game } from './Game';
+import type { RooftopPose } from './Persistence';
 
 export interface GigBodySave {
   id: string;
@@ -29,7 +31,8 @@ export class GigSession {
   latestEvents: GigEvent[] = [];
   latestPayout = 0;
 
-  constructor(game: Game, seed: string | number, snapshot?: GigSnapshot, bodies: GigBodySave[] = []) {
+  constructor(game: Game, seed: string | number, snapshot?: GigSnapshot,
+    bodies: GigBodySave[] = [], rooftopPose?: RooftopPose) {
     this.game = game;
     this.catalog = new GigCatalog(game.island, seed);
     this.director = snapshot ? GigDirector.fromJSON(snapshot, this.catalog) : new GigDirector(this.catalog);
@@ -40,7 +43,13 @@ export class GigSession {
       this.style.push({ type: event.trick, points: event.points })));
     const run = this.director.active;
     if (run?.status === 'running') {
-      this.spawn(run.setup.spawns, bodies);
+      const previous = snapshot?.run?.setup;
+      const start = run.setup.start;
+      const relocatedRoof = previous?.config.kind === 'rooftop-express' &&
+        run.setup.config.kind === 'rooftop-express' &&
+        (previous.start.x !== start.x || previous.start.y !== start.y || previous.start.z !== start.z);
+      this.spawn(run.setup.spawns, relocatedRoof ? [] : bodies);
+      this.stageRooftop(run.setup, relocatedRoof ? undefined : rooftopPose);
       this.keepHayBalesAvailable(run);
       if (run.setup.config.kind === 'hay-haul') {
         const saved = new Map(bodies.map(body => [body.id, body]));
@@ -118,8 +127,26 @@ export class GigSession {
     this.clear();
     const setup = this.director.accept(offerId);
     this.spawn(setup.spawns);
+    this.stageRooftop(setup);
     const run = this.active;
     if (run) this.keepHayBalesAvailable(run);
+  }
+
+  private stageRooftop(setup: GigSetup, saved?: RooftopPose): void {
+    const config = setup.config;
+    if (config.kind !== 'rooftop-express') return;
+    const point = saved?.position;
+    const limit = this.game.island.size / 2;
+    if (saved && point && [point.x, point.y, point.z, saved.heading].every(Number.isFinite) &&
+        Math.abs(point.x) < limit && Math.abs(point.z) < limit &&
+        point.y >= config.streetY + 1.3 && point.y < setup.start.y + 25) {
+      this.game.teleport(point, -saved.heading);
+      return;
+    }
+    const pickup = setup.spawns.find(prop => prop.id === config.parcelId)?.position ??
+      config.checkpoints[0] ?? setup.start;
+    const heading = Math.atan2(pickup.x - setup.start.x, setup.start.z - pickup.z);
+    this.game.teleport(setup.start, -heading);
   }
   abandon(): void {
     this.director.abandon();
