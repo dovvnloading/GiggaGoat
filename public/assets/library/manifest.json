@@ -33798,5 +33798,104 @@
   "license": "CC0",
   "credit": "Gigga-Goat (original, built in Blender)",
   "url": ""
+ },
+ {
+  "path": "assets/library/custom/hoofington-props/grass-clump.glb",
+  "name": "hoofington-props grass-clump",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/props/cascade-tall.glb",
+  "name": "props cascade-tall",
+  "source": "custom",
+  "pack": "props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/props/signpost-hoofington.glb",
+  "name": "props signpost-hoofington",
+  "source": "custom",
+  "pack": "props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/props/signpost-pines.glb",
+  "name": "props signpost-pines",
+  "source": "custom",
+  "pack": "props",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/baaardwalk/kiosk-icecream.glb",
+  "name": "baaardwalk kiosk-icecream",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/baaardwalk/kiosk-popcorn.glb",
+  "name": "baaardwalk kiosk-popcorn",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/baaardwalk/kiosk-games.glb",
+  "name": "baaardwalk kiosk-games",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/baaardwalk/kiosk-prizes.glb",
+  "name": "baaardwalk kiosk-prizes",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/baaardwalk/kiosk-candy.glb",
+  "name": "baaardwalk kiosk-candy",
+  "source": "custom",
+  "pack": "baaardwalk",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/horizon/islet-a.glb",
+  "name": "horizon islet-a",
+  "source": "custom",
+  "pack": "horizon",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
+ },
+ {
+  "path": "assets/library/custom/horizon/islet-b.glb",
+  "name": "horizon islet-b",
+  "source": "custom",
+  "pack": "horizon",
+  "license": "CC0",
+  "credit": "Gigga-Goat (original, built in Blender)",
+  "url": ""
  }
 ]
