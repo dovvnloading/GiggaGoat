@@ -54,6 +54,7 @@ export class GameView {
   readonly hud: GameHud;
   readonly characters: GameCharacters;
   readonly vfx: GameVfx;
+  private readonly boardRoots: THREE.Group[] = [];
   private readonly boardMarkers = new THREE.Group();
   private readonly gigMarkers = new THREE.Group();
   private readonly partyMarkers = new THREE.Group();
@@ -281,33 +282,49 @@ export class GameView {
     }
   }
 
-  /** Factory signposts share geometry; the original text/ring remain independent UI. */
+  /** Factory signposts share geometry while their wayfinding overlays are separate. */
   private createBoardMarkers(): void {
+    this.boardMarkers.name = 'gig-board-markers';
     this.scene.add(this.boardMarkers);
     for (const board of this.game.gigs.boards) {
       const root = createBoardLibraryProp(this.propFactory);
+      const mountain = board.poiId === 'mt-gigga';
+      const lighthouse = board.poiId === 'old-lighthouse';
       const compact = board.poiId === 'hoofington' || board.poiId === 'downtown-bleatsville' ||
-        board.poiId === 'old-lighthouse';
+        lighthouse || mountain;
       if (compact) {
         root.scale.multiplyScalar(.58);
-        root.rotation.y = board.poiId === 'old-lighthouse' ? Math.PI / 2 : -Math.PI / 2;
+        // The summit notice faces the last climb from Hoofington.
+        root.rotation.y = mountain ? 2.67 : lighthouse ? Math.PI / 2 : -Math.PI / 2;
       }
-      const base = board.poiId === 'old-lighthouse' ? 0 : .15;
+      const base = mountain || lighthouse ? 0 : .15;
       root.position.set(board.position.x, board.position.y + base, board.position.z);
       this.instancedProps.add(root);
-      if (compact) continue;
+      this.boardRoots.push(root);
+      if (compact && !mountain) continue;
 
       const overlay = new THREE.Group();
       overlay.position.copy(root.position);
-      overlay.add(this.textSprite('E · GIGS', 4.8, 1.2, 3.4));
-      const ring = new THREE.Mesh(new THREE.RingGeometry(3.8, 4.25, 28),
-        new THREE.MeshBasicMaterial({ color: 0xffd833, side: THREE.DoubleSide,
-          transparent: true, opacity: .7 }));
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.y = .09;
-      overlay.add(ring);
+      if (mountain) {
+        overlay.add(this.textSprite('E · GIGS', 2.4, .64, 2.9));
+      } else {
+        overlay.add(this.textSprite('E · GIGS', 4.8, 1.2, 3.4));
+        const ring = new THREE.Mesh(new THREE.RingGeometry(3.8, 4.25, 28),
+          new THREE.MeshBasicMaterial({ color: 0xffd833, side: THREE.DoubleSide,
+            transparent: true, opacity: .7 }));
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = .09;
+        overlay.add(ring);
+      }
       this.boardMarkers.add(overlay);
     }
+  }
+
+  private updateBoardMarkers(): void {
+    const visible = this.game.party.match === null;
+    if (this.boardMarkers.visible === visible) return;
+    this.boardMarkers.visible = visible;
+    for (const root of this.boardRoots) root.visible = visible;
   }
 
   private releaseLibraryProp(root: THREE.Group): void {
@@ -764,6 +781,7 @@ export class GameView {
     this.characters.update(dt, alpha, this.camera, range);
     this.vfx.frame(dt, this.camera, range);
     this.updatePartyVisuals(alpha);
+    this.updateBoardMarkers();
     this.updateGigVisuals(alpha);
     this.updateProps(alpha);
     this.updateBuildings();
@@ -831,6 +849,7 @@ export class GameView {
     this.vfx.dispose();
     this.characters.dispose();
     this.clearGroup(this.boardMarkers);
+    this.boardRoots.length = 0;
     this.clearGroup(this.gigMarkers);
     this.clearGroup(this.partyMarkers);
     this.gigProps.clear(); this.heistBales.clear();
