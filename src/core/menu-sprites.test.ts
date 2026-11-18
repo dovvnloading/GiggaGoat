@@ -5,6 +5,8 @@ import { GameMenu } from './GameMenu';
 import { MENU_SPRITES, menuSpriteUrl } from './MenuSprites';
 import { DEFAULT_SETTINGS } from './Persistence';
 import { MODE_DEFAULTS, type PartyMatch } from '../modes';
+import { GigCatalog, type GigBoard } from '../gigs';
+import { generateIsland, type PoiId } from '../world';
 import { frame, goat, readyMatch } from '../modes/test-utils';
 
 const manifest = JSON.parse(readFileSync(
@@ -52,11 +54,11 @@ class NodeStub {
         node.setAttribute(attr[1]!, attr[2] ?? '');
       return node;
     });
-    this.brief = [...html.matchAll(/<(strong|p) (data-party-(?:venue|objective))>([^<]*)<\//g)]
+    this.brief = [...html.matchAll(/<(strong|p) ([^>]*)(data-party-(?:venue|objective)|data-board-note)([^>]*)>([^<]*)<\//g)]
       .map(match => {
         const node = new NodeStub(this.doc);
-        node.setAttribute(match[2]!, '');
-        node.textContent = match[3]!;
+        node.setAttribute(match[3]!, '');
+        node.textContent = match[5]!;
         return node;
       });
   }
@@ -84,7 +86,7 @@ class NodeStub {
   closest<T = NodeStub>(selector: string): T | null {
     if (selector === 'button[data-sprite-normal]')
       return (this.tagName === 'BUTTON' && this.hasAttribute('data-sprite-normal') ? this : null) as T | null;
-    if (selector === '[data-action]' || selector === '[data-tab]' ||
+    if (selector === '[data-action]' || selector === '[data-tab]' || selector === '[data-board-offer]' ||
       selector === '[data-setting-toggle]' || selector === '[data-fullscreen]')
       return (this.hasAttribute(selector.slice(1, -1)) ? this : null) as T | null;
     return null;
@@ -93,9 +95,13 @@ class NodeStub {
     if (selector === '.gg-shell-panel') return (this.panel ? [this.panel] : []) as T[];
     if (selector === 'button,select,input') return this.controls as T[];
     if (selector === 'button') return this.controls.filter(n => n.tagName === 'BUTTON') as T[];
-    const match = /^\[([\w-]+)(?:="([^"]+)")?\]$/.exec(selector);
-    if (match) return [...this.controls, ...this.brief].filter(n => n.hasAttribute(match[1]!) &&
-      (match[2] === undefined || n.attrs.get(match[1]!) === match[2])) as T[];
+    const match = /^\[([\w-]+)(?:(\^?=)"([^"]+)")?\]$/.exec(selector);
+    if (match) return [...this.controls, ...this.brief].filter(n => {
+      const value = n.attrs.get(match[1]!);
+      if (value === undefined) return false;
+      if (match[2] === '^=') return value.startsWith(match[3]!);
+      return match[3] === undefined || value === match[3];
+    }) as T[];
     return [];
   }
   querySelector<T = NodeStub>(selector: string): T | null {
@@ -152,7 +158,9 @@ function setup() {
   const host = new NodeStub(doc);
   const game = {
     rules: { wallet: { coins: 20 } },
-    gigs: { director: { ownedCosmetics: [] }, active: null },
+    gigs: { director: { ownedCosmetics: [], board: vi.fn<(poi: PoiId) => GigBoard>() },
+      active: null, catalog: null as GigCatalog | null,
+      nearBoard: vi.fn<() => PoiId | null>(), accept: vi.fn() },
     party: { match: null as PartyMatch | null, title: 'Rising Tide',
       start: vi.fn(), returnToFreeRoam: vi.fn() },
     physics: { stepCount: 0 },
@@ -320,6 +328,52 @@ describe('sprite-backed menu DOM', () => {
 
       root.querySelector<ButtonStub>('[data-action="start-party"]')!.click();
       expect(game.party.start).toHaveBeenCalledWith('hay-heist', 3, 'normal');
+    } finally { menu.dispose(); }
+  });
+
+  it('shows real contract targets and accepts only the offer selected on the Hoofington board', () => {
+    const { menu, doc, game, root, view } = setup();
+    try {
+      const island = generateIsland({ resolution: 97 });
+      const catalog = new GigCatalog(island, island.seed);
+      const board = catalog.board('hoofington', 0);
+      game.gigs.catalog = catalog;
+      game.gigs.director.board.mockReturnValue(board);
+      game.gigs.nearBoard.mockReturnValue('hoofington');
+
+      root.querySelector<ButtonStub>('[data-action="play"]')!.click();
+      expect(view.onInteract?.()).toBe(true);
+      expect(root.innerHTML).toContain('MAKE CUD COINS');
+      expect(root.innerHTML).toContain('Hay Haul');
+      expect(root.innerHTML).toContain('Mow-Down');
+      expect(root.innerHTML).toContain('icons/hay_floor');
+      expect(root.innerHTML).toContain('gg-board-grass');
+
+      for (const offer of board.offers) {
+        const { config, info } = catalog.build(offer);
+        expect(root.innerHTML).toContain(offer.difficulty[0]!.toUpperCase() + offer.difficulty.slice(1));
+        expect(root.innerHTML).toContain(info.baseCoins + ' base coins');
+        if (config.kind === 'hay-haul') expect(root.innerHTML).toContain('Deliver ' + config.required + ' bales');
+        if (config.kind === 'mow-down') expect(root.innerHTML).toContain('Graze ' + config.patches.length + ' grass patches');
+      }
+
+      const choices = root.querySelectorAll<ButtonStub>('[data-board-offer]');
+      expect(choices).toHaveLength(2);
+      expect(choices.map(choice => choice.attrs.get('aria-pressed'))).toEqual(['true', 'false']);
+      const confirm = root.querySelectorAll<ButtonStub>('[data-action^="offer:"]');
+      expect(confirm).toHaveLength(1);
+      expect(confirm[0]!.dataset.action).toBe('offer:' + board.offers[0]!.id);
+      choices[1]!.focus();
+      choices[1]!.click();
+      expect(choices.map(choice => choice.attrs.get('aria-pressed'))).toEqual(['false', 'true']);
+      expect(doc.activeElement).toBe(choices[1]);
+      expect(root.querySelector('[data-board-note]')?.textContent)
+        .toBe(catalog.info(board.offers[1]!.gigId).instruction);
+      expect(game.gigs.accept).not.toHaveBeenCalled();
+
+      confirm[0]!.click();
+      expect(game.gigs.accept).toHaveBeenCalledExactlyOnceWith(board.offers[1]!.id);
+      expect(view.paused).toBe(false);
     } finally { menu.dispose(); }
   });
 
