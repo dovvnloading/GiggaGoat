@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { CollisionLayer, collisionGroups } from './CollisionGroups';
-import { GoatRagdoll, type GoatSize } from './GoatRagdoll';
+import { GoatRagdoll, GOAT_SIZES, type GoatSize } from './GoatRagdoll';
 import { PhysicsWorld } from './PhysicsWorld';
 import { dot, forward, rotate, sub, V } from './math';
 
@@ -73,18 +73,33 @@ describe('real Rapier physics simulation', () => {
     expect(dot(sub(g.head.translation(),g.torso.translation()),travel)).toBeGreaterThan(.2);
   });
 
-  it('turns its motors off on flop, and autonomously gets upright again', async () => {
-    const w = await scene(), g = goat(w);
-    simulate(w,.6);
+  it.each(GOAT_SIZES)('actually folds its stance on a deliberate flop at size %i and recovers', async size => {
+    const w = await scene(), g = goat(w, size);
+    simulate(w, 1.7);
+    expect(g.locomotion.grounded).toBe(true);
+    const start = g.torso.translation();
+    let lowest = start.y, highest = start.y, drift = 0;
     const events: string[] = [];
-    g.events.on(e=>events.push(e.type));
+    g.events.on(event => {
+      if (event.type === 'ragdollStart') events.push(event.reason);
+      if (event.type === 'ragdollEnd') events.push('recovered');
+    });
     g.flop();
     expect(g.isRagdoll).toBe(true);
-    simulate(w,4);
+    for (let tick = 0; tick < 90 && g.isRagdoll; tick++) {
+      w.step(1 / 60);
+      const point = g.torso.translation();
+      lowest = Math.min(lowest, point.y);
+      highest = Math.max(highest, point.y);
+      drift = Math.max(drift, Math.hypot(point.x - start.x, point.z - start.z));
+    }
+    expect(start.y - lowest).toBeGreaterThan(.23 * size);
+    expect(highest - start.y).toBeLessThan(.08 * size);
+    expect(drift).toBeLessThan(size);
+    expect(events).toEqual(['flop', 'recovered']);
     expect(g.isRagdoll).toBe(false);
+    simulate(w, 2.6);
     expect(g.balanceValue).toBeGreaterThan(.6);
-    expect(events).toContain('ragdollStart');
-    expect(events).toContain('ragdollEnd');
     expect(rotate(g.torso.rotation(),V(0,1,0)).y).toBeGreaterThan(.55);
   });
 
