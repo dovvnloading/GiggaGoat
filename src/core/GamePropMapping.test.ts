@@ -28,6 +28,17 @@ function factory(): PropFactory {
 }
 
 describe('GameView factory prop mapping', () => {
+  it('seats the Hoofington launch deck at the bottom of its solid collider', () => {
+    const f = factory();
+    try {
+      const halfExtents = { x: 2.1, y: .23, z: 2.1 };
+      const root = createSurfaceLibraryProp(f, { kind: 'launch', halfExtents, artAtGround: true });
+      const bounds = new THREE.Box3().setFromObject(root);
+      expect(bounds.min.y).toBeCloseTo(-halfExtents.y, 3);
+      expect(bounds.max.y).toBeGreaterThan(halfExtents.y);
+    } finally { f.dispose(); }
+  });
+
   it('keeps physics-bound props out of both scenery rendering paths', () => {
     const island = generateIsland({ resolution: 65 });
     const source = vi.spyOn(hoofingtonArt, 'buildHoofingtonVisuals');

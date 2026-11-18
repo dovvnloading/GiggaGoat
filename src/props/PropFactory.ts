@@ -436,10 +436,10 @@ export class PropFactory {
     return root;
   }
 
-  private springPad(kind: 'trampoline' | 'launch', halfExtents: Size3): THREE.Group {
+  private springPad(kind: 'trampoline' | 'launch', halfExtents: Size3, artAtGround = false): THREE.Group {
     const s = getSurfaceFootprint(halfExtents);
     const root = this.root(kind, s, true);
-    const y = halfExtents.y;
+    const y = artAtGround ? -halfExtents.y : halfExtents.y;
     const red = kind === 'trampoline';
     this.box(root, s, red ? 'gold' : 'orange', 0, y + .09, 0);
     this.mount(root, root, LIBRARY_MODELS.spring,
@@ -462,8 +462,8 @@ export class PropFactory {
     return this.springPad('trampoline', halfExtents);
   }
 
-  createLaunchPad(halfExtents: Size3 = SURFACE_HALF_EXTENTS): THREE.Group {
-    return this.springPad('launch', halfExtents);
+  createLaunchPad(halfExtents: Size3 = SURFACE_HALF_EXTENTS, artAtGround = false): THREE.Group {
+    return this.springPad('launch', halfExtents, artAtGround);
   }
 
   private hayBlock(size: Size3, name: string): THREE.Group {

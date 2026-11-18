@@ -22,6 +22,13 @@ const ANCHOR_POINTS: Readonly<Record<MountName, readonly [number, number, number
   back: [0, 1.22, .06],
 };
 
+// Centers of the sole patches in each normalized GLB, fore pair then hind pair.
+const IDLE_SOLES: Readonly<Record<GoatVariant, readonly (readonly [number, number])[]>> = {
+  hero: [[-.231, -.241], [.234, -.241], [-.216, .519], [.211, .524]],
+  bandana: [[-.218, -.286], [.222, -.268], [-.217, .438], [.218, .427]],
+  bell: [[-.218, -.251], [.217, -.237], [-.217, .457], [.222, .458]],
+};
+
 type AnchorHome = {
   parent: THREE.Object3D;
   position: THREE.Vector3;
@@ -109,6 +116,12 @@ export class GoatCharacter {
   private generation = 0;
   private disposed = false;
   private readonly offset = new THREE.Vector3();
+  private idleSolesGrounded = false;
+  private readonly supportNormal = new THREE.Vector3();
+  private readonly supportBack = new THREE.Vector3();
+  private readonly supportRight = new THREE.Vector3();
+  private readonly supportBasis = new THREE.Matrix4();
+  private readonly supportRotation = new THREE.Quaternion();
 
   constructor(goat?: GoatRagdoll, options: GoatCharacterOptions = {}) {
     this.options = { ...options };
@@ -220,12 +233,21 @@ export class GoatCharacter {
     return this.mounts[name].getWorldPosition(out);
   }
 
+  /** World position for the rig's idle contact marks. The fallback uses Rapier legs. */
+  idleSolePosition(index: number, out: THREE.Vector3): boolean {
+    const sole = IDLE_SOLES[this.variantValue][index];
+    if (!this.idleSolesGrounded || !this.rig || !sole) return false;
+    out.set(sole[0], 0, sole[1]).applyMatrix4(this.rig.model.matrixWorld);
+    return true;
+  }
+
   update(dt: number, alpha?: number): MotionFrame {
     if (this.disposed) throw new Error('GoatCharacter is disposed');
     if (!Number.isFinite(dt) || dt < 0) throw new RangeError('dt must be non-negative and finite');
     const frameDt = Math.min(dt, .1);
     this.clock += frameDt;
     const goat = this.bound;
+    this.idleSolesGrounded = false;
     if (goat) this.tierValue = tierFromPhysicsScale(goat.size);
 
     if (!this.rig) {
@@ -241,14 +263,13 @@ export class GoatCharacter {
       tongueAttached: goat.interactions.isTongueAttached,
       clinging: goat.locomotion.isClinging,
       pose: goat.pose,
-      sprinting: goat.locomotion.input.sprint,
+      sprinting: goat.pose === 'gallop',
       grounded: goat.locomotion.grounded,
     }) : this.previewAction;
 
     if (goat) {
-      // Torso center is y=.92 at Billy rest; the rig's hooves are at y=0.
-      // Apply the local offset after interpolated torso rotation to retain
-      // real yaw, pitch and roll in physics (including airborne/flop poses).
+      // Carry locomotion, jumps and flops with the interpolated torso. For
+      // idle, the support plane below supplies the render rig's foot frame.
       const interpolation = alpha === undefined ? goat.world.alpha : clamp01(alpha);
       const transform = goat.world.getInterpolatedTransform(goat.torso, interpolation);
       rig.model.quaternion.set(transform.rotation.x, transform.rotation.y,
@@ -294,7 +315,8 @@ export class GoatCharacter {
       // cadence size-independent while still responding to actual ground speed.
       const velocity = goat.torso.linvel();
       const speed = Math.hypot(velocity.x, velocity.z) / goat.size ** .16;
-      const desired = locomotionBlend(speed);
+      const groundedStride = goat.locomotion.grounded && !goat.isRagdoll;
+      const desired = locomotionBlend(groundedStride ? speed : 0, goat.pose === 'gallop');
       const smoothing = frameDt ? 1 - Math.exp(-12 * frameDt) : 1;
       for (const clip of LOCOMOTION) {
         rig.weights[clip] += (desired[clip] - rig.weights[clip]) * smoothing;
@@ -308,7 +330,37 @@ export class GoatCharacter {
     }
 
     rig.mixer.update(frameDt);
+    if (goat && selected === 'stand') this.settleIdleRig(rig, goat);
     return sampleMotion(selected, this.clock);
+  }
+
+  private settleIdleRig(rig: Rig, goat: GoatRagdoll): void {
+    const { grounded, groundHit } = goat.locomotion;
+    if (!grounded || !groundHit || groundHit.normal.y < .65 || goat.isRagdoll ||
+        (goat.pose !== 'stand' && goat.pose !== 'walk')) return;
+    // Blend out with the idle clip as walking starts. The physics suspension
+    // deliberately rides above the support: directly following its torso
+    // leaves all four skinned hooves hovering, even on level ground.
+    const idle = THREE.MathUtils.smoothstep(rig.weights.Idle, .76, 1);
+    if (idle === 0) return;
+    const { point, normal } = groundHit;
+    const { position, quaternion } = rig.model;
+    this.supportNormal.set(normal.x, normal.y, normal.z).normalize();
+    this.supportBack.set(0, 0, 1).applyQuaternion(quaternion);
+    this.supportBack.addScaledVector(this.supportNormal,
+      -this.supportBack.dot(this.supportNormal));
+    if (this.supportBack.lengthSq() < .05) return;
+    this.supportBack.normalize();
+    this.supportRight.crossVectors(this.supportNormal, this.supportBack);
+    this.supportBasis.makeBasis(this.supportRight, this.supportNormal, this.supportBack);
+    quaternion.slerp(this.supportRotation.setFromRotationMatrix(this.supportBasis), idle);
+
+    const floor = point.y - ((position.x - point.x) * normal.x +
+      (position.z - point.z) * normal.z) / normal.y;
+    // An offset of 6 mm at Billy scale clears the lowest frame of the baked idle.
+    position.y = THREE.MathUtils.lerp(position.y, floor + .006 * goat.size, idle);
+    this.idleSolesGrounded = true;
+    rig.model.updateWorldMatrix(true, false);
   }
 
   private tickOverride(dt: number): void {
