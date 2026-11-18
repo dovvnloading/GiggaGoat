@@ -56,7 +56,7 @@ type Geometry = {
     balance: Paint; mode: Paint; coin: Paint;
     artworkFilter: string; coinFit: string;
   };
-  boxes: Record<'card' | 'header' | 'paper' | 'title' | 'task' | 'detail' | 'footer' | 'wallet' | 'mode' | 'checkbox' | 'coin', Rect>;
+  boxes: Record<'map' | 'card' | 'header' | 'paper' | 'title' | 'task' | 'detail' | 'footer' | 'wallet' | 'mode' | 'checkbox' | 'coin', Rect>;
   paperFits: boolean;
   taskFits: boolean;
   detailFits: boolean;
@@ -92,6 +92,7 @@ function measureHud(width: number, height: number, active: boolean, longCopy: bo
     checkbox.hidden = !fixture.active;
     (${fitGigCardText.toString()})(card);
     const names = {
+      map: '.gg-map-panel',
       card: '.gg-gig-card', header: '.gg-gig-header', paper: '.gg-gig-paper',
       title: '.gg-gig-title', task: '.gg-gig-task', detail: '.gg-gig-detail',
       footer: '.gg-gig-footer', wallet: '.gg-gig-wallet', mode: '[data-mode]',
@@ -187,6 +188,16 @@ function expectWithinCream({ card, title, task, detail, footer, wallet, mode, co
 afterEach(() => vi.unstubAllGlobals());
 
 describe('live gig card text box geometry (headless browser DOM)', () => {
+  it.each([[1101, 641], [1280, 720], [1512, 797], [1863, 883], [1920, 540], [1920, 1080]])(
+    'docks the gig card below the map art at %ix%i', (width, height) => {
+      const { map, card } = measureHud(width, height, false, false).boxes;
+      expect(card.top - map.bottom).toBeCloseTo(12, 0);
+      expect(map.width / map.height).toBeCloseTo(311 / 337, 3);
+      expect(card.bottom).toBeLessThanOrEqual(height - 11);
+    },
+    90_000,
+  );
+
   it.each([[1280, 720], [1512, 797], [1920, 1080]])(
     'paints the footer crisp, opaque and dark at %ix%i', (width, height) => {
       const { styles, boxes } = measureHud(width, height, false, false);
