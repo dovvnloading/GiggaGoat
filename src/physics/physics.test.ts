@@ -125,6 +125,18 @@ describe('real Rapier physics simulation', () => {
     expect(big.mass/kid.mass).toBeCloseTo((1.6/.6)**3,5);
   });
 
+  it('reels safely after the attached dynamic target is destroyed externally', async () => {
+    const w = await scene(), g = goat(w);
+    const bale = w.createBox(V(0, .42, -2.5), V(.4, .4, .4), 8);
+    simulate(w, .6);
+    expect(g.interactions.attachTongue(V(0, -.75, -2.4))).toBe(true);
+    w.removeBody(bale);
+    expect(g.interactions.tongueBody).toBeNull();
+    g.interactions.setReel(-1);
+    expect(() => simulate(w, .2)).not.toThrow();
+    expect(g.interactions.tongueJoint).toBeNull();
+  });
+
   it('uses a physical Rapier rope joint to drag a crate with the tongue', async () => {
     const w = await scene(), g = goat(w);
     const crate = w.createBox(V(0,.42,-2.5),V(.4,.4,.4),8);

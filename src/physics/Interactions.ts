@@ -68,7 +68,10 @@ export class GoatInteractions {
   constructor(private readonly goat: GoatRagdoll) {}
   get isTongueAttached(): boolean { return this.tether !== null; }
   get tongueLength(): number | null { return this.tether?.length ?? null; }
-  get tongueBody(): RigidBody | null { return this.tether?.target ?? null; }
+  get tongueBody(): RigidBody | null {
+    const target = this.tether?.target;
+    return target?.isValid() ? target : null;
+  }
   get tongueJoint(): ImpulseJoint | null { return this.tether?.joint ?? null; }
   get tongueOrigin(): Vec3 {
     const g = this.goat;
@@ -195,6 +198,9 @@ export class GoatInteractions {
   reel(meters: number): void {
     const tether = this.tether;
     if (!tether) return;
+    if (!tether.target.isValid() || !tether.joint.isValid()) {
+      this.detachTongue('destroyed'); return;
+    }
     const next = clamp(tether.length+meters,.28*this.goat.size,tether.maxLength);
     if (Math.abs(next-tether.length) < .003*this.goat.size) return;
     const g = this.goat;
@@ -208,7 +214,7 @@ export class GoatInteractions {
     const tether = this.tether;
     if (!tether) return;
     const g = this.goat;
-    if (!g.world.raw.getRigidBody(tether.target.handle)) {
+    if (!tether.target.isValid() || !tether.joint.isValid()) {
       this.detachTongue('destroyed'); return;
     }
     if (this.reelDirection) this.reel(this.reelDirection*this.tuning.tongueReelSpeed*g.size*dt);
@@ -233,7 +239,7 @@ export class GoatInteractions {
     const tether = this.tether;
     if (!tether) return;
     const g = this.goat;
-    if (reason === 'released' && tether.target.isDynamic()) {
+    if (reason === 'released' && tether.target.isValid() && tether.target.isDynamic()) {
       const from = g.head.translation(), to = tether.target.translation();
       const tension = Math.max(0,distance(from,to)-tether.length*.7);
       const fling = Math.min(13*g.size,g.mass*tension*.14);
@@ -241,8 +247,8 @@ export class GoatInteractions {
       applyImpulseAt(tether.target,impulse);
       if (fling > 0) this.emitKnock(tether.target,fling);
     }
-    g.world.raw.removeImpulseJoint(tether.joint,true);
-    if (tether.anchorBody) g.world.removeBody(tether.anchorBody);
+    if (tether.joint.isValid()) g.world.raw.removeImpulseJoint(tether.joint,true);
+    if (tether.anchorBody?.isValid()) g.world.removeBody(tether.anchorBody);
     this.tether = null;
     this.reelDirection = 0;
     g.events.emit({type:'tongueDetach',goatId:g.id,time:g.world.time,reason});
