@@ -173,6 +173,7 @@ describe('live free-roam HUD DOM', () => {
       const root = host.children[0]!;
       expect(root.querySelectorAll('[data-meter]')).toHaveLength(1);
       expect(root.querySelector<ElementStub>('[data-meter]')?.textContent).toBe('0 / 100');
+      expect(root.querySelector<ElementStub>('[data-stamina-label]')?.textContent).toBe('STAMINA');
       expect(root.querySelectorAll('[data-stamina-number]')).toHaveLength(1);
       expect(root.querySelector<ElementStub>('[data-stamina-number]')?.textContent).toBe('100 / 100');
     } finally {

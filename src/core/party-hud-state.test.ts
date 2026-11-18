@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeMockIsland } from '../modes/mock-island';
 import { frame, goat, readyMatch } from '../modes/test-utils';
 import type { PartyMatch } from '../modes';
-import { derivePartyHudState } from './PartyHudState';
+import { carryStaminaForHud, derivePartyHudState } from './PartyHudState';
 
 const arena = makeMockIsland();
 const hud = (match: PartyMatch) => derivePartyHudState(match.toJSON(), arena.tideLevels, 'player');
@@ -54,6 +54,23 @@ describe('party scoreboard state', () => {
     ]);
     match.step(frame(goat('player'), goat('rival', 0, 1)));
     expect(hud(match).status).toBe('SUMMIT CONTESTED');
+  });
+
+  it('reads the real Hay Heist carry drain and recovery without sharing other modes’ stamina', () => {
+    const heist = readyMatch({ mode: 'hay-heist', config: { hayPerTeam: 1 } }, ['player', 'rival']);
+    const target = heist.bales.find(bale => bale.homeTeam === 'blue')!.position;
+    const nearby = frame(goat('player', target.x, target.z, target.y + 1), goat('rival'));
+    expect(carryStaminaForHud(heist, 'player')).toBe(100);
+    const holding = { ...nearby, intents: { player: { tongue: true } } };
+    heist.step(holding);
+    for (let i = 0; i < 60; i++) heist.step(holding);
+    expect(carryStaminaForHud(heist, 'player')).toBeCloseTo(91);
+    heist.step(nearby);
+    for (let i = 0; i < 60; i++) heist.step(nearby);
+    expect(carryStaminaForHud(heist, 'player')).toBeCloseTo(98);
+    expect(carryStaminaForHud(null, 'player')).toBeUndefined();
+    const tide = readyMatch({ mode: 'rising-tide' }, ['player', 'rival']);
+    expect(carryStaminaForHud(tide, 'player')).toBeUndefined();
   });
 
   it('identifies the player team and switches from pickup to delivery using the real cargo', () => {

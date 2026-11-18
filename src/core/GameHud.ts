@@ -6,7 +6,7 @@ import { buildArtwork, goatArtwork, renderHudMinimap } from './HudArtwork';
 import { fitGigCardText } from './GigCardLayout';
 import { createHayHaulMapMarker, hayHaulMapPoint, type HayHaulGuidance } from './GigPresentation';
 import { HUD_SPRITES, hudSpriteImage, hudSpriteVariables } from './HudSprites';
-import { derivePartyHudState } from './PartyHudState';
+import { carryStaminaForHud, derivePartyHudState } from './PartyHudState';
 
 const CSS = `
 .gg-ui{position:absolute;inset:0;z-index:4;pointer-events:none;user-select:none;overflow:hidden;color:#fff9df;font-family:"Trebuchet MS","Arial Rounded MT Bold","Arial Black",system-ui,sans-serif;font-weight:900;text-shadow:1px 2px 1px #493049,0 3px 3px #38253b9a;-webkit-font-smoothing:antialiased}
@@ -521,6 +521,7 @@ export class GameHud {
   private hayHaulMapMarker: SVGGElement | null = null;
   private readonly stamina: HTMLElement;
   private readonly staminaNumber: HTMLElement;
+  private readonly staminaLabel: HTMLElement;
   private readonly charge: HTMLElement;
   private readonly mode: HTMLElement;
   private readonly buildStatus: HTMLElement;
@@ -613,7 +614,7 @@ export class GameHud {
       '<div class="gg-stamina-progress" aria-hidden="true"></div>' +
       '<div class="gg-stamina-inner">' +
       hudSpriteImage(HUD_SPRITES.staminaHooves, 'gg-hoof') +
-      '<strong class="gg-stamina-label">STAMINA</strong>' +
+      '<strong class="gg-stamina-label" data-stamina-label>STAMINA</strong>' +
       '<span class="gg-stamina-value" data-stamina-number>100 / 100</span></div></section>' +
       '<section class="gg-hotbar" data-sprite="' + HUD_SPRITES.hotbarTray +
       '" data-hotbar data-active="false" aria-label="Hay-Build hotbar">' +
@@ -656,6 +657,7 @@ export class GameHud {
     if (!map) throw new Error('HUD minimap missing');
     this.mapCanvas = map;
     this.stamina = get('stamina'); this.staminaNumber = get('stamina-number');
+    this.staminaLabel = get('stamina-label');
     this.charge = get('charge'); this.mode = get('mode');
     this.buildStatus = get('build-status'); this.buildPlacement = get('build-placement');
     this.slots = Array.from(this.root.querySelectorAll<HTMLElement>('[data-slot]'));
@@ -769,9 +771,10 @@ export class GameHud {
     const run = activeGig?.status === 'running' ? activeGig : game.pendingGigResult;
     // Enter a little inside the interaction radius to avoid blinking at its edge.
     const boardInRange = game.gigs.nearBoard(this.board.hidden ? 8.75 : 9) !== null;
+    const carryStamina = carryStaminaForHud(game.party.match, 'player');
     const state = deriveHudState({
       tier: rules.style.tier, meter: rules.style.meter, score: rules.style.score,
-      combo: rules.style.combo, stamina: rules.abilities.stamina,
+      combo: rules.style.combo, stamina: carryStamina ?? rules.abilities.stamina,
       headbuttCharge: rules.abilities.headbuttCharge,
       inventory, buildMode: game.buildMode,
       buildPiece: game.buildPiece, ragdoll: game.goat.isRagdoll,
@@ -806,9 +809,13 @@ export class GameHud {
 
     this.stamina.style.setProperty('--gg-stamina', state.stamina.toFixed(2) + '%');
     const staminaLow = String(state.staminaLow);
-    if (staminaLow !== this.stamina.dataset.low) {
+    const staminaLabel = carryStamina === undefined ? 'STAMINA' : 'CARRY';
+    if (staminaLow !== this.stamina.dataset.low || this.staminaLabel.textContent !== staminaLabel) {
       this.stamina.dataset.low = staminaLow;
-      this.stamina.setAttribute('aria-label', state.staminaLow ? 'Low stamina' : 'Stamina');
+      this.staminaLabel.textContent = staminaLabel;
+      const name = carryStamina === undefined ? 'stamina' : 'carry stamina';
+      this.stamina.setAttribute('aria-label', state.staminaLow ? 'Low ' + name :
+        name[0]!.toUpperCase() + name.slice(1));
     }
     this.staminaNumber.textContent = Math.floor(state.stamina) + ' / 100';
     this.charge.style.width = state.headbutt.toFixed(2) + '%';

@@ -1,4 +1,4 @@
-import { TICKS_PER_SECOND, type MatchSnapshot } from '../modes';
+import { TICKS_PER_SECOND, type MatchSnapshot, type PartyMatch } from '../modes';
 
 interface PartyMetric {
   label: string;
@@ -13,6 +13,14 @@ interface PartyHudState {
   metrics: PartyMetric[];
   status: string;
   urgent: boolean;
+}
+
+/** Hay Heist tracks cargo exhaustion independently of ability stamina. */
+export function carryStaminaForHud(match: Pick<PartyMatch, 'mode' | 'players'> | null,
+  playerId: string): number | undefined {
+  return match?.mode === 'hay-heist'
+    ? match.players.find(player => player.id === playerId)?.stamina
+    : undefined;
 }
 
 function secondsLeft(ticks: number): number {
