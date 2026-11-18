@@ -495,8 +495,10 @@ export class GigDirector {
         !run.metrics || Object.values(run.metrics).some(n => !finite(n) || n < 0)) {
         throw new RangeError('Malformed active gig snapshot');
       }
-      restoredRun = clone(run);
-      if (expected !== run.setup) {
+      const relocatedRooftop = expected !== run.setup && expected.config.kind === 'rooftop-express';
+      restoredRun = relocatedRooftop && run.status === 'running'
+        ? freshRun(expected, run.attemptId) : clone(run);
+      if (expected !== run.setup && !relocatedRooftop) {
         restoredRun.setup = expected;
         restoredRun.objective = objective(restoredRun);
       }

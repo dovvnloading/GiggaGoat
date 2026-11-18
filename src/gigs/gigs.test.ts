@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { generateIsland, heightAt } from '../world';
+import { ROOFTOP_SPAN_PREFIX, rooftopDecks } from '../world/rooftop-course';
 import { DOWNTOWN_INFILL } from '../world/visual-downtown';
 import { ChallengeTracker, CudWallet, EventBus } from '../gameplay';
 import { BOARD_CYCLE_TICKS, GigCatalog, GIG_INFO } from './catalog';
@@ -204,21 +205,20 @@ describe('Gig boards and real world integration', () => {
     const localX = dx * Math.cos(rotationY) - dz * Math.sin(rotationY);
     expect(localX + hay.radius).toBeLessThan(-barn.size.x / 2);
     const roof = configOf(catalog.build(catalog.makeOffer('rooftop-express', 'hard')), 'rooftop-express');
-    expect(roof.checkpoints.length).toBe(4);
-    expect(roof.checkpoints.every(cp => island.props.some(p =>
-      p.poiId === 'downtown-bleatsville' && (p.kind === 'shop' || p.kind === 'house') &&
+    expect(roof.checkpoints.length).toBe(5);
+    expect(roof.checkpoints.every(cp => rooftopDecks(island.props).some(p =>
       Math.abs(p.transform.position.x - cp.x) < 0.01 &&
       Math.abs(p.transform.position.z - cp.z) < 0.01))).toBe(true);
     const demolition = catalog.build(catalog.makeOffer('demolition-contract', 'easy'));
     expect(demolition.spawns.every(p => p.role === 'tower' && p.mass > 0)).toBe(true);
     expect(island.props.some(p => p.poiId === 'crane-yard' && p.kind === 'tower')).toBe(true);
   });
-  it('keeps four y-rotated roofs in every Rooftop Express row and uses their actual roof heights', () => {
+  it('links every west shop roof for seeded parcel routes without spanning the main street', () => {
     const city = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
     const roofs = island.props.filter(p => p.poiId === 'downtown-bleatsville' &&
       (p.kind === 'shop' || p.kind === 'house'));
     expect(roofs).toHaveLength(16 + DOWNTOWN_INFILL.length);
-    // DT-14 infills sit between the gig rows, not within 3 metres of them.
+    // Older saves use four rotated buildings across each row.
     expect(roofs.filter(p => [-19, 0, 19].some(dz =>
       Math.abs(p.transform.position.z - city.z - dz) < 3))).toHaveLength(12);
     for (const dz of [-19, 0, 19]) {
@@ -229,21 +229,78 @@ describe('Gig boards and real world integration', () => {
           building.id).toBeCloseTo(Math.PI / 2, 6);
       }
     }
-    for (const [difficulty, count] of [
-      ['easy', 3], ['medium', 4], ['hard', 4],
-    ] as const) {
-      const setup = catalog.build(catalog.makeOffer('rooftop-express', difficulty));
-      const gig = configOf(setup, 'rooftop-express');
-      expect(gig.checkpoints).toHaveLength(count);
-      for (const checkpoint of gig.checkpoints) {
-        const building = roofs.find(p =>
-          Math.abs(p.transform.position.x - checkpoint.x) < 0.01 &&
-          Math.abs(p.transform.position.z - checkpoint.z) < 0.01);
-        expect(building, 'checkpoint on a physical roof').toBeDefined();
-        expect(checkpoint.y, 'Rooftop Express roof height').toBeCloseTo(
-          building!.transform.position.y + building!.size.y / 2 + 0.65, 5);
+    const decks = rooftopDecks(island.props);
+    expect(decks).toHaveLength(5);
+    const spans = island.props.filter(prop => prop.id.startsWith(ROOFTOP_SPAN_PREFIX));
+    expect(spans).toHaveLength(4);
+    for (const prop of [...decks, ...spans]) {
+      expect(prop.collidable).toBe(true);
+      expect(prop.transform.position.x + prop.size.x / 2).toBeLessThan(city.x - 14.3);
+      expect(island.colliders.some(collider => collider.shape !== 'heightfield' &&
+        collider.id === prop.id)).toBe(true);
+    }
+    spans.forEach((span, i) => {
+      const deckA = decks[i]!, deckB = decks[i + 1]!;
+      const near = span.transform.position.z - span.size.z / 2;
+      const far = span.transform.position.z + span.size.z / 2;
+      expect(near).toBeLessThan(deckA.transform.position.z + deckA.size.z / 2);
+      expect(far).toBeGreaterThan(deckB.transform.position.z - deckB.size.z / 2);
+      expect(span.size.y / span.size.z).toBeLessThan(.7);
+    });
+    for (const [difficulty, count] of [['easy', 3], ['medium', 4], ['hard', 5]] as const) {
+      for (let cycle = 0; cycle < 5; cycle++) {
+        const setup = catalog.build(catalog.makeOffer('rooftop-express', difficulty, cycle));
+        const gig = configOf(setup, 'rooftop-express');
+        expect(gig.checkpoints).toHaveLength(count);
+        expect(setup.spawns).toHaveLength(1);
+        expect(setup.spawns[0]?.id).toBe(gig.parcelId);
+        expect(setup.markers[0]?.label).toBe('Pick up parcel');
+        expect(setup.markers.at(-1)?.label).toBe('Deliver parcel');
+        const indices = gig.checkpoints.map(checkpoint => {
+          const index = decks.findIndex(deck => deck.transform.position.x === checkpoint.x &&
+            deck.transform.position.z === checkpoint.z);
+          const deck = decks[index]!;
+          expect(deck, 'checkpoint on a physical deck').toBeDefined();
+          expect(checkpoint.y).toBeCloseTo(deck.transform.position.y + deck.size.y / 2 + .5, 5);
+          return index;
+        });
+        const direction = indices[1]! - indices[0]!;
+        expect(Math.abs(direction)).toBe(1);
+        expect(indices).toEqual(Array.from({ length: count }, (_, i) => indices[0]! + i * direction));
+        const launch = decks[indices[0]!]!;
+        expect(setup.start.y).toBeCloseTo(launch.transform.position.y + launch.size.y / 2 + .025, 5);
+        expect(Math.sign(setup.spawns[0]!.position.z - setup.start.z)).toBe(direction);
       }
     }
+  });
+
+  it('reopens only running legacy roof attempts on the new route and preserves terminal results', () => {
+    const director = new GigDirector(catalog);
+    const current = director.startPractice('rooftop-express', 'hard');
+    const raw = director.toJSON();
+    const legacy = catalog['buildVariant'](current.offer, true);
+    expect(configOf(legacy, 'rooftop-express').checkpoints).toHaveLength(4);
+    expect(legacy.spawns[0]?.id).toBe(current.spawns[0]?.id);
+    expect(legacy.start).not.toEqual(current.start);
+    const previous = raw.run!;
+    previous.setup = legacy;
+    previous.elapsedTicks = 120;
+    previous.checkpointIndex = 2;
+    previous.streetStarted = true;
+    previous.seenIds = [configOf(legacy, 'rooftop-express').parcelId];
+
+    const migrated = GigDirector.fromJSON(raw, catalog).active!;
+    expect(migrated).toMatchObject({ attemptId: previous.attemptId, status: 'running',
+      elapsedTicks: 0, checkpointIndex: 0, streetStarted: false, seenIds: [],
+      objective: { kind: 'checkpoints', reached: 0, total: 5 } });
+    expect(migrated.setup).toEqual(current);
+
+    previous.status = 'completed';
+    previous.checkpointIndex = 4;
+    previous.objective = { kind: 'checkpoints', label: 'Roofs crossed with parcel', reached: 4, total: 4 };
+    expect(GigDirector.fromJSON(raw, catalog).active).toMatchObject({
+      setup: legacy, checkpointIndex: 4, objective: { reached: 4, total: 4 }, status: 'completed',
+    });
   });
 
   it('grounds generated mowing and gnome routes on actual island terrain', () => {

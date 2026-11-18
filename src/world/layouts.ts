@@ -6,6 +6,7 @@ import { buildCraneYard } from './crane-yard';
 import { DOWNTOWN_BUILDING_SIZES, DOWNTOWN_INFILL, SHOP_FRONTS,
   downtownRearHouseModel } from './visual-downtown';
 import { getDamPlacement } from './the-dam';
+import { buildRooftopCourse } from './rooftop-course';
 
 interface AddOptions {
   id?: string;
@@ -140,8 +141,6 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   props.push(...buildCraneYard(island));
 
   // DOWNTOWN: five storefronts per side look into the paved main street.
-  // Three four-roof cross-street rows remain intact for Rooftop Express gigs
-  // (the mission selects y-rotated roofs at z = -19, 0 and +19).
   const city: PoiId = 'downtown-bleatsville';
   for (let row = 0; row < 5; row++) for (const side of [-1, 1]) {
     const z = (row - 2) * 19;
@@ -167,8 +166,6 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
     site(city, 'house', x, z, size.x, size.y, size.z,
       { yaw: -side * Math.PI / 2 });
   }
-  // Rooftop rows need four physical roofs each: one taller rear
-  // townhouse behind each near-side shop in rows -19, 0 and +19.
   // Rear houses enrich the skyline without obstructing main-street sightlines.
   for (const z of [-19, 0, 19]) for (const side of [-1, 1]) {
     const size = DOWNTOWN_BUILDING_SIZES[downtownRearHouseModel(z)];
@@ -179,6 +176,7 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
       color: z === 0 ? 0xe4b5a1 : 0xc3d0ed,
     });
   }
+  props.push(...buildRooftopCourse(byId.get(city)!.center, scale, props));
   site(city, 'tower', 39, -38, 8, 27, 8, { color: 0x95b4d8 });
   for (let row = 0; row < 6; row++) for (const side of [-1, 1]) {
     site(city, 'lamp', side * 10.8, -37 + row * 15, 0.6, 8, 0.6,
