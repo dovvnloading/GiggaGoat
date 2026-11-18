@@ -11,7 +11,7 @@ import { TOON_RAMP, BUILDING_RAMP } from './visual-props';
 export interface LighthouseVisuals {
   group: THREE.Group;
   isFallbackHidden(mesh: THREE.InstancedMesh): boolean;
-  update(seconds: number): void;
+  setLighting(daylight: number, golden: number): void;
   dispose(): void;
 }
 
@@ -27,6 +27,121 @@ const WOOD = 0x97603d;
 const DARK_WOOD = 0x63432e;
 const CREAM = 0xf6e6c5;
 const GOLD = 0xffcf56;
+
+type ToonShader = Parameters<THREE.Material['onBeforeCompile']>[0];
+
+/** A local material grade shared by the cape's terrain and its cliff boulders. */
+export function makeCapeLighting(island: IslandData) {
+  const centre = island.pois.find(poi => poi.id === 'old-lighthouse')!.center;
+  const uniforms = {
+    uCapeCentre: { value: new THREE.Vector2(centre.x, centre.z) },
+    uCapeScale: { value: island.size / 600 },
+    uCapeGolden: { value: 0 },
+    uCapeSun: { value: new THREE.Vector3(1, 0, 0) },
+  };
+  return {
+    setSun(golden: number, direction: THREE.Vector3): void {
+      uniforms.uCapeGolden.value = golden;
+      uniforms.uCapeSun.value.set(direction.x, 0.15, direction.z).normalize();
+    },
+    paint(shader: ToonShader): void {
+      Object.assign(shader.uniforms, uniforms);
+      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+uniform vec2 uCapeCentre;
+uniform float uCapeScale, uCapeGolden;
+uniform vec3 uCapeSun;`).replace('#include <normal_fragment_begin>', `
+if (uCapeGolden > 0.001) {
+  vec3 capeFace = cross(dFdx(vWorld), dFdy(vWorld));
+  float capeRadius = length(vWorld.xz - uCapeCentre) / uCapeScale;
+  float capeFade = uCapeGolden * (1.0 - smoothstep(32.0, 41.0, capeRadius));
+  if (capeFade > 0.001) {
+    vec3 face = normalize(capeFace) * (gl_FrontFacing ? 1.0 : -1.0);
+    float sunFacing = smoothstep(-0.18, 0.62, dot(face, uCapeSun));
+    float skylitRim = smoothstep(7.0, 17.0, vWorld.y / uCapeScale) *
+      smoothstep(0.24, 0.58, face.y) * (1.0 - smoothstep(0.74, 0.98, face.y));
+    float key = max(sunFacing, 0.68 * skylitRim);
+    vec3 coolStone = diffuseColor.rgb * vec3(0.81, 0.90, 1.14);
+    vec3 warmEdge = diffuseColor.rgb * vec3(1.18, 1.06, 0.87) + vec3(0.046, 0.015, 0.002);
+    float steep = 1.0 - smoothstep(0.6, 0.95, face.y);
+    diffuseColor.rgb = mix(diffuseColor.rgb, mix(coolStone, warmEdge, key),
+      capeFade * (0.28 + 0.72 * steep));
+  }
+}
+#include <normal_fragment_begin>`);
+    },
+  };
+}
+
+function makeBeacon(tower: PropDescriptor, scale: number) {
+  const p = tower.transform.position;
+  // Match the twelve open glass faces in the shipped source model and the
+  // shared baker's 98% envelope. The iron frame keeps its original geometry.
+  const pane = new THREE.CylinderGeometry(1.95, 1.95, 3.2, 12, 1, true);
+  const yScale = 0.98 * tower.size.y / 29;
+  pane.scale(0.98 * tower.size.x / 9, yScale, 0.98 * tower.size.z / 9);
+  const glow = { value: 0 };
+  const material = new THREE.ShaderMaterial({
+    uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), uGlow: glow },
+    fog: true,
+    vertexShader: `
+varying vec2 vPane;
+#include <fog_pars_vertex>
+void main() {
+  vPane = uv;
+  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * mvPosition;
+  #include <fog_vertex>
+}`,
+    fragmentShader: `
+uniform float uGlow;
+varying vec2 vPane;
+#include <fog_pars_fragment>
+void main() {
+  float lens = 1.0 - smoothstep(0.13, 0.49, abs(vPane.y - 0.52));
+  float ridges = 0.5 + 0.5 * cos(vPane.y * 42.0);
+  vec3 glass = mix(vec3(0.52, 0.31, 0.14), vec3(0.96, 0.76, 0.45), 0.32 + 0.48 * lens);
+  vec3 fire = mix(vec3(1.0, 0.53, 0.13), vec3(1.0, 0.99, 0.83),
+    lens * (0.92 + 0.08 * ridges));
+  gl_FragColor = sRGBTransferEOTF(vec4(mix(glass, fire, uGlow), 1.0));
+  #include <colorspace_fragment>
+  #include <fog_fragment>
+}`,
+  });
+  const glass = new THREE.Mesh(pane, material);
+  glass.name = 'lighthouse-glowing-lantern-room';
+  glass.position.set(p.x, p.y + 7.7 * yScale, p.z);
+  glass.rotation.y = tower.transform.rotationY;
+
+  const pixels = 32;
+  const rgba = new Uint8Array(pixels * pixels * 4);
+  for (let row = 0; row < pixels; row++) for (let column = 0; column < pixels; column++) {
+    const radius = Math.hypot((column + 0.5) * 2 / pixels - 1, (row + 0.5) * 2 / pixels - 1);
+    const i = (row * pixels + column) * 4;
+    rgba.fill(255, i, i + 3);
+    rgba[i + 3] = Math.round(220 * (1 - THREE.MathUtils.smoothstep(0.07, 0.96, radius)) ** 2);
+  }
+  const falloff = new THREE.DataTexture(rgba, pixels, pixels);
+  falloff.magFilter = THREE.LinearFilter;
+  falloff.minFilter = THREE.LinearFilter;
+  falloff.needsUpdate = true;
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    color: 0xffb74a, map: falloff, blending: THREE.AdditiveBlending,
+    depthWrite: false, depthTest: true, opacity: 0, transparent: true,
+  }));
+  halo.name = 'lighthouse-lantern-halo';
+  halo.position.copy(glass.position);
+  halo.scale.set(13.5 * scale, 8.4 * scale, 1);
+  halo.visible = false;
+  return {
+    glass, halo,
+    setLighting(daylight: number, golden: number): void {
+      glow.value = Math.max(golden * 0.96, 1 - THREE.MathUtils.smoothstep(daylight, 0.05, 0.7));
+      halo.visible = glow.value > 0.02;
+      halo.material.opacity = 0.53 * glow.value;
+    },
+    dispose(): void { falloff.dispose(); halo.material.dispose(); },
+  };
+}
 
 /**
  * MeshToonMaterial does not declare flatShading in Three.js's r187 TS types,
@@ -292,7 +407,7 @@ function makeSeaCave(island: IslandData, cave: PropDescriptor): THREE.Group {
   group.position.set(p.x, floor, p.z);
   group.rotation.y = cave.transform.rotationY;
   const stone = makePainter();
-  const wall = STONE, roof = 0x92949c, interior = 0x48505d;
+  const wall = STONE, roof = 0x92949c, interior = 0x39485b;
   // Local +Z is the open sea-facing entrance, local -Z the Rapier back wall.
   // The two deeply extending jambs and a roof make an actual recess rather
   // than a painted black slab closing the mouth.
@@ -444,7 +559,8 @@ function capeSurface(island: IslandData, x: number, z: number): number {
     : d + (c - d) * (1 - tx) + (b - d) * (1 - tz);
 }
 
-function makeCliffRocks(island: IslandData, placements: readonly Placement[]): THREE.InstancedMesh {
+function makeCliffRocks(island: IslandData, placements: readonly Placement[],
+  lighting: ReturnType<typeof makeCapeLighting>): THREE.InstancedMesh {
   const geometry = new THREE.DodecahedronGeometry(1, 0);
   geometry.computeVertexNormals();
   geometry.computeBoundingBox();
@@ -463,6 +579,15 @@ function makeCliffRocks(island: IslandData, placements: readonly Placement[]): T
   const material = rockToonMaterial(CLIFF_STONE);
   material.gradientMap = TOON_RAMP;
   material.vertexColors = true;
+  material.onBeforeCompile = shader => {
+    shader.vertexShader = shader.vertexShader.replace('#include <common>',
+      '#include <common>\nvarying vec3 vWorld;').replace('#include <begin_vertex>', `
+#include <begin_vertex>
+vWorld = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;`);
+    lighting.paint(shader);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>',
+      '#include <common>\nvarying vec3 vWorld;');
+  };
   const mesh = new THREE.InstancedMesh(geometry, material, placements.length);
   mesh.name = 'lighthouse-cliff-boulders';
   mesh.receiveShadow = true;
@@ -640,7 +765,7 @@ function suppressOldArt(island: IslandData, oldProps: THREE.Group,
 }
 
 export function buildLighthouseVisuals(island: IslandData,
-  oldProps: THREE.Group): LighthouseVisuals {
+  oldProps: THREE.Group, lighting: ReturnType<typeof makeCapeLighting>): LighthouseVisuals {
   const group = new THREE.Group();
   group.name = 'old-lighthouse-hero';
   const fullyHidden = new Set<PropKind>();
@@ -659,18 +784,7 @@ export function buildLighthouseVisuals(island: IslandData,
   group.add(makeFlowers(island, center));
 
   const lighthouse = get('lighthouse');
-  if (lighthouse) {
-    const base = lighthouse.transform.position.y - lighthouse.size.y / 2;
-    const y = base + lighthouse.size.y * 0.765;
-    const glass = new THREE.Mesh(new THREE.CylinderGeometry(
-      1.7 * scale, 1.7 * scale, 3.6 * scale, 16),
-    new THREE.MeshBasicMaterial({
-      color: 0xffd776, transparent: true, opacity: 0.88, depthWrite: false,
-    }));
-    glass.name = 'lighthouse-glowing-lantern-room';
-    glass.position.set(lighthouse.transform.position.x, y, lighthouse.transform.position.z);
-    group.add(glass);
-  }
+  const beacon = lighthouse ? makeBeacon(lighthouse, scale) : undefined;
 
   const cave = get('cave-mouth');
   if (cave) {
@@ -843,7 +957,7 @@ export function buildLighthouseVisuals(island: IslandData,
       roll: Math.sin(i * 1.9) * 0.29,
     });
   }
-  const cliffRocks = makeCliffRocks(island, rocks);
+  const cliffRocks = makeCliffRocks(island, rocks, lighting);
   group.add(cliffRocks);
 
   const fallbackSections = [pierFallbackGroup, boatFallbackGroup, wreckFallbackGroup];
@@ -856,9 +970,8 @@ export function buildLighthouseVisuals(island: IslandData,
   const fallbackPaint = batchHeroMeshes(group,
     'lighthouse-shared-ship-dock-rowboat-fallback', isModelFallback);
   batchHeroMeshes(group, 'lighthouse-static-painted-landmarks',
-    mesh => mesh !== cliffRocks &&
-      mesh.name !== 'lighthouse-glowing-lantern-room' &&
-      mesh !== fallbackPaint && !isModelFallback(mesh));
+    mesh => mesh !== cliffRocks && mesh !== fallbackPaint && !isModelFallback(mesh));
+  if (beacon) group.add(beacon.glass, beacon.halo);
   // Add after the hero batch so this stays one named Mesh and one draw call.
   const bridgeRopes = makeRopeBridgeRopes(island);
   if (bridgeRopes) group.add(bridgeRopes);
@@ -926,11 +1039,12 @@ export function buildLighthouseVisuals(island: IslandData,
       const kind = mesh.name.replace(/^(?:props-|architecture-details-|outline-)/, '');
       return fullyHidden.has(kind as PropKind);
     },
-    update(_seconds: number): void {
-      // The emissive lantern is static and adds no new animated shadow pass.
+    setLighting(daylight: number, golden: number): void {
+      beacon?.setLighting(daylight, golden);
     },
     dispose(): void {
       disposed = true;
+      beacon?.dispose();
       importedTextures.forEach(texture => texture.dispose());
       // All geometry/materials are released by WorldScene.dispose's traversal.
     },

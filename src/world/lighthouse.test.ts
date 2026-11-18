@@ -1,9 +1,12 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createWorldScene, generateIsland, heightAt, isSafeCollectiblePosition } from './index';
 import { findBookmark } from './viewer/bookmarks';
 import { instantiateLibraryModel } from './visual-lighthouse';
 import { BUILDING_RAMP, TOON_RAMP } from './visual-props';
+import { bakeLibraryPropGeometry } from './library-props';
 import { gridSample } from './terrain';
 
 function renderedCapeSurface(view: ReturnType<typeof createWorldScene>, scale: number) {
@@ -99,6 +102,112 @@ describe('Old Lighthouse painting rebuild', () => {
     expect(shadows).toBeLessThan(20);
     expect(meshes.length + shadows).toBeLessThan(180);
     view.dispose();
+  });
+
+  it('replaces the opaque GLB pane at its real radius and lights it from the live sky phase', async () => {
+    const path = new URL('../../public/assets/library/custom/lighthouse/lighthouse.glb',
+      import.meta.url);
+    const bytes = Uint8Array.from(readFileSync(path));
+    const { scene } = await new GLTFLoader().parseAsync(bytes.buffer, '');
+    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    const view = createWorldScene(island);
+    const body = bakeLibraryPropGeometry('lighthouse', scene)!;
+    let haloDisposed = false;
+    try {
+      const lens = view.group.getObjectByName('lighthouse-glowing-lantern-room') as
+        THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
+      const halo = view.group.getObjectByName('lighthouse-lantern-halo') as THREE.Sprite;
+      expect(lens).toBeInstanceOf(THREE.Mesh);
+      expect(halo).toBeInstanceOf(THREE.Sprite);
+      const parts: Array<THREE.Mesh<THREE.BufferGeometry, THREE.Material>> = [];
+      scene.traverse(part => { if (part instanceof THREE.Mesh) parts.push(part); });
+      const sourceGlass = parts.find(part => part.material.name === 'glass')!;
+      const retained = parts.filter(part => part !== sourceGlass);
+      expect(retained.some(part => part.material.name === 'iron')).toBe(true);
+      expect(body.getAttribute('position').count).toBe(retained.reduce((sum, part) =>
+        sum + (part.geometry.index?.count ?? part.geometry.getAttribute('position').count), 0));
+      const source = new THREE.Box3().setFromObject(sourceGlass);
+      const tower = island.props.find(prop => prop.kind === 'lighthouse')!;
+      const lampBounds = new THREE.Box3().setFromObject(lens);
+      for (const axis of ['x', 'y', 'z'] as const) {
+        const divider = axis === 'y' ? 29 : 9;
+        const fit = 0.98 * tower.size[axis] / divider;
+        const offset = tower.transform.position[axis] - (axis === 'y' ? 14.5 * fit : 0);
+        expect(lampBounds.min[axis]).toBeCloseTo(offset + source.min[axis] * fit, 4);
+        expect(lampBounds.max[axis]).toBeCloseTo(offset + source.max[axis] * fit, 4);
+      }
+      expect(halo.position.equals(lens.position)).toBe(true);
+      expect(halo.material.depthWrite).toBe(false);
+      expect(halo.material.depthTest).toBe(true);
+      expect(halo.material.blending).toBe(THREE.AdditiveBlending);
+      expect(lens.material.fragmentShader).toContain('mix(glass, fire, uGlow)');
+      expect(lens.material.fragmentShader).toContain('#include <fog_fragment>');
+      halo.material.map!.addEventListener('dispose', () => { haloDisposed = true; });
+
+      const glow = lens.material.uniforms['uGlow']!;
+      expect(glow.value).toBe(0);
+      expect(halo.visible).toBe(false);
+      view.setLightingPreset('golden-hour');
+      expect(glow.value).toBeCloseTo(0.96);
+      expect(halo.material.opacity).toBeGreaterThan(0.4);
+      expect(halo.visible).toBe(true);
+      view.setLightingPreset('night');
+      expect(glow.value).toBe(1);
+      view.setLightingPreset('day');
+      expect(glow.value).toBe(0);
+      expect(halo.visible).toBe(false);
+    } finally {
+      view.dispose();
+      body.dispose();
+      scene.traverse(part => {
+        if (part instanceof THREE.Mesh) {
+          part.geometry.dispose();
+          (part.material as THREE.Material).dispose();
+        }
+      });
+    }
+    expect(haloDisposed).toBe(true);
+  });
+
+  it('uses the same local sunset grade and sun direction for cliff terrain and rock surfaces', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 65 });
+    const view = createWorldScene(island);
+    try {
+      const ground = view.chunks[0]!.material as THREE.MeshToonMaterial;
+      const cliffs = view.group.getObjectByName('lighthouse-cliff-boulders') as
+        THREE.InstancedMesh<THREE.BufferGeometry, THREE.MeshToonMaterial>;
+      const programs = [ground, cliffs.material].map(material => {
+        const shader = {
+          uniforms: {} as Record<string, { value: unknown }>,
+          vertexShader: '#include <common>\n#include <begin_vertex>',
+          fragmentShader: '#include <common>\n#include <color_fragment>\n#include <normal_fragment_begin>',
+        };
+        material.onBeforeCompile(shader as Parameters<typeof material.onBeforeCompile>[0],
+          null as unknown as Parameters<typeof material.onBeforeCompile>[1]);
+        return shader;
+      });
+      const [terrain, stone] = programs;
+      for (const name of ['uCapeGolden', 'uCapeScale', 'uCapeCentre', 'uCapeSun']) {
+        expect(terrain!.uniforms[name]).toBe(stone!.uniforms[name]);
+      }
+      for (const program of programs) {
+        expect(program.fragmentShader).toContain('length(vWorld.xz - uCapeCentre) / uCapeScale');
+        expect(program.fragmentShader).toContain('mix(coolStone, warmEdge, key)');
+        expect(program.fragmentShader).toContain('dot(face, uCapeSun)');
+      }
+      const { uCapeGolden, uCapeSun, uCapeCentre } = terrain!.uniforms;
+      const centre = island.pois.find(poi => poi.id === 'old-lighthouse')!.center;
+      expect(uCapeCentre!.value).toEqual(new THREE.Vector2(centre.x, centre.z));
+      expect(uCapeGolden!.value).toBe(0);
+      view.setLightingPreset('golden-hour');
+      expect(uCapeGolden!.value).toBe(1);
+      const key = uCapeSun!.value as THREE.Vector3;
+      expect(key.dot(view.sun.position.clone().normalize())).toBeGreaterThan(0.98);
+      view.setLightingPreset('night');
+      expect(uCapeGolden!.value as number).toBeLessThan(0.02);
+    } finally {
+      view.dispose();
+    }
   });
 
   it('hides only generic lighthouse-plot instances, without changing descriptors', () => {
