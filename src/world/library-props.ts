@@ -155,7 +155,8 @@ export function bakeLibraryPropGeometry(
   kind: PropKind, root: THREE.Object3D,
 ): THREE.BufferGeometry | null {
   const authored = isAuthoredLibraryAsset(PROP_LIBRARY_MODELS[kind]);
-  return bakeLibraryGeometry(root, authored, kind === 'planter' && !authored);
+  return bakeLibraryGeometry(root, authored, kind === 'planter' && !authored,
+    kind === 'lighthouse' ? 'glass' : undefined);
 }
 
 /** Clouds retain their native metres, flat base, and baked source material colours. */
@@ -164,7 +165,7 @@ export function bakeLibraryCloudGeometry(root: THREE.Object3D): THREE.BufferGeom
 }
 
 function bakeLibraryGeometry(root: THREE.Object3D, authored: boolean,
-  legacyPlanter: boolean): THREE.BufferGeometry | null {
+  legacyPlanter: boolean, separateMaterial?: string): THREE.BufferGeometry | null {
   root.updateMatrixWorld(true);
   const bounds = new THREE.Box3().setFromObject(root);
   if (bounds.isEmpty()) return null;
@@ -193,11 +194,13 @@ function bakeLibraryGeometry(root: THREE.Object3D, authored: boolean,
     const count = indices ? indices.count : coordinates.count;
     let groupIndex = 0;
     for (let triangle = 0; triangle + 2 < count; triangle += 3) {
+      while (groupIndex + 1 < groups.length &&
+        triangle >= groups[groupIndex]!.start + groups[groupIndex]!.count) groupIndex++;
+      const material = materials[groups[groupIndex]?.materialIndex ?? 0] ?? materials[0]!;
+      // The Lighthouse renderer paints this source pane with phase-dependent light.
+      if (separateMaterial !== undefined && material.name === separateMaterial) continue;
       for (let corner = 0; corner < 3; corner++) {
         const at = triangle + corner;
-        while (groupIndex + 1 < groups.length &&
-          at >= groups[groupIndex]!.start + groups[groupIndex]!.count) groupIndex++;
-        const material = materials[groups[groupIndex]?.materialIndex ?? 0] ?? materials[0]!;
         const index = indices ? indices.getX(at) : at;
         vertex.fromBufferAttribute(coordinates as THREE.BufferAttribute, index);
         if (object instanceof THREE.SkinnedMesh) object.applyBoneTransform(index, vertex);

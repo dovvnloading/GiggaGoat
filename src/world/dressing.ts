@@ -96,14 +96,16 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     at(farm, 'gnome', side * rand(16, 34), rand(-31, 34),
       0.5, 0.9, 0.5, { yaw: turn(), color: i % 2 ? 0xff891e : 0x7a4cff });
   }
-  for (const side of [-1, 1]) for (let i = 0; i < 8; i++) {
+  const fieldPanelLengths = [5.7, 6.2, 4.7, 5.8, 4.6, 6.2, 9, 9] as const;
+  for (const side of [-1, 1]) for (let i = 0; i < fieldPanelLengths.length; i++) {
     // The outer west fence runs behind both barn and silo foundations.
     const x = side === -1 && i < 2 ? -36.8
       : side === -1 && i === 2 ? -36.0
       // Clear the custom windmill's wider 12.5 m cuboid footprint.
       : side === 1 && i === 0 ? 37.5 : side * 34.5;
+    // The southern ends guide the existing barn tow and lawn entrance.
     at(farm, 'fence', x, -36 + i * 10,
-      9, 1.85, 0.34, { yaw: Math.PI / 2, color: 0xeac995 });
+      fieldPanelLengths[i]!, 1.85, .34, { yaw: Math.PI / 2, color: 0xeac995 });
   }
   for (let i = 0; i < 16; i++) {
     at(farm, 'hay-bale', rand(-45, -33), rand(4, 36), 2.1, 1.5, 2.1,
@@ -177,14 +179,15 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   function clearHoofingtonFoliage(
     x: number, z: number, width: number, yaw: number,
   ): { x: number; z: number } {
-    const buildings = [...island.props, ...result]
+    const occupied = [...island.props, ...result]
       .filter(p => p.poiId === farm &&
-        ['barn', 'house', 'cottage', 'silo', 'windmill'].includes(p.kind))
+        (['barn', 'house', 'cottage', 'silo', 'windmill'].includes(p.kind) ||
+          p.id.startsWith('hoofington-verge-')))
       .map(p => ({ x: p.transform.position.x, z: p.transform.position.z,
         sx: p.size.x, sz: p.size.z, yaw: p.transform.rotationY }));
     const free = (px: number, pz: number): boolean => {
       const f = { x: px, z: pz, sx: width, sz: width, yaw };
-      return !buildings.some(b => footprintOverlaps(f, b)) &&
+      return !occupied.some(b => footprintOverlaps(f, b)) &&
         !hoofRoads.some(r => footprintOverlaps(f, r));
     };
     if (free(x, z)) return { x, z };

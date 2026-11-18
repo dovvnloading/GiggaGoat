@@ -273,6 +273,7 @@ export class GameView {
 
   private createSurfaceMarkers(): void {
     for (const marker of this.game.surfaceMarkers) {
+      if (marker.hasWorldArt) continue;
       const root = createSurfaceLibraryProp(this.propFactory, marker);
       root.position.copy(vec(marker.position));
       this.instancedProps.add(root);

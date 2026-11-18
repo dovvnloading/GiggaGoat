@@ -97,6 +97,24 @@ export class GigSession {
     if (!poi || !this.director.board(poi).offers.some(offer => offer.id === offerId)) {
       throw new Error('Offer unavailable at this board');
     }
+    this.startOffer(offerId);
+  }
+
+  /** A result can restart its exact failed offer from the field while it is still posted. */
+  get retryableOffer(): GigOffer | null {
+    const run = this.active;
+    if (run?.status !== 'failed' || this.game.party.match) return null;
+    const { id, poiId } = run.setup.offer;
+    return this.director.board(poiId).offers.find(offer => offer.id === id) ?? null;
+  }
+
+  retryFailed(): void {
+    const offer = this.retryableOffer;
+    if (!offer) throw new Error('This contract is no longer available to retry.');
+    this.startOffer(offer.id);
+  }
+
+  private startOffer(offerId: string): void {
     this.clear();
     const setup = this.director.accept(offerId);
     this.spawn(setup.spawns);

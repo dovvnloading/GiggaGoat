@@ -173,8 +173,7 @@ export function buildProceduralPropGeometry(kind: PropKind): THREE.BufferGeometr
       0.89, 0.025, 0.89, 0xb6b2a8, 12);
   } else if (kind === 'lighthouse') {
     // Five actual alternating tapered masonry courses, not pencil-thin red
-    // rings on a white cylinder. The gallery and open glass lantern are
-    // authored together so the entire beacon remains one instanced draw.
+    // rings on a white cylinder. The gallery leaves space for the real beacon panes.
     const bands = [0xbb4037, 0xfff0d8, 0xbd4439, 0xfff1dd, 0xb94237];
     for (let i = 0; i < bands.length; i++) {
       const baseY = -0.49 + i * 0.142;
@@ -185,7 +184,6 @@ export function buildProceduralPropGeometry(kind: PropKind): THREE.BufferGeometr
     }
     cyl(0, 0.234, 0, 0.77, 0.058, 0.77, 0x6e4038, 20);
     cyl(0, 0.265, 0, 0.96, 0.06, 0.96, 0x9e4734, 20);
-    cyl(0, 0.342, 0, 0.58, 0.152, 0.58, 0xffd179, 12);
     for (let i = 0; i < 12; i++) {
       const a = i * Math.PI / 6;
       const x = Math.cos(a) * 0.40, z = Math.sin(a) * 0.40;
