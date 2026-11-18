@@ -598,8 +598,10 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     if (hoofington.consumeShadowChange()) shadowCastersChanged = true;
     if (downtown.consumeShadowChange()) shadowCastersChanged = true;
     if (dam.consumeShadowChange()) {
-      const reservoir = waterVisuals.inland.getObjectByName('dam-reservoir');
-      if (reservoir) reservoir.visible = false;
+      for (const name of ['dam-reservoir', 'dam-reservoir-foam']) {
+        const surface = waterVisuals.inland.getObjectByName(name);
+        if (surface) surface.visible = false;
+      }
       shadowCastersChanged = true;
     }
     return shadowCastersChanged;

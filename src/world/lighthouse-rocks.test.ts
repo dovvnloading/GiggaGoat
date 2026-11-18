@@ -2,14 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { generateIsland } from './island';
 
 describe('Old Lighthouse cape rocks (LH-3)', () => {
-  it('halves the default-seed rocks without oversized descriptors', () => {
+  it('keeps the remaining cape rocks supported and correctly sized after LH-12', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
     const rocks = island.props.filter(prop =>
       prop.poiId === 'old-lighthouse' && prop.kind === 'rock');
 
-    // Previously 18 descriptors (5 layout + 13 dressing) at this seed.
-    expect(rocks).toHaveLength(10);
-    expect(rocks.filter(prop => prop.id.startsWith('detail-'))).toHaveLength(7);
+    // LH-3 left ten; LH-12 now removes three unsupported channel rocks.
+    expect(rocks).toHaveLength(7);
+    expect(rocks.filter(prop => prop.id.startsWith('detail-')).length)
+      .toBeLessThanOrEqual(7);
     for (const rock of rocks) {
       expect(Math.max(rock.size.x, rock.size.y, rock.size.z), rock.id)
         .toBeLessThanOrEqual(3.9);

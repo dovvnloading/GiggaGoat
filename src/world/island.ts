@@ -149,6 +149,17 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   island.props.push(...dressed, ...makeBridgeDecks(island));
   // Restore the full water gap after footings have feathered toward the bridge.
   preserveLighthouseChannel(island, lighthouse.center);
+  // The channel is carved after scenery placement. Drop any newly unsupported
+  // ground dressing (rather than moving it) without consuming further RNG draws.
+  const groundKinds = new Set<PropDescriptor['kind']>([
+    'rock', 'bush', 'flower', 'grass-tuft', 'tree-pine', 'tree-oak',
+    'palm-tree', 'mushroom',
+  ]);
+  island.props = island.props.filter(prop => {
+    if (!groundKinds.has(prop.kind)) return true;
+    const { x, y, z } = prop.transform.position;
+    return y - prop.size.y / 2 - gridSample(island, x, z) <= 0.5;
+  });
   assignBiomes(island);
   island.spawns = makeSpawns(island);
   island.relics = makeRelics(island, rng);
