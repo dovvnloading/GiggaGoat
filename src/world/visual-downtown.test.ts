@@ -46,8 +46,6 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     }
     expect(new Set(Object.values(buildings)).size).toBe(11);
     expect(DOWNTOWN_MODELS.lamp).toBe('assets/library/usdcraft/street-lamp-lantern.glb');
-    expect(DOWNTOWN_MODELS.skylineCrane)
-      .toBe('assets/library/custom/crane-yard/skyline-tower-crane.glb');
     expect(DOWNTOWN_MODELS.waterTower)
       .toBe('assets/library/custom/town/water-tower-timber.glb');
     expect(existsSync('public/' + DOWNTOWN_MODELS.waterTower)).toBe(true);
@@ -454,16 +452,6 @@ describe('Downtown Bleatsville sourced streetscape', () => {
         .toBeCloseTo(gridSample(island, garland.position.x, garland.position.z) +
           8 * scale, 6);
     }
-    const skyline = plan.filter(p => p.model === 'skylineCrane');
-    expect(skyline).toHaveLength(1);
-    expect(skyline[0]!.wall).toBeUndefined();
-    const crane = skyline[0]!;
-    expect(crane.size).toEqual({ x: 19 * scale, y: 22 * scale, z: 8 * scale });
-    expect(crane.position.x).toBeCloseTo(centre.x + 32 * scale, 6);
-    expect(crane.position.z).toBeCloseTo(centre.z - 48 * scale, 6);
-    // DT-1: the bottom of the 22 m crane meets terrain, not ground + 16 m.
-    expect(crane.position.y - crane.size.y / 2).toBeCloseTo(
-      gridSample(island, crane.position.x, crane.position.z), 6);
     for (const model of ['retroWindow', 'retroBalcony', 'canopy', 'retroCanopy'])
       expect(plan.filter(p => p.model === model), model).toHaveLength(0);
     // Sidewalk planting remains, but no extra facade window-box flower overlays.
@@ -479,6 +467,24 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     const renderer = readFileSync('src/world/visual-downtown.ts', 'utf8');
     expect(renderer).not.toContain('stripedAwningGeometry');
     expect(renderer).not.toContain('downtown-striped-awnings');
+  });
+
+  it('keeps the cool town tower separate from the two Crane Yard cranes', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    expect(makeDowntownPlacements(island).filter(p => p.model === 'highrise')).toHaveLength(1);
+    expect(island.props.filter(p => p.kind === 'crane').map(p => p.poiId))
+      .toEqual(['crane-yard', 'crane-yard']);
+    const model = readFileSync('public/' + DOWNTOWN_MODELS.highrise);
+    const { materials } = JSON.parse(model.subarray(20, 20 + model.readUInt32LE(12)).toString()) as {
+      materials: { name: string; pbrMetallicRoughness: { baseColorFactor: number[] } }[];
+    };
+    for (const name of ['wallY', 'wallY2', 'cornice']) {
+      const material = materials.find(value => value.name === name);
+      expect(material, name).toBeDefined();
+      const [r, g, b] = material!.pbrMetallicRoughness.baseColorFactor;
+      expect(b!).toBeGreaterThan(g!);
+      expect(g!).toBeGreaterThan(r!);
+    }
   });
 
   it('retains painted planter and bunting GLB colours in the shared geometry baker', () => {
