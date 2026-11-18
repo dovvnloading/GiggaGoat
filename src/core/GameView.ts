@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {
-  createWorldScene, type PropDescriptor, type WorldScene,
+  createWorldScene, heightAt, type PropDescriptor, type WorldScene,
 } from '../world';
 import { Q, RAPIER, type Vec3 } from '../physics';
 import { SKY_HORIZON_COLOR } from '../world/visual-sky';
@@ -441,6 +441,23 @@ export class GameView {
     }
   }
 
+  private partyGroundRing(center: Vec3, radius: number, color: number): THREE.Mesh {
+    const geometry = new THREE.RingGeometry(radius - .32, radius, 80).rotateX(-Math.PI / 2);
+    const positions = geometry.attributes['position']!;
+    const { terrain, paths } = this.game.colliders;
+    const surfaceHandles = new Set([terrain.handle, ...paths.map(path => path.handle)]);
+    for (let index = 0; index < positions.count; index++) {
+      const x = center.x + positions.getX(index), z = center.z + positions.getZ(index);
+      const ground = this.game.physics.raycast({ x, y: center.y + 18, z }, { x: 0, y: -1, z: 0 }, 42,
+        { predicate: collider => surfaceHandles.has(collider.handle) });
+      const y = ground?.point.y ?? heightAt(this.game.island, x, z);
+      positions.setY(index, y - center.y + .065);
+    }
+    geometry.computeBoundingSphere();
+    return new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide,
+      transparent: true, opacity: .87, depthWrite: false }));
+  }
+
   private updatePartyVisuals(alpha: number): void {
     const roster = this.game.party.bots;
     const match = this.game.party.match;
@@ -454,23 +471,14 @@ export class GameView {
         const radius = match.view().config.peakRadius;
         const zone = new THREE.Group();
         zone.position.copy(vec(summit));
-        const ring = new THREE.Mesh(new THREE.RingGeometry(radius - .35, radius, 64),
-          new THREE.MeshBasicMaterial({ color: 0xffd833, side: THREE.DoubleSide,
-            transparent: true, opacity: .8, depthWrite: false }));
-        ring.rotation.x = -Math.PI / 2;
-        zone.add(ring);
-        zone.add(this.textSprite('HOLD THE PEAK!', 6, 1.3, 4));
+        zone.add(this.partyGroundRing(summit, radius, 0xffd833));
         this.partyMarkers.add(zone);
       } else if (match?.mode === 'hay-heist') {
         for (const barn of match.view().arena.barns) {
           const zone = new THREE.Group();
           zone.position.copy(vec(barn.position));
           const color = barn.teamId === 'red' ? 0xff7890 : 0x68cdff;
-          const ring = new THREE.Mesh(new THREE.RingGeometry(3.7, 4.2, 36),
-            new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide,
-              transparent: true, opacity: .8, depthWrite: false }));
-          ring.rotation.x = -Math.PI / 2;
-          zone.add(ring);
+          zone.add(this.partyGroundRing(barn.position, barn.radius, color));
           zone.add(this.textSprite(barn.teamId.toUpperCase() + ' GOAL', 4.7, 1.1, 3.6));
           this.partyMarkers.add(zone);
         }
@@ -482,7 +490,6 @@ export class GameView {
         const peak = match.toJSON().peak;
         zone.material.color.setHex(peak?.contested ? 0xff7590 :
           peak?.ownerId === 'player' ? 0x79ffd1 : 0xffd833);
-        zone.material.opacity = .62 + .28 * Math.sin(this.game.physics.time * 3);
       }
     }
     if (match?.mode === 'hay-heist') {
