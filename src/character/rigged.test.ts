@@ -4,6 +4,9 @@ import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { describe, expect, it, vi } from 'vitest';
 import { forward } from '../physics/math';
+import { GOAT_SIZES } from '../physics/GoatRagdoll';
+import { Game } from '../core/Game';
+import { heightAt } from '../world';
 import { GoatCharacter } from './GoatCharacter';
 import { LegacyGoatCharacter } from './LegacyGoatCharacter';
 import {
@@ -172,4 +175,90 @@ describe('rigged GLB heading matches physical forward', () => {
         art.dispose();
       }
     });
+});
+
+
+it('seats all four rendered idle soles and their marks on the live asphalt at every size', async () => {
+  const game = await Game.create();
+  const art = GOAT_VARIANTS.map(variant => new GoatCharacter(game.goat, { variant }));
+  try {
+    vi.stubGlobal('self', globalThis);
+    vi.stubGlobal('createImageBitmap', async () => ({ width: 1, height: 1, close() {} }));
+    const rigs = await Promise.all(art.map(async character => {
+      const bytes = readFileSync(resolve(process.cwd(), 'public/assets/characters/goat',
+        GOAT_GLB_FILES[character.variant]));
+      const gltf = await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, '');
+      (character as unknown as { attachRig(gltf: GLTF): void }).attachRig(gltf);
+      let skin: THREE.SkinnedMesh | undefined;
+      character.root.traverse(object => {
+        if (object instanceof THREE.SkinnedMesh) skin = object;
+      });
+      expect(skin).toBeDefined();
+      return { character, skin: skin! };
+    }));
+
+    const x = -148.79, z = 127.10;
+    const point = new THREE.Vector3(), mark = new THREE.Vector3();
+    for (const size of GOAT_SIZES) {
+      const goat = game.goat;
+      if (goat.size !== size) {
+        game.water.untrack(goat.torso);
+        goat.resize(size);
+        game.water.track(goat.torso, { buoyancyScale: .7, paddleSpeed: 2.6 });
+      }
+      game.teleport({ x, y: heightAt(game.island, x, z), z }, 0);
+      for (let tick = 0; tick < 140; tick++) game.step();
+      expect(goat.locomotion.grounded).toBe(true);
+      const { point: base, normal } = goat.locomotion.groundHit!;
+      const elevation = (x: number, z: number): number =>
+        base.y - ((x - base.x) * normal.x + (z - base.z) * normal.z) / normal.y;
+      for (const { character, skin } of rigs) {
+        const vertices = skin.geometry.getAttribute('position');
+        for (const frame of [0, .25, .5, 1]) {
+          character.seek(frame);
+          character.root.updateMatrixWorld(true);
+          const soles = Array.from({ length: 4 }, () => ({ y: Infinity, x: 0, z: 0, count: 0 }));
+          for (let i = 0; i < vertices.count; i++) {
+            const x = vertices.getX(i), z = vertices.getZ(i);
+            if (vertices.getY(i) > .022 || Math.abs(x) < .08 || Math.abs(z) < .12) continue;
+            skin.getVertexPosition(i, point).applyMatrix4(skin.matrixWorld);
+            const foot = soles[Number(x > 0) + 2 * Number(z > 0)]!;
+            foot.y = Math.min(foot.y, point.y - elevation(point.x, point.z));
+            foot.x += point.x;
+            foot.z += point.z;
+            foot.count++;
+          }
+          for (const [index, sole] of soles.entries()) {
+            const context = character.variant + ' / size ' + size + ' / foot ' + index;
+            expect(sole.count, context).toBeGreaterThan(10);
+            expect(sole.y, context).toBeGreaterThan(-.003 * size);
+            expect(sole.y, context).toBeLessThan(.018 * size);
+            expect(character.idleSolePosition(index, mark), context).toBe(true);
+            expect(Math.hypot(mark.x - sole.x / sole.count, mark.z - sole.z / sole.count), context)
+              .toBeLessThan(.034 * size);
+          }
+        }
+      }
+    }
+
+    game.step({ jump: true });
+    for (let tick = 0; tick < 8; tick++) game.step();
+    expect(game.goat.locomotion.grounded).toBe(false);
+    const pose = game.physics.getInterpolatedTransform(game.goat.torso, game.physics.alpha);
+    const rotation = new THREE.Quaternion(pose.rotation.x, pose.rotation.y,
+      pose.rotation.z, pose.rotation.w);
+    const expected = new THREE.Vector3(0, -.92 * game.goat.size, 0).applyQuaternion(rotation)
+      .add(new THREE.Vector3(pose.translation.x, pose.translation.y, pose.translation.z));
+    for (const character of art) {
+      character.update(1 / 60, game.physics.alpha);
+      expect(character.idleSolePosition(0, mark)).toBe(false);
+      const model = character.root.getObjectByName('rigged goat | ' + character.variant)!;
+      expect(model.position.distanceTo(expected)).toBeLessThan(1e-6);
+      expect(model.quaternion.angleTo(rotation)).toBeLessThan(.001);
+    }
+  } finally {
+    for (const character of art) character.dispose();
+    game.dispose();
+    vi.unstubAllGlobals();
+  }
 });

@@ -104,13 +104,15 @@ export class GameCharacters {
     this.groundNormal.set(normal.x, normal.y, normal.z);
     this.contactPose.quaternion.setFromUnitVectors(PLANE_FRONT, this.groundNormal);
     this.contactPose.scale.set(.40 * size, .42 * size, 1);
-    for (const part of FEET) {
-      const { translation, rotation } = this.game.physics.getInterpolatedTransform(goat.getPart(part), alpha);
-      this.legRotation.set(rotation.x, rotation.y, rotation.z, rotation.w);
-      this.hoof.set(0, -.38 * size, 0).applyQuaternion(this.legRotation);
-      this.hoof.x += translation.x;
-      this.hoof.y += translation.y;
-      this.hoof.z += translation.z;
+    for (const [index, part] of FEET.entries()) {
+      if (!this.player.idleSolePosition(index, this.hoof)) {
+        const { translation, rotation } = this.game.physics.getInterpolatedTransform(goat.getPart(part), alpha);
+        this.legRotation.set(rotation.x, rotation.y, rotation.z, rotation.w);
+        this.hoof.set(0, -.38 * size, 0).applyQuaternion(this.legRotation);
+        this.hoof.x += translation.x;
+        this.hoof.y += translation.y;
+        this.hoof.z += translation.z;
+      }
       const y = point.y - ((this.hoof.x - point.x) * normal.x +
         (this.hoof.z - point.z) * normal.z) / normal.y;
       if (this.hoof.y > y + .38 * size) continue;
