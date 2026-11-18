@@ -376,9 +376,11 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
             for (const node of portraitCopy.slice(0, 3)) {
               text.selectNodeContents(node);
               const ink = text.getBoundingClientRect();
-              if (!inside(ink, paperBounds) || ink.top < previousBottom - 1 ||
-                Number.parseFloat(getComputedStyle(node).fontSize) < 10) {
-                issues.push('portrait objective copy is clipped, overlapping, or too small');
+              const font = Number.parseFloat(getComputedStyle(node).fontSize);
+              if (!inside(ink, paperBounds) || ink.top < previousBottom - 1 || font < 10) {
+                issues.push('portrait objective ' + node.className + ' ' + JSON.stringify({
+                  font, withinPaper: inside(ink, paperBounds), rowGap: ink.top - previousBottom,
+                }));
               }
               previousBottom = ink.bottom;
             }
