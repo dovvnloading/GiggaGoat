@@ -25,6 +25,7 @@ import { HAY_HAUL_TAG_RADIUS } from '../gigs';
 import { GigSession } from './GigSession';
 import { PartySession } from './PartySession';
 import type { GameProgress } from './Persistence';
+import { findStockBaleSeat, isLegacyStockBale } from './HoofingtonStock';
 
 export const FIXED_DT = 1 / 60;
 
@@ -249,6 +250,22 @@ export class Game {
       this.acknowledgedGigAttempt = restoredGig.attemptId;
     }
     this.party = new PartySession(this);
+    // Saved active cargo already has its own pose. The static world and gig
+    // catalog still own the original authored coordinates for every bale.
+    const restoredHay = new Set<string>();
+    if (restoredGig?.status === 'running' && restoredGig.setup.config.kind === 'hay-haul' &&
+      Array.isArray(options.progress?.gigBodies)) {
+      const assigned = new Set(restoredGig.setup.config.bales.map(bale => bale.id));
+      for (const saved of options.progress.gigBodies) {
+        if (!saved.broken && assigned.has(saved.id)) restoredHay.add(saved.id);
+      }
+    }
+    this.physics.raw.propagateModifiedBodyPositionsToColliders();
+    for (const prop of island.props) {
+      if (!isLegacyStockBale(prop) || restoredHay.has(prop.id)) continue;
+      const body = colliders.bodies.get(prop.id);
+      if (body?.isEnabled()) this.seatStockHayBale(prop, body);
+    }
   }
 
   /**
@@ -343,6 +360,16 @@ export class Game {
     this.destroyedProps.add(id);
   }
 
+  seatStockHayBale(prop: PropDescriptor, body: RigidBody): void {
+    if (!isLegacyStockBale(prop)) return;
+    const seat = findStockBaleSeat(this.island, this.colliders, prop, body.translation(), body.rotation());
+    if (seat) {
+      body.setTranslation(seat, true);
+      this.physics.registerBody(body, { kind: 'prop', owner: prop.id, data: prop.kind });
+    }
+    this.physics.raw.propagateModifiedBodyPositionsToColliders();
+  }
+
   /** Lend a contract a replacement for a lost world bale using its original art and shape. */
   restockHayBale(id: string): RigidBody | undefined {
     if (this.colliders.bodies.get(id)?.isValid()) return;
@@ -353,6 +380,7 @@ export class Game {
     addRapierPropCollider(this.physics.raw, this.colliders, shape);
     const body = this.colliders.bodies.get(id)!;
     this.configureWorldProp(prop, body);
+    this.seatStockHayBale(prop, body);
     this.water.track(body, { buoyancyScale: 1.15 });
     // Contract replacements can still be pushed and licked. Skipping breakable
     // registration keeps the same lost bale from creating infinite debris or score.
