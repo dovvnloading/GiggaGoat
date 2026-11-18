@@ -80,7 +80,8 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
     put('concrete-column', x, z, 1.65, 27.5, 1.65,
       { fixedToPad: true, color: 0xd3d6d7 });
   }
-  for (const bottom of [4.5, 10.7, 16.9, 23.1]) {
+  const floorBottoms = [4.5, 10.7, 16.9, 23.1];
+  for (const [index, bottom] of floorBottoms.entries()) {
     put('concrete-slab', tower.x, tower.z, tower.width, 1.15, tower.depth,
       { bottom, fixedToPad: true, color: 0xcdd0d1 });
     const railBottom = bottom + 1.15;
@@ -91,10 +92,12 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
     }
     put('safety-rail', -19, -20.4, 28, 1.25, 0.18,
       { bottom: railBottom, fixedToPad: true });
-    for (const x of [-33.9, -4.1]) {
-      put('safety-rail', x, -7, 24.8, 1.25, 0.18,
-        { bottom: railBottom, fixedToPad: true, yaw: Math.PI / 2 });
-    }
+    put('safety-rail', -33.9, -7, 24.8, 1.25, 0.18,
+      { bottom: railBottom, fixedToPad: true, yaw: Math.PI / 2 });
+    // The east rail ends before the landing into each storey.
+    const gateAtNorth = index % 2 === 0;
+    put('safety-rail', -4.1, gateAtNorth ? -2.5 : -8.25, gateAtNorth ? 15.8 : 22.3,
+      1.25, 0.18, { bottom: railBottom, fixedToPad: true, yaw: Math.PI / 2 });
   }
   // Distinct yellow tube scaffolding at the camera-facing left/front face,
   // with cross braces, ladder rungs and real intermediate platform decks.
@@ -234,5 +237,33 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
   ] as const) {
     put('pallet-stack', x, z, 1.4, 0.8, 1.2, { yaw, fixedToPad: true });
   }
+
+  // A switchback construction ramp climbs around the open east edge. Its
+  // lower mouth faces the public gate and each wide landing opens to a floor.
+  const front = 3.6, rear = -11.4, laneLength = front - rear;
+  const accessTint = 0x78b3bc;
+  for (const [index, floorBottom] of floorBottoms.entries()) {
+    const fromFront = index % 2 === 0;
+    const floor = floorBottom + 1.15;
+    const base = index === 0 ? -.18 : floorBottoms[index - 1]! + 1.15;
+    put('ramp', fromFront ? 0.15 : 4.55, (front + rear) / 2, 3.4,
+      floor - base, laneLength, { yaw: fromFront ? Math.PI : 0,
+        bottom: base, fixedToPad: true, color: accessTint });
+    const landingZ = fromFront ? rear - 1.8 : front + 1.8;
+    put('concrete-slab', 1.05, landingZ, 11.2, .38, 3.6,
+      { bottom: floor - .40, fixedToPad: true, color: 0x8ba2a5 });
+    put('safety-rail', 1.05, landingZ + (fromFront ? -1.7 : 1.7), 10.9, 1.15, .18,
+      { bottom: floor, fixedToPad: true });
+    put('safety-rail', 6.52, landingZ, 3.4, 1.15, .18,
+      { bottom: floor, fixedToPad: true, yaw: Math.PI / 2 });
+    if (fromFront) {
+      put('safety-rail', -4.1, -17.1, 4.6, 1.25, .18,
+        { bottom: floor, fixedToPad: true, yaw: Math.PI / 2 });
+    }
+  }
+  put('site-barrier', -2.16, 6.3, 2.4, 1.18, .80,
+    { yaw: Math.PI / 2, color: 0xf4e7b9 });
+  put('site-barrier', 2.5, 6.3, 2.4, 1.18, .80,
+    { yaw: Math.PI / 2, color: 0xf4e7b9 });
   return props;
 }
