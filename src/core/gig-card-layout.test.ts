@@ -54,9 +54,9 @@ type Geometry = {
   styles: {
     card: Paint; detail: Paint; footer: Paint; wallet: Paint;
     balance: Paint; mode: Paint; coin: Paint;
-    artworkFilter: string; coinWidth: string; coinHeight: string; coinFit: string;
+    artworkFilter: string; coinFit: string;
   };
-  boxes: Record<'card' | 'header' | 'paper' | 'title' | 'task' | 'detail' | 'footer' | 'wallet' | 'mode' | 'checkbox', Rect>;
+  boxes: Record<'card' | 'header' | 'paper' | 'title' | 'task' | 'detail' | 'footer' | 'wallet' | 'mode' | 'checkbox' | 'coin', Rect>;
   paperFits: boolean;
   taskFits: boolean;
   detailFits: boolean;
@@ -95,7 +95,7 @@ function measureHud(width: number, height: number, active: boolean, longCopy: bo
       card: '.gg-gig-card', header: '.gg-gig-header', paper: '.gg-gig-paper',
       title: '.gg-gig-title', task: '.gg-gig-task', detail: '.gg-gig-detail',
       footer: '.gg-gig-footer', wallet: '.gg-gig-wallet', mode: '[data-mode]',
-      checkbox: '.gg-gig-checkbox'
+      checkbox: '.gg-gig-checkbox', coin: '.gg-coin'
     };
     const boxes = Object.fromEntries(Object.entries(names).map(([name, selector]) => {
       const r = document.querySelector(selector).getBoundingClientRect();
@@ -119,13 +119,14 @@ function measureHud(width: number, height: number, active: boolean, longCopy: bo
       balance: paint(card.querySelector('[data-wallet]')),
       mode: paint(card.querySelector('[data-mode]')), coin: paint(coin),
       artworkFilter: getComputedStyle(card, '::before').filter,
-      coinWidth: coinStyle.width, coinHeight: coinStyle.height, coinFit: coinStyle.objectFit
+      coinFit: coinStyle.objectFit
     };
     const result = { boxes, styles,
       paperFits: paper.scrollHeight <= paper.clientHeight + 1,
       taskFits: task.scrollHeight <= task.clientHeight + 1,
       detailFits: detail.scrollHeight <= detail.clientHeight + 1,
-      footerFits: footer.scrollWidth <= footer.clientWidth + 1,
+      footerFits: footer.scrollWidth <= footer.clientWidth + 1 &&
+        footer.scrollHeight <= footer.clientHeight + 1,
       checkboxVisible: getComputedStyle(checkbox).display !== 'none',
       checkboxHiddenAttribute: checkbox.hidden
     };
@@ -159,12 +160,36 @@ function inside(inner: Rect, outer: Rect, tolerance = 1): boolean {
     inner.right <= outer.right + tolerance && inner.bottom <= outer.bottom + tolerance;
 }
 
+function artRegion(card: Rect, left: number, top: number, right: number, bottom: number): Rect {
+  return {
+    left: card.left + left * card.width, right: card.left + right * card.width,
+    top: card.top + top * card.height, bottom: card.top + bottom * card.height,
+    width: (right - left) * card.width, height: (bottom - top) * card.height,
+  };
+}
+
+function expectWithinCream({ card, title, task, detail, footer, wallet, mode, coin }: Geometry['boxes']): void {
+  // The 457×228 sprite bevel begins at row 194. The footer sits in the
+  // wider part of the paper below the left checkbox and the ribbon shadow.
+  const bodyCream = artRegion(card, .20, .47, .91, .76);
+  const footerCream = artRegion(card, .12, .75, .90, 194 / 228);
+  for (const [name, bounds] of Object.entries({ title, task, detail })) {
+    expect(inside(bounds, bodyCream), name).toBe(true);
+  }
+  for (const [name, bounds] of Object.entries({ footer, wallet, mode, coin })) {
+    expect(inside(bounds, footerCream), name).toBe(true);
+  }
+  expect(inside(wallet, footer), 'wallet inside footer').toBe(true);
+  expect(inside(mode, footer), 'mode inside footer').toBe(true);
+  expect(inside(coin, wallet), 'coin inside wallet').toBe(true);
+}
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe('live gig card text box geometry (headless browser DOM)', () => {
   it.each([[1280, 720], [1512, 797], [1920, 1080]])(
     'paints the footer crisp, opaque and dark at %ix%i', (width, height) => {
-      const { styles } = measureHud(width, height, false, false);
+      const { styles, boxes } = measureHud(width, height, false, false);
       for (const text of [styles.footer, styles.wallet, styles.balance, styles.mode]) {
         expect(text.opacity).toBe('1');
         expect(text.filter).toBe('none');
@@ -181,8 +206,9 @@ describe('live gig card text box geometry (headless browser DOM)', () => {
       expect(styles.coin.opacity).toBe('1');
       expect(styles.coin.filter).toBe('none');
       expect(styles.coin.transform).toBe('none');
-      expect(styles.coinWidth).toBe('18px');
-      expect(styles.coinHeight).toBe('18px');
+      const size = Math.max(12, Math.min(16, width * .0086));
+      expect(boxes.coin.width).toBeCloseTo(size, 1);
+      expect(boxes.coin.height).toBeCloseTo(size, 1);
       expect(styles.coinFit).toBe('contain');
     }, 90_000,
   );
@@ -208,12 +234,7 @@ describe('live gig card text box geometry (headless browser DOM)', () => {
     'keeps the idle free-roam card within the cream area at %ix%i', (width, height) => {
       const g = measureHud(width, height, false, false);
       const { card, header, title, task, detail, footer, wallet, mode } = g.boxes;
-      const cream: Rect = { ...card, left: card.left + .19 * card.width,
-        top: card.top + .40 * card.height, right: card.left + .91 * card.width,
-        bottom: card.top + .92 * card.height };
-      for (const rect of [title, task, detail, wallet, mode]) {
-        expect(inside(rect, cream)).toBe(true);
-      }
+      expectWithinCream(g.boxes);
       expect(title.top).toBeGreaterThanOrEqual(card.top + .4 * card.height);
       expect(title.top).toBeGreaterThan(header.bottom);
       expect(task.top).toBeGreaterThanOrEqual(title.bottom - 1);
@@ -231,9 +252,8 @@ describe('live gig card text box geometry (headless browser DOM)', () => {
     'wraps a long active objective beside its checkbox at %ix%i', (width, height) => {
       const g = measureHud(width, height, true, true);
       const { card, header, title, task, detail, footer, wallet, mode, checkbox } = g.boxes;
-      for (const rect of [title, task, detail, footer, wallet, mode, checkbox]) {
-        expect(inside(rect, card)).toBe(true);
-      }
+      expectWithinCream(g.boxes);
+      expect(inside(checkbox, card)).toBe(true);
       expect(title.top).toBeGreaterThan(header.bottom);
       expect(task.top).toBeGreaterThanOrEqual(title.bottom - 1);
       expect(detail.top).toBeGreaterThanOrEqual(task.bottom - 1);

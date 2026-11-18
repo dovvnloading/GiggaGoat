@@ -143,12 +143,13 @@ const CSS = `
 .gg-gig-footer [data-mode]{flex-shrink:0;text-align:right}
 .gg-coin{width:18px;height:18px;flex-shrink:0;object-fit:contain;image-rendering:auto;opacity:1;filter:none;transform:none}
 @media(min-width:1101px){
- .gg-gig-paper{bottom:23%}
+ .gg-gig-paper{bottom:24.5%}
  .gg-gig-footer{
-  left:14%;right:11%;bottom:14%;height:8%;gap:6px;font-size:clamp(9px,.72vw,12px);
-  line-height:1.15;font-variant-numeric:tabular-nums
+  --gg-coin-size:clamp(12px,.86vw,16px);
+  left:14%;right:11%;bottom:15.5%;height:max(7%,var(--gg-coin-size));gap:6px;
+  font-size:clamp(9px,.72vw,12px);line-height:1.15;font-variant-numeric:tabular-nums
  }
- .gg-coin{width:clamp(12px,.86vw,16px);height:clamp(12px,.86vw,16px)}
+ .gg-gig-footer .gg-coin{width:var(--gg-coin-size);height:var(--gg-coin-size)}
 }
 /* Progress is a live masked conic arc painted on top of the illustrated ring. */
 .gg-stamina{position:absolute;left:clamp(11px,1.5vw,29px);bottom:clamp(10px,1.5vw,26px);width:clamp(138px,12.7vw,215px);aspect-ratio:243/252;background:var(--gg-staminaRing) center/100% 100% no-repeat}
