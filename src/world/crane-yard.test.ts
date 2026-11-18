@@ -153,9 +153,9 @@ describe('Crane Yard concept-art construction site', () => {
       (p.poiId === 'mt-gigga' || p.poiId === 'old-lighthouse'))).toHaveLength(2);
   });
 
-  it('keeps all container and cone coordinates with the corrected collider sizes', () => {
+  it('fits containers and cones to their staging positions at both island scales', () => {
     const containers = [
-      [-31, -28, 0, 0x4589ba], [-17, -31, 0, 0x367da7],
+      [-31, -28, 0, 0x4589ba], [-17, -26, 0, 0x367da7],
       [33, 24, Math.PI / 2, 0xc95241], [33, 7, Math.PI / 2, 0xda6844],
       [33, -26, Math.PI / 2, 0x4c98ad],
     ] as const;

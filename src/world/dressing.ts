@@ -80,11 +80,15 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     { yaw: -Math.PI / 2, color: 0xffecdb });
   at(farm, 'cottage', 29, -2, 9, 8, 8,
     { yaw: -Math.PI / 2, color: 0xc0d8ef });
-  at(farm, 'trampoline', 36, 34, 8, 1.1, 7, { color: 0x7960d9 });
+  // Leave an aisle between the east pasture rails and the outdoor play pad.
+  at(farm, 'trampoline', 41, 30, 8, 1.1, 7, { color: 0x7960d9 });
   // Street-level lamps frame the narrow roadway but do not encroach on it.
   // Their integral pennants also give Hoofington the orange farm banners.
   for (const side of [-1, 1]) for (const z of [-30, 0, 30]) {
-    at(farm, 'lamp', side * 9.8, z, 0.72, 7.8, 0.72,
+    // In the middle east row, use the grass strip between the sidewalk and
+    // the yard trampoline so its south corner stays open.
+    const x = side > 0 && z === 0 ? 7.2 : side * 9.8;
+    at(farm, 'lamp', x, z, 0.72, 7.8, 0.72,
       { shape: 'cylinder', yaw: side < 0 ? 0 : Math.PI });
   }
   for (let i = 0; i < 8; i++) {
