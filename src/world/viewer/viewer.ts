@@ -7,6 +7,7 @@ import {
   type ColliderDescriptor, type IslandData, type WorldScene,
 } from '../index';
 import { applyBookmarkCamera, ART_BOOKMARKS, findBookmark } from './bookmarks';
+import { updateOrbitCamera } from './orbit-terrain';
 import { paintingAssetUrl } from './reference-art';
 import { createStaticShadowCache } from './shadow-cache';
 import { createAdaptiveViewerResolution } from './adaptive-resolution';
@@ -63,7 +64,8 @@ const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerH
 camera.position.set(310, 220, 390);
 camera.lookAt(0, 40, 0);
 
-const orbit = new OrbitControls(camera, renderer.domElement);
+const orbitCamera = camera.clone();
+const orbit = new OrbitControls(orbitCamera, renderer.domElement);
 orbit.target.set(0, 28, 0);
 orbit.enableDamping = true;
 orbit.minDistance = 10;
@@ -128,6 +130,15 @@ scene.add(streetGoat);
 
 let island: IslandData;
 let worldView: WorldScene;
+function updateCameraControls(delta: number): void {
+  if (orbit.enabled) updateOrbitCamera(camera, orbit, island);
+  else fly.update(delta);
+}
+function setCameraAspect(aspect: number): void {
+  camera.aspect = orbitCamera.aspect = aspect;
+  camera.updateProjectionMatrix();
+  orbitCamera.updateProjectionMatrix();
+}
 function syncFogColor(): void {
   scene.fog?.color.copy(worldView.fogColor);
   renderer.setClearColor(worldView.fogColor);
@@ -267,7 +278,10 @@ function applyBookmark(id: string): void {
   orbit.enabled = true;
   fly.enabled = false;
   cameraInput.value = 'orbit';
-  applyBookmarkCamera(camera, orbit, mark);
+  applyBookmarkCamera(orbitCamera, orbit, mark);
+  camera.fov = mark.fov;
+  camera.updateProjectionMatrix();
+  updateOrbitCamera(camera, orbit);
   dayInput.value = String(mark.day);
   applyDayNight(mark.day);
   shadowCache.invalidate();
@@ -295,6 +309,7 @@ async function captureAllBookmarks(): Promise<void> {
   const saved = {
     id: bookmarkInput.value,
     position: camera.position.clone(),
+    orbitPosition: orbitCamera.position.clone(),
     quaternion: camera.quaternion.clone(),
     fov: camera.fov,
     target: orbit.target.clone(),
@@ -317,13 +332,11 @@ async function captureAllBookmarks(): Promise<void> {
     if (!ctx) throw new Error('2D canvas unavailable');
     renderer.setPixelRatio(1);
     renderer.setSize(width, height, false);
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
+    setCameraAspect(width / height);
     for (const [row, mark] of ART_BOOKMARKS.entries()) {
       captureButton.textContent = 'Capturing ' + (row + 1) + ' / ' + ART_BOOKMARKS.length;
       applyBookmark(mark.id);
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
+      setCameraAspect(width / height);
       renderWorldFrame();
       const y = row * rowHeight;
       // Copy immediately after render, before WebGL clears its backbuffer.
@@ -360,9 +373,9 @@ async function captureAllBookmarks(): Promise<void> {
     applyBookmark(saved.id);
     camera.position.copy(saved.position);
     camera.quaternion.copy(saved.quaternion);
-    camera.fov = saved.fov;
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
+    orbitCamera.position.copy(saved.orbitPosition);
+    camera.fov = orbitCamera.fov = saved.fov;
+    setCameraAspect(window.innerWidth / window.innerHeight);
     orbit.target.copy(saved.target);
     orbit.enabled = saved.orbitEnabled;
     fly.enabled = saved.flyEnabled;
@@ -396,6 +409,7 @@ element<HTMLFormElement>('seed-form').addEventListener('submit', event => {
 });
 cameraInput.addEventListener('change', () => {
   const inOrbit = cameraInput.value === 'orbit';
+  if (inOrbit) orbitCamera.position.copy(camera.position);
   orbit.enabled = inOrbit;
   fly.enabled = !inOrbit;
   streetGoat.visible = inOrbit &&
@@ -431,8 +445,7 @@ poiToggle.addEventListener('change', () => {
 });
 colliderToggle.addEventListener('change', showDebug);
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
+  setCameraAspect(window.innerWidth / window.innerHeight);
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 regenerate();
@@ -552,8 +565,7 @@ if (new URLSearchParams(window.location.search).has('profile')) {
         for (let i = 0; i < frames + 4; i++) {
           const start = window.performance.now();
           worldView.update(elapsed + i / 60);
-          if (orbit.enabled) orbit.update();
-          else fly.update(1 / 60);
+          updateCameraControls(1 / 60);
           renderWorldFrame();
           gl.finish();
           if (i >= 4) frameTimesMs.push(window.performance.now() - start);
@@ -587,8 +599,7 @@ renderer.setAnimationLoop(() => {
   fps = fps * 0.90 + (1 / Math.max(delta, 0.001)) * 0.10;
   sampleSeconds += delta;
   worldView.update(elapsed);
-  if (orbit.enabled) orbit.update();
-  else fly.update(delta);
+  updateCameraControls(delta);
   if (poiToggle.checked) {
     for (const poi of island.pois) {
       const node = labelById.get(poi.id)!;

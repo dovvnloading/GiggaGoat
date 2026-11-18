@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { describe, expect, it } from 'vitest';
-import { generateIsland, heightAt } from '../index';
+import { createWorldScene, generateIsland, heightAt } from '../index';
 import { gridSample, riverAt } from '../terrain';
 import type { PropDescriptor, Vec3 } from '../types';
 import { applyBookmarkCamera, ART_BOOKMARKS, findBookmark } from './bookmarks';
+import { updateOrbitCamera } from './orbit-terrain';
 
 const roundHalf = (value: number): number => Math.round(value * 2) / 2;
 const rounded = (v: Vec3): Vec3 => ({
@@ -270,8 +271,12 @@ describe('World Lab bookmark camera constraints', () => {
   it.each(ART_BOOKMARKS)('preserves saved position and target for $id', bookmark => {
     const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.25, 4000);
     camera.position.set(310, 220, 390);
-    const orbit = makeOrbit(camera);
-    applyBookmarkCamera(camera, orbit, bookmark);
+    const orbitCamera = camera.clone();
+    const orbit = makeOrbit(orbitCamera);
+    applyBookmarkCamera(orbitCamera, orbit, bookmark);
+    camera.fov = bookmark.fov;
+    camera.updateProjectionMatrix();
+    updateOrbitCamera(camera, orbit);
     const expectedPosition = new THREE.Vector3(
       bookmark.camera.x, bookmark.camera.y, bookmark.camera.z);
     const expectedTarget = new THREE.Vector3(
@@ -288,10 +293,73 @@ describe('World Lab bookmark camera constraints', () => {
     expect(camera.position.distanceTo(expectedPosition)).toBeLessThan(0.01);
     expect(orbit.target.distanceTo(expectedTarget)).toBeLessThan(0.01);
     // The regular animation-loop update must not lift or shift a saved pose.
-    orbit.update();
+    updateOrbitCamera(camera, orbit, island);
     expect(camera.position.distanceTo(expectedPosition)).toBeLessThan(0.01);
     expect(orbit.target.distanceTo(expectedTarget)).toBeLessThan(0.01);
     orbit.dispose();
+  });
+
+  it.each([
+    { id: '08', name: 'Hoofington', blockedStep: 31, lift: 18 },
+    { id: '13', name: 'Whispering Pines', blockedStep: 17, lift: 4 },
+  ])('keeps the near plane above the $name ridge during a low orbit', fixture => {
+    const world = createWorldScene(island, { chunkSegments: 32 });
+    world.group.updateMatrixWorld(true);
+    const bookmark = findBookmark(fixture.id)!;
+    const orbitCamera = new THREE.PerspectiveCamera(bookmark.fov, 1542 / 883, .25, 4000);
+    orbitCamera.position.set(310, 220, 390);
+    const camera = orbitCamera.clone();
+    const orbit = makeOrbit(orbitCamera);
+    const ray = new THREE.Raycaster();
+    const down = new THREE.Vector3(0, -1, 0);
+    const terrainY = (point: THREE.Vector3): number => {
+      ray.set(new THREE.Vector3(point.x, 400, point.z), down);
+      return ray.intersectObjects(world.chunks, false)[0]!.point.y;
+    };
+    try {
+      applyBookmarkCamera(orbitCamera, orbit, bookmark);
+      orbit.enableDamping = false;
+      orbit.rotateUp(orbit.getPolarAngle() - orbit.maxPolarAngle);
+      const intendedHeight = orbitCamera.position.y;
+      for (let i = 0; i <= 48; i++) {
+        updateOrbitCamera(camera, orbit, island);
+        if (i === fixture.blockedStep) {
+          expect(terrainY(camera.position) - intendedHeight).toBeGreaterThan(fixture.lift);
+          expect(camera.position.y - terrainY(camera.position)).toBeGreaterThan(.3);
+        }
+        if (i === 0 || i === 48) expect(camera.position.y).toBeCloseTo(intendedHeight);
+        expect(orbitCamera.position.y).toBeCloseTo(intendedHeight);
+        expect(camera.position.x).toBeCloseTo(orbitCamera.position.x);
+        expect(camera.position.z).toBeCloseTo(orbitCamera.position.z);
+        for (const x of [-1, 0, 1]) for (const y of [-1, 0, 1]) {
+          const point = new THREE.Vector3(x, y, -1).unproject(camera);
+          expect(point.y - terrainY(point)).toBeGreaterThan(.05);
+        }
+        orbit.rotateLeft(Math.PI / 24);
+      }
+    } finally {
+      orbit.dispose();
+      world.dispose();
+    }
+  });
+
+  it('clears the rendered diagonal ridge even when bilinear height places it lower', () => {
+    const terrain = { size: 4, resolution: 2, heights: new Float32Array([0, 10, 10, 0]) };
+    const eye = new THREE.PerspectiveCamera(64, 16 / 9, .25, 4000);
+    eye.position.set(0, 10.1, 0);
+    const camera = eye.clone();
+    const orbit = makeOrbit(eye);
+    try {
+      orbit.target.set(0, 9, -10);
+      expect(gridSample(terrain, 0, 0)).toBe(5);
+      updateOrbitCamera(camera, orbit, terrain);
+      expect(eye.position.y).toBeCloseTo(10.1);
+      expect(camera.position.y).toBeGreaterThan(10.4);
+      const bottom = new THREE.Vector3(0, -1, -1).unproject(camera);
+      expect(bottom.y).toBeGreaterThan(10);
+    } finally {
+      orbit.dispose();
+    }
   });
 
   it('widens either distance bound without disabling subsequent orbit updates', () => {
