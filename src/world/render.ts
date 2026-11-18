@@ -3,7 +3,7 @@ import type { Biome, IslandData, PropKind } from './types';
 import { BIOMES } from './types';
 import { clamp, smoothstep } from './random';
 import { gridCoordinate, gridIndex } from './terrain';
-import { terrainRockMask } from './terrain-paint';
+import { terrainRockAtlas } from './terrain-paint';
 import { paintDowntownGround } from './downtown-public-space';
 import { buildRoadsideSigns, paintRoadsideGravel } from './visual-roadside-stops';
 import { makeVillageGroundPaint, paintAsphalt } from './surface-paint';
@@ -77,6 +77,12 @@ const COLORS = {
 const CAPE_GRASS = new THREE.Color('#7FBF56');
 const CAPE_STONE = new THREE.Color('#A8A9B1');
 const MT_GIGGA_STONE = new THREE.Color(0xa39a96);
+// Terrain stretches each light band across metres of hillside. Blend the same
+// painterly palette between bands so a single terrain triangle cannot pop.
+const TERRAIN_RAMP = TOON_RAMP.clone();
+TERRAIN_RAMP.magFilter = THREE.LinearFilter;
+TERRAIN_RAMP.minFilter = THREE.LinearFilter;
+TERRAIN_RAMP.needsUpdate = true;
 
 interface RoadSample { x: number; z: number; width: number; type: 'road' | 'trail' }
 function roadGrid(island: IslandData, cell: number): Map<string, RoadSample[]> {
@@ -235,10 +241,10 @@ function buildTerrain(island: IslandData, segments: number,
   capeLighting: ReturnType<typeof makeCapeLighting>): Chunk[] {
   const n = island.resolution;
   const material = new THREE.MeshToonMaterial({
-    vertexColors: true, gradientMap: TOON_RAMP, side: THREE.FrontSide,
+    vertexColors: true, gradientMap: TERRAIN_RAMP, side: THREE.FrontSide,
   });
-  // One bilinear sample defines the grass/stone edge at both terrain LODs.
-  const rockMask = new THREE.DataTexture(terrainRockMask(island), n, n, THREE.RedFormat);
+  // One filtered sample carries the continuous grass/stone edge and foot shadow at both LODs.
+  const rockMask = new THREE.DataTexture(terrainRockAtlas(island), n, n, THREE.RGFormat);
   rockMask.magFilter = THREE.LinearFilter;
   rockMask.minFilter = THREE.LinearMipmapLinearFilter;
   rockMask.generateMipmaps = true;
@@ -274,13 +280,26 @@ varying vec3 vWorld;`,
     ).replace(
       '#include <color_fragment>',
       `#include <color_fragment>
-float exposure = texture2D(uTerrainRockMask, vWorld.xz * uRockUvScale + 0.5).r;
+vec2 cliffPaint = texture2D(uTerrainRockMask, vWorld.xz * uRockUvScale + 0.5).rg;
 float elevation = vWorld.y / uTerrainScale;
-float mountain = 1.0 - smoothstep(99.0, 113.0, length(vWorld.xz) / uTerrainScale);
-vec3 uStone = mix(uRockStone, uMountainStone, mountain);
-uStone *= 0.96 + 0.04 * sin(elevation * 0.52 + 2.0 * exposure);
-float rock = smoothstep(0.19, 0.48, exposure + 0.04 * smoothstep(16.0, 85.0, elevation));
-diffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);`,
+float rock = smoothstep(0.14, 0.51, cliffPaint.r + 0.04 * smoothstep(16.0, 85.0, elevation));
+vec3 footTint = vec3(0.70, 0.67, 0.61);
+diffuseColor.rgb *= mix(vec3(1.0), footTint, cliffPaint.g * 0.24);
+if (rock > 0.0) {
+  vec2 terrainXZ = vWorld.xz / uTerrainScale;
+  float mountain = 1.0 - smoothstep(99.0, 113.0, length(terrainXZ));
+  vec3 uStone = mix(uRockStone, uMountainStone, mountain);
+  // World-height strata cross triangles and continue round the cliff.
+  // Two phases and lateral warp avoid uniform stripes on successive terraces.
+  float bedding = elevation + 2.8 * sin(dot(terrainXZ, vec2(0.05, 0.026)))
+    + 1.5 * sin(dot(terrainXZ, vec2(-0.033, 0.105)));
+  float bands = 0.74 * sin(bedding * 0.49) + 0.26 * sin(bedding * 0.23 + 0.62);
+  float layer = smoothstep(-0.56, 0.52, bands);
+  vec3 strata = mix(vec3(0.66, 0.70, 0.73), vec3(1.19, 1.15, 1.09), layer);
+  uStone *= mix(vec3(1.0), strata, 0.6 + 0.4 * mountain);
+  uStone *= mix(vec3(1.0), footTint, cliffPaint.g);
+  diffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);
+}`,
     );
     villagePaint.apply(shader);
     paintDowntownGround(shader, island);
