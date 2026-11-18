@@ -3,6 +3,7 @@ import { SeededRandom } from './random';
 import { downtownPublicSpaceAt, downtownPublicSpaces } from './downtown-public-space';
 import { gridSample, riverAt, segmentProjection, stampPlot } from './terrain';
 import { getDamPlacement } from './the-dam';
+import { HOOFINGTON_FIELD_ENTRANCES, HOOFINGTON_FIELD_RAILS, HOOFINGTON_YARD_ENTRANCES } from './hoofington-entrances';
 import { roadSideOffset } from './roads';
 import { damChannelAt } from './dam-landscape';
 import { DOWNTOWN_ROOF_MOUNTS, downtownBuildingModel, isInsideDowntownInfillFootprint } from './visual-downtown';
@@ -96,17 +97,13 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     at(farm, 'gnome', side * rand(16, 34), rand(-31, 34),
       0.5, 0.9, 0.5, { yaw: turn(), color: i % 2 ? 0xff891e : 0x7a4cff });
   }
-  const fieldPanelLengths = [5.7, 6.2, 4.7, 5.8, 4.6, 6.2, 9, 9] as const;
-  for (const side of [-1, 1]) for (let i = 0; i < fieldPanelLengths.length; i++) {
-    // The outer west fence runs behind both barn and silo foundations.
-    const x = side === -1 && i < 2 ? -36.8
-      : side === -1 && i === 2 ? -36.0
-      // Clear the custom windmill's wider 12.5 m cuboid footprint.
-      : side === 1 && i === 0 ? 37.5 : side * 34.5;
-    // The southern ends guide the existing barn tow and lawn entrance.
-    at(farm, 'fence', x, -36 + i * 10,
-      fieldPanelLengths[i]!, 1.85, .34, { yaw: Math.PI / 2, color: 0xeac995 });
+  // The outer west rails clear the barn and silo foundations, and the shape
+  // of the east run leaves room around the custom windmill.
+  for (const rails of HOOFINGTON_FIELD_RAILS) for (const rail of rails) {
+    at(farm, 'fence', rail.x, rail.z, rail.length, 1.85, .34,
+      { yaw: Math.PI / 2, color: 0xeac995 });
   }
+
   for (let i = 0; i < 16; i++) {
     at(farm, 'hay-bale', rand(-45, -33), rand(4, 36), 2.1, 1.5, 2.1,
       { shape: 'cylinder', mass: 8, yaw: turn() });
@@ -163,6 +160,14 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     return true;
   }
   const farmCenter = sites.get(farm)!;
+  const farmEntrances: Footprint[] = [...HOOFINGTON_FIELD_ENTRANCES, ...HOOFINGTON_YARD_ENTRANCES]
+    .map(p => ({ x: farmCenter.x + p.x * scale, z: farmCenter.z + p.z * scale,
+      sx: (p.length + ('towing' in p && p.towing ? 2.3 : 1.5)) * scale,
+      sz: p.width * scale, yaw: 0 }));
+  const inFarmEntrance = (x: number, z: number, width: number, yaw: number): boolean =>
+    farmEntrances.some(gate => Math.abs(x - gate.x) < gate.sx / 2 + width &&
+      Math.abs(z - gate.z) < gate.sz / 2 + width &&
+      footprintOverlaps({ x, z, sx: width, sz: width, yaw }, gate));
   const hoofRoads: Footprint[] = [{
     x: farmCenter.x, z: farmCenter.z, sx: 6.8 * scale, sz: 84 * scale, yaw: 0,
   }];
@@ -177,17 +182,20 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     }
   }
   function clearHoofingtonFoliage(
-    x: number, z: number, width: number, yaw: number,
+    x: number, z: number, width: number, yaw: number, source?: PropDescriptor,
   ): { x: number; z: number } {
+    const blocksEntrance = inFarmEntrance(x, z, width, yaw);
     const occupied = [...island.props, ...result]
-      .filter(p => p.poiId === farm &&
+      .filter(p => p !== source && p.poiId === farm &&
         (['barn', 'house', 'cottage', 'silo', 'windmill'].includes(p.kind) ||
-          p.id.startsWith('hoofington-verge-')))
+          p.id.startsWith('hoofington-verge-') || (blocksEntrance &&
+            ['fence', 'flower', 'bush', 'tree-pine', 'tree-oak'].includes(p.kind))))
       .map(p => ({ x: p.transform.position.x, z: p.transform.position.z,
         sx: p.size.x, sz: p.size.z, yaw: p.transform.rotationY }));
     const free = (px: number, pz: number): boolean => {
       const f = { x: px, z: pz, sx: width, sz: width, yaw };
-      return !occupied.some(b => footprintOverlaps(f, b)) &&
+      return !inFarmEntrance(px, pz, width, yaw) &&
+        !occupied.some(b => footprintOverlaps(f, b)) &&
         !hoofRoads.some(r => footprintOverlaps(f, r));
     };
     if (free(x, z)) return { x, z };
@@ -204,6 +212,19 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       }
     }
     return { x, z }; // An unresolvable layout must fail the regression test.
+  }
+
+  // Garden groups were placed before the two fence runs were available.
+  // Pull back only planting that closes an intended gap.
+  for (const prop of result) {
+    if (prop.poiId !== farm || (prop.kind !== 'flower' && prop.kind !== 'bush')) continue;
+    const { position, rotationY } = prop.transform;
+    const width = Math.max(prop.size.x, prop.size.z);
+    if (!inFarmEntrance(position.x, position.z, width, rotationY)) continue;
+    const next = clearHoofingtonFoliage(position.x, position.z, width, rotationY, prop);
+    position.x = next.x;
+    position.z = next.z;
+    position.y = gridSample(island, next.x, next.z) + prop.size.y / 2;
   }
 
   // Floating buoys outline the pier and the surf. The kiosks, pennants and
@@ -592,17 +613,20 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       : kind === 'bush' ? height * 1.25
       : kind === 'flower' ? height * 0.9 : height * 0.55;
     const yaw = turn();
-    const position = near?.id === farm &&
-      (kind === 'flower' || kind === 'bush' || kind.startsWith('tree-'))
-      ? clearHoofingtonFoliage(x, z, width * scale, yaw) : { x, z };
+    const foliageWidth = width * scale;
+    const blocksEntrance = inFarmEntrance(x, z, foliageWidth, yaw);
+    const position = blocksEntrance || (near?.id === farm &&
+      (kind === 'flower' || kind === 'bush' || kind.startsWith('tree-')))
+      ? clearHoofingtonFoliage(x, z, foliageWidth, yaw) : { x, z };
     if (onBoardwalkDeck(position.x, position.z) ||
         inCraneYard(position.x, position.z) ||
         isInsideDowntownInfillFootprint(island, position.x, position.z)) continue;
     const detail = place(kind, position.x, position.z, width, height, width, near?.id,
       { shape: 'cylinder', yaw });
-    // Reserve the paved courtyards and alleys without advancing the old seeded layout.
+    // Keep public paths open while preserving seeded foliage draws and prop IDs.
     if (result.at(-1) === detail &&
-        downtownPublicSpaceAt(publicGround, position.x, position.z, width * scale * .55)) result.pop();
+        (downtownPublicSpaceAt(publicGround, position.x, position.z, foliageWidth * .55) ||
+          inFarmEntrance(position.x, position.z, foliageWidth, yaw))) result.pop();
     accepted++;
   }
   const nearbyFoliageSpot = (origin: Vec2, clear: (x: number, z: number) => boolean,
