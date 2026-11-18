@@ -5,6 +5,7 @@ import { clamp, smoothstep } from './random';
 import { gridCoordinate, gridIndex } from './terrain';
 import { terrainRockMask } from './terrain-paint';
 import { paintDowntownGround } from './downtown-public-space';
+import { buildRoadsideSigns, paintRoadsideGravel } from './visual-roadside-stops';
 import { roadRibbonData } from './road-ribbons';
 import { buildPropVisuals, TOON_RAMP } from './visual-props';
 import { createEnvironmentLod } from './environment-lod';
@@ -277,6 +278,7 @@ float rock = smoothstep(0.19, 0.48, exposure + 0.04 * smoothstep(16.0, 85.0, ele
 diffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);`,
     );
     paintDowntownGround(shader, island);
+    paintRoadsideGravel(shader, island);
     capeLighting.paint(shader);
   };
   const lookup = roadGrid(island, 22);
@@ -372,6 +374,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const chunks = buildTerrain(island, segments, capeLighting);
   for (const chunk of chunks) group.add(chunk.mesh);
   group.add(buildRoads(island));
+  const roadsideSigns = buildRoadsideSigns(island);
+  if (roadsideSigns) group.add(roadsideSigns);
   group.add(buildStreetDetails(island));
   // Coalesce unchanged ground decals to keep the extra zebra mesh within the draw budget.
   group.add(buildGroundDetails(island, 192));
