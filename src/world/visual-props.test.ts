@@ -4,7 +4,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { fitLibraryModel } from './library-fit';
 import { PROP_LIBRARY_MODELS } from './library-props';
 import type { PropDescriptor, PropKind } from './types';
-import { buildPropVisuals } from './visual-props';
+import { buildPropVisuals, AUTHORED_HERO_DRESSING_KINDS } from './visual-props';
+import { generateIsland } from './index';
+import { buildWaterVisuals } from './visual-water';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -169,6 +171,53 @@ describe('library prop draw-call compaction', () => {
         source.geometry.dispose();
         (source.material as THREE.Material).dispose();
       }
+      visuals.dispose();
+    }
+  });
+});
+
+describe('cascade instancing draw budget (MG-5 / WP-4)', () => {
+  it('renders all authored cascades in one draw at mixed distances, plus one foam batch', async () => {
+    const load = vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockImplementation(async () => {
+      const scene = new THREE.Group();
+      scene.add(new THREE.Mesh(new THREE.BoxGeometry(6, 10, 6).translate(0, 5, 0),
+        new THREE.MeshStandardMaterial({ color: 0x3b9dbb })));
+      return { scene } as Awaited<ReturnType<GLTFLoader['loadAsync']>>;
+    });
+    vi.stubGlobal('document', {});
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const cascades = island.props.filter(prop => prop.kind === 'cascade');
+    expect(cascades.length).toBeGreaterThan(1);
+    expect(AUTHORED_HERO_DRESSING_KINDS.has('cascade')).toBe(true);
+    const visuals = buildPropVisuals(cascades);
+    const water = buildWaterVisuals(island);
+    try {
+      await vi.waitFor(() => expect(visuals.group.userData['libraryReady']).toBe(true),
+        { timeout: 15000 });
+      expect(visuals.group.userData['libraryFailed']).toBe(0);
+      expect(load).toHaveBeenCalledTimes(1);
+      const source = visuals.group.getObjectByName('props-cascade') as THREE.InstancedMesh;
+      const near = visuals.group.getObjectByName('render-near-cascade') as THREE.InstancedMesh;
+      expect(near).toBeInstanceOf(THREE.InstancedMesh);
+      expect(visuals.group.getObjectByName('render-far-cascade')).toBe(near);
+      expect(visuals.batches).toHaveLength(1);
+      expect(visuals.batches[0]!.meshes).toEqual([near]);
+      expect(near.geometry).toBe(source.geometry);
+      const colour = new THREE.Color();
+      for (let i = 0; i < source.count; i++) {
+        source.getColorAt(i, colour);
+        expect(colour.getHex()).toBe(0xffffff);
+      }
+      const frustum = { intersectsSphere: () => true } as unknown as THREE.Frustum;
+      visuals.updateCulling(new THREE.Vector3(0, 15, 0), frustum, 2000, () => false);
+      expect(near.count).toBe(cascades.length);
+      const drawn = visuals.group.children.filter(object =>
+        object instanceof THREE.InstancedMesh && object.visible &&
+        object.name.startsWith('render-') && object.count > 0);
+      const foam = water.inland.getObjectByName('waterfall-foam-batch');
+      expect(foam).toBeInstanceOf(THREE.InstancedMesh);
+      expect(drawn.length + (foam ? 1 : 0)).toBeLessThanOrEqual(2);
+    } finally {
       visuals.dispose();
     }
   });

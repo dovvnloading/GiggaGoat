@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { generateIsland } from './index';
-import { buildWaterVisuals } from './visual-water';
+import { buildWaterVisuals, waterfallSites } from './visual-water';
 import { buildSkyVisuals } from './visual-sky';
 import { gridSample } from './terrain';
 import { findBookmark } from './viewer/bookmarks';
@@ -260,157 +260,96 @@ describe('Dam reservoir gradient, shoreline and visual-only level (DM-3 / DM-6)'
     });
 });
 
-describe('Mt. Gigga cascades and Dam plot exclusion (MG-5, DM-1)', () => {
-  it('widens both waterfall families by 2.6 and sinks five translucent foam flecks per cascade', () => {
-    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
-    const { inland, sea } = buildWaterVisuals(island);
-    try {
-      const falls = inland.children.filter(o =>
-        o.name.startsWith('mountain-waterfall-') ||
-        o.name.startsWith('front-terrace-waterfall-'));
-      const cascades = falls.filter(o => !o.name.endsWith('-foam')) as THREE.Mesh[];
-      expect(cascades.length).toBeGreaterThanOrEqual(2);
-      expect(cascades.some(o => o.name.startsWith('front-terrace-waterfall-')))
-        .toBe(true);
-      for (const fall of cascades) {
-        const vertices = fall.geometry.getAttribute('position');
-        const width = Math.hypot(vertices.getX(1) - vertices.getX(0),
-          vertices.getZ(1) - vertices.getZ(0));
-        let original: number;
-        if (fall.name.startsWith('mountain-waterfall-')) {
-          const index = Number(fall.name.slice('mountain-waterfall-'.length));
-          const a = island.river[index]!, b = island.river[index + 1]!;
-          const topX = (vertices.getX(0) + vertices.getX(1)) / 2;
-          const topZ = (vertices.getZ(0) + vertices.getZ(1)) / 2;
-          const bottomX = (vertices.getX(2) + vertices.getX(3)) / 2;
-          const bottomZ = (vertices.getZ(2) + vertices.getZ(3)) / 2;
-          const sourceRun = Math.hypot(b.x - a.x, b.z - a.z);
-          const distanceFromA = Math.hypot(topX - a.x, topZ - a.z);
-          original = (a.width + (b.width - a.width) * distanceFromA / sourceRun) * 0.4;
-          expect(vertices.getY(0)).toBeCloseTo(
-            gridSample(island, topX, topZ) + 0.26 * island.size / 600, 4);
-          expect(vertices.getY(2)).toBeCloseTo(
-            gridSample(island, bottomX, bottomZ) + 0.18 * island.size / 600, 4);
-          expect(Math.hypot(bottomX - topX, bottomZ - topZ))
-            .toBeCloseTo(4 * island.size / 600, 4);
-          expect(gridSample(island, topX, topZ) -
-            gridSample(island, bottomX, bottomZ))
-            .toBeGreaterThanOrEqual(3 * island.size / 600 - 0.001);
-        } else {
-          const index = Number(fall.name.slice('front-terrace-waterfall-'.length)) - 1;
-          const angle = [0.54, 0.89][index]!;
-          const r0 = (index === 0 ? 38 : 74) * island.size / 600;
-          const r1 = (index === 0 ? 46 : 83) * island.size / 600;
-          original = (index === 0 ? 5.1 : 4.2) * island.size / 600;
-          expect(vertices.getY(0)).toBeCloseTo(gridSample(island,
-            Math.cos(angle) * r0, Math.sin(angle) * r0) +
-            0.26 * island.size / 600, 5);
-          expect(vertices.getY(2)).toBeCloseTo(gridSample(island,
-            Math.cos(angle) * r1, Math.sin(angle) * r1) +
-            0.18 * island.size / 600, 5);
-        }
-        expect(width, fall.name).toBeCloseTo(original * 2.6, 4);
-        const marker = inland.getObjectByName(
-          fall.name + '-foam') as THREE.Group;
-        expect(marker, fall.name).toBeInstanceOf(THREE.Group);
-        const firstInstance = marker.userData['instanceOffset'] as number;
-        const blobCount = marker.userData['instanceCount'] as number;
-        expect(blobCount, fall.name + ' blob count').toBe(5);
-        const foam = inland.getObjectByName('waterfall-foam-batch') as THREE.InstancedMesh;
+describe('modelled Mt. Gigga cascades (MG-5, DM-1)', () => {
+  it.each([
+    { seed: 'billy-isle', size: 600, resolution: 193 },
+    { seed: 'waterfall-cliff-alt', size: 900, resolution: 97 },
+  ])('places one noncollidable cascade of exact dimensions and downstream yaw per site ($seed)',
+    ({ seed, size, resolution }) => {
+      const island = generateIsland({ seed, size, resolution });
+      const sites = waterfallSites(island);
+      const riverBefore = island.river.map(point => ({ ...point }));
+      expect(waterfallSites(island)).toEqual(sites);
+      expect(island.river).toEqual(riverBefore);
+      expect(sites.length).toBeGreaterThan(0);
+      const props = island.props.filter(prop => prop.id.startsWith('waterfall-cascade-'));
+      expect(props).toHaveLength(sites.length);
+      const visuals = buildWaterVisuals(island);
+      try {
+        const foam = visuals.inland.getObjectByName('waterfall-foam-batch') as THREE.InstancedMesh;
         expect(foam).toBeInstanceOf(THREE.InstancedMesh);
+        expect(foam.count).toBe(sites.length * 5);
         expect(foam.geometry).toBeInstanceOf(THREE.IcosahedronGeometry);
-        const mat = foam.material as THREE.MeshBasicMaterial;
-        expect(mat.color.getHex()).toBe(0xeaf8ff);
-        expect(mat.opacity).toBe(0.6);
-        expect(mat.transparent).toBe(true);
-        expect(mat.depthWrite).toBe(false);
-        const transform = new THREE.Matrix4();
-        const size = new THREE.Vector3();
-        const offsets = [-0.4, -0.2, 0, 0.2, 0.4] as const;
-        const jitter = [0.94, 1.11, 0.89, 1.07, 0.97] as const;
-        const base = new THREE.Vector3(
-          (vertices.getX(2) + vertices.getX(3)) / 2,
-          vertices.getY(2) - width * 0.03,
-          (vertices.getZ(2) + vertices.getZ(3)) / 2);
-        const across = new THREE.Vector3(
-          vertices.getX(3) - vertices.getX(2), 0,
-          vertices.getZ(3) - vertices.getZ(2)).normalize();
-        const locations: THREE.Vector3[] = [];
-        for (let i = 0; i < blobCount; i++) {
-          foam.getMatrixAt(firstInstance + i, transform);
-          size.setFromMatrixScale(transform);
-          // Deterministic, per-blob jitter stays inside +/-15%.
-          expect(jitter[i], foam.name).toBeGreaterThanOrEqual(0.85);
-          expect(jitter[i], foam.name).toBeLessThanOrEqual(1.15);
-          expect(size.x, foam.name).toBeCloseTo(width * 0.16 * jitter[i]!, 4);
-          expect(size.y, foam.name).toBeCloseTo(width * 0.07 * jitter[i]!, 4);
-          expect(size.z, foam.name).toBeCloseTo(width * 0.16 * jitter[i]!, 4);
-          const location = new THREE.Vector3().setFromMatrixPosition(transform);
-          const expected = base.clone().addScaledVector(across, offsets[i]! * width);
-          expect(location.distanceTo(expected), foam.name + ' position')
-            .toBeLessThan(0.0002);
-          expect(location.y, foam.name).toBeCloseTo(vertices.getY(2) - width * 0.03, 4);
-          locations.push(location);
+        for (const site of sites) {
+          const prop = props.find(p => p.id === 'waterfall-cascade-' + site.id)!;
+          expect(prop, site.id).toBeDefined();
+          const scale = size / 600;
+          const dx = site.bottom.x - site.top.x, dz = site.bottom.z - site.top.z;
+          const run = Math.hypot(dx, dz);
+          const depth = Math.max(4 * scale, Math.min(12 * scale, run + 2 * scale));
+          const base = gridSample(island, site.bottom.x, site.bottom.z) - 0.2 * scale;
+          expect(prop.kind).toBe('cascade');
+          expect(prop.size.x).toBeCloseTo(Math.max(site.width * 1.6, 5 * scale), 5);
+          expect(prop.size.y).toBeCloseTo(site.top.y - base + 0.4 * scale, 5);
+          expect(prop.size.z).toBeCloseTo(depth, 5);
+          expect(prop.transform.position.x).toBeCloseTo((site.top.x + site.bottom.x) / 2, 5);
+          expect(prop.transform.position.z).toBeCloseTo((site.top.z + site.bottom.z) / 2, 5);
+          expect(prop.transform.position.y - prop.size.y / 2).toBeCloseTo(base, 5);
+          const yaw = prop.transform.rotationY;
+          const dot = (Math.sin(yaw) * dx + Math.cos(yaw) * dz) / run;
+          expect(dot, site.id + ' +Z downstream within 5 degrees')
+            .toBeGreaterThan(Math.cos(5 * Math.PI / 180));
+          expect(prop.body).toEqual({ type: 'static' });
+          expect(prop.collidable).toBe(false);
+          expect(prop.breakable).toBe(false);
+          expect(prop.lickable).toBe(false);
+          expect(prop.climbable).toBe(false);
+          expect(island.colliders.some(c => c.shape !== 'heightfield' && c.id === prop.id))
+            .toBe(false);
+          // The old four-vertex animated Mesh is replaced by a mesh-free marker.
+          const marker = visuals.inland.getObjectByName(site.id);
+          expect(marker).toBeInstanceOf(THREE.Group);
+          expect(marker).not.toBeInstanceOf(THREE.Mesh);
+          expect(marker!.children).toHaveLength(0);
+          const flecks = visuals.inland.getObjectByName(site.id + '-foam') as THREE.Group;
+          expect(flecks).toBeInstanceOf(THREE.Group);
+          expect(flecks.userData['instanceCount']).toBe(5);
+          const index = (flecks.userData['instanceOffset'] as number) + 2;
+          const matrix = new THREE.Matrix4();
+          foam.getMatrixAt(index, matrix);
+          const pool = new THREE.Vector3().setFromMatrixPosition(matrix);
+          expect(pool.x).toBeCloseTo(site.bottom.x + 0.3 * depth * dx / run, 4);
+          expect(pool.z).toBeCloseTo(site.bottom.z + 0.3 * depth * dz / run, 4);
+          expect(pool.y).toBeCloseTo(site.bottom.y - site.width * 2.6 * 0.03, 4);
         }
-        for (let i = 1; i < locations.length; i++) {
-          expect(locations[i]!.distanceTo(locations[i - 1]!))
-            .toBeCloseTo(width * 0.2, 4);
-        }
-        expect(locations[0]!.distanceTo(locations[4]!))
-          .toBeCloseTo(width * 0.8, 4);
+      } finally {
+        disposeWaterMeshes(visuals);
       }
-      const torus: THREE.Mesh[] = [];
-      inland.traverse(o => {
-        if (o instanceof THREE.Mesh && o.geometry instanceof THREE.TorusGeometry)
-          torus.push(o);
-      });
-      expect(torus).toHaveLength(0);
-    } finally {
-      inland.traverse(o => {
-        if (o instanceof THREE.Mesh) {
-          o.geometry.dispose();
-          const mats = Array.isArray(o.material) ? o.material : [o.material];
-          mats.forEach(mat => mat.dispose());
-        }
-      });
-      sea.geometry.dispose();
-      (sea.material as THREE.Material).dispose();
-    }
-  });
+    });
 
-  it('suppresses a real cliff waterfall when its entire reach enters the Dam exclusion', () => {
+  it('keeps the real 3 m cliff condition and the Dam exclusion', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
-    const dam = island.plots.find(p => p.poiId === 'the-dam')!;
-    // Force a known real slope along the first upstream river segment; do
-    // not rely on authored river levels to manufacture the curtain.
+    const dam = island.plots.find(plot => plot.poiId === 'the-dam')!;
     const n = island.resolution;
     for (let iz = 0; iz < n; iz++) {
       const z = (iz / (n - 1) - 0.5) * island.size;
       for (let ix = 0; ix < n; ix++) island.heights[iz * n + ix] = 2 * z;
     }
-    const first = buildWaterVisuals(island);
-    try {
-      const fall = first.inland.getObjectByName('mountain-waterfall-0');
-      expect(fall).toBeInstanceOf(THREE.Mesh);
-    } finally {
-      disposeWaterMeshes(first);
-    }
-    // The whole first segment is shorter than 70 m, so moving the Dam centre
-    // to its upstream end excludes every possible 4 m drop along it.
+    expect(waterfallSites(island).some(site => site.id === 'mountain-waterfall-0'))
+      .toBe(true);
     dam.center.x = island.river[0]!.x;
     dam.center.z = island.river[0]!.z;
-    const guarded = buildWaterVisuals(island);
+    expect(waterfallSites(island).some(site => site.id === 'mountain-waterfall-0'))
+      .toBe(false);
+    const visuals = buildWaterVisuals(island);
     try {
-      expect(guarded.inland.getObjectByName('mountain-waterfall-0'))
-        .toBeUndefined();
-      expect(guarded.inland.getObjectByName('mountain-waterfall-0-foam'))
-        .toBeUndefined();
+      expect(visuals.inland.getObjectByName('mountain-waterfall-0')).toBeUndefined();
+      expect(visuals.inland.getObjectByName('mountain-waterfall-0-foam')).toBeUndefined();
     } finally {
-      disposeWaterMeshes(guarded);
+      disposeWaterMeshes(visuals);
     }
   });
 });
-
 
 type RibbonQuad = { start: THREE.Vector3; end: THREE.Vector3 };
 
@@ -583,38 +522,27 @@ describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
     },
   );
 
-  it('keeps waterfall mesh names only for actual 3 m drops on 4 m runs away from the Dam', () => {
+  it('keeps only real upstream cliff sites and their mesh-free names', () => {
     for (const [seed, size] of [['billy-isle', 600], ['waterfall-cliff-alt', 900]] as const) {
       const island = generateIsland({ seed, size, resolution: 193 });
       const dam = island.plots.find(plot => plot.poiId === 'the-dam')!;
+      const sites = waterfallSites(island).filter(site =>
+        site.id.startsWith('mountain-waterfall-'));
       const visuals = buildWaterVisuals(island);
       try {
-        const waterfalls = visuals.inland.children.filter(object =>
-          /^mountain-waterfall-\d+$/.test(object.name)) as THREE.Mesh[];
         if (seed === 'billy-isle') {
-          expect(visuals.inland.getObjectByName('mountain-waterfall-1'))
-            .toBeUndefined();
-          expect(visuals.inland.getObjectByName('mountain-waterfall-1-foam'))
-            .toBeUndefined();
+          expect(sites.some(site => site.id === 'mountain-waterfall-1')).toBe(false);
         }
-        for (const fall of waterfalls) {
-          const position = fall.geometry.getAttribute('position');
-          const topX = (position.getX(0) + position.getX(1)) / 2;
-          const topZ = (position.getZ(0) + position.getZ(1)) / 2;
-          const footX = (position.getX(2) + position.getX(3)) / 2;
-          const footZ = (position.getZ(2) + position.getZ(3)) / 2;
-          expect(Math.hypot(topX - dam.center.x, topZ - dam.center.z),
-            fall.name).toBeGreaterThan(70);
-          expect(Math.hypot(footX - topX, footZ - topZ),
-            fall.name).toBeCloseTo(4 * size / 600, 4);
-          expect(gridSample(island, topX, topZ) -
-            gridSample(island, footX, footZ),
-            fall.name).toBeGreaterThanOrEqual(3 * size / 600 - 0.001);
-          const index = Number(fall.name.slice('mountain-waterfall-'.length));
-          expect(Number.isInteger(index) && index >= 0 &&
-            index < island.river.length - 1).toBe(true);
-          expect(visuals.inland.getObjectByName(fall.name + '-foam'))
-            .toBeInstanceOf(THREE.Group);
+        for (const site of sites) {
+          expect(Math.hypot(site.top.x - dam.center.x, site.top.z - dam.center.z))
+            .toBeGreaterThan(70);
+          expect(Math.hypot(site.bottom.x - site.top.x, site.bottom.z - site.top.z))
+            .toBeCloseTo(4 * size / 600, 4);
+          expect(gridSample(island, site.top.x, site.top.z) -
+            gridSample(island, site.bottom.x, site.bottom.z))
+            .toBeGreaterThanOrEqual(3 * size / 600 - 0.001);
+          expect(visuals.inland.getObjectByName(site.id)).toBeInstanceOf(THREE.Group);
+          expect(visuals.inland.getObjectByName(site.id + '-foam')).toBeInstanceOf(THREE.Group);
         }
       } finally {
         disposeWaterMeshes(visuals);
@@ -643,107 +571,54 @@ describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
 });
 
 describe('Hoofington backdrop waterfall (HF-10)', () => {
-  const fallName = 'hoofington-backdrop-waterfall';
+  const id = 'hoofington-backdrop-waterfall';
 
-  it('places exactly one 6 m cascade on a visible steep Mt. Gigga face for the default island', () => {
+  it('keeps a single visible and steep site with no road or preexisting prop overlap', () => {
     const island = generateIsland();
+    const sites = waterfallSites(island).filter(site => site.id === id);
+    expect(sites).toHaveLength(1);
+    const { top, bottom, width } = sites[0]!;
+    expect(width).toBeCloseTo(6, 5);
+    const bookmark = findBookmark('08')!;
+    const camera = new THREE.PerspectiveCamera(bookmark.fov, 16 / 9, 0.1, 2000);
+    camera.position.set(bookmark.camera.x, bookmark.camera.y, bookmark.camera.z);
+    camera.lookAt(bookmark.target.x, bookmark.target.y, bookmark.target.z);
+    camera.updateMatrixWorld();
+    const clip = top.clone().project(camera);
+    expect(Math.abs(clip.x)).toBeLessThan(0.7);
+    expect(Math.abs(clip.y)).toBeLessThan(0.8);
+    expect(clip.z).toBeGreaterThanOrEqual(-1);
+    expect(clip.z).toBeLessThan(1);
+    expect(gridSample(island, top.x, top.z) - gridSample(island, bottom.x, bottom.z))
+      .toBeGreaterThanOrEqual(6 - 0.0001);
+    expect(Math.hypot(bottom.x - top.x, bottom.z - top.z)).toBeCloseTo(10, 3);
+    for (const road of island.roads) for (const point of road.points) {
+      expect(Math.hypot(top.x - point.x, top.z - point.z)).toBeGreaterThanOrEqual(6 - 0.001);
+    }
+    for (const prop of island.props.filter(p => p.kind !== 'cascade')) {
+      expect(Math.hypot(top.x - prop.transform.position.x, top.z - prop.transform.position.z))
+        .toBeGreaterThanOrEqual(6 - 0.001);
+    }
     const visuals = buildWaterVisuals(island);
     try {
-      const falls = visuals.inland.children.filter(object => object.name === fallName);
-      expect(falls).toHaveLength(1);
-      const fall = falls[0] as THREE.Mesh;
-      const foamObjects = visuals.inland.children.filter(object =>
-        object.name === fallName + '-foam');
-      expect(foamObjects).toHaveLength(1);
-      const foamMarker = foamObjects[0] as THREE.Group;
-      expect(foamMarker).toBeInstanceOf(THREE.Group);
-      expect(foamMarker.userData['instanceCount']).toBe(5);
-      const foamBatch = visuals.inland.getObjectByName('waterfall-foam-batch') as THREE.InstancedMesh;
-      expect(foamBatch).toBeInstanceOf(THREE.InstancedMesh);
-      expect(foamBatch.geometry).toBeInstanceOf(THREE.IcosahedronGeometry);
-      expect(foamBatch.count).toBeGreaterThanOrEqual(5);
-      const river = visuals.inland.getObjectByName('rippling-river') as THREE.Mesh;
-      expect(fall.material).toBe(river.material);
-
-      const positions = fall.geometry.getAttribute('position');
-      const top = new THREE.Vector3(
-        (positions.getX(0) + positions.getX(1)) / 2,
-        positions.getY(0),
-        (positions.getZ(0) + positions.getZ(1)) / 2);
-      const foot = new THREE.Vector3(
-        (positions.getX(2) + positions.getX(3)) / 2,
-        positions.getY(2),
-        (positions.getZ(2) + positions.getZ(3)) / 2);
-      const bookmark = findBookmark('08')!;
-      const camera = new THREE.PerspectiveCamera(bookmark.fov, 16 / 9, 0.1, 2000);
-      camera.position.set(bookmark.camera.x, bookmark.camera.y, bookmark.camera.z);
-      camera.lookAt(bookmark.target.x, bookmark.target.y, bookmark.target.z);
-      camera.updateMatrixWorld();
-      const clip = top.clone().project(camera);
-      expect(Math.abs(clip.x)).toBeLessThan(0.7);
-      expect(Math.abs(clip.y)).toBeLessThan(0.8);
-      expect(clip.z).toBeGreaterThanOrEqual(-1);
-      expect(clip.z).toBeLessThan(1);
-
-      const drop = gridSample(island, top.x, top.z) -
-        gridSample(island, foot.x, foot.z);
-      expect(drop).toBeGreaterThanOrEqual(6 - 0.0001);
-      expect(Math.hypot(foot.x - top.x, foot.z - top.z)).toBeCloseTo(10, 3);
-      const width = Math.hypot(positions.getX(1) - positions.getX(0),
-        positions.getZ(1) - positions.getZ(0));
-      expect(width).toBeCloseTo(6 * 2.6, 4);
-      for (const road of island.roads) for (const point of road.points) {
-        expect(Math.hypot(top.x - point.x, top.z - point.z))
-          .toBeGreaterThanOrEqual(6 - 0.001);
-      }
-      for (const prop of island.props) {
-        const point = prop.transform.position;
-        expect(Math.hypot(top.x - point.x, top.z - point.z))
-          .toBeGreaterThanOrEqual(6 - 0.001);
-      }
+      expect(visuals.inland.getObjectByName(id)).toBeInstanceOf(THREE.Group);
+      expect(visuals.inland.getObjectByName(id + '-foam')).toBeInstanceOf(THREE.Group);
     } finally {
       disposeWaterMeshes(visuals);
     }
   });
 
-  it('is deterministic and optionally absent without errors on a different seed and size', () => {
+  it('is repeatable and can be absent for a seed/size or missing mountain', () => {
     const island = generateIsland({ seed: 'hoofington-waterfall-alt', size: 900, resolution: 97 });
-    const first = buildWaterVisuals(island);
-    const second = buildWaterVisuals(island);
-    try {
-      const candidates = [first, second].map(visuals =>
-        visuals.inland.children.filter(object => object.name === fallName));
-      expect(candidates[0]!.length).toBeLessThanOrEqual(1);
-      expect(candidates[0]!.length).toBe(candidates[1]!.length);
-      if (candidates[0]!.length === 1) {
-        const firstFall = candidates[0]![0] as THREE.Mesh;
-        const secondFall = candidates[1]![0] as THREE.Mesh;
-        expect(Array.from(firstFall.geometry.getAttribute('position').array))
-          .toEqual(Array.from(secondFall.geometry.getAttribute('position').array));
-        for (const visuals of [first, second]) {
-          const marker = visuals.inland.getObjectByName(fallName + '-foam');
-          expect(marker).toBeInstanceOf(THREE.Group);
-          expect(marker!.userData['instanceCount']).toBe(5);
-          const batch = visuals.inland.getObjectByName('waterfall-foam-batch');
-          expect(batch).toBeInstanceOf(THREE.InstancedMesh);
-        }
-      } else {
-        expect(first.inland.getObjectByName(fallName + '-foam')).toBeUndefined();
-        expect(second.inland.getObjectByName(fallName + '-foam')).toBeUndefined();
-      }
-    } finally {
-      disposeWaterMeshes(first);
-      disposeWaterMeshes(second);
-    }
-  });
-
-  it('does not throw or leave foam if the mountain is unavailable', () => {
-    const island = generateIsland({ seed: 'hoofington-no-mountain', resolution: 65 });
+    expect(waterfallSites(island)).toEqual(waterfallSites(island));
+    expect(waterfallSites(island).filter(site => site.id === id)).toHaveLength(
+      island.props.filter(p => p.id === 'waterfall-cascade-' + id).length);
     island.pois = island.pois.filter(poi => poi.id !== 'mt-gigga');
+    expect(waterfallSites(island).some(site => site.id === id)).toBe(false);
     const visuals = buildWaterVisuals(island);
     try {
-      expect(visuals.inland.getObjectByName(fallName)).toBeUndefined();
-      expect(visuals.inland.getObjectByName(fallName + '-foam')).toBeUndefined();
+      expect(visuals.inland.getObjectByName(id)).toBeUndefined();
+      expect(visuals.inland.getObjectByName(id + '-foam')).toBeUndefined();
     } finally {
       disposeWaterMeshes(visuals);
     }

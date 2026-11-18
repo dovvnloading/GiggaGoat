@@ -100,6 +100,7 @@ export const PROP_LIBRARY_MODELS = {
   'pallet-stack': 'assets/library/custom/props/pallet-stack.glb',
   'log-bridge': 'assets/library/custom/pines/log-bridge.glb',
   'lily-pads': 'assets/library/custom/pines/lily-pads.glb',
+  'cascade': 'assets/library/custom/props/cascade.glb',
 } as const satisfies Record<PropKind, string>;
 
 /** Flat-based cumulus; keep native proportions rather than stretching to a prop box. */
