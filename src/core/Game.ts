@@ -93,6 +93,7 @@ export class Game {
   private lastStyle = new Map<string, number>();
   private buildOrigin: Vec3;
   private readonly pierDecks: readonly PropDescriptor[];
+  private readonly spawnGround: number;
   private disposed = false;
 
   static async create(options: GameOptions = {}): Promise<Game> {
@@ -124,11 +125,21 @@ export class Game {
       this.rules = new GameSimulation(1987);
     }
     const spawn = island.spawns[0]!;
-    this.buildOrigin = { x: 0, y: heightAt(island, spawn.position.x, spawn.position.z), z: 0 };
-
-    applyPhysicsMaterial(colliders.terrain, 'grass');
-    colliders.terrain.setCollisionGroups(collisionGroups('terrain'));
-    colliders.terrain.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS);
+    const floor = [colliders.terrain, ...colliders.paths];
+    const terrainY = heightAt(island, spawn.position.x, spawn.position.z);
+    const spawnRay = new RAPIER.Ray(spawn.position, V(0, -1, 0));
+    // Cast against the shapes directly. The world broad phase is not populated
+    // until the first physics step, and the playable goat must start on asphalt.
+    let nearest = Infinity;
+    for (const collider of floor) {
+      applyPhysicsMaterial(collider, 'grass');
+      collider.setCollisionGroups(collisionGroups('terrain'));
+      collider.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS);
+      const hit = collider.castRay(spawnRay, spawn.position.y - terrainY + 1, false);
+      if (hit >= 0) nearest = Math.min(nearest, hit);
+    }
+    this.spawnGround = Number.isFinite(nearest) ? spawn.position.y - nearest : terrainY;
+    this.buildOrigin = V(0, terrainY, 0);
     this.prepareProps();
 
     this.budget = new DynamicBodyBudget(physics, 240, 45);
@@ -149,8 +160,7 @@ export class Game {
     // whereas GoatRagdoll.position is a *ground-level* origin. Passing the
     // elevated point makes KID fall and tumble before the first playable frame.
     this.goat = new GoatRagdoll(physics, {
-      position: V(spawn.position.x, heightAt(island, spawn.position.x, spawn.position.z),
-        spawn.position.z),
+      position: V(spawn.position.x, this.spawnGround, spawn.position.z),
       yaw: spawn.heading, size: TUNING.size[this.rules.style.tier].scale,
       id: 'player',
     });
@@ -799,7 +809,7 @@ export class Game {
     const spawn = this.island.spawns[0]!.position;
     // A rescue is also a physical spawn; don't reapply the world lane's
     // clearance height on top of the ragdoll's own standing torso offset.
-    this.teleport(V(spawn.x, heightAt(this.island, spawn.x, spawn.z), spawn.z),
+    this.teleport(V(spawn.x, this.spawnGround, spawn.z),
       this.island.spawns[0]!.heading);
     this.respawns++;
   }

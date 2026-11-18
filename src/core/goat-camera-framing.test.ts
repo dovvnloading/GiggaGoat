@@ -129,7 +129,6 @@ describe('free-roam camera / compact HUD reference framing', () => {
       game: { rules: { style: { scale: .6 } } },
       renderer: { domElement: { getBoundingClientRect: () => viewport } },
       characters: { player: { root } },
-      playerWorldBox: new THREE.Box3(),
       hud: { update },
     });
     view.applyCameraFraming(goatCameraVerticalOffset(.6, .055, 67, height, false));
@@ -137,13 +136,13 @@ describe('free-roam camera / compact HUD reference framing', () => {
     vi.stubGlobal('document', { pointerLockElement: null });
     try {
       view.updateHud();
-      const standing = update.mock.lastCall?.[5];
+      const standing = update.mock.lastCall;
       for (const [y, z, visible] of [[-.6, 0, true], [0, 4, true], [0, 0, false]] as const) {
         mesh.position.set(0, y, z);
         root.visible = visible;
         view.updateCameraFraming(1 / 60);
         view.updateHud();
-        expect(update.mock.lastCall?.[5]).not.toEqual(standing);
+        expect(update.mock.lastCall).toEqual(standing);
         expect(camera.projectionMatrix.equals(projection)).toBe(true);
       }
     } finally {

@@ -102,6 +102,8 @@ describe('live free-roam HUD DOM', () => {
       expect(rowRule).toContain('width:max-content');
       expect(rowRule).toContain('max-width:82vw');
       expect(copyRule).toContain('white-space:nowrap');
+      expect(root.querySelector('.gg-prompts')).not.toBeNull();
+      expect(css.match(/\.gg-prompts\{([^}]*)\}/)?.[1]).toContain('flex-direction:column');
 
       for (const [name, message] of [
         ['gg-board-hint', 'GOAT GIGS · GAMEPAD X'],

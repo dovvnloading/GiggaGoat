@@ -1,12 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import * as THREE from 'three';
-import { describe, expect, it } from 'vitest';
+import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
+import { describe, expect, it, vi } from 'vitest';
 import { forward } from '../physics/math';
 import { GoatCharacter } from './GoatCharacter';
 import { LegacyGoatCharacter } from './LegacyGoatCharacter';
 import {
-  GOAT_CLIPS, GOAT_GLB_FILES, GOAT_VARIANTS, alignRiggedSceneForward, clipForAction,
+  GOAT_CLIPS, GOAT_GLB_FILES, GOAT_VARIANTS, clipForAction,
   locomotionBlend, selectGoatVariant, type GoatVariant,
 } from './rigged';
 
@@ -126,50 +127,49 @@ describe('checked-in GLB animation contract', () => {
   });
 });
 
-/** Read the actual exported scene root, not an assumed mock GLB orientation. */
-function exportedArmatureRotation(variant: GoatVariant): THREE.Quaternion {
-  const bytes = readFileSync(resolve(process.cwd(), 'public/assets/characters/goat',
-    GOAT_GLB_FILES[variant]));
-  const length = bytes.readUInt32LE(12);
-  const gltf = JSON.parse(bytes.toString('utf8', 20, 20 + length)) as {
-    scene?: number;
-    scenes?: { nodes?: number[] }[];
-    nodes?: { name?: string; rotation?: number[] }[];
-  };
-  const roots = gltf.scenes?.[gltf.scene ?? 0]?.nodes ?? [];
-  const armature = roots.map(index => gltf.nodes?.[index])
-    .find(node => node?.name === 'purebind_armature');
-  if (!armature?.rotation) throw new Error(variant + ' GLB has no exported armature rotation');
-  return new THREE.Quaternion().fromArray(armature.rotation);
-}
+const FACING_BONES: Record<GoatVariant, { muzzle: string; tail: string }> = {
+  hero: { muzzle: 'joint_39', tail: 'joint_03' },
+  bandana: { muzzle: 'jaw', tail: 'tail4' },
+  bell: { muzzle: 'head_13', tail: 'tail4' },
+};
 
 describe('rigged GLB heading matches physical forward', () => {
-  it.each(GOAT_VARIANTS)('%s renders its local -Z nose in the travel direction at cardinal yaws',
-    variant => {
-      const bakedRotation = exportedArmatureRotation(variant);
-      // Without the correction this exported 180° root rotation faces backward.
-      expect(new THREE.Vector3(0, 0, -1).applyQuaternion(bakedRotation).z)
-        .toBeGreaterThan(.999);
+  it.each(GOAT_VARIANTS)('%s faces forward with its actual animated muzzle and tail',
+    async variant => {
+      const art = new GoatCharacter(undefined, { variant });
+      try {
+        // Parse the real skin and clips in Node. Only embedded texture decoding is stubbed.
+        vi.stubGlobal('self', globalThis);
+        vi.stubGlobal('createImageBitmap', async () => ({ width: 1, height: 1, close() {} }));
+        const bytes = readFileSync(resolve(process.cwd(), 'public/assets/characters/goat',
+          GOAT_GLB_FILES[variant]));
+        const gltf = await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, '');
+        (art as unknown as { attachRig(gltf: GLTF): void }).attachRig(gltf);
+        expect(art.isReady).toBe(true);
 
-      const rigModel = new THREE.Group();
-      const clonedScene = new THREE.Group();
-      const armature = new THREE.Group();
-      armature.quaternion.copy(bakedRotation);
-      clonedScene.add(armature);
-      rigModel.add(clonedScene);
-      alignRiggedSceneForward(clonedScene);
-
-      for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-        // Physics forward(yaw) goes toward +X for +PI/2, whereas a positive
-        // Three.js Y rotation turns local -Z toward -X. The balanced torso
-        // therefore has rotation -yaw for the corresponding travel heading.
-        rigModel.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -yaw);
-        rigModel.updateMatrixWorld(true);
-        const nose = new THREE.Vector3(0, 0, -1)
-          .transformDirection(armature.matrixWorld);
-        const wanted = forward(yaw);
-        expect(nose.distanceTo(new THREE.Vector3(wanted.x, wanted.y, wanted.z)),
-          variant + ' yaw=' + yaw).toBeLessThan(1e-5);
+        const muzzle = art.root.getObjectByName(FACING_BONES[variant].muzzle);
+        const tail = art.root.getObjectByName(FACING_BONES[variant].tail);
+        expect(muzzle).toBeInstanceOf(THREE.Bone);
+        expect(tail).toBeInstanceOf(THREE.Bone);
+        const nose = new THREE.Vector3(), back = new THREE.Vector3();
+        const expected = new THREE.Vector3();
+        for (const clip of ['Idle', 'Walk', 'Run'] as const) {
+          art.setPreviewClip(clip);
+          art.seek(.2);
+          for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+            // Rapier's torso quaternion for a travel heading uses the opposite Y sign.
+            art.root.rotation.y = -yaw;
+            const wanted = forward(yaw);
+            expected.set(wanted.x, 0, wanted.z);
+            muzzle!.getWorldPosition(nose).sub(tail!.getWorldPosition(back));
+            nose.y = 0;
+            expect(nose.normalize().dot(expected), variant + ' ' + clip + ' yaw=' + yaw)
+              .toBeGreaterThan(.98);
+          }
+        }
+      } finally {
+        vi.unstubAllGlobals();
+        art.dispose();
       }
     });
 });

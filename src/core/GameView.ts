@@ -17,7 +17,6 @@ import { CAMERA_TARGET_HEIGHT, PLAY_CAMERA_PITCH, SPAWN_CAMERA_PITCH, SPAWN_CAME
   goatCameraLookAhead, goatCameraOffset, goatCameraVerticalOffset, goatOrbitOffset,
   goatViewDirection } from './GoatCamera';
 import { GameHud, type FramePerformance } from './GameHud';
-import { projectGoatScreenBox, visibleGoatBounds } from './HudOcclusion';
 import {
   WORLD_LIBRARY_KINDS, createWorldLibraryProp, createBoardLibraryProp,
   createSurfaceLibraryProp, createSpawnLibraryProp, createHeistHayLibraryProp,
@@ -99,7 +98,6 @@ export class GameView {
   private readonly audioPose = {
     position: this.camera.position, forward: this.audioForward, up: { x: 0, y: 1, z: 0 },
   };
-  private readonly playerWorldBox = new THREE.Box3();
   private readonly cameraViewport = new THREE.Vector2();
   private cameraShiftY = 0;
   private readonly dummy = new THREE.Object3D();
@@ -292,8 +290,13 @@ export class GameView {
     this.scene.add(this.boardMarkers);
     for (const board of this.game.gigs.boards) {
       const root = createBoardLibraryProp(this.propFactory);
+      if (board.poiId === 'hoofington') {
+        root.scale.multiplyScalar(.58);
+        root.rotation.y = -Math.PI / 2;
+      }
       root.position.set(board.position.x, board.position.y + .15, board.position.z);
       this.instancedProps.add(root);
+      if (board.poiId === 'hoofington') continue;
 
       const overlay = new THREE.Group();
       overlay.position.copy(root.position);
@@ -624,11 +627,8 @@ export class GameView {
   }
 
   private updateHud(): void {
-    const viewport = this.renderer.domElement.getBoundingClientRect();
-    const goatBounds = visibleGoatBounds(this.characters.player.root, this.playerWorldBox);
-    const goatScreenBox = projectGoatScreenBox(goatBounds, this.camera, viewport);
     this.hud.update(this.game, this.fps, this.simMs, this.input.debugVisible,
-      document.pointerLockElement === this.renderer.domElement, goatScreenBox, this.perfStats);
+      document.pointerLockElement === this.renderer.domElement, this.perfStats);
   }
 
   private updateCamera(alpha: number, dt: number): void {
@@ -733,7 +733,7 @@ export class GameView {
     this.renderer.setClearColor(this.world.fogColor);
     this.updateCamera(alpha, dt);
     this.updateCameraFraming(dt);
-    // Sample the animated silhouette for HUD overlap at 20 Hz.
+    // Keep live HUD text and counters current without rebuilding them every frame.
     this.hudTimer += dt;
     if (this.hudTimer >= .05) {
       this.hudTimer = 0;

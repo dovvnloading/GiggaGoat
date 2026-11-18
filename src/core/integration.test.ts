@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { Raycaster, Vector3 } from 'three';
 import { Game, FIXED_DT } from './Game';
 import { V, forward, RAPIER, collisionGroups } from '../physics';
-import { heightAt } from '../world';
+import { createWorldScene, heightAt } from '../world';
 
 const create = (): Promise<Game> => Game.create({ seed: 'first-playable-test', resolution: 97 });
 const ticks = (game: Game, count: number, input: Parameters<Game['step']>[0] = {}): void => {
@@ -29,7 +30,62 @@ function walkTo(game: Game, target: { x: number; z: number }): void {
   throw new Error(`Walk to (${target.x.toFixed(2)}, ${target.z.toFixed(2)}) stopped at (${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)})`);
 }
 
-describe('Walkable coastal routes', () => {
+describe('Walkable roads and coastal routes', () => {
+  it('supports the goat on the visible Hoofington road immediately and after a rescue', async () => {
+    const game = await Game.create();
+    const scene = createWorldScene(game.island);
+    try {
+      const { x, z } = game.island.spawns[0]!.position;
+      const road = scene.group.getObjectByName('paths-road')!;
+      const ray = new Raycaster(new Vector3(x, 120, z), new Vector3(0, -1, 0));
+      const asphalt = ray.intersectObject(road)[0]!.point.y;
+      expect(asphalt - heightAt(game.island, x, z)).toBeGreaterThan(.15);
+      const board = game.gigs.boards.find(entry => entry.poiId === 'hoofington')!;
+      ray.set(new Vector3(board.position.x, 120, board.position.z), new Vector3(0, -1, 0));
+      expect(ray.intersectObject(road)).toHaveLength(0);
+      expect(game.gigs.nearBoard()).toBe('hoofington');
+      const expectedTorsoY = asphalt + .92 * game.goat.size;
+      expect(game.goat.torso.translation().y).toBeCloseTo(expectedTorsoY, 4);
+
+      game.step();
+      const ground = game.physics.raycast(V(x, 120, z), V(0, -1, 0), 160, {
+        predicate: collider => !game.goat.ownsBody(collider.parent()),
+      });
+      expect(ground?.point.y).toBeCloseTo(asphalt, 4);
+      expect(game.colliders.paths.some(path => path.handle === ground?.collider.handle)).toBe(true);
+
+      game.respawn();
+      expect(game.goat.torso.translation().y).toBeCloseTo(expectedTorsoY, 4);
+    } finally {
+      scene.dispose();
+      game.dispose();
+    }
+  });
+
+  it('walks onto and off an asphalt edge without jumping', async () => {
+    const game = await Game.create();
+    try {
+      const centre = game.island.pois.find(poi => poi.id === 'hoofington')!.center;
+      const z = centre.z + 3;
+      const roadside = { x: centre.x + 6.4, z };
+      const lane = { x: centre.x + 1.4, z };
+      standAt(game, roadside.x, z);
+      const onPath = ({ x, z }: { x: number; z: number }): boolean => {
+        const floor = game.physics.raycast(V(x, 120, z), V(0, -1, 0), 160, {
+          predicate: collider => !game.goat.ownsBody(collider.parent()),
+        });
+        return game.colliders.paths.some(path => path.handle === floor?.collider.handle);
+      };
+      expect(onPath(roadside)).toBe(false);
+      expect(onPath(lane)).toBe(true);
+      walkTo(game, lane);
+      walkTo(game, roadside);
+      expect(game.respawns).toBe(0);
+    } finally {
+      game.dispose();
+    }
+  });
+
   it('walks from dry sand to the far end of the Baa-ardwalk without a rescue', async () => {
     const game = await Game.create();
     try {
