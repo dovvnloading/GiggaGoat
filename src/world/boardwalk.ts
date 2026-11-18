@@ -120,24 +120,24 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
   }
 
   // From the beach looking out to sea, kiosks occupy the LEFT (+X) deck strip.
-  // Their fronts, striped awnings and signs face the central promenade (-X).
-  const paints = [0xf0757c, 0xffc567, 0x65c8cc, 0xd78abf, 0xff9469];
+  // Their glTF +Z fronts and signs face the central promenade (-X).
+  const kioskKinds = [
+    'kiosk-icecream', 'kiosk-popcorn', 'kiosk-games',
+    'kiosk-prizes', 'kiosk-candy',
+  ] as const satisfies readonly PropKind[];
   const kioskSigns = [
     'kiosk-sign-icecream', 'kiosk-sign-popcorn', 'kiosk-sign-games',
     'kiosk-sign-prizes', 'kiosk-sign-candy',
   ] as const satisfies readonly PropKind[];
   for (let i = 0; i < 5; i++) {
     const z = -27 + i * 11;
-    const shopHeight = 6.8;
-    place('booth', 7.6, z, 7.2, shopHeight, 6.4, {
-      floor: deckY, yaw: -Math.PI / 2, color: paints[i],
+    // Each GLB includes its own scalloped canopy, lanterns and counter goods.
+    // The rear edge remains beside the rail at X=10.8 after the quarter turn.
+    place(kioskKinds[i]!, 8.55, z, 5.0, 4.8, 4.5, {
+      floor: deckY, yaw: -Math.PI / 2,
     });
-    place('awning', 3.3, z, 7.4, 1.0, 2.5, {
-      centreY: deckY + 4.55 * scale, yaw: -Math.PI / 2,
-      color: i % 2 ? 0xffd365 : 0xf57e8d, collidable: false,
-    });
-    place(kioskSigns[i]!, 4.1, z, 4.6, 1.4, 0.3, {
-      centreY: deckY + 6.0 * scale, yaw: -Math.PI / 2,
+    place(kioskSigns[i]!, 6.0, z, 4.6, 1.4, 0.3, {
+      centreY: deckY + 4.2 * scale, yaw: -Math.PI / 2,
       color: 0xffe3a7, collidable: false,
     });
   }
@@ -148,11 +148,11 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
   });
   // Lamps and strung triangular pennants echo the illuminated painting.
   for (const z of [-29, -11, 7, 25, 39]) {
-    place('lamp', -11.3, z, 0.85, 8.4, 0.85,
+    place('lamp', -11.3, z, 0.72, 7.8, 0.72,
       { floor: deckY, shape: 'cylinder', color: 0xffedc2 });
   }
   for (const x of [-16.2, 16.2]) {
-    place('lamp', x, 65, 0.85, 8.4, 0.85,
+    place('lamp', x, 65, 0.72, 7.8, 0.72,
       { floor: headY, shape: 'cylinder', color: 0xffedc2 });
   }
   for (const z of [-19, 3, 25]) {
@@ -163,14 +163,23 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
   }
 
   for (const z of [-21, -2, 17]) {
-    place('bench', -8.2, z, 3.5, 1.5, 1.2,
+    place('bench', -8.2, z, 2.0, 0.95, 0.75,
       { floor: deckY, yaw: -Math.PI / 2, color: 0xa77853 });
   }
-  place('trampoline', 2, 33, 7, 1.1, 7,
+  // Compact cargo stays in the west strip, clear of benches, lamps and the
+  // central |X|<4 promenade. Upper crates sit directly on lower crates.
+  for (const z of [-13, 6, 27]) {
+    place('crate', -6.5, z, 1.0, 1.0, 1.0, { floor: deckY });
+    place('crate', -6.5, z, 1.0, 1.0, 1.0, { floor: deckY + 1.0 * scale });
+  }
+  for (const z of [-14, 4, 23, 34]) {
+    place('barrel', -9.6, z, 0.8, 1.0, 0.8, { floor: deckY });
+  }
+  place('trampoline', 2, 33, 3.6, 0.8, 3.6,
     { floor: deckY, color: 0x5d8fe6 });
-  place('bench', -15.5, 67, 3.5, 1.5, 1.2,
+  place('bench', -15.5, 67, 2.0, 0.95, 0.75,
     { floor: headY, yaw: Math.PI / 2 });
-  place('bench', 15.5, 67, 3.5, 1.5, 1.2,
+  place('bench', 15.5, 67, 2.0, 0.95, 0.75,
     { floor: headY, yaw: Math.PI / 2 });
 
   // The sandy forecourt is landward of the shore entrance; skip any
@@ -183,9 +192,9 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
     place(kind, dx, dz, sx, sy, sz, detail);
   }
   for (const side of [-1, 1]) {
-    placeDryForecourt('bumper', side * 10, -42, 2.4, 2.3, 2.4,
+    placeDryForecourt('bumper', side * 10, -42, 1.0, 1.0, 1.0,
       { mass: 10, shape: 'cylinder', color: side < 0 ? 0xffb76a : 0x75c4e0 });
-    placeDryForecourt('bench', side * 15, -46, 3.5, 1.5, 1.2,
+    placeDryForecourt('bench', side * 15, -46, 2.0, 0.95, 0.75,
       { yaw: Math.PI / 3, color: 0x9e7653 });
   }
   // Four coastal palms; never plant the model below the actual shifted

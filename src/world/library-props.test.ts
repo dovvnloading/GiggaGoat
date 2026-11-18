@@ -159,12 +159,17 @@ describe('library prop catalog', () => {
     }
   });
 
-  it('maps all fourteen authored Baa-ardwalk kinds to their Blender GLBs', () => {
+  it('maps all nineteen authored Baa-ardwalk kinds to their Blender GLBs', () => {
     const expected: Partial<Record<PropKind, string>> = {
       pier: 'boardwalk-pier.glb',
       'pier-rail': 'pier-rail.glb',
       scaffold: 'timber-pile.glb',
       booth: 'kiosk.glb',
+      'kiosk-icecream': 'kiosk-icecream.glb',
+      'kiosk-popcorn': 'kiosk-popcorn.glb',
+      'kiosk-games': 'kiosk-games.glb',
+      'kiosk-prizes': 'kiosk-prizes.glb',
+      'kiosk-candy': 'kiosk-candy.glb',
       awning: 'striped-awning.glb',
       signboard: 'signboard.glb',
       'kiosk-sign-icecream': 'kiosk-sign-icecream.glb',
@@ -176,7 +181,7 @@ describe('library prop catalog', () => {
       trampoline: 'trampoline.glb',
       bumper: 'beach-ball.glb',
     };
-    expect(Object.keys(expected)).toHaveLength(14);
+    expect(Object.keys(expected)).toHaveLength(19);
     for (const [kind, file] of Object.entries(expected)) {
       const path = 'assets/library/custom/baaardwalk/' + file;
       expect(PROP_LIBRARY_MODELS[kind as PropKind], kind).toBe(path);
@@ -729,6 +734,42 @@ describe('Crane Yard container descriptor colours', () => {
 });
 
 describe('authored Baa-ardwalk model colours and LOD', () => {
+  it('gives every new kiosk a unique coloured box fallback with no descriptor tint', () => {
+    const painted = [
+      ['kiosk-icecream', 0xf0757c],
+      ['kiosk-popcorn', 0xffc567],
+      ['kiosk-games', 0x65c8cc],
+      ['kiosk-prizes', 0xd78abf],
+      ['kiosk-candy', 0xff9469],
+    ] as const;
+    const props: PropDescriptor[] = painted.map(([kind], i) => ({
+      id: 'kiosk-fallback-' + i, kind,
+      transform: { position: { x: i * 8, y: 2.4, z: 0 },
+        rotationY: -Math.PI / 2 },
+      size: { x: 5, y: 4.8, z: 4.5 }, body: { type: 'static' },
+      shape: 'cuboid', collidable: true, breakable: false,
+      lickable: true, climbable: true, color: 0x080808,
+    }));
+    const visuals = buildPropVisuals(props);
+    try {
+      for (const [kind, hex] of painted) {
+        const mesh = visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
+        expect(mesh).toBeInstanceOf(THREE.InstancedMesh);
+        expect(mesh.geometry.getAttribute('position').count).toBe(36);
+        const colour = mesh.geometry.getAttribute('color');
+        const expected = new THREE.Color(hex), actual = new THREE.Color();
+        expect(colour.getX(0)).toBeCloseTo(expected.r, 5);
+        expect(colour.getY(0)).toBeCloseTo(expected.g, 5);
+        expect(colour.getZ(0)).toBeCloseTo(expected.b, 5);
+        mesh.getColorAt(0, actual);
+        expect(actual.getHex(), kind + ' instance tint').toBe(0xffffff);
+      }
+    } finally {
+      visuals.dispose();
+    }
+  });
+
+
   it('uses five distinct named-sign box fallbacks, without tinting their own colours', () => {
     const signs = [
       ['kiosk-sign-icecream', 0xffd2e5],
@@ -764,8 +805,10 @@ describe('authored Baa-ardwalk model colours and LOD', () => {
     }
   });
 
-  it('uses full descriptor paint on kiosks and preserves every other GLB colour at distance', async () => {
+  it('preserves own-colour kiosks at full detail while legacy booth retains descriptor tint', async () => {
     const kinds = ['pier', 'pier-rail', 'scaffold', 'awning', 'signboard',
+      'kiosk-icecream', 'kiosk-popcorn', 'kiosk-games',
+      'kiosk-prizes', 'kiosk-candy',
       'kiosk-sign-icecream', 'kiosk-sign-popcorn', 'kiosk-sign-games',
       'kiosk-sign-prizes', 'kiosk-sign-candy',
       'ferris-wheel', 'trampoline', 'bumper'] as const;

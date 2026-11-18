@@ -5,6 +5,7 @@ import { CRANE_YARD_PLAN } from './crane-yard';
 import { generateIsland } from './index';
 import { makeLocalStreets } from './roads';
 import { buildMeadowScatter } from './visual-meadow';
+import { gridSample } from './terrain';
 
 const GRASS_CLUMP_PATH = 'assets/library/custom/hoofington-props/grass-clump.glb';
 type LoadedGLTF = Awaited<ReturnType<GLTFLoader['loadAsync']>>;
@@ -212,6 +213,65 @@ describe('island meadow painted clumps and paved-area exclusions (IS-19)', () =>
     } finally {
       dispose(offline);
       dispose(invalid);
+    }
+  });
+});
+
+describe('themed boardwalk kiosks are meadow architecture exclusions', () => {
+  it('rejects meadow sprigs within every themed kiosk footprint and margin', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    const kinds = [
+      'kiosk-icecream', 'kiosk-popcorn', 'kiosk-games',
+      'kiosk-prizes', 'kiosk-candy',
+    ] as const;
+    const dispose = (group: THREE.Group): void => {
+      group.traverse(object => {
+        if (!(object instanceof THREE.Mesh)) return;
+        object.geometry.dispose();
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        materials.forEach(material => material.dispose());
+      });
+    };
+    const baseline = buildMeadowScatter(island);
+    const anchors: Array<{ x: number; z: number }> = [];
+    try {
+      const sprigs = baseline.getObjectByName('meadow-grass-sprigs') as THREE.InstancedMesh;
+      const matrix = new THREE.Matrix4(), p = new THREE.Vector3();
+      for (let i = 0; i < sprigs.count && anchors.length < kinds.length; i++) {
+        sprigs.getMatrixAt(i, matrix);
+        p.setFromMatrixPosition(matrix);
+        if (anchors.every(a => Math.hypot(a.x - p.x, a.z - p.z) > 20))
+          anchors.push({ x: p.x, z: p.z });
+      }
+      expect(anchors).toHaveLength(kinds.length);
+    } finally {
+      dispose(baseline);
+    }
+    const obstacles = kinds.map((kind, i) => {
+      const source = island.props.find(p => p.kind === kind)!;
+      const { x, z } = anchors[i]!;
+      island.props.push({
+        ...source, id: 'meadow-test-' + kind,
+        transform: { position: { x, y: gridSample(island, x, z) +
+          source.size.y / 2, z }, rotationY: source.transform.rotationY },
+      });
+      return { x, z, radius: Math.hypot(source.size.x, source.size.z) * 0.53 + 1.5 };
+    });
+    const scattered = buildMeadowScatter(island);
+    try {
+      const sprigs = scattered.getObjectByName('meadow-grass-sprigs') as THREE.InstancedMesh;
+      const matrix = new THREE.Matrix4(), p = new THREE.Vector3();
+      for (let i = 0; i < sprigs.count; i++) {
+        sprigs.getMatrixAt(i, matrix);
+        p.setFromMatrixPosition(matrix);
+        for (const obstacle of obstacles) {
+          expect(Math.hypot(p.x - obstacle.x, p.z - obstacle.z),
+            'sprig ' + i + ' grows inside a kiosk').toBeGreaterThanOrEqual(
+            obstacle.radius - 1e-4);
+        }
+      }
+    } finally {
+      dispose(scattered);
     }
   });
 });
