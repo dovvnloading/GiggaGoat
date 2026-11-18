@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { IslandData } from './types';
 import type { HoofPlacement } from './visual-hoofington';
 import { BUILDING_RAMP, TOON_RAMP } from './visual-props';
+import { paintHoofingtonFacades } from './surface-paint';
 import {
   WORLD_LOD, completelyOccluded, isSmallWorldModel,
   simplifiedWorldGeometry,
@@ -70,9 +71,10 @@ export async function createDistrictLod<Model extends string>(
     if (silhouetteModels.has(p.model)) cell.keepSilhouette = true;
   }
 
-  const positions = baked.getAttribute('position').array as Float32Array;
-  const colours = baked.getAttribute('color').array as Float32Array;
-  const normals = baked.getAttribute('normal').array as Float32Array;
+  const attributes = ['position', 'color', 'normal', 'hoofingtonFacade'].flatMap(name => {
+    const attribute = baked.getAttribute(name);
+    return attribute ? [{ name, itemSize: attribute.itemSize, values: attribute.array as Float32Array }] : [];
+  });
   const entries: Array<{
     mesh: THREE.Mesh;
     high: THREE.BufferGeometry;
@@ -86,28 +88,29 @@ export async function createDistrictLod<Model extends string>(
   for (let i = 0; i < ordered.length; i++) {
     const cell = ordered[i]!;
     const high = new THREE.BufferGeometry();
-    for (const [attribute, values] of [
-      ['position', positions], ['color', colours], ['normal', normals],
-    ] as const) {
-      const buffer = new Float32Array(cell.vertices * 3);
+    for (const { name, values, itemSize } of attributes) {
+      if (cell.small && name === 'hoofingtonFacade') continue;
+      const buffer = new Float32Array(cell.vertices * itemSize);
       let offset = 0;
       for (const range of cell.ranges) {
-        buffer.set(values.subarray(range.start * 3,
-          (range.start + range.count) * 3), offset);
-        offset += range.count * 3;
+        buffer.set(values.subarray(range.start * itemSize,
+          (range.start + range.count) * itemSize), offset);
+        offset += range.count * itemSize;
       }
-      high.setAttribute(attribute, new THREE.BufferAttribute(buffer, 3));
+      high.setAttribute(name, new THREE.BufferAttribute(buffer, itemSize));
     }
     high.computeBoundingSphere();
     const low = cell.keepSilhouette ? high : await simplifiedWorldGeometry(high);
-    const mesh = new THREE.Mesh(high, new THREE.MeshToonMaterial({
+    const material = new THREE.MeshToonMaterial({
       color: 0xffffff, vertexColors: true,
       // Buildings/trees read as solid lit volumes (BUILDING_RAMP); small
       // flowers and bushes keep the soft foliage ramp. Back faces go into
       // the shadow map so sunlit walls never self-shadow into acne.
       gradientMap: cell.small ? TOON_RAMP : BUILDING_RAMP, side: THREE.DoubleSide,
       shadowSide: THREE.BackSide,
-    }));
+    });
+    if (high.hasAttribute('hoofingtonFacade')) paintHoofingtonFacades(material, island.size / 600);
+    const mesh = new THREE.Mesh(high, material);
     mesh.name = i === 0 ? meshName : meshName + '-cell-' + i;
     mesh.castShadow = !cell.small;
     mesh.receiveShadow = true;

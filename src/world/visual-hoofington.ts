@@ -175,6 +175,25 @@ const white = new THREE.Color(0xffffff);
 const texel = new THREE.Color();
 const sampleUv = new THREE.Vector2();
 
+type FacadeSource = 'house' | 'barn' | 'windmill' | 'silo';
+function facadeSource(path: string): FacadeSource | null {
+  if (path.startsWith('assets/library/custom/hoofington-houses/')) return 'house';
+  if (path === HOOFINGTON_MODELS.barn) return 'barn';
+  if (path === HOOFINGTON_MODELS.windmill) return 'windmill';
+  if (path === HOOFINGTON_MODELS.silo) return 'silo';
+  return null;
+}
+
+/** Only the sourced exterior shells of these existing models receive detail. */
+function facadeStyle(source: FacadeSource, mesh: string, material: string): number {
+  if (source === 'house') return mesh.startsWith('building-type-') && material.endsWith('_paint') ? 1 : 0;
+  if (source === 'barn') return material === 'Diffuse_color' ? 2 : 0;
+  if (source === 'windmill') {
+    return mesh.startsWith('TowerWindmill_Cylinder') && /^(?:Dark)?Grey$/.test(material) ? 3 : 0;
+  }
+  return /^(?:Light|Dark)Red$/.test(material) ? 3 : 0;
+}
+
 /**
  * Bake all GLB submeshes, material colours and sampled atlas texels into the
  * same position/normal/vertex-colour layout. One merged draw replaces several
@@ -188,6 +207,10 @@ export function bakeLibraryGeometry<Model extends string>(
   modelPaths?: Readonly<Partial<Record<Model, string>>>,
 ): THREE.BufferGeometry | null {
   const coordinates: number[] = [], colours: number[] = [];
+  const pathFor = (model: Model): string => modelPaths?.[model] ??
+    HOOFINGTON_MODELS[model as HoofModel] ?? '';
+  const facade: number[] | null = placements.some(placement =>
+    facadeSource(pathFor(placement.model))) ? [] : null;
   const imageCache = new WeakMap<THREE.Texture, PixelMap | null>();
   const vertex = new THREE.Vector3();
   const tint = new THREE.Color();
@@ -226,13 +249,14 @@ export function bakeLibraryGeometry<Model extends string>(
     if (bounds.isEmpty()) continue;
     const span = bounds.getSize(new THREE.Vector3());
     if (Math.min(span.x, span.y, span.z) <= 0.00001) continue;
-    const path = modelPaths?.[placement.model] ??
-      HOOFINGTON_MODELS[placement.model as HoofModel] ?? '';
+    const path = pathFor(placement.model);
+    const surface = facadeSource(path);
     const authored = isAuthoredLibraryAsset(path);
     const paintedVillageHouse = path.startsWith('assets/library/custom/hoofington-houses/');
     const fit = fitLibraryModel(span,
       new THREE.Vector3(placement.size.x, placement.size.y, placement.size.z), path);
     const centre = bounds.getCenter(new THREE.Vector3());
+    const modelHeight = authored ? placement.size.y * 0.98 : span.y * fit.scale.y;
     // Only the legacy alpha-cutout pine needs height-based paint. The new
     // round trees, bushes and flower clumps retain their authored materials.
     const foliageModel = placement.model === 'pine';
@@ -253,6 +277,8 @@ export function bakeLibraryGeometry<Model extends string>(
       const painted = mesh.geometry.getAttribute('color');
       const groups = mesh.geometry.groups;
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const facadeStyles = surface
+        ? materials.map(material => facadeStyle(surface, mesh.name, material.name)) : null;
       let groupIndex = 0;
       const count = indices ? indices.count : positions.count;
       // GLTF primitives are triangles. Trim an incomplete primitive safely.
@@ -261,7 +287,8 @@ export function bakeLibraryGeometry<Model extends string>(
           const order = k + corner;
           while (groupIndex < groups.length - 1 &&
             order >= groups[groupIndex]!.start + groups[groupIndex]!.count) groupIndex++;
-          const material = materials[groups[groupIndex]?.materialIndex ?? 0] ?? materials[0]!;
+          const materialIndex = groups[groupIndex]?.materialIndex ?? 0;
+          const material = materials[materialIndex] ?? materials[0]!;
           const idx = indices ? indices.getX(order) : order;
           vertex.fromBufferAttribute(positions as THREE.BufferAttribute, idx);
           if (mesh instanceof THREE.SkinnedMesh) mesh.applyBoneTransform(idx, vertex);
@@ -280,6 +307,7 @@ export function bakeLibraryGeometry<Model extends string>(
               (vertex.y - bounds.min.y) * fit.scale.y - placement.size.y / 2,
               (vertex.z - centre.z) * fit.scale.z);
           }
+          facade?.push(local.x, height * modelHeight, local.z, facadeStyles?.[materialIndex] ?? 0);
           local.applyQuaternion(quat);
           coordinates.push(placement.position.x + local.x,
             placement.position.y + local.y, placement.position.z + local.z);
@@ -358,6 +386,7 @@ export function bakeLibraryGeometry<Model extends string>(
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(coordinates, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3));
+  if (facade) geometry.setAttribute('hoofingtonFacade', new THREE.Float32BufferAttribute(facade, 4));
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
   return geometry;
