@@ -656,7 +656,7 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
 const SHADOW_KINDS = new Set<PropKind>([
   'barn', 'house', 'shop', 'cottage', 'windmill', 'lighthouse',
   'tower', 'crane', 'tree-pine', 'tree-oak', 'silo', 'water-tower',
-  'satellite-dish', 'ferris-wheel', ...authoredKioskKinds,
+  'satellite-dish', 'ferris-wheel',
   'concrete-slab', 'concrete-column', 'yard-scaffold', 'crane-jib',
 ]);
 /** Blender-authored Baa-ardwalk pieces are low-poly with painted materials. */

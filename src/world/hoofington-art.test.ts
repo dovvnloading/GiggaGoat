@@ -70,7 +70,9 @@ describe('Hoofington art / building slicing regressions', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
     const view = createWorldScene(island);
     // The Dam control house is now a GLB mesh, not an instanced procedural facade.
-    const categories = ['barn', 'house', 'cottage', 'shop', 'booth'];
+    // Legacy booths remain supported by buildArchitecture (tested above),
+    // but no longer occur on the Baa-ardwalk after the themed kiosk swap.
+    const categories = ['barn', 'house', 'cottage', 'shop'];
     for (const kind of categories) {
       const props = island.props.filter(p => p.kind === kind);
       expect(props.length, kind).toBeGreaterThan(0);

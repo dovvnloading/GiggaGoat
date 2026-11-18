@@ -25,7 +25,7 @@ describe('library prop catalog', () => {
   it('covers every PropKind and every path exists locally with the right licence', () => {
     // The satisfies Record<PropKind, string> declaration enforces exhaustive
     // coverage at typecheck time, including any newly added descriptor kind.
-    expect(mapped).toHaveLength(89);
+    expect(mapped).toHaveLength(94);
     expect(new Set(mapped.map(([kind]) => kind)).size).toBe(mapped.length);
     for (const [kind, path] of mapped) {
       const entry = byPath.get(path);
