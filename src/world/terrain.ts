@@ -1,4 +1,4 @@
-import type { Biome, IslandData, PlotDescriptor, ReservoirDescriptor, RiverPoint, Vec2 } from './types';
+import type { Biome, IslandData, PlotDescriptor, ReservoirDescriptor, RiverPoint, RoadDescriptor, Vec2 } from './types';
 import { BIOMES } from './types';
 import { clamp, GradientNoise, hashString, lerp, smoothstep } from './random';
 
@@ -218,6 +218,67 @@ export function stampRoad(
     }
     const influence = 1 - smoothstep(width / 2 - 0.4, width / 2 + 6, distance);
     return lerp(h, lerp(a.y, b.y, t), influence);
+  });
+}
+
+/**
+ * Keep the shared render/collision terrain below the deck across its full width.
+ * The extra cell diagonal covers the heightfield vertices that can reach under
+ * its edge, and the surrounding feather blends the cut back into the cliff.
+ */
+export function clearTerrainUnderBridge(
+  island: Pick<IslandData, 'heights' | 'resolution' | 'size'>,
+  road: RoadDescriptor,
+  deckWidth: number,
+): void {
+  const spans = road.points.slice(1).flatMap((b, i) => {
+    const a = road.points[i]!;
+    return a.bridge || b.bridge ? [{ a, b }] : [];
+  });
+  if (spans.length === 0) return;
+
+  const cell = island.size / (island.resolution - 1);
+  const clearance = Math.max(0.35 * island.size / 600, cell * 0.16);
+  const cutWidth = deckWidth / 2 + cell * Math.SQRT2;
+  const featherWidth = cutWidth + cell;
+  const first = spans[0]!, last = spans[spans.length - 1]!;
+  const start = first.a, finish = last.b;
+  const landings = [
+    { edge: start, deck: first.b, land: road.points[road.points.indexOf(start) - 1] },
+    { edge: finish, deck: last.a, land: road.points[road.points.indexOf(finish) + 1] },
+  ];
+  const cx = (start.x + finish.x) / 2, cz = (start.z + finish.z) / 2;
+  const range = Math.max(...spans.map(({ a, b }) => Math.max(
+    Math.hypot(a.x - cx, a.z - cz), Math.hypot(b.x - cx, b.z - cz),
+  ))) + featherWidth;
+
+  visitDisc(island, cx, cz, range, (height, x, z) => {
+    let nearest = Infinity, grade = 0;
+    const point = { x, z };
+    for (const { a, b } of spans) {
+      const { t, distance } = segmentProjection(point, a, b);
+      if (distance < nearest) {
+        nearest = distance;
+        grade = lerp(a.y, b.y, t);
+      }
+    }
+    const weight = 1 - smoothstep(cutWidth, featherWidth, nearest);
+    let carved = lerp(height, Math.min(height, grade - clearance), weight);
+    // Ease the graded trail up to the end planks. The strip of fill under
+    // each landing stays just below the deck, so the handoff works both ways.
+    for (const { edge, deck, land } of landings) {
+      if (!land) continue;
+      const towardsLand = segmentProjection(point, edge, land);
+      const towardsDeck = segmentProjection(point, edge, deck);
+      const onDeck = towardsDeck.distance < towardsLand.distance;
+      const projection = onDeck ? towardsDeck : towardsLand;
+      const along = projection.t * Math.hypot(deck.x - edge.x, deck.z - edge.z);
+      const overlap = onDeck ? 1 - smoothstep(cell * 0.75, cell * 1.75, along) : 1;
+      const across = 1 - smoothstep(deckWidth / 2 + cell * 0.35, deckWidth / 2 + cell, projection.distance);
+      const landingGrade = lerp(edge.y, onDeck ? deck.y : land.y, projection.t);
+      carved = lerp(carved, landingGrade, overlap * across);
+    }
+    return carved;
   });
 }
 

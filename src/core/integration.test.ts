@@ -53,6 +53,42 @@ describe('Walkable coastal routes', () => {
     } finally { game.dispose(); }
   });
 
+  it('keeps the lighthouse bridge above the cliff along the uphill lane', async () => {
+    const game = await Game.create();
+    try {
+      const start = { x: -235.77, z: -13.68 };
+      const finish = { x: -238.81, z: -14.74 };
+      standAt(game, start.x, start.z);
+
+      const terrainHandle = game.colliders.terrain.handle;
+      const bridgeHandles = new Set([...game.colliders.props]
+        .filter(([id]) => id.startsWith('bridge-whispering-pines--old-lighthouse-'))
+        .map(([, collider]) => collider.handle));
+      const dx = finish.x - start.x, dz = finish.z - start.z;
+      const length = Math.hypot(dx, dz);
+      for (const t of [.14, .35, .6, .85, 1]) {
+        for (const offset of [0, -1.7, 1.7]) {
+          const x = start.x + t * dx - offset * dz / length;
+          const z = start.z + t * dz + offset * dx / length;
+          const origin = V(x, 30, z), down = V(0, -1, 0);
+          const terrain = game.physics.raycast(origin, down, 60, {
+            predicate: collider => collider.handle === terrainHandle,
+          });
+          const deck = game.physics.raycast(origin, down, 60, {
+            predicate: collider => bridgeHandles.has(collider.handle),
+          });
+          expect(deck, `bridge at (${x.toFixed(2)}, ${z.toFixed(2)})`).not.toBeNull();
+          expect(terrain, `terrain at (${x.toFixed(2)}, ${z.toFixed(2)})`).not.toBeNull();
+          expect(terrain!.point.y, `cliff at (${x.toFixed(2)}, ${z.toFixed(2)})`)
+            .toBeLessThan(deck!.point.y);
+        }
+      }
+
+      walkTo(game, finish);
+      expect(game.respawns).toBe(0);
+    } finally { game.dispose(); }
+  });
+
   it('walks the Old Lighthouse bridge in both directions without jumping', async () => {
     const game = await Game.create();
     try {
@@ -61,7 +97,7 @@ describe('Walkable coastal routes', () => {
       const last = road.points.reduce((index, p, i) => p.bridge ? i : index, -1);
       expect(first).toBeGreaterThan(0);
       expect(last).toBeGreaterThan(first);
-      const route = road.points.slice(first - 1, last + 2);
+      const route = road.points.slice(Math.max(0, first - 2), last + 3);
       standAt(game, route[0]!.x, route[0]!.z);
       for (const point of route.slice(1)) walkTo(game, point);
       for (const point of route.slice(0, -1).reverse()) walkTo(game, point);

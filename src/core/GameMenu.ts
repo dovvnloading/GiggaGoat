@@ -290,10 +290,9 @@ export class GameMenu {
     this.view.input.reset();
     this.setScreen('playing');
     // Chrome rejects immediate pointer-lock reacquisition after Escape with a
-    // SecurityError. Resume playable movement without it; the next explicit
-    // canvas click requests the lock via GameInput's mousedown handler.
+    // SecurityError. Resume with drag look until the next canvas click.
     if (!this.pointerLockNeedsCanvasClick) {
-      void this.view.renderer.domElement.requestPointerLock?.();
+      void this.view.input.requestPointerLock();
     }
   }
   private action(key: string): void {
@@ -541,7 +540,7 @@ export class GameMenu {
       <div class="gg-options">${menuButton('play','▶ PLAY · FREE ROAM',true)}
       ${menuButton('party','⚡ PARTY MODES')}
       ${menuButton('settings','⚙ SETTINGS')}</div>
-      <footer>WASD move · mouse look · SPACE jump · E job boards · P party · ESC pause</footer>`;
+      <footer>WASD move · move mouse or drag to look · SPACE jump · E job boards · P party · ESC pause</footer>`;
   }
   private partyBody(): string {
     return `<div class="gg-shell-eyebrow">SOLO VS PHYSICS-DRIVEN BOTS</div><h2>START A PARTY</h2>

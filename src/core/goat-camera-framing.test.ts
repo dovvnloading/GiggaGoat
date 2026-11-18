@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
+import { PhysicsWorld, Q, RAPIER, V } from '../physics';
 import { Game } from './Game';
 import { GameCharacters } from './GameCharacters';
+import { GameView } from './GameView';
 import { CAMERA_TARGET_HEIGHT, SPAWN_CAMERA_PITCH, SPAWN_CAMERA_YAW_OFFSET,
   goatCameraLookAhead, goatCameraOffset, goatCameraVerticalOffset } from './GoatCamera';
 import { planGoatSafeHud, projectGoatScreenBox, rectsIntersect, visibleGoatBounds,
@@ -13,6 +15,47 @@ const rect = (left: number, top: number, width: number, height: number): ScreenR
 });
 
 describe('free-roam camera / compact HUD reference framing', () => {
+  it.each([0, .24])('keeps the chase camera clear of a close obstacle at x=%s', async x => {
+    const physics = await PhysicsWorld.create();
+    try {
+      const wall = physics.createGround(V(.13, 2, .04), V(x, 0, .52));
+      physics.step(physics.fixedDt);
+      const offset = goatCameraOffset(1, 0, 0);
+      const player = new THREE.Group();
+      const camera = new THREE.PerspectiveCamera(67, 16 / 9, .07, 2200);
+      const view = Object.assign(Object.create(GameView.prototype) as {
+        updateCamera(alpha: number, dt: number): void;
+      }, {
+        camera, input: { yaw: 0, pitch: 0 }, currentSettings: { fov: 67 },
+        cameraAim: new THREE.Vector3(), cameraTarget: new THREE.Vector3(),
+        cameraOffset: new THREE.Vector3(), cameraDirection: new THREE.Vector3(),
+        cameraPath: new THREE.Vector3(), cameraPosition: new THREE.Vector3(offset.x, offset.y, offset.z),
+        cameraCollisionShape: new RAPIER.Ball(.25), cameraCollisionRotation: Q(),
+        cameraCollisionFilter: {},
+        game: { physics: Object.assign(Object.create(physics) as PhysicsWorld, {
+          getInterpolatedTransform: () => ({ translation: V(0, -CAMERA_TARGET_HEIGHT, 0) }),
+        }), rules: { style: { scale: 1 } }, goat: {
+          ownsBody: () => false, locomotion: { input: { sprint: false } }, torso: { linvel: () => V() },
+        } },
+        characters: { player: { root: player } }, world: { sun: new THREE.DirectionalLight() },
+      });
+      if (x > 0) expect(physics.raycast(V(), offset, 5)).toBeNull();
+      view.updateCamera(0, 1 / 60);
+      expect(camera.position.z).toBeLessThan(.36);
+      expect(camera.position.z).toBeGreaterThan(0);
+      expect(player.visible).toBe(false);
+
+      physics.removeBody(wall);
+      physics.step(physics.fixedDt);
+      view.updateCamera(0, .5);
+      expect(camera.position.z).toBeGreaterThan(4);
+      expect(camera.quaternion.toArray().every(Number.isFinite)).toBe(true);
+      expect(player.visible).toBe(true);
+    } finally {
+      physics.dispose();
+    }
+  });
+
   it.each(VIEWPORTS)('reserves the build tray and shifts the projected player at %ix%i',
     (width, height) => {
       const viewport = rect(0, 0, width, height);

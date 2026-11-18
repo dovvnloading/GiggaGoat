@@ -105,7 +105,7 @@ describe('live free-roam HUD DOM', () => {
 
       for (const [name, message] of [
         ['gg-board-hint', 'GOAT GIGS · GAMEPAD X'],
-        ['gg-hint', 'CLICK TO PLAY · MOUSE TO LOOK'],
+        ['gg-hint', 'DRAG TO LOOK · CLICK TO LOCK'],
       ] as const) {
         expect(root.querySelector('.' + name)).not.toBeNull();
         // Read the exact constructor markup, rather than a second HTML fixture.
@@ -123,7 +123,7 @@ describe('live free-roam HUD DOM', () => {
         expect(maximumRowWidth).toBeLessThan(width * .82);
       }
       expect(root.querySelector<ElementStub>('[data-hint-copy]')?.textContent)
-        .toBe('CLICK TO PLAY · MOUSE TO LOOK');
+        .toBe('DRAG TO LOOK · CLICK TO LOCK');
       expect(root.innerHTML).toContain('gg-prompt-mouse');
       expect(root.innerHTML).not.toContain('>CLICK</span>');
     } finally {
