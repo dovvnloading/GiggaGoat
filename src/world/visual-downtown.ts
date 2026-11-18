@@ -103,6 +103,24 @@ export function downtownRearHouseModel(dz: number): 'townhouse' | 'kayHouse' | '
   return dz > 0 ? 'townhouse' : dz < 0 ? 'kayHouse' : 'brickHouse';
 }
 
+/** Contact points on the fitted GLB roof surfaces, in building-local metres. */
+export const DOWNTOWN_ROOF_MOUNTS: Record<Exclude<DowntownBuildingModel, 'highrise'>, {
+  ac: Vec3;
+  tank?: Vec3;
+}> = {
+  cornerShop: { ac: { x: 0, y: 4.382, z: -2.35 } },
+  kayShop: { ac: { x: 0, y: 2.818, z: -1.81 } },
+  cinema: { ac: { x: 1.08, y: 4.382, z: .35 } },
+  cafe: { ac: { x: 1, y: 2.818, z: -2.5 }, tank: { x: 2.25, y: 2.818, z: 0 } },
+  market: { ac: { x: 0, y: 5.950, z: -1.81 } },
+  bakery: { ac: { x: -.75, y: 4.382, z: -2.25 }, tank: { x: 1.25, y: 4.382, z: -.5 } },
+  boutique: { ac: { x: -1.75, y: 5.950, z: 0 }, tank: { x: .25, y: 5.950, z: -1.75 } },
+  arcade: { ac: { x: 0, y: 3.689, z: -1.81 } },
+  townhouse: { ac: { x: 0, y: 6.825, z: -1.81 } },
+  brickHouse: { ac: { x: 0, y: 9.957, z: -.73 } },
+  kayHouse: { ac: { x: 0, y: 5.950, z: 1.5 }, tank: { x: 0, y: 5.950, z: -1.5 } },
+};
+
 export interface DowntownSign {
   source: PropDescriptor;
   model: DowntownBuildingModel;
@@ -190,6 +208,23 @@ export function isInsideDowntownInfillFootprint(
   });
 }
 
+export function downtownBuildingModel(
+  source: PropDescriptor, centre: Vec3, scale: number,
+): DowntownBuildingModel {
+  const { x, z } = source.transform.position;
+  const dz = (z - centre.z) / scale;
+  if (source.kind === 'tower') return 'highrise';
+  if (source.kind === 'shop') {
+    const row = Math.max(0, Math.min(4, Math.round(dz / 19 + 2)));
+    return SHOP_FRONTS[x < centre.x ? 0 : 1]![row]!.model;
+  }
+  if (Math.abs(x - centre.x) >= 30 * scale) return downtownRearHouseModel(dz);
+  const side = x < centre.x ? -1 : 1;
+  const infill = DOWNTOWN_INFILL.find(item => item.side === side && Math.abs(item.z - dz) < .001);
+  if (!infill) throw new Error('No Downtown infill model for ' + source.id);
+  return infill.model;
+}
+
 /** Reads authored placements without consuming RNG or mutating descriptors. */
 export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] {
   const centre = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
@@ -199,29 +234,11 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
   for (const source of island.props) {
     if (source.poiId !== 'downtown-bleatsville' || source.body.type === 'dynamic') continue;
     const { position, rotationY: yaw } = source.transform;
-    const dz = (position.z - centre.z) / scale;
-    const side = position.x < centre.x ? 0 : 1;
     let model: DowntownModel | undefined;
     switch (source.kind) {
-      case 'shop': {
-        const row = Math.max(0, Math.min(4, Math.round(dz / 19 + 2)));
-        const front = SHOP_FRONTS[side]![row]!;
-        model = front.model;
-        break;
-      }
+      case 'shop':
       case 'house':
-        if (Math.abs(position.x - centre.x) < 30 * scale) {
-          const infillSide = position.x < centre.x ? -1 : 1;
-          const infill = DOWNTOWN_INFILL.find(item =>
-            item.side === infillSide && Math.abs(item.z - dz) < 0.001);
-          if (!infill) throw new Error('No Downtown infill model for ' + source.id);
-          model = infill.model;
-        } else {
-          model = downtownRearHouseModel(dz);
-        }
-        break;
-      case 'tower':
-        model = 'highrise'; break;
+      case 'tower': model = downtownBuildingModel(source, centre, scale); break;
       case 'lamp': model = 'lamp'; break;
       case 'bench': model = 'bench'; break;
       case 'planter': model = 'planter'; break;

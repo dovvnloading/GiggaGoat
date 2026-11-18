@@ -1,36 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { createWorldScene, generateIsland } from './index';
-import { makeLocalStreets } from './roads';
-import { isDowntownRoadOverlay, isHoofingtonTrailOverlay } from './render';
+import { roadRibbonRuns } from './road-ribbons';
 import type { IslandData, RoadPoint } from './types';
 import { TOON_RAMP } from './visual-props';
 
 type Surface = 'road' | 'trail';
-interface Run { points: RoadPoint[]; width: number }
-
-/** Independently apply the unchanged per-segment visual exclusions. */
-function keptRuns(island: IslandData, type: Surface): Run[] {
-  const runs: Run[] = [];
-  for (const road of [...island.roads, ...makeLocalStreets(island)]) {
-    if (road.type !== type) continue;
-    let points: RoadPoint[] = [];
-    for (let i = 0; i < road.points.length - 1; i++) {
-      const a = road.points[i]!, b = road.points[i + 1]!;
-      const keep = !isDowntownRoadOverlay(island, road.id, a, b) &&
-        !(type === 'trail' && isHoofingtonTrailOverlay(island, road.width, a, b));
-      if (keep) {
-        if (!points.length) points.push(a);
-        points.push(b);
-      } else {
-        if (points.length > 1) runs.push({ points, width: road.width });
-        points = [];
-      }
-    }
-    if (points.length > 1) runs.push({ points, width: road.width });
-  }
-  return runs;
-}
 
 function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): void {
   const found = group.children.filter(child => child.name === 'paths-' + type);
@@ -47,7 +22,7 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
   expect(material.gradientMap).toBe(TOON_RAMP);
   expect(material.color.getHex()).toBe(type === 'road' ? 0x727e8a : 0xc3a06c);
 
-  const runs = keptRuns(island, type);
+  const runs = roadRibbonRuns(island, type);
   const segments = runs.reduce((sum, run) => sum + run.points.length - 1, 0);
   const positions = surface.geometry.getAttribute('position');
   const normals = surface.geometry.getAttribute('normal');
@@ -59,13 +34,13 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
 
   for (const run of runs) {
     const first = vertex;
-    for (const point of run.points) {
+    for (const [pointIndex, point] of run.points.entries()) {
       const lx = positions.getX(vertex), lz = positions.getZ(vertex);
       const rx = positions.getX(vertex + 1), rz = positions.getZ(vertex + 1);
       // Each segment connects to the identical left/right edge at a joint.
       expect((lx + rx) / 2).toBeCloseTo(point.x, 3);
       expect((lz + rz) / 2).toBeCloseTo(point.z, 3);
-      const mitre = Math.hypot(lx - point.x, lz - point.z) / (run.width / 2);
+      const mitre = Math.hypot(lx - point.x, lz - point.z) / ((run.widths?.[pointIndex] ?? run.width) / 2);
       expect(mitre).toBeGreaterThanOrEqual(0.999);
       expect(mitre).toBeLessThanOrEqual(2.001);
       for (const side of [0, 1, 2, 3]) {
@@ -142,7 +117,7 @@ describe('IS-6 joined road/trail visual ribbons', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 65 });
     const scene = createWorldScene(island, { chunkSegments: 16 });
     try {
-      const runs = keptRuns(island, 'road');
+      const runs = roadRibbonRuns(island, 'road');
       const kept = runs.flatMap(run => run.points.slice(1).map((b, i) =>
         ({ a: run.points[i]!, b })));
       const marked = kept.filter((segment, i) => i % 5 === 0 &&
@@ -185,7 +160,7 @@ describe('IS-6 joined road/trail visual ribbons', () => {
       })),
     }];
     const originalRoad = JSON.stringify(island.roads);
-    const special = keptRuns(island, 'road').filter(run => run.width === 5);
+    const special = roadRibbonRuns(island, 'road').filter(run => run.width === 5);
     expect(special.map(run => run.points.length)).toEqual([2, 2]);
     const scene = createWorldScene(island, { chunkSegments: 16 });
     try {

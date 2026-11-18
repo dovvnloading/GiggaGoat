@@ -114,9 +114,14 @@ describe('Hoofington art / building slicing regressions', () => {
     }
     const walks = view.group.getObjectByName('paved-village-sidewalks') as THREE.InstancedMesh;
     const crossings = view.group.getObjectByName('hoofington-and-city-crosswalks') as THREE.InstancedMesh;
-    expect(walks.count).toBe(88);
-    // The far village crossing now uses one merged white zebra mesh.
-    expect(crossings.count).toBe(28);
+    expect(walks.count).toBe(44);
+    expect(crossings.count).toBe(21);
+    for (const name of ['hoofington-sidewalks', 'hoofington-curbs', 'hoofington-edge-lines']) {
+      const strip = view.group.getObjectByName(name) as THREE.Mesh;
+      expect(strip, name).toBeInstanceOf(THREE.Mesh);
+      expect(strip, name).not.toBeInstanceOf(THREE.InstancedMesh);
+      expect(strip.geometry.index?.count, name).toBeGreaterThanOrEqual((farm.points.length - 1) * 12);
+    }
     expect(view.group.getObjectByName('hoofington-zebra-crossing'))
       .toBeInstanceOf(THREE.Mesh);
     view.dispose();

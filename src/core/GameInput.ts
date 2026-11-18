@@ -33,6 +33,7 @@ export class GameInput {
   yaw: number;
   pitch = PLAY_CAMERA_PITCH;
   debugVisible = false;
+  buildWithGamepad = false;
   sensitivity = 1;
   invertY = false;
 
@@ -55,7 +56,10 @@ export class GameInput {
         return;
       }
       this.keys.add(code);
-      if (code === 'KeyB') this.buildToggleQueued = true;
+      if (code === 'KeyB') {
+        this.buildToggleQueued = true;
+        this.buildWithGamepad = false;
+      }
       if (code === 'F3') this.debugVisible = !this.debugVisible;
       if (code === 'Space') this.pendingJump = true;
       if (code === 'KeyE') { this.pendingBleat = true; this.pendingInteract = true; }
@@ -63,7 +67,10 @@ export class GameInput {
       if (code === 'KeyQ') this.pendingFlop = true;
       if (code === 'KeyF') this.pendingFling = true;
       const index = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(code);
-      if (index >= 0) this.selected = PIECES[index];
+      if (index >= 0) {
+        this.selected = PIECES[index];
+        this.buildWithGamepad = false;
+      }
     });
     listen(window, 'keyup', event => { this.keys.delete(event.code); });
     listen(window, 'blur', () => { this.reset(); });
@@ -82,6 +89,7 @@ export class GameInput {
       if (event.button === 0) {
         this.mousePrimary = true;
         this.buildPlaceQueued = true;
+        this.buildWithGamepad = false;
       }
       if (event.button === 2) this.mouseSecondary = true;
     });
@@ -169,7 +177,8 @@ export class GameInput {
       if (padJump && !this.padJumpWasDown) this.pendingJump = true;
       this.padJumpWasDown = padJump;
       tongue ||= down(pad, 4) || trigger(pad, 6);
-      chargeHeadbutt ||= trigger(pad, 7);
+      const padHeadbutt = trigger(pad, 7);
+      chargeHeadbutt ||= padHeadbutt;
       bleat ||= down(pad, 2);
       // X is a context action near boards or grazing patches.
       interact ||= down(pad, 2) && !this.padInteractWasDown;
@@ -181,13 +190,23 @@ export class GameInput {
       this.padFlingWasDown = padFling;
       reelTongue ||= down(pad, 11);
       const padToggle = down(pad, 3);
-      if (padToggle && !this.padToggleWasDown) toggleBuild = true;
+      if (padToggle && !this.padToggleWasDown) {
+        toggleBuild = true;
+        this.buildWithGamepad = true;
+      }
       this.padToggleWasDown = padToggle;
       const chosen = [12, 15, 13, 14].findIndex(i => down(pad, i));
-      if (chosen >= 0) buildPiece = PIECES[chosen];
-      if (buildMode && chargeHeadbutt && !this.padPlaceWasDown) placeBuild = true;
+      if (chosen >= 0) {
+        buildPiece = PIECES[chosen];
+        this.buildWithGamepad = true;
+      }
+      if (buildMode && chargeHeadbutt && !this.padPlaceWasDown) {
+        placeBuild = true;
+        if (padHeadbutt) this.buildWithGamepad = true;
+      }
       this.padPlaceWasDown = chargeHeadbutt;
     } else {
+      this.buildWithGamepad = false;
       this.padToggleWasDown = false;
       this.padJumpWasDown = false;
       this.padPlaceWasDown = false;

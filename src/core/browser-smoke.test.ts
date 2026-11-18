@@ -297,6 +297,8 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
           meter: '.gg-meter', score: '.gg-combo', map: '.gg-map-panel',
           gig: '.gg-gig-card', stamina: '.gg-stamina',
           tray: '.gg-hotbar', look: '.gg-hint', board: '.gg-board-hint',
+          ...(document.querySelector('.gg-hotbar[data-active="true"]')
+            ? { buildControls: '.gg-build-controls' } : {}),
         };
         const look = document.querySelector<HTMLElement>(selectors.look)!;
         const board = document.querySelector<HTMLElement>(selectors.board)!;
@@ -327,6 +329,20 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
           if (!inside(text.getBoundingClientRect(), name.parentElement!.getBoundingClientRect())) {
             issues.push('district name exceeds minimap plaque');
           }
+          const tray = document.querySelector<HTMLElement>(selectors.tray)!;
+          if (tray.dataset.active === 'true') {
+            const supplies = tray.querySelector('.gg-supply')!;
+            if (tray.querySelectorAll('.gg-slot-key').length !== 4 ||
+                supplies.querySelector('.gg-slot-key')) issues.push('incorrect build shortcut tags');
+            if (getComputedStyle(tray, '::after').clipPath === 'none') {
+              issues.push('tray end buttons still visible');
+            }
+            const bounds = supplies.getBoundingClientRect();
+            for (const node of supplies.querySelectorAll('strong, span, b')) {
+              text.selectNodeContents(node);
+              if (!inside(text.getBoundingClientRect(), bounds)) issues.push('Supplies text clipped');
+            }
+          }
           // The cream portion of the card illustration ends at 88% of its height.
           const card = document.querySelector(selectors.gig)!.getBoundingClientRect();
           text.selectNodeContents(document.querySelector('.gg-gig-footer')!);
@@ -348,6 +364,15 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
             `${width}×${height} viewport`);
           expect(await page.evaluate<string[]>('(' + compactHudIssues.toString() + ')()'),
             `${width}×${height}`).toEqual([]);
+          await page.tap('KeyB');
+          await page.waitFor(`document.querySelector('.gg-hotbar')?.dataset.active === 'true' &&
+            document.querySelector('[data-build-status]')?.textContent?.includes('LMB PLACE')`,
+            'build controls to become visible');
+          expect(await page.evaluate<string[]>('(' + compactHudIssues.toString() + ')()'),
+            `build mode at ${width}×${height}`).toEqual([]);
+          await page.tap('KeyB');
+          await page.waitFor(`document.querySelector('.gg-hotbar')?.dataset.active === 'false'`,
+            'build controls to collapse');
         }
       } finally {
         await page.send('Emulation.clearDeviceMetricsOverride');

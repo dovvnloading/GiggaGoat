@@ -3,6 +3,7 @@ import type { Biome, IslandData, PropKind } from './types';
 import { BIOMES } from './types';
 import { clamp, smoothstep } from './random';
 import { gridCoordinate, gridIndex } from './terrain';
+import { terrainRockMask } from './terrain-paint';
 import { roadRibbonData } from './road-ribbons';
 import { buildPropVisuals, TOON_RAMP } from './visual-props';
 import { createEnvironmentLod } from './environment-lod';
@@ -230,22 +231,28 @@ function buildTerrain(island: IslandData, segments: number): Chunk[] {
   const material = new THREE.MeshToonMaterial({
     vertexColors: true, gradientMap: TOON_RAMP, side: THREE.FrontSide,
   });
-  // Preserve MeshToonMaterial's lighting, fog and shadows; only its diffuse
-  // terrain palette gains a per-pixel rock blend instead of 3.1 m vertex bands.
+  // One bilinear sample defines the grass/stone edge at both terrain LODs.
+  const rockMask = new THREE.DataTexture(terrainRockMask(island), n, n, THREE.RedFormat);
+  rockMask.magFilter = THREE.LinearFilter;
+  rockMask.minFilter = THREE.LinearMipmapLinearFilter;
+  rockMask.generateMipmaps = true;
+  rockMask.needsUpdate = true;
+  material.addEventListener('dispose', () => rockMask.dispose());
   material.onBeforeCompile = shader => {
     shader.uniforms['uRockStone'] = { value: COLORS.rock };
     shader.uniforms['uMountainStone'] = { value: MT_GIGGA_STONE };
     shader.uniforms['uTerrainScale'] = { value: island.size / 600 };
+    shader.uniforms['uTerrainRockMask'] = { value: rockMask };
+    // Map terrain grid endpoints to the first and last texel centres.
+    shader.uniforms['uRockUvScale'] = { value: (n - 1) / (n * island.size) };
     shader.vertexShader = shader.vertexShader.replace(
       '#include <common>',
       `#include <common>
-varying vec3 vWorld;
-varying vec3 vWorldNormal;`,
+varying vec3 vWorld;`,
     ).replace(
       '#include <begin_vertex>',
       `#include <begin_vertex>
-vWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
-vWorldNormal = normalize(mat3(modelMatrix) * objectNormal);`,
+vWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;`,
     );
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <common>',
@@ -253,31 +260,18 @@ vWorldNormal = normalize(mat3(modelMatrix) * objectNormal);`,
 uniform vec3 uRockStone;
 uniform vec3 uMountainStone;
 uniform float uTerrainScale;
-varying vec3 vWorld;
-varying vec3 vWorldNormal;
-
-// Smoothed, texture-free value noise in world-space metres.
-float hash(vec2 p) {
-  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-}
-float noise(vec2 p) {
-  vec2 cell = floor(p);
-  vec2 f = fract(p);
-  vec2 t = f * f * (3.0 - 2.0 * f);
-  return mix(
-    mix(hash(cell), hash(cell + vec2(1.0, 0.0)), t.x),
-    mix(hash(cell + vec2(0.0, 1.0)), hash(cell + vec2(1.0, 1.0)), t.x),
-    t.y);
-}`,
+uniform sampler2D uTerrainRockMask;
+uniform float uRockUvScale;
+varying vec3 vWorld;`,
     ).replace(
       '#include <color_fragment>',
       `#include <color_fragment>
-vec3 worldNormal = normalize(vWorldNormal);
+float exposure = texture2D(uTerrainRockMask, vWorld.xz * uRockUvScale + 0.5).r;
+float elevation = vWorld.y / uTerrainScale;
 float mountain = 1.0 - smoothstep(99.0, 113.0, length(vWorld.xz) / uTerrainScale);
 vec3 uStone = mix(uRockStone, uMountainStone, mountain);
-uStone *= 0.93 + 0.07 * sin(vWorld.y / uTerrainScale * 0.85);
-float rock = smoothstep(0.30, 0.42, 1.0 - worldNormal.y +
-  (noise(vWorld.xz * 0.15) - 0.5) * 0.08);
+uStone *= 0.96 + 0.04 * sin(elevation * 0.52 + 2.0 * exposure);
+float rock = smoothstep(0.19, 0.48, exposure + 0.04 * smoothstep(16.0, 85.0, elevation));
 diffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);`,
     );
   };

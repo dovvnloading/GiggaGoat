@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { BUILD_RAMP_VERTICES, BUILD_RAMP_TRIANGLES } from '../gameplay';
 import { PROP_LIBRARY_MODELS, bakeLibraryPropGeometry } from '../world/library-props';
 import { fitLibraryModel, isAuthoredLibraryAsset } from '../world/library-fit';
 import { buildProceduralPropGeometry, TOON_RAMP } from '../world/visual-props';
@@ -353,13 +354,14 @@ export class PropFactory {
 
   /** A model occupies only its allotted slot; all trim remains independent. */
   private mount(owner: THREE.Group, parent: THREE.Object3D, path: string,
-    size: Size3, at: THREE.Vector3, fallbackColor: ColorName,
+    size: Size3, at: THREE.Vector3, fallback: ColorName | ((slot: THREE.Group) => void),
     yRotation = 0, xRotation = 0): void {
     const slot = new THREE.Group();
     slot.name = 'library-slot';
     slot.position.copy(at);
     parent.add(slot);
-    this.box(slot, size, fallbackColor);
+    if (typeof fallback === 'string') this.box(slot, size, fallback);
+    else fallback(slot);
     void this.request(path).then(prototype => {
       if (this.disposed || !this.instances.has(owner)) return;
       const model = prototype && this.fitted(prototype, size, yRotation, xRotation);
@@ -501,21 +503,31 @@ export class PropFactory {
       // Same rising +Z plane and +/-0.9 Y as GameView's convex ramp collider.
       const geometry = this.cachedGeometry('build-ramp', () => {
         const shape = new THREE.BufferGeometry();
-        shape.setAttribute('position', new THREE.Float32BufferAttribute([
-          -1,-.9,-1, 1,-.9,-1, -1,-.9,1,
-          1,-.9,1, -1,.9,1, 1,.9,1,
-        ], 3));
-        shape.setIndex([0,2,1, 1,2,3, 2,4,3, 3,4,5, 0,1,4, 1,5,4,
-          0,4,2, 1,3,5]);
+        shape.setAttribute('position', new THREE.Float32BufferAttribute(BUILD_RAMP_VERTICES, 3));
+        shape.setIndex([...BUILD_RAMP_TRIANGLES]);
         shape.computeVertexNormals();
         return shape;
       });
       this.addMesh(root, geometry, 'woodDark');
       const top = new THREE.Group();
-      top.rotation.x = -Math.atan2(1.8, 2);
+      top.name = 'build-ramp-deck';
+      top.rotation.x = -Math.atan2(s.y, s.z);
       root.add(top);
-      this.mount(root, top, LIBRARY_MODELS.planks,
-        { x: 1.84, y: .09, z: 2.47 }, new THREE.Vector3(), 'woodLight');
+      const deck = { x: 1.84, y: .09, z: 2.47 };
+      this.mount(root, top, LIBRARY_MODELS.planks, deck, new THREE.Vector3(), slot => {
+        // The library mesh has six evenly spaced boards on two battens. Both
+        // versions run across the ramp slope, like the tray's ramp artwork.
+        const board = { x: deck.x, y: deck.y / 2, z: deck.z * .1486 };
+        const spacing = (deck.z - board.z) / 5;
+        for (let i = 0; i < 6; i++) {
+          const mesh = this.box(slot, board, 'woodLight', 0, deck.y / 4, (i - 2.5) * spacing);
+          mesh.name = 'ramp-slat';
+        }
+        const batten = { x: deck.x * .1486, y: deck.y / 2, z: deck.z };
+        for (const x of [-.2771, .2771]) {
+          this.box(slot, batten, 'wood', x * deck.x, -deck.y / 4, 0);
+        }
+      }, Math.PI / 2);
       for (const x of [-.92, .92]) {
         this.box(top, { x: .12, y: .12, z: 2.45 }, 'woodDark', x, 0, 0);
       }

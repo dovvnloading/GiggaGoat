@@ -67,6 +67,55 @@ describe('current library prop size mapping', () => {
     f.dispose();
   });
 
+  it('shows six transverse ramp slats before loading and preserves deck bounds on replacement', async () => {
+    // This has the source GLB's six longitudinal slats and two cross battens.
+    const loaded = new THREE.Group();
+    const plank = new THREE.MeshStandardMaterial({ color: 0xc78656 });
+    const board = new THREE.BoxGeometry(.1486, .03, 1);
+    const batten = new THREE.BoxGeometry(1, .03, .1486);
+    for (let i = 0; i < 6; i++) {
+      const mesh = new THREE.Mesh(board, plank);
+      mesh.position.set((i - 2.5) * (1 - .1486) / 5, .045, 0);
+      loaded.add(mesh);
+    }
+    for (const z of [-.2771, .2771]) {
+      const mesh = new THREE.Mesh(batten, plank);
+      mesh.position.set(0, .015, z);
+      loaded.add(mesh);
+    }
+    const factory = new PropFactory({ loadModel: async () => loaded, assetBaseUrl: base });
+    try {
+      const ramp = factory.createBuildPiece('ramp');
+      const deck = ramp.getObjectByName('build-ramp-deck')!;
+      const slot = deck.getObjectByName('library-slot')!;
+      expect(ramp.userData.assetStatus).toBe('loading');
+      const slats = slot.children.filter(child => child.name === 'ramp-slat') as THREE.Mesh[];
+      expect(slats).toHaveLength(6);
+      for (const slat of slats) {
+        expect(slat.geometry).toBe(slats[0]!.geometry);
+        expect(slat.position.x).toBe(0);
+      }
+      expect(slats[1]!.position.z).toBeGreaterThan(slats[0]!.position.z);
+      expect(deck.rotation.x).toBeCloseTo(-Math.atan2(1.8, 2));
+      ramp.updateMatrixWorld(true);
+      const start = new THREE.Box3().setFromObject(slot, true);
+
+      await factory.whenReady();
+      expect(ramp.userData.assetStatus).toBe('ready');
+      expect(ramp.userData.assetRevision).toBe(1);
+      expect(slot.children).toHaveLength(1);
+      expect(slot.children[0]!.children[0]!.rotation.y).toBeCloseTo(Math.PI / 2);
+      ramp.updateMatrixWorld(true);
+      const finish = new THREE.Box3().setFromObject(slot, true);
+      for (const axis of ['x', 'y', 'z'] as const) {
+        expect(finish.min[axis]).toBeCloseTo(start.min[axis], 4);
+        expect(finish.max[axis]).toBeCloseTo(start.max[axis], 4);
+      }
+    } finally {
+      factory.dispose();
+    }
+  });
+
   it('accepts variable gig sizes, and uses marker half-extents rather than full widths', () => {
     const f = new PropFactory({ loadModel: load(), assetBaseUrl: base });
     const size: Size3 = { x: 3, y: 2, z: 1.4 };

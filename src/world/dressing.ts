@@ -4,7 +4,7 @@ import { gridSample, riverAt, segmentProjection, stampPlot } from './terrain';
 import { getDamPlacement } from './the-dam';
 import { roadSideOffset } from './roads';
 import { damChannelAt } from './dam-landscape';
-import { isInsideDowntownInfillFootprint } from './visual-downtown';
+import { DOWNTOWN_ROOF_MOUNTS, downtownBuildingModel, isInsideDowntownInfillFootprint } from './visual-downtown';
 import { CASCADE_NATIVE_SIZE, cascadePoolCentre, cascadeWaterLine, waterfallSites } from './visual-water';
 
 // Extra art and physical scenery must not intersect the authored shop infills.
@@ -218,12 +218,28 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   // (local +Z), not a fixed world +Z direction. The +/- X-facing rows now
   // display their shop fronts to pedestrians in the central street.
   const city: PoiId = 'downtown-bleatsville';
-  const cityX = sites.get(city)!.x;
+  const cityCenter = sites.get(city)!;
   // The five infills already carry shop windows/signs in their authored GLBs.
   // Keep the original 10 shops + 6 rear houses as the only facade decorators.
   const buildings = island.props.filter(p => p.poiId === city &&
     (p.kind === 'shop' || (p.kind === 'house' &&
-      Math.abs(p.transform.position.x - cityX) >= 30 * scale)));
+      Math.abs(p.transform.position.x - cityCenter.x) >= 30 * scale)));
+  const placeRoofEquipment = (roof: PropDescriptor, kind: 'ac-unit' | 'water-tower',
+    mount: PropDescriptor['transform']['position']): void => {
+    const { position, rotationY } = roof.transform;
+    const width = kind === 'water-tower' ? 3.5 : 1.2;
+    const depth = kind === 'water-tower' ? width : 1;
+    const height = kind === 'water-tower' ? 5.6 : 1;
+    const c = Math.cos(rotationY), s = Math.sin(rotationY);
+    place(kind, position.x + (c * mount.x + s * mount.z) * scale,
+      position.z + (-s * mount.x + c * mount.z) * scale, width, height, depth, city, {
+        // Authored props are fitted to 98% vertically about the descriptor centre.
+        yaw: rotationY, y: position.y + (mount.y + height * .49) * scale,
+        ...(kind === 'water-tower' ? { shape: 'cylinder' as const } : { color: 0xc0cbd0 }),
+      });
+  };
+  const rearLavenderRoofs = buildings.filter(building => building.kind === 'house' &&
+    downtownBuildingModel(building, cityCenter, scale) === 'kayHouse');
   for (let i = 0; i < buildings.length; i++) {
     const building = buildings[i]!;
     const x = building.transform.position.x;
@@ -246,13 +262,19 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
           yaw, y: top - 1.6 * scale, color: 0xffe6a2,
         });
     }
-    place('ac-unit', x - frontX * 1.8 * scale,
-      z - frontZ * 1.8 * scale, 1.2, 1.0, 1.0, city,
-      { yaw, y: top + 0.5 * scale, color: 0xc0cbd0 });
+    const roofModel = downtownBuildingModel(building, cityCenter, scale);
+    if (roofModel === 'highrise') continue;
+    const roofMounts = DOWNTOWN_ROOF_MOUNTS[roofModel];
+    placeRoofEquipment(building, 'ac-unit', roofMounts.ac);
     if (i % 4 === 0) {
-      place('water-tower', x - frontX * 1.7 * scale,
-        z - frontZ * 1.7 * scale, 4.5, 7.6, 4.5, city,
-        { y: top + 3.8 * scale, shape: 'cylinder' });
+      // The tall pink house's stepped roof cannot support all four tank feet.
+      // Its nearest rear neighbour on the same side has a flat timber-tank site.
+      const tankRoof = roofModel === 'brickHouse'
+        ? rearLavenderRoofs.find(roof =>
+          (roof.transform.position.x < cityCenter.x) === (x < cityCenter.x))!
+        : building;
+      const tankMount = roofModel === 'brickHouse' ? DOWNTOWN_ROOF_MOUNTS.kayHouse.tank! : roofMounts.tank!;
+      placeRoofEquipment(tankRoof, 'water-tower', tankMount);
     }
   }
   // Fountain square is a side plaza, not an obstacle in the street.

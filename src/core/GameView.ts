@@ -13,6 +13,7 @@ import { Game } from './Game';
 import { GameCharacters } from './GameCharacters';
 import { GameVfx } from './GameVfx';
 import { GameInput } from './GameInput';
+import { BuildPlacementGhost } from './BuildPlacementGhost';
 import { CAMERA_TARGET_HEIGHT, PLAY_CAMERA_PITCH, SPAWN_CAMERA_PITCH, SPAWN_CAMERA_YAW_OFFSET,
   goatCameraLookAhead, goatCameraOffset, goatCameraVerticalOffset, goatOrbitOffset,
   goatViewDirection } from './GoatCamera';
@@ -74,6 +75,7 @@ export class GameView {
   private readonly propVisuals: PropVisual[] = [];
   private readonly libraryWorldProps: LibraryWorldVisual[] = [];
   private readonly buildVisuals = new Map<number, THREE.Group>();
+  private readonly buildGhost = new BuildPlacementGhost();
   private readonly debrisVisuals = new Map<number, THREE.Group>();
   private readonly activeBuildIds = new Set<number>();
   private readonly activeDebrisIds = new Set<number>();
@@ -159,7 +161,7 @@ export class GameView {
     this.createSurfaceMarkers();
     this.createBoardMarkers();
     this.scene.add(this.gigMarkers);
-    this.scene.add(this.partyMarkers);
+    this.scene.add(this.partyMarkers, this.buildGhost.root);
     const p = vec(game.goat.torso.translation());
     const size = game.rules.style.scale;
     this.cameraTarget.copy(p).add(new THREE.Vector3(0, CAMERA_TARGET_HEIGHT * size, 0));
@@ -374,7 +376,7 @@ export class GameView {
           this.gigMarkers.add(delivery);
         } else if (config.kind === 'mow-down') {
           this.mowDown = new MowDownPresentation(this.game.island, config.patches,
-            this.textSprite('G / X GRAZE', 2.4, .6, 0));
+            this.textSprite('G / X GRAZE', .24, .06, 0));
           this.gigMarkers.add(this.mowDown);
         }
         const customMarkers = config.kind === 'hay-haul' || config.kind === 'mow-down';
@@ -602,6 +604,9 @@ export class GameView {
       this.instancedProps.add(root);
       this.buildVisuals.set(piece.id, root);
     }
+    const preview = this.paused ? null : this.game.buildPreview(this.input.yaw);
+    this.buildGhost.update(preview);
+    this.hud.setBuildPreview(preview?.validation ?? null, this.input.buildWithGamepad);
   }
 
   private updateDebris(alpha: number): void {
@@ -806,6 +811,7 @@ export class GameView {
     window.removeEventListener('resize', this.onResize);
     this.input.dispose();
     this.hud.dispose();
+    this.buildGhost.dispose();
     this.vfx.dispose();
     this.characters.dispose();
     this.clearGroup(this.boardMarkers);

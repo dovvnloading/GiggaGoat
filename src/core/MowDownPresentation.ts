@@ -20,6 +20,7 @@ export class MowDownPresentation extends THREE.Group {
     this.rings.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
     label.name = 'mow-down-next-patch';
+    label.material.sizeAttenuation = false;
     this.add(this.rings, label, this.outline(island));
   }
 
@@ -54,7 +55,7 @@ export class MowDownPresentation extends THREE.Group {
   update(finishedIds: readonly string[], player: Point): void {
     if (finishedIds.length !== this.finishedCount) {
       this.finishedCount = finishedIds.length;
-      this.remaining = this.patches.filter((_, index) => !finishedIds.includes('grass-' + index));
+      this.remaining = this.patches.filter((_, index) => !finishedIds.includes(String(index)));
       this.rings.count = this.remaining.length;
       this.remaining.forEach((patch, slot) => {
         this.instanceTransform.makeTranslation(patch.x, patch.y, patch.z);
@@ -73,6 +74,6 @@ export class MowDownPresentation extends THREE.Group {
       }
     }
     this.label.visible = nearest !== null;
-    if (nearest) this.label.position.set(nearest.x, nearest.y + 1.1, nearest.z);
+    if (nearest) this.label.position.set(nearest.x, nearest.y + .85, nearest.z);
   }
 }

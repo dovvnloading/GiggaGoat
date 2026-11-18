@@ -8,8 +8,9 @@ import {
   type ColliderBuild, type IslandData, type PropDescriptor,
 } from '../world';
 import {
-  GameSimulation, TUNING, type GoatIntent, type GoatPhysicsFacts,
+  GameSimulation, TUNING, BUILD_RAMP_VERTICES, type GoatIntent, type GoatPhysicsFacts,
   type AbilityCommands, type BuiltinTrick, type PieceType, type BuildPiece,
+  type Placement, type Validation,
 } from '../gameplay';
 import {
   WaterSystem, BreakableRegistry, ChainReactions, SurfaceSystem,
@@ -38,6 +39,11 @@ export interface PlayerIntent extends GoatIntent {
   buildPiece?: PieceType;
   graze?: boolean;
   interact?: boolean;
+}
+export interface BuildPreview {
+  placement: Placement;
+  position: Vec3;
+  validation: Validation;
 }
 export interface SurfaceMarker {
   id: string;
@@ -392,10 +398,11 @@ export class Game {
     }));
   }
 
-  buildPosition(piece: BuildPiece): Vec3 {
-    return V(this.buildOrigin.x + piece.cell.x * 2,
-      this.buildOrigin.y + piece.cell.y * 2 + 1,
-      this.buildOrigin.z + piece.cell.z * 2);
+  buildPosition(piece: Placement, origin = this.buildOrigin): Vec3 {
+    const grid = TUNING.build.gridSize;
+    return V(origin.x + piece.cell.x * grid,
+      origin.y + piece.cell.y * grid + grid / 2,
+      origin.z + piece.cell.z * grid);
   }
 
   private addBuildBody(piece: BuildPiece): void {
@@ -404,9 +411,7 @@ export class Game {
     const body = this.physics.raw.createRigidBody(RAPIER.RigidBodyDesc.fixed()
       .setTranslation(p.x, p.y, p.z).setRotation(rotation));
     const collider = piece.type === 'ramp'
-      ? RAPIER.ColliderDesc.convexHull(new Float32Array([
-        -1, -.9, -1, 1, -.9, -1, -1, -.9, 1, 1, -.9, 1, -1, .9, 1, 1, .9, 1,
-      ]))
+      ? RAPIER.ColliderDesc.convexHull(new Float32Array(BUILD_RAMP_VERTICES))
       : RAPIER.ColliderDesc.cuboid(
         piece.type === 'wall' ? .23 : 1, piece.type === 'wall' ? 1 : .23, 1);
     if (!collider) throw new Error('Invalid Hay-Build ramp');
@@ -428,18 +433,29 @@ export class Game {
     if (body) { this.physics.removeBody(body); this.buildBodies.delete(id); }
   }
 
-  private placeBuild(): boolean {
-    const torso = this.goat.torso.translation(), dir = forward(this.intent.cameraYaw ?? this.goat.locomotion.heading);
+  private buildCandidate(cameraYaw: number): { placement: Placement; origin: Vec3 } {
+    const torso = this.goat.torso.translation(), dir = forward(cameraYaw);
     const x = torso.x + dir.x * 4.5, z = torso.z + dir.z * 4.5;
-    if (this.rules.build.pieces.length === 0) {
-      this.buildOrigin = V(0, heightAt(this.island, x, z), 0);
-    }
-    const local = V(x - this.buildOrigin.x,
-      Math.max(0, torso.y - this.buildOrigin.y - this.goat.size * .7),
-      z - this.buildOrigin.z);
-    const snap = this.rules.build.snap(local);
-    const result = this.rules.build.place({ ...snap, type: this.buildPiece });
-    return !!result.piece;
+    const origin = this.rules.build.size ? this.buildOrigin : V(0, heightAt(this.island, x, z), 0);
+    const snap = this.rules.build.snap(V(x - origin.x,
+      Math.max(0, torso.y - origin.y - this.goat.size * .7), z - origin.z));
+    return { placement: { ...snap, type: this.buildPiece }, origin };
+  }
+
+  buildPreview(cameraYaw = this.intent.cameraYaw ?? this.goat.locomotion.heading): BuildPreview | null {
+    if (!this.buildMode) return null;
+    const { placement, origin } = this.buildCandidate(cameraYaw);
+    return {
+      placement,
+      position: this.buildPosition(placement, origin),
+      validation: this.rules.build.validatePlacement(placement),
+    };
+  }
+
+  private placeBuild(): void {
+    const { placement, origin } = this.buildCandidate(this.intent.cameraYaw ?? this.goat.locomotion.heading);
+    this.buildOrigin = origin;
+    this.rules.build.place(placement);
   }
 
   /** Advance by wall-clock elapsed seconds; Rapier alone handles accumulator and fixed ticks. */
