@@ -100,6 +100,7 @@ export class GameView {
     position: this.camera.position, forward: this.audioForward, up: { x: 0, y: 1, z: 0 },
   };
   private readonly playerWorldBox = new THREE.Box3();
+  private readonly cameraViewport = new THREE.Vector2();
   private cameraShiftY = 0;
   private readonly dummy = new THREE.Object3D();
   private readonly onResize: () => void;
@@ -164,8 +165,11 @@ export class GameView {
       goatCameraLookAhead(size, this.input.yaw))));
     this.onResize = () => {
       const width = Math.max(1, host.clientWidth), height = Math.max(1, host.clientHeight);
-      this.camera.aspect = width / height;
-      this.camera.updateProjectionMatrix();
+      if (width !== this.cameraViewport.x || height !== this.cameraViewport.y) {
+        this.cameraViewport.set(width, height);
+        this.applyCameraFraming(goatCameraVerticalOffset(this.game.rules.style.scale,
+          this.input.pitch, this.currentSettings.fov, height));
+      }
       this.renderer.setSize(width, height, false);
     };
     window.addEventListener('resize', this.onResize);
@@ -594,6 +598,29 @@ export class GameView {
     return hit ? Math.max(0, hit.distance - CAMERA_COLLISION_SKIN) : distance;
   }
 
+  private applyCameraFraming(lift: number): void {
+    const { x: width, y: height } = this.cameraViewport;
+    this.cameraShiftY = lift;
+    this.camera.setViewOffset(width, height, 0, lift, width, height);
+  }
+
+  private updateCameraFraming(dt: number): void {
+    const desired = goatCameraVerticalOffset(this.game.rules.style.scale,
+      this.input.pitch, this.currentSettings.fov, this.cameraViewport.y);
+    const delta = desired - this.cameraShiftY;
+    if (Math.abs(delta) > .01) {
+      this.applyCameraFraming(this.cameraShiftY + delta * lerpAlpha(8, dt));
+    }
+  }
+
+  private updateHud(): void {
+    const viewport = this.renderer.domElement.getBoundingClientRect();
+    const goatBounds = visibleGoatBounds(this.characters.player.root, this.playerWorldBox);
+    const goatScreenBox = projectGoatScreenBox(goatBounds, this.camera, viewport);
+    this.hud.update(this.game, this.fps, this.simMs, this.input.debugVisible,
+      document.pointerLockElement === this.renderer.domElement, goatScreenBox, this.perfStats);
+  }
+
   private updateCamera(alpha: number, dt: number): void {
     const pose = this.game.physics.getInterpolatedTransform(this.game.goat.torso, alpha);
     const size = this.game.rules.style.scale;
@@ -689,30 +716,12 @@ export class GameView {
     if (this.scene.fog) this.scene.fog.color.copy(this.world.fogColor);
     this.renderer.setClearColor(this.world.fogColor);
     this.updateCamera(alpha, dt);
-    // Sampling ragdoll projections and reading DOM bounds at 60 Hz forced layout.
-    // Resolving HUD and the safe-camera view offset at 20 Hz avoids that churn.
+    this.updateCameraFraming(dt);
+    // Sample the animated silhouette for HUD overlap at 20 Hz.
     this.hudTimer += dt;
     if (this.hudTimer >= .05) {
       this.hudTimer = 0;
-      const viewport = this.renderer.domElement.getBoundingClientRect();
-      const goatBounds = visibleGoatBounds(this.characters.player.root, this.playerWorldBox);
-      this.camera.clearViewOffset();
-      const unframed = projectGoatScreenBox(goatBounds, this.camera, viewport, false);
-      const desired = unframed ? goatCameraVerticalOffset(unframed, viewport) : null;
-      if (desired === null || !Number.isFinite(desired)) {
-        this.cameraShiftY = 0;
-      } else {
-        const bounded = THREE.MathUtils.clamp(desired, -viewport.height, viewport.height);
-        const previous = Number.isFinite(this.cameraShiftY) ? this.cameraShiftY : 0;
-        this.cameraShiftY = Math.max(previous + (bounded - previous) * lerpAlpha(10, dt), bounded);
-      }
-      if (viewport.width > 0 && viewport.height > 0 && this.cameraShiftY !== 0) {
-        this.camera.setViewOffset(viewport.width, viewport.height,
-          0, this.cameraShiftY, viewport.width, viewport.height);
-      }
-      const goatScreenBox = projectGoatScreenBox(goatBounds, this.camera, viewport);
-      this.hud.update(this.game, this.fps, this.simMs, this.input.debugVisible,
-        document.pointerLockElement === this.renderer.domElement, goatScreenBox, this.perfStats);
+      this.updateHud();
     }
     this.world.updateCulling(this.camera);
     this.hideWorldLabLoadedProps();

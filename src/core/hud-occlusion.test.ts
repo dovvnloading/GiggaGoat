@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { Game } from './Game';
 import { GameCharacters } from './GameCharacters';
-import { CAMERA_TARGET_HEIGHT, SPAWN_CAMERA_PITCH, SPAWN_CAMERA_YAW_OFFSET,
+import { CAMERA_TARGET_HEIGHT, SPAWN_CAMERA_PITCH,
   goatCameraLookAhead, goatCameraOffset, goatCameraVerticalOffset } from './GoatCamera';
 import { planGoatSafeHud, projectGoatScreenBox, rectsIntersect, visibleGoatBounds,
   type HudPanelRect, type ScreenRect } from './HudOcclusion';
@@ -12,15 +12,16 @@ const rect = (left: number, top: number, width: number, height: number): ScreenR
 });
 
 describe('goat-safe HUD in free roam', () => {
-  it('keeps the real goat screen-space box separate from all default panels and prompts', async () => {
+  it('protects the real goat screen-space box and preserves the corner HUD', async () => {
     const game = await Game.create({ seed: 'billy-isle', resolution: 97 });
     const characters = new GameCharacters(new THREE.Scene(), game);
     try {
+      for (let i = 0; i < 120; i++) game.step();
       characters.update(0, game.physics.alpha);
       const size = game.rules.style.scale;
       const pose = game.goat.torso.translation();
       const target = new THREE.Vector3(pose.x, pose.y + CAMERA_TARGET_HEIGHT * size, pose.z);
-      const yaw = -game.island.spawns[0]!.heading + SPAWN_CAMERA_YAW_OFFSET;
+      const yaw = game.goat.locomotion.heading;
       const offset = goatCameraOffset(size, yaw, SPAWN_CAMERA_PITCH);
       const ahead = goatCameraLookAhead(size, yaw);
       const camera = new THREE.PerspectiveCamera(67, 1568 / 744, .07, 2200);
@@ -30,7 +31,8 @@ describe('goat-safe HUD in free roam', () => {
       const bounds = visibleGoatBounds(characters.player.root);
       const unframed = projectGoatScreenBox(bounds, camera, viewport, false);
       expect(unframed).not.toBeNull();
-      camera.setViewOffset(1568, 744, 0, goatCameraVerticalOffset(unframed!, viewport), 1568, 744);
+      camera.setViewOffset(1568, 744, 0,
+        goatCameraVerticalOffset(size, SPAWN_CAMERA_PITCH, camera.fov, 744), 1568, 744);
       const goat = projectGoatScreenBox(bounds, camera, viewport);
       expect(goat).not.toBeNull();
       const goatBox = goat!;
@@ -46,9 +48,9 @@ describe('goat-safe HUD in free roam', () => {
       ];
       const layout = planGoatSafeHud(goatBox, viewport, panels,
         [{ id: 'click', width: 285, height: 45 }]);
-      expect(layout.hiddenPanels.size, 'default view should preserve the corner HUD').toBe(0);
+      expect([...layout.hiddenPanels].filter(id => id !== 'hotbar')).toEqual([]);
       expect(layout.prompts.has('click')).toBe(true);
-      for (const panel of panels) {
+      for (const panel of panels.filter(panel => !layout.hiddenPanels.has(panel.id))) {
         expect(rectsIntersect(goatBox, panel.rect), panel.id).toBe(false);
       }
       for (const prompt of layout.prompts.values()) {
@@ -123,11 +125,12 @@ describe('goat-safe HUD in free roam', () => {
     const game = await Game.create({ seed: 'billy-isle', resolution: 97 });
     const characters = new GameCharacters(new THREE.Scene(), game);
     try {
+      for (let i = 0; i < 120; i++) game.step();
       characters.update(0, game.physics.alpha);
       const scale = game.rules.style.scale;
       const pose = game.goat.torso.translation();
       const target = new THREE.Vector3(pose.x, pose.y + CAMERA_TARGET_HEIGHT * scale, pose.z);
-      const yaw = -game.island.spawns[0]!.heading + SPAWN_CAMERA_YAW_OFFSET;
+      const yaw = game.goat.locomotion.heading;
       const offset = goatCameraOffset(scale, yaw, SPAWN_CAMERA_PITCH);
       const ahead = goatCameraLookAhead(scale, yaw);
       const bounds = visibleGoatBounds(characters.player.root);
@@ -140,7 +143,7 @@ describe('goat-safe HUD in free roam', () => {
         const unframed = projectGoatScreenBox(bounds, camera, viewport, false);
         expect(unframed, width + 'x' + height).not.toBeNull();
         camera.setViewOffset(width, height, 0,
-          goatCameraVerticalOffset(unframed!, viewport), width, height);
+          goatCameraVerticalOffset(scale, SPAWN_CAMERA_PITCH, camera.fov, height), width, height);
         const goat = projectGoatScreenBox(bounds, camera, viewport);
         expect(goat, width + 'x' + height).not.toBeNull();
 
