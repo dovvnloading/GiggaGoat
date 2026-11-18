@@ -63,9 +63,14 @@ describe('Billy Isle deterministic world generation', () => {
     for (const road of island.roads) {
       const start = island.pois.find(p => p.id === road.from)!.center;
       const end = island.pois.find(p => p.id === road.to)!.center;
-      expect(Math.hypot(road.points[0]!.x - start.x, road.points[0]!.z - start.z)).toBeLessThan(0.01);
-      expect(Math.hypot(road.points[road.points.length - 1]!.x - end.x,
-        road.points[road.points.length - 1]!.z - end.z)).toBeLessThan(0.01);
+      // The short Crane Yard spur connects a ring junction to the front gate,
+      // rather than crossing the fence to either POI centre.
+      if (road.id !== 'crane-yard-gate-spur') {
+        expect(Math.hypot(road.points[0]!.x - start.x, road.points[0]!.z - start.z))
+          .toBeLessThan(0.01);
+        expect(Math.hypot(road.points[road.points.length - 1]!.x - end.x,
+          road.points[road.points.length - 1]!.z - end.z)).toBeLessThan(0.01);
+      }
       for (let i = 1; i < road.points.length; i++) {
         const a = road.points[i - 1]!, b = road.points[i]!;
         const horizontal = Math.hypot(a.x - b.x, a.z - b.z);

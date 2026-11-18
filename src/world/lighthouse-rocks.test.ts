@@ -18,13 +18,15 @@ describe('Old Lighthouse cape rocks (LH-3)', () => {
 
   it('keeps a later-generated POI prop at its exact pre-change position', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
-    // Mt. Gigga's tier pines are generated after the Lighthouse cape in dressing.ts.
+    // Mt. Gigga's tier pines come after Lighthouse dressing. The west-yard
+    // road bypass changes which global vegetation candidates avoid roads, so
+    // lock the new default-seed position without moving any authored props.
     const later = island.props.find(prop =>
       prop.id.startsWith('detail-mt-gigga-tree-pine-'));
     expect(later?.transform.position).toEqual({
-      x: -62.963892084384874,
-      y: 31.417175153605157,
-      z: 61.51393236298236,
+      x: -77.05920504097122,
+      y: 33.63114225691537,
+      z: 31.287102262902106,
     });
   });
 });
