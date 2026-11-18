@@ -28,7 +28,7 @@ export function hayHaulGuidance(game: Game, run: GigRun | null): HayHaulGuidance
     const distance = Math.hypot(position.x - player.x, position.y - player.y, position.z - player.z);
     if (body.handle === held) {
       if (run.seenIds.includes(bale.id)) {
-        return { kind: 'delivery', position: config.barn, task: 'Drag bale to barn' };
+        return { kind: 'delivery', position: config.barn, task: 'Drag bale to barn drop' };
       }
       const inRange = distance <= HAY_HAUL_TAG_RADIUS * goat.size;
       return { kind: 'pickup', position, task: inRange ? 'Release and re-lick' : 'Get closer and re-lick' };

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData, PropDescriptor, RiverPoint, Vec3 } from './types';
 import { gridSample } from './terrain';
+import { skyColorGLSL, skyUniforms } from './visual-sky';
 import { findBookmark } from './viewer/bookmarks';
 
 /**
@@ -114,12 +115,14 @@ type LightUniform = { value: THREE.Vector3 };
 export interface WaterVisuals {
   sea: THREE.Mesh;
   inland: THREE.Group;
+  light: THREE.Vector3;
   update(time: number, tide: number): void;
   setLighting(daylight: number, golden: number): void;
 }
 
 /** Float height atlas lets the sea shade by actual terrain depth, including rising tide. */
-function seaMaterial(island: IslandData, uLight: LightUniform): { material: THREE.ShaderMaterial;
+function seaMaterial(island: IslandData, uLight: LightUniform,
+  atmosphere: ReturnType<typeof skyUniforms>): { material: THREE.ShaderMaterial;
   uniforms: AnimatedUniforms } {
   const atlas = new THREE.DataTexture(
     island.heights.slice(), island.resolution, island.resolution,
@@ -140,8 +143,10 @@ function seaMaterial(island: IslandData, uLight: LightUniform): { material: THRE
       // standard set so refreshFogUniforms works in real WebGL scenes.
       ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
       ...uniforms,
+      ...atmosphere,
       uTerrain: { value: atlas },
       uSize: { value: island.size },
+      uSeaDatum: { value: island.seaLevel },
       uShallow: { value: new THREE.Color(0x48c9c9) },
       uDeep: { value: new THREE.Color(0x2a8fc0) },
     },
@@ -162,10 +167,11 @@ function seaMaterial(island: IslandData, uLight: LightUniform): { material: THRE
     ].join('\n'),
     fragmentShader: [
       'uniform sampler2D uTerrain;',
-      'uniform float uSize, uLevel, uTime;',
+      'uniform float uSize, uLevel, uSeaDatum, uTime;',
       'uniform vec3 uShallow, uDeep, uLight;',
       'varying vec3 vWorld;',
       '#include <fog_pars_fragment>',
+      skyColorGLSL,
       'float filteredRipple(float phase) {',
       '  float detail = 1.0 - smoothstep(0.45, 1.65, fwidth(phase));',
       '  return sin(phase) * detail;',
@@ -176,23 +182,50 @@ function seaMaterial(island: IslandData, uLight: LightUniform): { material: THRE
       '  vec2 atlasUV = clamp(mapXZ + 0.5, 0.0, 1.0);',
       '  float ground = texture2D(uTerrain, atlasUV).r;',
       '  float depth = uLevel - ground;',
+      '  float scale = uSize / 600.0;',
+      '  float flood = smoothstep(8.0, 30.0, (uLevel - uSeaDatum) / scale);',
       '  // Taper to deep water outside the height atlas to avoid extending its edge.',
       '  float atlasInterior = 1.0 - smoothstep(0.48, 0.5, max(abs(mapXZ.x), abs(mapXZ.y)));',
-      '  float deepMix = mix(1.0, smoothstep(0.0, 36.0, depth), atlasInterior);',
-      '  vec3 color = mix(uShallow, uDeep, deepMix);',
+      '  float shelf = mix(36.0, 11.0 * scale, flood);',
+      '  float deepMix = mix(1.0, smoothstep(0.0, shelf, depth), atlasInterior);',
+      '  vec3 shallows = mix(uShallow, uDeep, flood * 0.58);',
+      '  vec3 color = mix(shallows, uDeep, deepMix);',
       '  // Crossed, gently warped ripples keep their footprint filtered at grazing angles.',
       '  float swell = filteredRipple(dot(seaXZ, vec2(0.082, 0.117)) + uTime * 0.72);',
       '  float crossWave = filteredRipple(dot(seaXZ, vec2(-0.172, 0.067)) - uTime * 0.95 + 1.5 * swell);',
       '  float ripples = 0.56 * swell + 0.44 * crossWave;',
       '  color += vec3(0.011, 0.025, 0.030) * (0.4 + 0.55 * ripples) * (1.0 - deepMix);',
+      '  color += vec3(0.022, 0.040, 0.048) * ripples * flood * atlasInterior;',
       '  // The swash follows the tide contour. Its broken highlights stay soft at distance.',
       '  float coast = smoothstep(-0.07, 0.18, depth) * (1.0 - smoothstep(0.65, 2.1, depth));',
       '  coast *= atlasInterior * (1.0 - smoothstep(0.24, 1.25, fwidth(depth)));',
       '  float foam = mix(0.12, 0.40, smoothstep(-0.38, 0.7, ripples));',
+      '  foam = mix(foam, mix(0.025, 0.27, smoothstep(0.02, 0.7, ripples)), flood);',
+      '  foam *= mix(0.4, 1.0, smoothstep(0.16, 1.0, uLight.x));',
       '  color = mix(color, vec3(0.88, 0.96, 0.92), coast * foam);',
       '  float cover = mix(1.0, smoothstep(-0.24, 0.48, depth), atlasInterior);',
-      '  gl_FragColor = vec4(color * uLight, 0.88 * cover);',
-      '  #include <fog_fragment>',
+      '  // Reach exact dome color before the sea edge or the game camera far plane.',
+      '  float haze = smoothstep(2.0, 3.25, length(mapXZ));',
+      '  #ifdef USE_FOG',
+      '    haze = max(haze, smoothstep(1000.0, 1700.0, vFogDepth));',
+      '    #ifdef FOG_EXP2',
+      '      float fogDepth = fogDensity * vFogDepth;',
+      '      haze = max(haze, 1.0 - exp(-fogDepth * fogDepth));',
+      '    #else',
+      '      haze = max(haze, smoothstep(fogNear, fogFar, vFogDepth));',
+      '    #endif',
+      '  #endif',
+      '  vec3 litColor = color * uLight;',
+      '  if (haze > 0.0) litColor = mix(litColor, skyColor(vWorld), haze);',
+      '  // Once below the clear shoreline, contrast falls with travel through water.',
+      '  vec3 eye = cameraPosition - vWorld;',
+      '  float viewAngle = abs(eye.y) / max(length(eye), 0.0001);',
+      '  float submergedDepth = mix(36.0, depth / scale, atlasInterior);',
+      '  float pathLength = max(0.0, submergedDepth - 0.7) / max(0.30, viewAngle);',
+      '  float transmission = 0.12 * exp(-0.14 * pathLength);',
+      '  float alpha = cover * (1.0 - transmission * (1.0 - haze * (1.0 - atlasInterior)));',
+      '  gl_FragColor = sRGBTransferEOTF(vec4(litColor, alpha));',
+      '  #include <colorspace_fragment>',
       '}',
     ].join('\n'),
   });
@@ -575,12 +608,13 @@ export function waterfallSites(island: IslandData): WaterfallSite[] {
 }
 
 /** Reusable animated sea, river, reservoir and waterfall visual effects. */
-export function buildWaterVisuals(island: IslandData): WaterVisuals {
+export function buildWaterVisuals(island: IslandData,
+  atmosphere = skyUniforms()): WaterVisuals {
   // One shared tint reaches every unlit water shader, including the reservoir clone.
   const uLight: LightUniform = { value: new THREE.Vector3(1, 1, 1) };
   const nightLight = new THREE.Vector3(0.16, 0.20, 0.34);
   const dayLight = new THREE.Vector3(1, 1, 1);
-  const seaMat = seaMaterial(island, uLight);
+  const seaMat = seaMaterial(island, uLight, atmosphere);
   const sea = new THREE.Mesh(
     circularSeaGeometry(island.size),
     seaMat.material,
@@ -691,7 +725,7 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
   // The four spillway sheets and their foam now come from the custom Dam GLB.
   // Keep the mountain and river cascades, but do not draw duplicate dam falls.
   return {
-    sea, inland,
+    sea, inland, light: uLight.value,
     setLighting(daylight: number, golden: number): void {
       const warmth = THREE.MathUtils.clamp(golden, 0, 1);
       dayLight.set(1, 1 - 0.14 * warmth, 1 - 0.26 * warmth);

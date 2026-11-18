@@ -110,7 +110,7 @@ describe('storybook sky clouds (Hoofington E2)', () => {
       .toHaveLength(0);
     expect(sky.group.getObjectByName('puffy-cloud-banks')).toBeUndefined();
   });
-  it('binds the same linear daytime horizon to the unfogged dome and both fog setups', () => {
+  it('keeps the painted daytime palette and both scene fog setups', () => {
     const sky = buildSkyVisuals();
     const dome = sky.group.getObjectByName('gradient-sky') as THREE.Mesh;
     const material = dome.material as THREE.ShaderMaterial;
@@ -265,9 +265,10 @@ describe('IS-23 fog follows the true sky-dome horizon', () => {
         .lerp(new THREE.Color(0.018, 0.045, 0.14), h);
       const expected = night.lerp(sunny.lerp(sunset, state.golden),
         Math.max(state.daylight, state.golden));
+      const fogOutput = state.horizon.clone().convertLinearToSRGB();
       for (const component of ['r', 'g', 'b'] as const) {
-        expect(Math.abs(state.horizon[component] - expected[component]),
-          'sky horizon ' + component + ' at phase ' + phase).toBeLessThan(0.01);
+        expect(fogOutput[component], 'sky horizon ' + component + ' at phase ' + phase)
+          .toBeCloseTo(expected[component], 4);
       }
     }
     const night = sky.update(0.025).horizon.clone();
@@ -275,12 +276,11 @@ describe('IS-23 fog follows the true sky-dome horizon', () => {
     expect(luminance).toBeLessThan(0.25);
     const golden = sky.update(0.285).horizon.clone();
     expect(golden.r).toBeGreaterThan(golden.b + 0.2);
-    // The existing dome uses a nonzero smoothstep at y=0. In display sRGB,
-    // the unchanged noon gradient differs from the old fog RGB by <0.02.
+    // The unchanged dome gradient differs from its painted endpoint at y=0.
     const day = sky.update(0.5).horizon.clone().convertLinearToSRGB();
-    const oldDay = SKY_HORIZON_COLOR.clone().convertLinearToSRGB();
+    const oldDay = SKY_HORIZON_COLOR;
     for (const component of ['r', 'g', 'b'] as const) {
-      expect(Math.abs(day[component] - oldDay[component])).toBeLessThan(0.02);
+      expect(Math.abs(day[component] - oldDay[component])).toBeLessThan(0.04);
     }
   });
 

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { generateIsland } from './index';
+import { createWorldScene, generateIsland } from './index';
 import { buildWaterVisuals, CASCADE_NATIVE_SIZE, cascadePoolCentre, cascadeWaterLine, waterfallSites } from './visual-water';
-import { buildSkyVisuals } from './visual-sky';
+import { buildSkyVisuals, skyColorGLSL } from './visual-sky';
 import { gridSample } from './terrain';
 import { findBookmark } from './viewer/bookmarks';
 
@@ -90,9 +90,13 @@ describe('island sea, shoreline and horizon', () => {
     for (const chunk of ['fog_pars_vertex', 'fog_vertex']) {
       expect(material.vertexShader).toContain('#include <' + chunk + '>');
     }
-    for (const chunk of ['fog_pars_fragment', 'fog_fragment']) {
-      expect(material.fragmentShader).toContain('#include <' + chunk + '>');
-    }
+    expect(material.fragmentShader).toContain('#include <fog_pars_fragment>');
+    expect(material.fragmentShader).toContain('#include <colorspace_fragment>');
+    expect(material.fragmentShader).toContain('fogDensity * vFogDepth');
+    expect(material.fragmentShader).toContain('smoothstep(fogNear, fogFar, vFogDepth)');
+    expect(material.fragmentShader).toContain('smoothstep(2.0, 3.25, length(mapXZ))');
+    expect(material.fragmentShader).toContain('smoothstep(1000.0, 1700.0, vFogDepth)');
+    expect(material.fragmentShader).toContain('transmission * (1.0 - haze * (1.0 - atlasInterior))');
     expect(material.fragmentShader).toContain('vec3(0.88, 0.96, 0.92)');
     const shader = material.fragmentShader;
     // Distinct directions and wavelengths prevent one shared comb across the sea.
@@ -108,6 +112,90 @@ describe('island sea, shoreline and horizon', () => {
     expect(shader.match(/texture2D\(/g)).toHaveLength(1);
     sea.geometry.dispose();
     material.dispose();
+  });
+
+  it('shares the exact painted sky and sunlight with distant water at every phase', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 65 });
+    const world = createWorldScene(island);
+    try {
+      const dome = world.group.getObjectByName('gradient-sky') as THREE.Mesh<
+        THREE.BufferGeometry, THREE.ShaderMaterial>;
+      const sea = world.group.getObjectByName('rising-sea') as THREE.Mesh<
+        THREE.BufferGeometry, THREE.ShaderMaterial>;
+      const sky = dome.material;
+      const water = sea.material;
+      for (const name of ['uDay', 'uGolden', 'uSun', 'uSunGlowStrength',
+        'uHorizon', 'uSunsetHorizon', 'uSunsetMid', 'uSunsetZenith']) {
+        expect(water.uniforms[name]).toBe(sky.uniforms[name]);
+      }
+      for (const material of [sky, water]) {
+        expect(material.fragmentShader).toContain(skyColorGLSL);
+        expect(material.fragmentShader).toContain('sRGBTransferEOTF');
+        expect(material.fragmentShader).toContain('#include <colorspace_fragment>');
+      }
+      expect(sky.fragmentShader).toContain('skyColor(vSkyWorld)');
+      expect(water.fragmentShader).toContain('mix(litColor, skyColor(vWorld), haze)');
+      for (const [preset, daylight, golden] of [
+        ['night', 0.025, 0], ['golden-hour', 0.693, 1], ['day', 1, 0],
+      ] as const) {
+        world.setLightingPreset(preset);
+        expect(water.uniforms['uDay']!.value).toBeCloseTo(daylight, 2);
+        expect(water.uniforms['uGolden']!.value).toBe(golden);
+      }
+    } finally {
+      world.dispose();
+    }
+  });
+
+  it('preserves shallow shoreline contrast and extinguishes submerged blocks from the 49 m bookmark', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const water = buildWaterVisuals(island);
+    try {
+      const material = water.sea.material as THREE.ShaderMaterial;
+      const shader = material.fragmentShader;
+      const path = shader.match(/pathLength = max\(0\.0, submergedDepth - ([\d.]+)\) \/ max\(([\d.]+), viewAngle\)/);
+      const decay = shader.match(/transmission = ([\d.]+) \* exp\(-([\d.]+) \* pathLength\)/);
+      expect(path).not.toBeNull();
+      expect(decay).not.toBeNull();
+      expect(shader).toContain('abs(eye.y) / max(length(eye), 0.0001)');
+      expect(shader).toContain('mix(36.0, 11.0 * scale, flood)');
+      expect(shader).toContain('ripples * flood * atlasInterior');
+      const transmission = (depth: number, cosine: number): number => {
+        const distance = Math.max(0, depth - Number(path![1])) / Math.max(Number(path![2]), cosine);
+        return Number(decay![1]) * Math.exp(-Number(decay![2]) * distance);
+      };
+      expect(transmission(0.5, 1)).toBeCloseTo(0.12);
+      expect(transmission(0.5, 0.3)).toBeCloseTo(0.12);
+      expect(transmission(4, 1)).toBeGreaterThan(0.07);
+      expect(transmission(4, 0.3)).toBeLessThan(0.03);
+      expect(transmission(24, 1)).toBeLessThan(0.005);
+
+      const bookmark = findBookmark('16')!;
+      const eye = new THREE.Vector3().copy(bookmark.camera);
+      const tide = bookmark.tide;
+      expect(tide).toBe(49);
+      water.update(4.5, tide);
+      expect(material.uniforms['uLevel']!.value).toBe(tide);
+      expect(material.uniforms['uSeaDatum']!.value).toBe(island.seaLevel);
+      const downtown = island.props.filter(prop => prop.poiId === 'downtown-bleatsville'
+        && ['tower', 'shop'].includes(prop.kind));
+      expect(downtown.length).toBeGreaterThan(10);
+
+      for (const prop of downtown) {
+        const roof = new THREE.Vector3().copy(prop.transform.position);
+        roof.y += prop.size.y / 2;
+        expect(roof.y, prop.id).toBeLessThan(tide);
+        const surface = eye.clone().lerp(roof, (eye.y - tide) / (eye.y - roof.y));
+        // The height atlas uses normalized texel coordinates, which shifts
+        // this sample by up to half a texel relative to the mesh height grid.
+        const atlasScale = island.resolution / (island.resolution - 1);
+        const depth = tide - gridSample(island, surface.x * atlasScale, surface.z * atlasScale);
+        const cosine = (eye.y - tide) / eye.distanceTo(surface);
+        expect(transmission(depth, cosine), prop.id).toBeLessThan(0.001);
+      }
+    } finally {
+      disposeWaterMeshes(water);
+    }
   });
   it.each([400, 600, 900])('joins a coloured 128-angle seabed to the terrain edge at size %i', size => {
     const island = generateIsland({ seed: 'cape-skirt', size, resolution: 97 });

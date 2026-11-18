@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { generateIsland, heightAt } from './index';
+import { createWorldScene, generateIsland, heightAt } from './index';
 import { gridSample } from './terrain';
 import { damChannelAt, DAM_CHANNEL } from './dam-landscape';
 import { getDamPlacement } from './the-dam';
@@ -75,6 +75,49 @@ describe('The Dam downstream scenery', () => {
       expect(material.uniforms['uTime']!.value).toBe(3.5);
     } finally {
       dam.dispose();
+    }
+  });
+
+  it('dims exposed spillway foam at night and retires the pool and foam at the reported 49 m flood', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const world = createWorldScene(island);
+    try {
+      const pool = world.group.getObjectByName('dam-plunge-pool-and-downstream-river') as
+        THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
+      const foam = world.group.getObjectByName('dam-four-falls-white-foam') as
+        THREE.InstancedMesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+      const spray = world.group.getObjectByName('dam-plunge-spray-patches') as
+        THREE.InstancedMesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+      const sea = world.group.getObjectByName('rising-sea') as
+        THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
+      const litParts = [pool, foam, spray];
+      const dayFoam = foam.material.color.getHex();
+      const dayOpacity = foam.material.opacity;
+      expect(litParts.every(part => part.visible)).toBe(true);
+      expect(pool.material.uniforms['uLight']!.value).toBe(sea.material.uniforms['uLight']!.value);
+      expect(pool.material.fragmentShader).toContain('uTide - vHeight');
+      expect(pool.material.fragmentShader).toContain('mix(0.42, 1.0,');
+      expect(pool.material.fragmentShader).toContain('0.98 * exposed');
+
+      world.setLightingPreset('night');
+      const nightFoam = foam.material.color.clone().convertLinearToSRGB();
+      expect(nightFoam.r).toBeLessThan(0.16);
+      expect(nightFoam.g).toBeCloseTo(0.2, 4);
+      expect(nightFoam.b).toBeCloseTo(0.34, 4);
+      expect(foam.material.opacity).toBeCloseTo(dayOpacity * 0.55, 4);
+
+      world.setTideLevel(49);
+      expect(pool.material.uniforms['uTide']!.value).toBe(49);
+      expect(litParts.every(part => !part.visible)).toBe(true);
+      expect(world.group.getObjectByName('dam-front-rail')!.visible).toBe(true);
+
+      world.setTideLevel(island.seaLevel);
+      world.setLightingPreset('day');
+      expect(litParts.every(part => part.visible)).toBe(true);
+      expect(foam.material.color.getHex()).toBe(dayFoam);
+      expect(foam.material.opacity).toBe(dayOpacity);
+    } finally {
+      world.dispose();
     }
   });
 

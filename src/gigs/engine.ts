@@ -23,7 +23,7 @@ function assertPoint(p: Point, name: string): void {
 function objective(run: GigRun): GigObjective {
   const c = run.setup.config;
   switch (c.kind) {
-    case 'hay-haul': return { kind: 'deliver', label: 'Bales inside the barn',
+    case 'hay-haul': return { kind: 'deliver', label: 'Bales at the barn drop',
       done: run.finishedIds.length, required: c.required, destination: clone(c.barn) };
     case 'rooftop-express': return { kind: 'checkpoints', label: 'Roofs crossed with parcel',
       reached: run.checkpointIndex, total: c.checkpoints.length,
@@ -481,10 +481,11 @@ export class GigDirector {
       !Array.isArray(s.claimedIds) || !Array.isArray(s.events)) {
       throw new RangeError('Malformed or incompatible gig snapshot');
     }
+    let restoredRun: GigRun | null = null;
     if (s.run) {
       const run = s.run;
-      const expected = catalog.build(run.setup.offer);
-      if (JSON.stringify(expected) !== JSON.stringify(run.setup) ||
+      const expected = catalog.restoreSetup(run.setup);
+      if (!expected ||
         !isInt(run.attemptId) || run.attemptId > s.attemptCounter ||
         !isInt(run.elapsedTicks) || run.elapsedTicks > expected.maxTicks ||
         !['running', 'completed', 'failed', 'abandoned'].includes(run.status) ||
@@ -493,6 +494,11 @@ export class GigDirector {
         !finite(run.peakY) || !isInt(run.dropTicks) ||
         !run.metrics || Object.values(run.metrics).some(n => !finite(n) || n < 0)) {
         throw new RangeError('Malformed active gig snapshot');
+      }
+      restoredRun = clone(run);
+      if (expected !== run.setup) {
+        restoredRun.setup = expected;
+        restoredRun.objective = objective(restoredRun);
       }
     }
     if (s.events.length > COPIES_LIMIT ||
@@ -503,7 +509,7 @@ export class GigDirector {
     result.now = s.tick;
     result.sequence = s.sequence;
     result.attemptCounter = s.attemptCounter;
-    result.current = clone(s.run ?? null);
+    result.current = restoredRun;
     result.bests = clone(s.bests);
     result.goldGigs = clone(s.goldGigs);
     result.cosmetics = clone(s.cosmetics);

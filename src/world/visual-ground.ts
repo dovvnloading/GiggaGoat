@@ -18,7 +18,8 @@ const STONE = new THREE.Color('#D8C7A7');
 const TILE = new THREE.Color('#C2B6A2');
 const GRAVEL = new THREE.Color('#E1C18B');
 const YARD_CONCRETE = new THREE.Color('#A7A3A0');
-const YARD_PUDDLE = new THREE.Color(0x5f7f8f);
+const YARD_PUDDLE = new THREE.Color(0x53686e);
+const YARD_WET_EDGE = new THREE.Color(0x656663);
 const YARD_MARKING = new THREE.Color('#EDC350');
 
 /**
@@ -30,6 +31,8 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Gr
   const group = new THREE.Group();
   group.name = 'merged-ground-details';
   const buckets = new Map<string, ChunkBuffer>();
+  const apron: ChunkBuffer = { positions: [], colors: [], indices: [] };
+  const water: ChunkBuffer = { positions: [], colors: [], indices: [] };
   const scale = island.size / 600;
   const site = (id: PoiId): { x: number; z: number } =>
     island.pois.find(p => p.id === id)!.center;
@@ -54,8 +57,8 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Gr
     return index;
   }
   function quad(x: number, z: number, width: number, length: number,
-    color: THREE.Color, yaw = 0, shade?: number, lift = 0): void {
-    const bucket = verticesAt(x, z);
+    color: THREE.Color, yaw = 0, shade?: number, lift = 0,
+    bucket = verticesAt(x, z)): void {
     const c = Math.cos(yaw), s = Math.sin(yaw);
     const corners: [number, number][] = [
       [-width / 2, -length / 2], [width / 2, -length / 2],
@@ -82,45 +85,60 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Gr
       bucket.indices.push(mid, rim[(i + 1) % sides]!, rim[i]!);
     }
   }
-  // Crane Yard: tessellated paved apron following the real stamped heightfield.
-  // Large, closely fitted slabs prevent a giant flat quad from cutting into
-  // the coast or floating over terrain. The road remains visible above paving.
+  function puddle(x: number, z: number, radius: number, aspect: number, phase: number): void {
+    const sides = 32;
+    const center = addVertex(water, x, z, YARD_PUDDLE, 1.02, .019);
+    const waterline: number[] = [], wetEdge: number[] = [];
+    for (let i = 0; i < sides; i++) {
+      const angle = i * Math.PI * 2 / sides;
+      const reach = radius * (1 + .13 * Math.sin(3 * angle + phase) + .07 * Math.cos(5 * angle - phase));
+      const dx = Math.cos(angle) * reach;
+      const dz = Math.sin(angle) * reach * aspect;
+      waterline.push(addVertex(water, x + .87 * dx, z + .87 * dz,
+        YARD_PUDDLE, .87 + .11 * Math.max(0, Math.cos(angle - phase)), .018));
+      wetEdge.push(addVertex(water, x + dx, z + dz, YARD_WET_EDGE, 1, .012));
+    }
+    for (let i = 0; i < sides; i++) {
+      const next = (i + 1) % sides;
+      water.indices.push(center, waterline[next]!, waterline[i]!,
+        waterline[i]!, waterline[next]!, wetEdge[i]!,
+        waterline[next]!, wetEdge[next]!, wetEdge[i]!);
+    }
+  }
+  // Concrete panels meet on identical terrain samples without dirt gaps.
   const yard = site('crane-yard');
+  const yardQuad = (x: number, z: number, width: number, length: number,
+    color: THREE.Color, yaw = 0, shade?: number, lift = .009): void => quad(
+    yard.x + x * scale, yard.z + z * scale, width * scale, length * scale,
+    color, yaw, shade, lift, apron);
   for (let ix = -40; ix < 40; ix += 8) {
     for (let iz = -36; iz < 36; iz += 8) {
       const slabX = (ix + 40) / 8;
       const slabZ = (iz + 36) / 8;
-      const shade = 0.97 + 0.03 * ((slabX * 7 + slabZ * 3) % 3) / 2;
-      quad(yard.x + (ix + 4) * scale, yard.z + (iz + 4) * scale,
-        7.92 * scale, 7.92 * scale, YARD_CONCRETE, 0, shade);
+      const shade = .988 + .012 * ((slabX * 7 + slabZ * 3) % 3) / 2;
+      yardQuad(ix + 4, iz + 4, 8, 8, YARD_CONCRETE, 0, shade, 0);
     }
   }
-  // Three flat, dark puddles sit slightly above the slabs to avoid z-fighting.
-  for (const [dx, dz, radius] of [
-    [-8, 14, 1.6], [15, -4, 1.1], [-24, -2, 2.0],
+  for (const [dx, dz, radius, aspect, phase] of [
+    [-8, 14, 1.6, .64, .2], [15, -4, 1.1, .81, 1.7], [-24, -2, 2.0, .69, 2.8],
   ] as const) {
-    disc(yard.x + dx * scale, yard.z + dz * scale,
-      radius * scale, YARD_PUDDLE, 28, 0.012);
+    puddle(yard.x + dx * scale, yard.z + dz * scale, radius * scale, aspect, phase);
   }
   // Loading-bay striping, crane clearance and worn yellow pedestrian marks.
   for (let i = 0; i < 13; i++) {
-    quad(yard.x + (-28 + i * 4.3) * scale, yard.z + 18.5 * scale,
-      2.2 * scale, 0.23 * scale, YARD_MARKING);
+    yardQuad(-28 + i * 4.3, 18.5, 2.2, .23, YARD_MARKING);
   }
   for (const x of [-36, 36]) {
     for (let i = 0; i < 8; i++) {
-      quad(yard.x + x * scale, yard.z + (-28 + i * 7.5) * scale,
-        0.23 * scale, 3.1 * scale, YARD_MARKING);
+      yardQuad(x, -28 + i * 7.5, .23, 3.1, YARD_MARKING);
     }
   }
   for (const z of [-2.5, 2.5]) {
-    quad(yard.x + 21 * scale, yard.z + (-12 + z) * scale,
-      8.4 * scale, 0.34 * scale, YARD_MARKING);
+    yardQuad(21, -12 + z, 8.4, .34, YARD_MARKING);
   }
   // Diagonal caution stripes near the fenced south entrance and crate pile.
   for (let i = 0; i < 6; i++) {
-    quad(yard.x + (12 + i * 2.2) * scale, yard.z + 29 * scale,
-      1.2 * scale, 0.28 * scale, YARD_MARKING, -0.62);
+    yardQuad(12 + i * 2.2, 29, 1.2, .28, YARD_MARKING, -.62);
   }
 
   // Front gardens follow the painting (QA pass 2, G1): open lawn, a few
@@ -183,18 +201,25 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Gr
     depthWrite: true, polygonOffset: true, polygonOffsetFactor: -1,
     polygonOffsetUnits: -1, side: THREE.DoubleSide,
   });
-  for (const [key, bucket] of buckets) {
+  function draw(bucket: ChunkBuffer, name: string, coat: THREE.Material): void {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(bucket.positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(bucket.colors, 3));
     geometry.setIndex(bucket.indices);
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = 'ground-detail-chunk-' + key;
+    const mesh = new THREE.Mesh(geometry, coat);
+    mesh.name = name;
     mesh.castShadow = false;
     mesh.receiveShadow = false;
     group.add(mesh);
   }
+  for (const [key, bucket] of buckets) draw(bucket, 'ground-detail-chunk-' + key, material);
+  draw(apron, 'ground-detail-crane-apron', material);
+  draw(water, 'ground-detail-crane-puddles', new THREE.MeshPhongMaterial({
+    vertexColors: true, side: THREE.DoubleSide, shininess: 48, specular: 0x666860,
+    transparent: true, opacity: .89, depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+  }));
   return group;
 }

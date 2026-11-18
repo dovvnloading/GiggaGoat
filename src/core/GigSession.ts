@@ -1,6 +1,6 @@
 import type { RigidBody } from '@dimforge/rapier3d-compat';
 import { GigCatalog, GigDirector, GigGameplayBridge, type AbilityFact, type GigEvent,
-  type GigOffer, type GigPropSpawn, type GigSnapshot, type PropFact, type StyleFact } from '../gigs';
+  type GigOffer, type GigRun, type GigPropSpawn, type GigSnapshot, type PropFact, type StyleFact } from '../gigs';
 import { RAPIER, collisionGroups, type PhysicsContact } from '../physics';
 import { heightAt, type PoiId } from '../world';
 import type { Game } from './Game';
@@ -20,6 +20,7 @@ export class GigSession {
   readonly director: GigDirector;
   private readonly bridge: GigGameplayBridge;
   private readonly temporary = new Map<string, TemporaryProp>();
+  private readonly restockedHayBales = new Map<string, RigidBody>();
   private readonly impacts = new Map<number, number>();
   private readonly abilities: AbilityFact[] = [];
   private readonly style: StyleFact[] = [];
@@ -38,7 +39,22 @@ export class GigSession {
     this.off.push(game.rules.events.on('style:scored', event =>
       this.style.push({ type: event.trick, points: event.points })));
     const run = this.director.active;
-    if (run?.status === 'running') this.spawn(run.setup.spawns, bodies);
+    if (run?.status === 'running') {
+      this.spawn(run.setup.spawns, bodies);
+      this.keepHayBalesAvailable(run);
+      if (run.setup.config.kind === 'hay-haul') {
+        const saved = new Map(bodies.map(body => [body.id, body]));
+        for (const { id } of run.setup.config.bales) {
+          const state = saved.get(id);
+          const body = game.colliders.bodies.get(id);
+          if (!state || state.broken || !body) continue;
+          body.setTranslation(state.position, true);
+          body.setRotation(state.rotation, true);
+          body.setLinvel(state.velocity, true);
+          game.physics.registerBody(body, { kind: 'prop', owner: id, data: 'hay-bale' });
+        }
+      }
+    }
     // A snapshot can contain a pending, verified award. Settle it once on load.
     this.bridge.settle();
   }
@@ -80,6 +96,8 @@ export class GigSession {
     this.clear();
     const setup = this.director.accept(offerId);
     this.spawn(setup.spawns);
+    const run = this.active;
+    if (run) this.keepHayBalesAvailable(run);
   }
   abandon(): void {
     this.director.abandon();
@@ -109,6 +127,15 @@ export class GigSession {
     }
   }
 
+  private keepHayBalesAvailable(run: GigRun): void {
+    if (run.setup.config.kind !== 'hay-haul') return;
+    for (const { id } of run.setup.config.bales) {
+      if (run.finishedIds.includes(id)) continue;
+      const replacement = this.game.restockHayBale(id);
+      if (replacement) this.restockedHayBales.set(id, replacement);
+    }
+  }
+
   noteAbility(fact: AbilityFact): void { this.abilities.push(fact); }
   private onContact(contact: PhysicsContact): void {
     if (contact.type !== 'impact' || !this.active || this.active.status !== 'running') return;
@@ -126,6 +153,7 @@ export class GigSession {
     const style = this.style.splice(0);
     const props: PropFact[] = [];
     if (run?.status === 'running') {
+      this.keepHayBalesAvailable(run);
       const relevant = new Set<string>(run.setup.spawns.map(s => s.id));
       if (run.setup.config.kind === 'hay-haul') {
         for (const bale of run.setup.config.bales) relevant.add(bale.id);
@@ -161,10 +189,19 @@ export class GigSession {
     this.impacts.clear();
   }
   saveBodies(): GigBodySave[] {
-    return [...this.temporary].map(([id, { body, broken }]) => ({
+    const save = (id: string, body: RigidBody, broken: boolean): GigBodySave => ({
       id, position: { ...body.translation() }, velocity: { ...body.linvel() },
       rotation: { ...body.rotation() }, broken,
-    }));
+    });
+    const bodies = [...this.temporary].map(([id, { body, broken }]) => save(id, body, broken));
+    const run = this.active;
+    if (run?.status === 'running' && run.setup.config.kind === 'hay-haul') {
+      for (const { id } of run.setup.config.bales) {
+        const body = this.game.colliders.bodies.get(id);
+        if (body?.isValid()) bodies.push(save(id, body, false));
+      }
+    }
+    return bodies;
   }
   get props(): ReadonlyMap<string, TemporaryProp> { return this.temporary; }
   private clear(): void {
@@ -173,6 +210,8 @@ export class GigSession {
       if (this.game.physics.raw.getRigidBody(body.handle)) this.game.physics.removeBody(body);
     }
     this.temporary.clear();
+    for (const [id, body] of this.restockedHayBales) this.game.removeRestockedHayBale(id, body);
+    this.restockedHayBales.clear();
     this.impacts.clear();
   }
   dispose(): void { this.clear(); for (const off of this.off.splice(0)) off(); }

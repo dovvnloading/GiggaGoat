@@ -2,7 +2,7 @@ import type { Game } from './Game';
 import type { GameView } from './GameView';
 import type { GameAudio } from './GameAudio';
 import { saveGame, type GameSettings } from './Persistence';
-import type { ModeId, Difficulty as BotDifficulty } from '../modes';
+import { MODE_DEFAULTS, TICKS_PER_SECOND, type ModeId, type Difficulty as BotDifficulty } from '../modes';
 import type { PoiId } from '../world';
 import { HUD_SPRITES, hudSpriteImage } from './HudSprites';
 import { MENU_SPRITES, menuSkin, menuSpriteUrl, type MenuSpriteName } from './MenuSprites';
@@ -75,9 +75,34 @@ const CSS = `
 .gg-shell .gg-stat strong{display:block;color:#ffe147;font-size:clamp(17px,2.1vw,24px);line-height:1.1}
 .gg-shell .gg-stat-coin{width:26px;height:26px;object-fit:contain}
 .gg-shell .gg-results{list-style:none;margin:8px 0 20px;padding:0;max-height:34vh;overflow:auto}
-.gg-shell .gg-results li{display:flex;justify-content:space-between;padding:7px 10px;margin:4px 0;
-  border-radius:8px;background:#ffffff19}
-.gg-shell footer{margin-top:14px;color:#e0cfea;font-size:10px;line-height:1.6}
+.gg-shell .gg-results li{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:3px 10px;
+  padding:7px 10px;margin:4px 0;border-radius:8px;background:#ffffff19;font-size:clamp(11px,1.45vw,14px)}
+.gg-shell .gg-results li[data-result-you]{background:#4b3248;box-shadow:inset 0 0 0 1px #ffd477}
+.gg-shell .gg-results:focus-visible{outline:2px solid #ffe44b;outline-offset:2px}
+.gg-shell .gg-result-label{display:flex;align-items:baseline;gap:6px}
+.gg-shell .gg-result-rank{color:#ffe092;font-variant-numeric:tabular-nums}
+.gg-shell .gg-result-tie,.gg-shell .gg-result-you{color:#fff0a2;font-size:.78em;letter-spacing:.55px}
+.gg-shell .gg-result-measure{display:flex;flex-wrap:wrap;column-gap:6px;align-items:baseline}
+.gg-shell .gg-result-measure small{color:#e3cfe9}
+.gg-shell .gg-party-outcome{display:grid;gap:2px;margin:0 0 8px}
+.gg-shell .gg-party-outcome strong{font-size:clamp(18px,2.8vw,27px);color:#ffe092;line-height:1.1}
+.gg-shell .gg-party-outcome span{font-size:clamp(11px,1.4vw,14px);color:#f0ddeb}
+.gg-shell footer{margin-top:14px;color:#e0cfea;font-size:clamp(10px,1.15vw,12px);line-height:1.5}
+.gg-shell .gg-title-actions{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:12px;align-items:start}
+.gg-shell .gg-quick-start{min-width:0;padding:8px 10px;border:1px solid #b794a466;border-radius:9px;background:#151b3870}
+.gg-shell .gg-quick-start h2{font-size:clamp(13px,1.45vw,16px);line-height:1.2;margin:0 0 6px;letter-spacing:0}
+.gg-shell .gg-quick-start dl{display:grid;gap:5px;margin:0}
+.gg-shell .gg-quick-start dt{color:#fff3d6;font-size:12px}
+.gg-shell .gg-quick-start dd{margin:0;color:#e6d6ec;font-size:11px;line-height:1.28;font-weight:700}
+.gg-shell .gg-party-grid{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+.gg-shell .gg-party-brief{min-width:0;padding:8px 10px;border-left:2px solid #ffc962;background:#151b3870;border-radius:0 6px 6px 0}
+.gg-shell .gg-party-brief strong{display:block;color:#ffe092;font-size:13px}
+.gg-shell .gg-party-brief p{margin:4px 0 0;font-size:13px;line-height:1.28}
+.gg-shell .gg-control-table{width:100%;border-collapse:collapse;font-size:clamp(11px,1.25vw,13px);line-height:1.3;text-shadow:none}
+.gg-shell .gg-control-table caption{margin-bottom:7px;font-size:14px;color:#ffe092;text-align:left}
+.gg-shell .gg-control-table :is(th,td){padding:5px;text-align:left;vertical-align:top;border-bottom:1px solid #e8cf993b}
+.gg-shell .gg-control-table thead{color:#ffe092;background:#19173194}
+.gg-shell .gg-control-table td{color:#fff3e8;font-weight:700}
 .gg-shell .gg-settings-head{display:flex;align-items:start;justify-content:space-between;gap:12px}
 .gg-shell .gg-icon-button{display:grid;place-items:center;flex:0 0 auto;
   width:53px;height:53px;border:0;padding:0;color:#fff7df;
@@ -105,6 +130,17 @@ const CSS = `
 .gg-shell .gg-settings-bottom span{font-size:11px;line-height:1.4;color:#dfd0e8}
 .gg-shell .gg-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;
   clip-path:inset(50%);white-space:nowrap}
+@media(max-height:660px) and (min-width:511px){
+ .gg-shell .gg-title-wordmark{font-size:clamp(40px,7vw,57px);line-height:1.02}
+ .gg-shell .gg-title-wordmark br{display:none}
+ .gg-shell .gg-title-actions .gg-art-button{min-height:54px;padding:2px 9px;border-width:14px;border-image-width:14px}
+}
+@media(max-height:460px) and (min-width:511px){
+ .gg-shell .gg-party-grid{gap:7px 10px;margin:7px 0 9px}
+ .gg-shell .gg-party-brief{padding:5px 7px}
+ .gg-shell .gg-party-actions{grid-template-columns:1fr 1fr}
+ .gg-shell .gg-party-actions .gg-art-button{min-height:47px;padding:2px 8px;border-width:13px;border-image-width:13px}
+}
 @media(max-width:510px){
  .gg-shell{padding:6px}
  .gg-shell-panel{width:100%;max-height:calc(100dvh - 12px);border-width:20px;
@@ -115,7 +151,9 @@ const CSS = `
  .gg-shell .gg-stat{min-height:79px;border-width:10px;border-image-width:10px}
  .gg-shell .gg-stat-coin{width:20px;height:20px}
  .gg-shell .gg-art-button{min-height:59px;font-size:13px}
- .gg-shell footer{font-size:9px}
+ .gg-shell .gg-title-actions{grid-template-columns:1fr}
+ .gg-shell .gg-quick-start dl{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .gg-shell .gg-control-table :is(th,td){padding:4px}
  .gg-shell .gg-tab{min-height:54px;border-width:13px;border-image-width:13px}
 }
 `;
@@ -135,6 +173,44 @@ const iconButton = (name: MenuSpriteName, label: string): string =>
 type SettingsTab = 'controls' | 'video' | 'audio';
 const SETTINGS_TABS: readonly SettingsTab[] = ['controls', 'video', 'audio'];
 const nice = (value: string): string => value.replace(/-/g, ' ').toUpperCase();
+
+const PARTY_ROUNDS: Record<ModeId, { name: string; venue: string; objective: string }> = {
+  'rising-tide': {
+    name: 'Rising Tide', venue: 'Billy Isle · start in Hoofington',
+    objective: 'Climb to higher ground as the sea rises. Outlast the other goats.',
+  },
+  'king-of-the-peak': {
+    name: 'King of the Peak', venue: 'Mt. Gigga summit',
+    objective: `Hold the summit zone alone to score. First to ${MODE_DEFAULTS.peakTargetScore} points wins.`,
+  },
+  'hay-heist': {
+    name: 'Hay Heist', venue: 'Hoofington and Crane Yard',
+    objective: `Steal rival hay and bring it to your barn. First team to ${MODE_DEFAULTS.hayTargetScore} deliveries wins.`,
+  },
+};
+
+const GAMEPLAY_BINDINGS: readonly {
+  action: string; keyboard: string; gamepad: string; quick?: boolean;
+}[] = [
+  { action: 'Move', keyboard: 'WASD or arrows', gamepad: 'Left stick', quick: true },
+  { action: 'Look', keyboard: 'Mouse or IJKL', gamepad: 'Right stick', quick: true },
+  { action: 'Jump / flip', keyboard: 'Space', gamepad: 'A', quick: true },
+  { action: 'Lick', keyboard: 'Hold right mouse', gamepad: 'Hold LB or LT', quick: true },
+  { action: 'Headbutt', keyboard: 'Hold, then release left mouse', gamepad: 'Hold, then release RT', quick: true },
+  { action: 'Toggle Hay-Build', keyboard: 'B', gamepad: 'Y', quick: true },
+  { action: 'Select build piece', keyboard: '1–4', gamepad: 'D-pad' },
+  { action: 'Place build piece', keyboard: 'Left click in Hay-Build', gamepad: 'RT in Hay-Build' },
+  { action: 'Sprint', keyboard: 'Shift', gamepad: 'RB' },
+  { action: 'Reel tongue', keyboard: 'R', gamepad: 'Press right stick' },
+  { action: 'Fling', keyboard: 'F', gamepad: 'Press left stick' },
+  { action: 'Bleat / open gig board', keyboard: 'E', gamepad: 'X' },
+  { action: 'Graze in Mow-Down', keyboard: 'G', gamepad: 'X' },
+  { action: 'Flop', keyboard: 'Q', gamepad: 'B' },
+  { action: 'Capture mouse', keyboard: 'C', gamepad: '—' },
+  { action: 'Open party picker', keyboard: 'P', gamepad: 'Pause → Party Modes' },
+  { action: 'Pause', keyboard: 'Esc', gamepad: 'Start' },
+  { action: 'Performance overlay', keyboard: 'F3', gamepad: '—' },
+];
 
 export class GameMenu {
   readonly root = document.createElement('div');
@@ -228,7 +304,7 @@ export class GameMenu {
     });
     this.root.addEventListener('change', event => {
       const element = event.target as HTMLInputElement | HTMLSelectElement;
-      if (element.id === 'gg-mode') this.mode = element.value as ModeId;
+      if (element.id === 'gg-mode') this.selectPartyMode(element.value);
       if (element.id === 'gg-bots') this.botCount = Number(element.value);
       if (element.id === 'gg-difficulty') this.difficulty = element.value as BotDifficulty;
       this.editSetting(element);
@@ -369,6 +445,7 @@ export class GameMenu {
     }
     if (event.code === 'ArrowDown' || event.code === 'ArrowUp') {
       const focused = document.activeElement;
+      if (this.screen === 'party-results' && focused === this.root.querySelector('.gg-results')) return;
       if (focused instanceof HTMLInputElement && focused.type === 'range') return;
       if (focused instanceof HTMLSelectElement) return;
       event.preventDefault();
@@ -490,6 +567,12 @@ export class GameMenu {
       const select = !!buttons[0]?.pressed;
       const back = !!buttons[1]?.pressed;
       const menu = !!buttons[9]?.pressed;
+      const scroll = pad.axes[3] ?? 0;
+      if (Math.abs(scroll) > .2) {
+        const region = this.screen === 'party-results' ? '.gg-results' :
+          this.screen === 'settings' && this.settingsTab === 'controls' ? '.gg-shell-panel' : null;
+        if (region) this.root.querySelector(region)?.scrollBy(0, scroll * 14);
+      }
       if (menu && !this.padMenu) {
         if (this.screen === 'playing') this.setScreen('pause'); else this.back();
       }
@@ -529,7 +612,7 @@ export class GameMenu {
   }
   private titleBody(): string {
     return `<div class="gg-shell-eyebrow">BILLY ISLE · AN OPEN WORLD OF BAD IDEAS</div>
-      <h1>GIGGA<br>GOAT!</h1>
+      <h1 class="gg-title-wordmark">GIGGA <br>GOAT!</h1>
       <p>Cause chaos. Grow huge. Pick up paid gigs. Or challenge seven other goats while the tide climbs.</p>
       <div class="gg-stats">
         <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}>
@@ -540,20 +623,39 @@ export class GameMenu {
         <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}>
           <strong>3</strong><span>PARTY MODES</span></div>
       </div>
-      <div class="gg-options">${menuButton('play','▶ PLAY · FREE ROAM',true)}
-      ${menuButton('party','⚡ PARTY MODES')}
-      ${menuButton('settings','⚙ SETTINGS')}</div>
-      <footer>WASD or arrows move · Mouse or IJKL look · C capture mouse · Space jump · E job boards · P party · Esc pause</footer>`;
+      <div class="gg-title-actions">
+        <div class="gg-options">${menuButton('play','▶ PLAY · FREE ROAM',true)}
+        ${menuButton('party','⚡ PARTY MODES')}
+        ${menuButton('settings','⚙ SETTINGS')}</div>
+        <section class="gg-quick-start" aria-labelledby="gg-quick-start">
+          <h2 id="gg-quick-start">QUICK START</h2>
+          <dl>${GAMEPLAY_BINDINGS.filter(binding => binding.quick).map(binding =>
+          `<div><dt>${binding.action}</dt><dd>${binding.keyboard} · ${binding.gamepad}</dd></div>`).join('')}</dl>
+        </section>
+      </div>`;
   }
+  private selectPartyMode(value: string): void {
+    if (!Object.hasOwn(PARTY_ROUNDS, value)) return;
+    this.mode = value as ModeId;
+    const { venue, objective } = PARTY_ROUNDS[this.mode];
+    const venueLabel = this.root.querySelector('[data-party-venue]');
+    const objectiveLabel = this.root.querySelector('[data-party-objective]');
+    if (venueLabel) venueLabel.textContent = venue;
+    if (objectiveLabel) objectiveLabel.textContent = objective;
+  }
+
   private partyBody(): string {
+    const selected = PARTY_ROUNDS[this.mode];
     return `<div class="gg-shell-eyebrow">SOLO VS PHYSICS-DRIVEN BOTS</div><h2>START A PARTY</h2>
-      <p>Everyone gets the same moves. Outsmart the bots, stay above the tide and claim the top spot.</p>
-      <div class="gg-grid">
-      <label class="gg-select-label">ROUND<select id="gg-mode" ${menuSkin(MENU_SPRITES.stat)}>
-        <option value="rising-tide" ${this.mode==='rising-tide'?'selected':''}>Rising Tide · survive</option>
-        <option value="king-of-the-peak" ${this.mode==='king-of-the-peak'?'selected':''}>King of the Peak · capture</option>
-        <option value="hay-heist" ${this.mode==='hay-heist'?'selected':''}>Hay Heist · steal hay</option>
+      <div class="gg-grid gg-party-grid">
+      <label class="gg-select-label">ROUND<select id="gg-mode" aria-describedby="gg-party-brief" ${menuSkin(MENU_SPRITES.stat)}>
+        ${Object.entries(PARTY_ROUNDS).map(([id, round]) =>
+          `<option value="${id}" ${id === this.mode ? 'selected' : ''}>${round.name}</option>`).join('')}
       </select></label>
+      <div class="gg-party-brief" id="gg-party-brief" aria-live="polite" aria-atomic="true">
+        <strong data-party-venue>${selected.venue}</strong>
+        <p data-party-objective>${selected.objective}</p>
+      </div>
       <label class="gg-select-label">BOT GOATS<select id="gg-bots" ${menuSkin(MENU_SPRITES.stat)}>
         ${[3,4,5,6,7].map(n=>`<option value="${n}" ${n===this.botCount?'selected':''}>${n} bots</option>`).join('')}
       </select></label>
@@ -562,7 +664,7 @@ export class GameMenu {
         <option value="normal" ${this.difficulty==='normal'?'selected':''}>Normal · lively</option>
         <option value="hard" ${this.difficulty==='hard'?'selected':''}>Hard · ruthless</option>
       </select></label></div>
-      <div class="gg-options">${menuButton('start-party','⚡ LAUNCH ROUND',true)}
+      <div class="gg-options gg-party-actions">${menuButton('start-party','⚡ LAUNCH ROUND',true)}
       ${menuButton('back','← BACK')}</div>`;
   }
   private settingsBody(): string {
@@ -591,7 +693,12 @@ export class GameMenu {
       `<button type="button" class="gg-switch" role="switch" aria-labelledby="gg-invert-label"` +
       ` aria-checked="${s.invertY}" data-setting-toggle="invertY"` +
       ` ${menuSkin(s.invertY ? MENU_SPRITES.toggleOn : MENU_SPRITES.toggleOff)}>` +
-      `<span class="gg-visually-hidden">${s.invertY ? 'On' : 'Off'}</span></button></div>`;
+      `<span class="gg-visually-hidden">${s.invertY ? 'On' : 'Off'}</span></button></div>` +
+      `<table class="gg-control-table"><caption>GAMEPLAY CONTROLS</caption>` +
+      `<thead><tr><th scope="col">Action</th><th scope="col">Keyboard &amp; mouse</th><th scope="col">Gamepad</th></tr></thead><tbody>` +
+      GAMEPLAY_BINDINGS.map(binding =>
+        `<tr><th scope="row">${binding.action}</th><td>${binding.keyboard}</td><td>${binding.gamepad}</td></tr>`).join('') +
+      `</tbody></table>`;
     const video = slider('fov', 'FIELD OF VIEW', 55, 95, 1, s.fov, s.fov + '°') +
       `<label class="gg-setting gg-select-label">GRAPHICS QUALITY<select id="gg-setting-graphics"` +
       ` ${menuSkin(MENU_SPRITES.stat)}>` +
@@ -656,13 +763,59 @@ export class GameMenu {
   private partyResultsBody(): string {
     const match = this.game.party.match;
     if (!match) return '';
-    const players = match.players;
-    const sorted = match.placements.slice().sort((a,b)=>a.rank-b.rank || a.playerId.localeCompare(b.playerId));
+    const { mode, players, placements, teamPlacements, tick, playTicks, peak } = match.toJSON();
+    const teams = mode === 'hay-heist';
+    const rising = mode === 'rising-tide';
+    const playerTeam = players.find(player => player.id === 'player')?.teamId;
+    const timed = (ticks: number): string => (ticks / TICKS_PER_SECOND).toFixed(1) + ' s';
+    // Eliminations are stamped in absolute ticks. Play time excludes the countdown.
+    const activeStart = tick - playTicks;
+    const survivors = rising ? players.filter(player => player.eliminatedAt === null).length : 0;
+    const rows: Array<{ rank: number; name: string; you: boolean; measure: string; detail?: string }> =
+      teams ? teamPlacements.map(team => ({
+        rank: team.rank, name: nice(team.teamId) + ' TEAM', you: team.teamId === playerTeam,
+        measure: team.score + (team.score === 1 ? ' bale delivered' : ' bales delivered'),
+      })) : placements.map(place => {
+        const player = players.find(entry => entry.id === place.playerId);
+        const row = { rank: place.rank, name: player?.name ?? place.playerId, you: place.playerId === 'player' };
+        if (rising) {
+          const survived = (player?.eliminatedAt ?? tick) - activeStart;
+          const detail = player?.eliminatedAt === null && survivors > 1
+            ? player.headY.toFixed(2) + ' m final head height' : undefined;
+          return { ...row, measure: timed(survived) + ' survived', detail };
+        }
+        return { ...row, measure: place.score + ' peak points',
+          detail: peak?.ownerId === place.playerId ? 'Held summit at finish' : undefined };
+      });
+    const rankCounts = new Map<number, number>();
+    for (const row of rows) rankCounts.set(row.rank, (rankCounts.get(row.rank) ?? 0) + 1);
+    const yours = rows.find(row => row.you);
+    const tied = (rank: number): boolean => (rankCounts.get(rank) ?? 0) > 1;
+    let outcome = 'ROUND COMPLETE';
+    if (yours) {
+      if (yours.rank === 1) {
+        outcome = tied(1) ? (teams ? 'YOUR TEAM TIED FOR FIRST' : 'YOU TIED FOR FIRST') :
+          (teams ? 'YOUR TEAM WON' : 'YOU WON');
+      } else {
+        outcome = (teams ? 'YOUR TEAM' : 'YOU') +
+          (tied(yours.rank) ? ' TIED AT #' : ' PLACED #') + yours.rank;
+      }
+    }
+    const summary = rising ? 'Final tide ' + match.tideLevel + ' m' :
+      !teams ? 'Round time ' + timed(playTicks) : '';
     return `<div class="gg-shell-eyebrow">ROUND COMPLETE</div><h2>${esc(this.game.party.title)}</h2>
-      <p>${esc(sorted.some(p=>p.playerId==='player' && p.rank===1)?'TOP GOAT! Incredible positioning.':'Every splash teaches you something.')}</p>
-      <ol class="gg-results">${sorted.map(p=>`<li><span>#${p.rank} · ${esc(players.find(g=>g.id===p.playerId)?.name ?? p.playerId)}</span>
-        <strong>${p.score} pts</strong></li>`).join('')}</ol>
-      <div class="gg-options">${menuButton('leave-party','▶ RETURN TO FREE ROAM',true)}
+      <div class="gg-party-outcome"><strong>${outcome}</strong>
+      <span>${esc([yours?.measure, summary].filter(Boolean).join(' · '))}</span></div>
+      <ol class="gg-results" aria-label="Placements" tabindex="0">${rows.map(row => `
+        <li${row.you ? ' data-result-you' : ''}>
+          <div class="gg-result-label"><strong class="gg-result-rank">#${row.rank}</strong>
+          ${tied(row.rank) ? '<span class="gg-result-tie">TIE</span>' : ''}
+          <span>${row.you && !teams ? '<strong class="gg-result-you">YOU</strong>' : esc(row.name)}</span>
+          ${row.you && teams ? '<strong class="gg-result-you">YOU</strong>' : ''}</div>
+          <div class="gg-result-measure"><strong>${esc(row.measure)}</strong>
+          ${row.detail ? `<small>${esc(row.detail)}</small>` : ''}</div>
+        </li>`).join('')}</ol>
+      <div class="gg-options gg-party-actions">${menuButton('leave-party','▶ RETURN TO FREE ROAM',true)}
       ${menuButton('title','⌂ TITLE')}</div>`;
   }
   private render(): void {
@@ -676,13 +829,16 @@ export class GameMenu {
          <div class="gg-options">${menuButton('resume','▶ RESUME',true)}
          ${this.game.gigs.active?.status === 'running' ? menuButton('abandon-gig','✕ ABANDON GIG') : ''}
          ${this.game.party.match ? '' : menuButton('party','⚡ PARTY MODES')}
-         ${menuButton('settings','⚙ SETTINGS')}${menuButton('title','⌂ QUIT TO TITLE')}</div>` :
+         ${menuButton('settings','⚙ CONTROLS &amp; SETTINGS')}${menuButton('title','⌂ QUIT TO TITLE')}</div>` :
       this.screen === 'party' ? this.partyBody() :
       this.screen === 'settings' ? this.settingsBody() :
       this.screen === 'board' ? this.boardBody() :
       this.screen === 'gig-results' ? this.gigResultsBody() : this.partyResultsBody();
+    const scrollHelp = this.screen === 'party-results' ||
+      (this.screen === 'settings' && this.settingsTab === 'controls')
+      ? ' · PgUp/PgDn or right stick scroll' : '';
     this.root.innerHTML = `<section class="gg-shell-panel" role="dialog" aria-modal="true" ${menuSkin(MENU_SPRITES.panel)}>${body}
-      <footer>ENTER / CLICK select · ↑↓ navigate · GAMEPAD A select, B back · ESC back</footer></section>`;
+      <footer>Enter / click select · ↑↓ navigate · Gamepad A select, B back · Esc back${scrollHelp}</footer></section>`;
     this.syncFullscreen();
     this.root.querySelector<HTMLElement>('button')?.focus();
   }

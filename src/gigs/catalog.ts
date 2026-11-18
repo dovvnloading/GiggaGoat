@@ -15,7 +15,7 @@ export const GIG_INFO: Readonly<Record<GigId, GigInfo>> = {
   'hay-haul': {
     id: 'hay-haul', title: 'HAY HAUL', poiId: 'hoofington',
     pitch: 'One tongue. Too much hay. Nobody said it had to be tidy.',
-    instruction: 'Lick the marked bales into the barn. Chain-tow two for a combo.',
+    instruction: 'Drag the marked bales to the drop beside the barn. Chain-tow two for a combo.',
     verbs: ['tongue'], baseCoins: 64,
     cosmetic: { id: 'hay-hat', name: 'Haywire Hat', slot: 'hat', color: '#F2C14F' },
   },
@@ -214,6 +214,19 @@ export class GigCatalog {
   }
   /** A setup is a request to the host for temporary physics objects, not a physics simulation. */
   build(offer: GigOffer): GigSetup {
+    return this.buildVariant(offer, false);
+  }
+
+  restoreSetup(saved: GigSetup): GigSetup | null {
+    const current = this.build(saved.offer);
+    const serialized = JSON.stringify(saved);
+    if (JSON.stringify(current) === serialized) return saved;
+    if (current.config.kind === 'hay-haul' &&
+        JSON.stringify(this.buildVariant(saved.offer, true)) === serialized) return current;
+    return null;
+  }
+
+  private buildVariant(offer: GigOffer, legacyHayDrop: boolean): GigSetup {
     if (offer.poiId !== GIG_INFO[offer.gigId]?.poiId ||
       offer.variantSeed !== this.makeOffer(offer.gigId, offer.difficulty, offer.cycle,
         Number(offer.id.split(':')[2])).variantSeed) throw new RangeError('Offer does not match catalog');
@@ -230,12 +243,21 @@ export class GigCatalog {
         const barn = requireKind(this.props, 'hoofington', 'barn')[0]!;
         const bales = rng.shuffle(requireKind(this.props, 'hoofington', 'hay-bale')
           .filter(p => p.body.type === 'dynamic')).slice(0, [3, 4, 5][tier]!);
-        const target = plus(barn.transform.position, 0, -barn.size.y / 2 + 1, 0);
-        config = { kind: 'hay-haul', barn: target, radius: 6.5,
+        const { position, rotationY } = barn.transform;
+        const scale = this.islandSize / 600;
+        // In the open apron south-east of the barn, between the silo and the house.
+        const side = -(barn.size.x / 2 + 2.95 * scale);
+        const front = 2.75 * scale;
+        const x = position.x + Math.cos(rotationY) * side + Math.sin(rotationY) * front;
+        const z = position.z - Math.sin(rotationY) * side + Math.cos(rotationY) * front;
+        const target = legacyHayDrop ? plus(position, 0, -barn.size.y / 2 + 1, 0) :
+          { x, y: this.terrainY(x, z) + .9 * scale, z };
+        const radius = legacyHayDrop ? 6.5 : 2.6 * scale;
+        config = { kind: 'hay-haul', barn: target, radius,
           bales: bales.map(b => ({ id: b.id, start: copy(b.transform.position) })),
           required: bales.length };
         start = copy(bales[0]!.transform.position);
-        markers = [marker('barn', 'Barn drop', target, 6.5, 'destination'),
+        markers = [marker('barn', 'Barn drop', target, radius, 'destination'),
           ...bales.map((b, i) => marker(b.id, 'Bale ' + (i + 1), b.transform.position, 1.3, 'start'))];
         break;
       }
@@ -393,8 +415,10 @@ export class GigCatalog {
       }
     }
     const maxTicks = LIMIT_SECONDS[offer.gigId][tier]! * TICKS_PER_SECOND;
+    const info = this.info(offer.gigId);
+    if (legacyHayDrop) info.instruction = 'Lick the marked bales into the barn. Chain-tow two for a combo.';
     return {
-      offer: structuredClone(offer), info: this.info(offer.gigId), start, config,
+      offer: structuredClone(offer), info, start, config,
       spawns, markers, maxTicks, goldTicks: Math.round(maxTicks * 0.55),
       silverTicks: Math.round(maxTicks * 0.82),
     };

@@ -10,6 +10,8 @@ import { buildDamLandscape } from './visual-dam-landscape';
 export interface DamVisuals {
   group: THREE.Group;
   update(seconds: number): void;
+  setWaterLevel(tide: number): void;
+  refreshWaterLight(): void;
   /** Async model arrival changes the static shadow casters. */
   consumeShadowChange(): boolean;
   dispose(): void;
@@ -80,7 +82,7 @@ export function prepareDamModel(root: THREE.Object3D, island: IslandData): DamMe
   const group = new THREE.Group();
   group.name = 'the-dam-model';
   type Bucket = { material: THREE.Material; geometries: THREE.BufferGeometry[];
-    shadow: boolean; waterfall: boolean; names: string[] };
+    shadow: boolean; waterfall: boolean; water: boolean; names: string[] };
   const buckets = new Map<string, Bucket>();
   const clonedFalls = new Map<THREE.Material, THREE.Material>();
   const waterfallMaps: THREE.Texture[] = [];
@@ -112,6 +114,7 @@ export function prepareDamModel(root: THREE.Object3D, island: IslandData): DamMe
       return;
     }
     const isFall = namedPart(object, /^Water_Fall_/i);
+    const isWater = isFall || namedPart(object, /^Water_(?:Foam_|Reservoir$)/i);
     const isRock = namedPart(object, /^Abutment_Rock_/i);
     const shadow = namedPart(object, /^(?:Wall_|Dam_Wall|ControlHouse_)/i);
     if (isRock && !needsAbutmentRock(object, island)) return;
@@ -130,6 +133,7 @@ export function prepareDamModel(root: THREE.Object3D, island: IslandData): DamMe
       mesh.name = object.name;
       mesh.castShadow = shadow;
       mesh.receiveShadow = !isFall;
+      mesh.userData['damWater'] = isWater;
       group.add(mesh);
       return;
     }
@@ -139,10 +143,10 @@ export function prepareDamModel(root: THREE.Object3D, island: IslandData): DamMe
         const attr = geometry.getAttribute(name);
         return name + ':' + attr.itemSize + ':' + attr.normalized;
       }).join(',');
-    const key = material.uuid + ':' + (shadow ? 'S' : 's') + ':' + signature;
+    const key = material.uuid + ':' + Number(shadow) + ':' + Number(isWater) + ':' + signature;
     let bucket = buckets.get(key);
     if (!bucket) {
-      bucket = { material, geometries: [], shadow, waterfall: isFall, names: [] };
+      bucket = { material, geometries: [], shadow, waterfall: isFall, water: isWater, names: [] };
       buckets.set(key, bucket);
     }
     bucket.geometries.push(geometry);
@@ -165,6 +169,7 @@ export function prepareDamModel(root: THREE.Object3D, island: IslandData): DamMe
           'Dam_details_merged-' + i + '-' + part;
       mesh.castShadow = bucket.shadow;
       mesh.receiveShadow = !bucket.waterfall;
+      mesh.userData['damWater'] = bucket.water;
       group.add(mesh);
     }
   }
@@ -234,6 +239,7 @@ function buildProceduralDamFallback(island: IslandData): THREE.Group {
     return geometry;
   });
   addBatch('dam-fallback-spillways', water, falls, false);
+  fallback.getObjectByName('dam-fallback-spillways')!.userData['damWater'] = true;
   return fallback;
 }
 
@@ -258,7 +264,8 @@ function disposeMeshes(object: THREE.Object3D): void {
 }
 
 /** Load only at runtime; headless island creation and Rapier require no GLB. */
-export function buildDamVisuals(island: IslandData): DamVisuals {
+export function buildDamVisuals(island: IslandData,
+  light = new THREE.Vector3(1, 1, 1)): DamVisuals {
   const group = new THREE.Group();
   group.name = 'the-dam-hero';
   const placement = getDamPlacement(island);
@@ -269,10 +276,41 @@ export function buildDamVisuals(island: IslandData): DamVisuals {
   let waterfallMaps: THREE.Texture[] = [];
   let shadowChange = false;
   let disposed = false;
+  let tide = island.seaLevel;
   // Scenery uses non-shadow-casting instances, so its asynchronous arrival
   // must NOT hide the procedural reservoir before the hero GLB is ready.
-  const landscape = buildDamLandscape(island, () => {});
+  const landscape = buildDamLandscape(island, () => {}, light);
   group.add(landscape.group);
+
+  let waterMeshes: Array<{ mesh: THREE.Mesh; highest: number }> = [];
+  let emissive = new Map<THREE.MeshStandardMaterial, number>();
+  function trackWater(model: THREE.Group): void {
+    waterMeshes = [];
+    emissive = new Map();
+    model.traverse(object => {
+      if (!(object instanceof THREE.Mesh) || object.userData['damWater'] !== true) return;
+      object.geometry.computeBoundingBox();
+      waterMeshes.push({ mesh: object,
+        highest: placement.position.y + object.geometry.boundingBox!.max.y * placement.scale });
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      for (const material of materials) {
+        if (material instanceof THREE.MeshStandardMaterial && material.emissive.getHex() !== 0) {
+          emissive.set(material, material.emissiveIntensity);
+        }
+      }
+    });
+  }
+  function setWaterLevel(level: number): void {
+    tide = level;
+    landscape.setWaterLevel(tide);
+    for (const { mesh, highest } of waterMeshes) mesh.visible = tide < highest;
+  }
+  function refreshWaterLight(): void {
+    landscape.refreshWaterLight();
+    for (const [material, intensity] of emissive) material.emissiveIntensity = intensity * light.x;
+  }
+  trackWater(fallback);
+  setWaterLevel(tide);
 
   if (typeof document !== 'undefined') {
     const url = publicAssetUrl('assets/library/custom/the-dam/the-dam.glb');
@@ -295,6 +333,9 @@ export function buildDamVisuals(island: IslandData): DamVisuals {
           }
           waterfallMaps = prepared.waterfallMaps;
           group.add(prepared.group);
+          trackWater(prepared.group);
+          setWaterLevel(tide);
+          refreshWaterLight();
           group.remove(fallback);
           disposeMeshes(fallback);
           shadowChange = true;
@@ -313,6 +354,8 @@ export function buildDamVisuals(island: IslandData): DamVisuals {
       scrollDamWaterfallUVs(waterfallMaps, seconds);
       landscape.update(seconds);
     },
+    setWaterLevel,
+    refreshWaterLight,
     consumeShadowChange(): boolean {
       const changed = shadowChange;
       shadowChange = false;

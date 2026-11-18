@@ -86,6 +86,39 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
   return colliders;
 }
 
+export function addRapierPropCollider(world: RAPIER.World,
+  { props, bodies }: Pick<ColliderBuild, 'props' | 'bodies'>, collider: PropColliderDescriptor): void {
+  let desc: RAPIER.ColliderDesc;
+  if (collider.shape === 'cuboid') {
+    desc = RAPIER.ColliderDesc.cuboid(
+      collider.size.x / 2, collider.size.y / 2, collider.size.z / 2);
+  } else if (collider.shape === 'cylinder') {
+    desc = RAPIER.ColliderDesc.cylinder(
+      collider.size.y / 2, Math.max(collider.size.x, collider.size.z) / 2);
+  } else {
+    const hullDesc = RAPIER.ColliderDesc.convexHull(collider.vertices!);
+    if (!hullDesc) throw new Error('Invalid convex collider for ' + collider.id);
+    desc = hullDesc;
+  }
+  const { position, rotationY } = collider.transform;
+  const rotation = { x: 0, y: Math.sin(rotationY / 2), z: 0, w: Math.cos(rotationY / 2) };
+  desc.setFriction(0.78).setRestitution(0.12);
+  let result: RAPIER.Collider;
+  if (collider.body.type === 'dynamic') {
+    const body = world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic().setTranslation(position.x, position.y, position.z)
+        .setRotation(rotation).setLinearDamping(0.2).setAngularDamping(0.32),
+    );
+    desc.setMass(collider.body.mass);
+    result = world.createCollider(desc, body);
+    bodies.set(collider.id, body);
+  } else {
+    desc.setTranslation(position.x, position.y, position.z).setRotation(rotation);
+    result = world.createCollider(desc);
+  }
+  props.set(collider.id, result);
+}
+
 /** Call after await RAPIER.init(). No WebGL, DOM, or renderer is required. */
 export function buildRapierColliders(world: RAPIER.World, island: IslandData): ColliderBuild {
   const first = island.colliders[0];
@@ -107,36 +140,7 @@ export function buildRapierColliders(world: RAPIER.World, island: IslandData): C
   const props = new Map<string, RAPIER.Collider>();
   const bodies = new Map<string, RAPIER.RigidBody>();
   for (const collider of island.colliders) {
-    if (collider.shape === 'heightfield') continue;
-    let desc: RAPIER.ColliderDesc;
-    if (collider.shape === 'cuboid') {
-      desc = RAPIER.ColliderDesc.cuboid(
-        collider.size.x / 2, collider.size.y / 2, collider.size.z / 2);
-    } else if (collider.shape === 'cylinder') {
-      desc = RAPIER.ColliderDesc.cylinder(
-        collider.size.y / 2, Math.max(collider.size.x, collider.size.z) / 2);
-    } else {
-      const hullDesc = RAPIER.ColliderDesc.convexHull(collider.vertices!);
-      if (!hullDesc) throw new Error('Invalid convex collider for ' + collider.id);
-      desc = hullDesc;
-    }
-    const { position, rotationY } = collider.transform;
-    const rotation = { x: 0, y: Math.sin(rotationY / 2), z: 0, w: Math.cos(rotationY / 2) };
-    desc.setFriction(0.78).setRestitution(0.12);
-    let result: RAPIER.Collider;
-    if (collider.body.type === 'dynamic') {
-      const body = world.createRigidBody(
-        RAPIER.RigidBodyDesc.dynamic().setTranslation(position.x, position.y, position.z)
-          .setRotation(rotation).setLinearDamping(0.2).setAngularDamping(0.32),
-      );
-      desc.setMass(collider.body.mass);
-      result = world.createCollider(desc, body);
-      bodies.set(collider.id, body);
-    } else {
-      desc.setTranslation(position.x, position.y, position.z).setRotation(rotation);
-      result = world.createCollider(desc);
-    }
-    props.set(collider.id, result);
+    if (collider.shape !== 'heightfield') addRapierPropCollider(world, { props, bodies }, collider);
   }
   return { terrain, paths, props, bodies };
 }

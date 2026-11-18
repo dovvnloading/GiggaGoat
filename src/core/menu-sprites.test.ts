@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GameMenu } from './GameMenu';
 import { MENU_SPRITES, menuSpriteUrl } from './MenuSprites';
 import { DEFAULT_SETTINGS } from './Persistence';
+import { MODE_DEFAULTS, type PartyMatch } from '../modes';
+import { frame, goat, readyMatch } from '../modes/test-utils';
 
 const manifest = JSON.parse(readFileSync(
   resolve(process.cwd(), 'public/assets/ui/sprites/sprites.json'), 'utf8',
@@ -30,12 +32,16 @@ class NodeStub {
   };
   private listeners = new Map<string, Array<(event: any) => void>>();
   private controls: NodeStub[] = [];
+  private panel: NodeStub | null = null;
+  scrollTop = 0;
+  private brief: NodeStub[] = [];
   private html = '';
   owner: NodeStub | null = null;
   constructor(readonly doc: DocumentStub) {}
 
   set innerHTML(html: string) {
     this.html = html;
+    this.panel = html.includes('class="gg-shell-panel"') ? new NodeStub(this.doc) : null;
     this.controls = [...html.matchAll(/<(button|select|input)\b([^>]*)>/gi)].map(match => {
       const tag = match[1]!.toLowerCase();
       const node = tag === 'button' ? new ButtonStub(this.doc) :
@@ -46,6 +52,13 @@ class NodeStub {
         node.setAttribute(attr[1]!, attr[2] ?? '');
       return node;
     });
+    this.brief = [...html.matchAll(/<(strong|p) (data-party-(?:venue|objective))>([^<]*)<\//g)]
+      .map(match => {
+        const node = new NodeStub(this.doc);
+        node.setAttribute(match[2]!, '');
+        node.textContent = match[3]!;
+        return node;
+      });
   }
   get innerHTML(): string { return this.html; }
   setAttribute(name: string, value: string): void {
@@ -77,10 +90,11 @@ class NodeStub {
     return null;
   }
   querySelectorAll<T = NodeStub>(selector: string): T[] {
+    if (selector === '.gg-shell-panel') return (this.panel ? [this.panel] : []) as T[];
     if (selector === 'button,select,input') return this.controls as T[];
     if (selector === 'button') return this.controls.filter(n => n.tagName === 'BUTTON') as T[];
     const match = /^\[([\w-]+)(?:="([^"]+)")?\]$/.exec(selector);
-    if (match) return this.controls.filter(n => n.hasAttribute(match[1]!) &&
+    if (match) return [...this.controls, ...this.brief].filter(n => n.hasAttribute(match[1]!) &&
       (match[2] === undefined || n.attrs.get(match[1]!) === match[2])) as T[];
     return [];
   }
@@ -99,6 +113,7 @@ class NodeStub {
     this.owner?.dispatch('focusin', this);
   }
   click(): void { this.owner?.dispatch('click', this); }
+  scrollBy(_x: number, y: number): void { this.scrollTop += y; }
 }
 class ButtonStub extends NodeStub {}
 class InputStub extends NodeStub {}
@@ -138,7 +153,8 @@ function setup() {
   const game = {
     rules: { wallet: { coins: 20 } },
     gigs: { director: { ownedCosmetics: [] }, active: null },
-    party: { match: null, title: 'Rising Tide', start: vi.fn() },
+    party: { match: null as PartyMatch | null, title: 'Rising Tide',
+      start: vi.fn(), returnToFreeRoam: vi.fn() },
     physics: { stepCount: 0 },
   };
   const view = {
@@ -210,7 +226,7 @@ describe('sprite-backed menu DOM', () => {
     const { menu, game, view, root, setScreen } = setup();
     try {
       expect(view.alignCameraForPlay).not.toHaveBeenCalled();
-      expect(root.innerHTML).toContain('WASD or arrows move · Mouse or IJKL look · C capture mouse');
+      expect(root.innerHTML).toContain('<dt>Move</dt><dd>WASD or arrows · Left stick</dd>');
 
       root.querySelector<ButtonStub>('[data-action="play"]')!.click();
       expect(view.alignCameraForPlay).toHaveBeenCalledTimes(1);
@@ -228,6 +244,182 @@ describe('sprite-backed menu DOM', () => {
       expect(game.party.start.mock.invocationCallOrder[0]!)
         .toBeLessThan(view.alignCameraForPlay.mock.invocationCallOrder[1]!);
       expect(view.paused).toBe(false);
+    } finally { menu.dispose(); }
+  });
+
+  it('updates each party objective and venue in place and launches the selected round', () => {
+    const { menu, doc, game, root } = setup();
+    try {
+      root.querySelector<ButtonStub>('[data-action="party"]')!.click();
+      const select = root.querySelector<SelectStub>('[id="gg-mode"]')!;
+      const venue = root.querySelector('[data-party-venue]')!;
+      const objective = root.querySelector('[data-party-objective]')!;
+      expect(venue.textContent).toBe('Billy Isle · start in Hoofington');
+      expect(objective.textContent).toContain('sea rises');
+      select.focus();
+
+      select.value = 'king-of-the-peak';
+      root.dispatch('change', select);
+      expect(venue.textContent).toBe('Mt. Gigga summit');
+      expect(objective.textContent).toContain(MODE_DEFAULTS.peakTargetScore + ' points');
+
+      select.value = 'hay-heist';
+      root.dispatch('change', select);
+      expect(venue.textContent).toBe('Hoofington and Crane Yard');
+      expect(objective.textContent).toContain(MODE_DEFAULTS.hayTargetScore + ' deliveries');
+      expect(objective.textContent).not.toContain('tide');
+      expect(doc.activeElement).toBe(select);
+      expect(root.querySelector('[id="gg-mode"]')).toBe(select);
+
+      root.querySelector<ButtonStub>('[data-action="start-party"]')!.click();
+      expect(game.party.start).toHaveBeenCalledWith('hay-heist', 3, 'normal');
+    } finally { menu.dispose(); }
+  });
+
+  it('reuses the quick-start bindings in the Controls tab and returns directly to pause', () => {
+    const { menu, win, root, view, setScreen } = setup();
+    try {
+      expect(root.innerHTML).toContain('QUICK START');
+      for (const action of ['Move', 'Lick', 'Headbutt', 'Toggle Hay-Build']) {
+        expect(root.innerHTML).toContain('<dt>' + action + '</dt>');
+      }
+
+      setScreen('pause');
+      expect(root.innerHTML).toContain('CONTROLS &amp; SETTINGS');
+      root.querySelector<ButtonStub>('[data-action="settings"]')!.click();
+      expect(root.innerHTML).toContain('aria-labelledby="gg-tab-controls"');
+      expect(root.innerHTML).toContain('<td>Hold right mouse</td><td>Hold LB or LT</td>');
+      expect(root.innerHTML).toContain('<td>Hold, then release left mouse</td><td>Hold, then release RT</td>');
+      expect(root.innerHTML).toContain('<td>B</td><td>Y</td>');
+      expect(root.innerHTML).toContain('<td>1–4</td><td>D-pad</td>');
+      expect(root.innerHTML).toContain('<td>Left click in Hay-Build</td><td>RT in Hay-Build</td>');
+      expect(root.querySelector('[data-setting-toggle]')).not.toBeNull();
+
+      vi.stubGlobal('navigator', { getGamepads: () => [
+        { connected: true, buttons: [], axes: [0, 0, 0, .7] },
+      ] });
+      expect(root.querySelector('.gg-shell-panel')!.scrollTop).toBe(0);
+      view.onFrame?.();
+      expect(root.querySelector('.gg-shell-panel')!.scrollTop).toBeCloseTo(9.8);
+
+      win.dispatch('keydown', { code: 'Escape', repeat: false,
+        preventDefault: vi.fn(), stopPropagation: vi.fn() });
+      expect(root.querySelector('[data-action="resume"]')).not.toBeNull();
+    } finally { menu.dispose(); }
+  });
+
+  it('labels a simultaneous Rising Tide tie and shows survival without countdown time', () => {
+    const { menu, doc, game, root, win, setScreen } = setup();
+    try {
+      const match = readyMatch({ mode: 'rising-tide', config: {
+        countdownTicks: 120, submergeTicks: 1,
+      } }, ['player', 'bot-1', 'bot-2']);
+      for (let i = 0; i < 120; i++) match.step();
+      for (let i = 1; i <= 90; i++) {
+        match.step(frame(goat('player', 0, 0, i === 90 ? -1 : 10),
+          goat('bot-1', 0, 0, i === 90 ? -1 : 10),
+          goat('bot-2', 0, 0, i === 30 ? -1 : 10)));
+      }
+      expect(match.phase).toBe('results');
+      game.party.match = match;
+      setScreen('party-results');
+      const html = root.innerHTML;
+      expect(html).toContain('YOU TIED FOR FIRST');
+      expect(html.match(/>#1<\/strong>\s*<span class="gg-result-tie">TIE/g)).toHaveLength(2);
+      expect(html).toMatch(/<li data-result-you>[^]*?<strong class="gg-result-you">YOU<\/strong>/);
+      expect(html).toContain('1.5 s survived');
+      expect(html).toContain('0.5 s survived');
+      expect(html).toContain('Final tide 0 m');
+      expect(html).not.toMatch(/\d+ pts/);
+
+      const back = root.querySelector('[data-action="leave-party"]')!;
+      const title = root.querySelector('[data-action="title"]')!;
+      expect(doc.activeElement).toBe(back);
+      win.dispatch('keydown', { code: 'ArrowDown', repeat: false,
+        preventDefault: vi.fn(), stopPropagation: vi.fn() });
+      expect(doc.activeElement).toBe(title);
+      win.dispatch('keydown', { code: 'Escape', repeat: false,
+        preventDefault: vi.fn(), stopPropagation: vi.fn() });
+      expect(game.party.returnToFreeRoam).toHaveBeenCalledOnce();
+    } finally { menu.dispose(); }
+  });
+
+  it('shows the final perch for Rising Tide survivors with the same survival time', () => {
+    const { menu, game, root, setScreen } = setup();
+    try {
+      const match = readyMatch({ mode: 'rising-tide', config: {
+        durationTicks: 60, overtimeTicks: 60,
+      } }, ['player', 'bot-1']);
+      for (let i = 0; i < 120; i++) {
+        match.step(frame(goat('player', 0, 0, 7.5), goat('bot-1', 0, 0, 9.25)));
+      }
+      expect(match.phase).toBe('results');
+      game.party.match = match;
+      setScreen('party-results');
+      expect(root.innerHTML).toContain('YOU PLACED #2');
+      expect(root.innerHTML.match(/2.0 s survived/g)).toHaveLength(3);
+      expect(root.innerHTML).toContain('7.50 m final head height');
+      expect(root.innerHTML).toContain('9.25 m final head height');
+      expect(root.innerHTML).not.toContain('TIE</span>');
+    } finally { menu.dispose(); }
+  });
+
+  it('shows real Peak points and who held the summit at the finish', () => {
+    const { menu, game, root, setScreen } = setup();
+    try {
+      const match = readyMatch({ mode: 'king-of-the-peak', config: {
+        peakTargetScore: 5, peakPointsPerSecond: 5,
+      } }, ['player', 'bot-1']);
+      for (let i = 0; i < 60; i++) {
+        match.step(frame(goat('player'), goat('bot-1', 40, 0)));
+      }
+      expect(match.phase).toBe('results');
+      game.party.match = match;
+      game.party.title = 'King of the Peak';
+      setScreen('party-results');
+      expect(root.innerHTML).toContain('YOU WON');
+      expect(root.innerHTML).toContain('5 peak points · Round time 1.0 s');
+      expect(root.innerHTML.match(/Held summit at finish/g)).toHaveLength(1);
+      expect(root.innerHTML).toContain('0 peak points');
+      expect(root.innerHTML).not.toContain('TIE</span>');
+    } finally { menu.dispose(); }
+  });
+
+  it('uses Hay Heist team deliveries and distinguishes teammates from tied teams', () => {
+    const { menu, game, root, setScreen } = setup();
+    const ids = ['player', 'bot-1', 'bot-2'];
+    try {
+      const match = readyMatch({ mode: 'hay-heist', config: {
+        hayPerTeam: 1, hayTargetScore: 1,
+      } }, ids);
+      const blueBale = match.bales.find(bale => bale.homeTeam === 'blue')!.position;
+      const redBarn = match.view().arena.barns.find(barn => barn.teamId === 'red')!.position;
+      const bots = [goat('bot-1'), goat('bot-2')];
+      match.step({ ...frame(goat('player', blueBale.x, blueBale.z), ...bots),
+        intents: { player: { tongue: true } } });
+      match.step({ ...frame(goat('player', redBarn.x, redBarn.z), ...bots),
+        intents: { player: { tongue: true } } });
+      expect(match.phase).toBe('results');
+      expect(match.placements.map(place => place.rank)).toEqual([1, 1, 2]);
+      game.party.match = match;
+      game.party.title = 'Hay Heist';
+      setScreen('party-results');
+      expect(root.innerHTML).toContain('YOUR TEAM WON');
+      expect(root.innerHTML).toMatch(/<li data-result-you>[^]*?RED TEAM[^]*?YOU/);
+      expect(root.innerHTML).toContain('1 bale delivered');
+      expect(root.innerHTML).toContain('0 bales delivered');
+      expect(root.innerHTML).not.toContain('TIE</span>');
+      expect(root.innerHTML.match(/<li/g)).toHaveLength(2);
+
+      const tied = readyMatch({ mode: 'hay-heist', config: {
+        durationTicks: 1, overtimeTicks: 1,
+      } }, ids);
+      for (let i = 0; i < 2; i++) tied.step(frame(goat('player'), ...bots));
+      expect(tied.phase).toBe('results');
+      game.party.match = tied;
+      setScreen('party-results');
+      expect(root.innerHTML).toContain('YOUR TEAM TIED FOR FIRST');
+      expect(root.innerHTML.match(/>#1<\/strong>\s*<span class="gg-result-tie">TIE/g)).toHaveLength(2);
     } finally { menu.dispose(); }
   });
 
