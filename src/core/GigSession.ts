@@ -28,6 +28,8 @@ export class GigSession {
   private towingHay: { collider: Collider; friction: number; combine: CoefficientCombineRule } | null = null;
   private readonly impacts = new Map<number, number>();
   private readonly courierSupports = new Set<number>();
+  private readonly courierRamps = new Set<number>();
+  readonly isCourierRamp = (handle: number): boolean => this.courierRamps.has(handle);
   private courierPressure = 0;
   private courierShrink: { previousSize: number; expiresAt: number } | null = null;
   private readonly abilities: AbilityFact[] = [];
@@ -50,7 +52,13 @@ export class GigSession {
       if (!alongLane && !prop.id.startsWith(ROOFTOP_DECK_PREFIX) &&
           !prop.id.startsWith(ROOFTOP_SPAN_PREFIX)) continue;
       const collider = game.colliders.props.get(prop.id);
-      if (collider) this.courierSupports.add(collider.handle);
+      if (collider) {
+        this.courierSupports.add(collider.handle);
+        // Shallow spans already work with the torso's ordinary ground probe.
+        if (prop.id.startsWith(ROOFTOP_SPAN_PREFIX) && prop.size.y > .35 * prop.size.z) {
+          this.courierRamps.add(collider.handle);
+        }
+      }
     }
     this.catalog = new GigCatalog(game.island, seed);
     this.director = snapshot ? GigDirector.fromJSON(snapshot, this.catalog) : new GigDirector(this.catalog);

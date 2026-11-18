@@ -29,12 +29,14 @@ async function startCourier(cycle: number, tier: 'Kid' | keyof typeof grownState
     const id = setup.config.parcelId;
     const parcel = game.gigs.props.get(id)!.body;
     const heading = game.goat.locomotion.heading;
+    const routeDirection = Math.sign(setup.config.checkpoints[1]!.z - setup.config.checkpoints[0]!.z);
     expect(game.goat.torso.translation().y).toBeGreaterThan(setup.config.streetY + 1.3);
     for (let tick = 0; tick < 45; tick++) game.step({ cameraYaw: heading });
     for (let tick = 0; tick < 10; tick++) game.step({ cameraYaw: heading, tongue: true });
     expect(game.goat.interactions.tongueBody?.handle).toBe(parcel.handle);
     expect(game.gigs.active?.checkpointIndex).toBe(1);
-    return { game, heading, parcel, maxTicks: setup.maxTicks, required: setup.config.checkpoints.length };
+    return { game, heading, parcel, maxTicks: setup.maxTicks, routeDirection,
+      required: setup.config.checkpoints.length };
   } catch (error) {
     game.dispose();
     throw error;
@@ -45,15 +47,25 @@ describe('Rooftop Express on actual Rapier steps', () => {
   it.each([[0, 'Kid', 3], [1, 'Kid', 4], [2, 'Kid', 5], [1, 'Big', 4], [6, 'GIGGA', 3]] as const)(
     'finishes board cycle %i through the real ramp collisions as %s',
     async (cycle, tier, roofs) => {
-      const { game, heading, maxTicks, required } = await startCourier(cycle, tier);
+      const { game, heading, maxTicks, routeDirection, required } = await startCourier(cycle, tier);
       try {
         const launchSize = game.goat.size;
         if (tier === 'GIGGA') expect(launchSize).toBe(3);
         expect(required).toBe(roofs);
-        for (let tick = 0; tick < maxTicks && game.gigs.active?.status === 'running'; tick++) {
+        let lastProgressTick = 0;
+        let lastProgressZ = game.goat.torso.translation().z;
+        let longestPause = 0;
+        for (let tick = 1; tick <= maxTicks && game.gigs.active?.status === 'running'; tick++) {
           game.step({ cameraYaw: heading, tongue: true, moveZ: 1 });
+          longestPause = Math.max(longestPause, tick - lastProgressTick);
+          const z = game.goat.torso.translation().z;
+          if ((z - lastProgressZ) * routeDirection >= .4) {
+            lastProgressTick = tick;
+            lastProgressZ = z;
+          }
         }
         expect(game.gigs.active).toMatchObject({ status: 'completed', checkpointIndex: roofs });
+        if (cycle === 2 || tier === 'GIGGA') expect(longestPause).toBeLessThan(60);
         if (tier === 'GIGGA') expect(game.goat.size).toBeLessThan(launchSize);
       } finally { game.dispose(); }
     }, 90_000);

@@ -617,9 +617,13 @@ export class Game {
     };
     const result = sim.update(dt, rulesIntent, facts);
     const commands = result.commands[0]!;
+    const held = goat.interactions.tongueBody;
+    const parcelHeld = player && input.tongue && commands.tongue?.action !== 'fling' &&
+      held !== null && this.physics.bodyData(held.handle)?.data === 'parcel';
     goat.locomotion.setInput({
       x: mx, z: mz, cameraYaw, sprint: commands.setSprint,
       canSprint: commands.setSprint, canClimb: commands.setClimb,
+      acceptForwardSupport: parcelHeld ? this.gigs.isCourierRamp : undefined,
     });
     this.water.setPaddle(goat.torso, wish);
     this.executeCommands(commands, goat, player, courierAim);
