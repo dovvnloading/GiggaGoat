@@ -8,6 +8,7 @@ import { DOWNTOWN_BUILDING_SIZES, DOWNTOWN_INFILL, SHOP_FRONTS,
 import { getDamPlacement } from './the-dam';
 
 interface AddOptions {
+  id?: string;
   yaw?: number;
   lift?: number;
   /** World-space centre Y (for decks and structures over water). */
@@ -33,7 +34,7 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   ): PropDescriptor {
     const y = options.absoluteY ?? gridSample(island, x, z) + size.y / 2 + (options.lift ?? 0);
     const prop: PropDescriptor = {
-      id: (poiId ?? 'scenery') + '-' + kind + '-' + number++,
+      id: options.id ?? ((poiId ?? 'scenery') + '-' + kind + '-' + number++),
       kind, ...(poiId ? { poiId } : {}),
       transform: { position: { x, y, z }, rotationY: options.yaw ?? 0 },
       size, shape: options.shape ?? 'cuboid',
@@ -86,9 +87,21 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   site(farm, 'house', 22, 12, 10, 8, 9,
     { yaw: -Math.PI / 2, color: 0xffecdb });
   site(farm, 'windmill', 30, -38, 12.5, 18, 7.9, { shape: 'cuboid' });
-  for (const side of [-1, 1]) for (let i = 0; i < 7; i++) {
-    site(farm, 'fence', side * 11.6, -33 + i * 11,
-      9.2, 1.85, 0.35, { yaw: Math.PI / 2, breakable: true });
+  // Short front panels and returns outline individual yards. Keep the
+  // end panels at the established entrance to the mowing lawn.
+  const pickets = [
+    // x, z, length, yaw
+    [-12.2, -34.5, 5.7, Math.PI / 2], [-14, -27.5, 3.2, 0],
+    [-12.2, -12.9, 4.4, Math.PI / 2], [-14, -3.4, 3, 0],
+    [-11.6, 6.2, 4, Math.PI / 2], [-12.25, 17.25, 4.2, Math.PI / 2],
+    [-11.6, 33, 9.2, Math.PI / 2],
+    [11.6, -34, 4, Math.PI / 2], [11.45, -21.7, 6.1, Math.PI / 2],
+    [14, -10.6, 3.3, 0], [12.6, -3, 2.8, Math.PI / 2],
+    [11.45, 8.6, 3.6, Math.PI / 2], [13.4, 18, 3.2, 0],
+    [11.6, 33, 9.2, Math.PI / 2],
+  ] as const;
+  for (const [x, z, length, yaw] of pickets) {
+    site(farm, 'fence', x, z, length, 1.85, .35, { yaw, breakable: true });
   }
   for (let i = 0; i < 19; i++) {
     site(farm, 'hay-bale', rng.range(-42, -31), rng.range(-26, 27), 2.2, 1.5, 2.2,
@@ -98,6 +111,27 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   // Downtown/Pines/Lighthouse placements and relic positions on every seed.
   for (let i = 0; i < 7 * 3; i++) rng.next();
   site(farm, 'sign', 7.5, 39, 5, 3, 0.5, { breakable: true });
+
+  // Set the mill supplies and the farm's loading stop on the grass verges.
+  // Named IDs leave the existing numeric IDs and seeded bales in place.
+  site(farm, 'crate', 8.6, -32.7, 1.15, 1.1, 1.1, {
+    id: 'hoofington-verge-north-crate', dynamicMass: 11, yaw: .17,
+  });
+  site(farm, 'barrel', 8.8, -34.5, 1, 1.35, 1, {
+    id: 'hoofington-verge-north-barrel', dynamicMass: 14, shape: 'cylinder',
+  });
+  site(farm, 'bench', 9.1, -36.9, 2, .95, .75, {
+    id: 'hoofington-verge-north-bench', yaw: Math.PI / 2,
+  });
+  site(farm, 'crate', -7.25, 30.15, 1.15, 1.1, 1.1, {
+    id: 'hoofington-verge-south-crate', dynamicMass: 11, yaw: -.23,
+  });
+  site(farm, 'barrel', -8.55, 31.8, 1, 1.35, 1, {
+    id: 'hoofington-verge-south-barrel', dynamicMass: 14, shape: 'cylinder',
+  });
+  site(farm, 'bench', -7.6, 34, 2, .95, .75, {
+    id: 'hoofington-verge-south-bench', yaw: -Math.PI / 2,
+  });
 
   // BAA-ARDWALK: one cohesive shore-connected, walkable pier scene.
   props.push(...buildBaaardwalk(island));
