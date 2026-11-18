@@ -37,7 +37,7 @@ describe('island QA pass 2: structural decks and removed farm clutter', () => {
   it.each([
     { seed: 'billy-isle', size: 600, resolution: 193 },
     { seed: 'pines-alt', size: 900, resolution: 97 },
-    { seed: 'qa-cliff-alt', size: 200, resolution: 65 },
+    { seed: 'decor-2', size: 600, resolution: 97 },
   ])('grounds both Pines floating decks on $seed / $size m', options => {
     const island = generateIsland(options);
     const decks = island.props.filter(p =>

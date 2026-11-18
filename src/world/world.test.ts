@@ -116,8 +116,9 @@ describe('Billy Isle deterministic world generation', () => {
       expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(3.5);
     }
     expect(island.props.filter(p => p.kind === 'shop').length).toBeGreaterThanOrEqual(7);
-    // The former Dam ramp is now the modeled ladder + physical rungs.
-    expect(island.props.filter(p => p.kind === 'ramp').length).toBeGreaterThanOrEqual(5);
+    // The Dam uses modeled rungs; the four Downtown roof-access ramps remain.
+    // The removed Hoofington hay-field ramp must not be counted here.
+    expect(island.props.filter(p => p.kind === 'ramp').length).toBe(4);
     expect(island.colliders.some(p => p.shape === 'convex')).toBe(true);
     expect(island.props.filter(p => p.kind.startsWith('tree-')).length).toBeGreaterThan(70);
   });
