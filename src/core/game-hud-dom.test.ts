@@ -123,7 +123,7 @@ describe('live free-roam HUD DOM', () => {
       hud.dispose();
     }
   });
-  it('renders one STYLE SCORE label, without a second copy from a panel-wide shadow', () => {
+  it('starts with one quiet style score and reserves the starburst for active combos', () => {
     const head = new ElementStub();
     vi.stubGlobal('document', { head, createElement: () => new ElementStub() });
     const host = new ElementStub();
@@ -147,9 +147,11 @@ describe('live free-roam HUD DOM', () => {
       // do not repaint CSS duplicates over the art.
       expect(root.querySelector('.gg-score-ribbon')).not.toBeNull();
       expect(root.querySelector<ElementStub>('[data-score]')?.textContent).toBe('0');
-      expect(root.querySelector<ElementStub>('[data-combo-count]')?.textContent)
-        .toBe('START A COMBO!');
-      expect(css).toContain('background:var(--gg-scoreStarburst)');
+      expect(root.querySelector<ElementStub>('[data-combo-count]')?.textContent).toBe('');
+      expect(root.querySelector<ElementStub>('[data-combo-title]')?.textContent).toBe('');
+      expect(css.match(/\.gg-combo\{([^}]*)\}/)?.[1]).not.toContain('background:');
+      expect(css).toContain('.gg-combo[data-combo-active]{background:var(--gg-scoreStarburst)');
+      expect(css).toContain('.gg-combo:not([data-combo-active]) > .gg-current-score');
       expect(css).not.toContain('.gg-score-ribbon:before');
     } finally {
       hud.dispose();

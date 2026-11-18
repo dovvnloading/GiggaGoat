@@ -32,13 +32,29 @@ const CSS = `
 .gg-meter-stage-labels span{text-align:center;white-space:nowrap;color:#fff8dd;font-size:clamp(12px,1.1vw,19px);line-height:1;text-shadow:1px 2px 1px #42304f}
 .gg-meter-stage-labels span.is-active{color:#fffbd1;text-shadow:0 0 7px #fff5ac,1px 2px 1px #56264a}
 .gg-meter-caption{position:absolute;top:98%;left:8%;right:8%;display:flex;justify-content:space-between;gap:8px;color:#fff0ae;font-size:clamp(8px,.67vw,11px);letter-spacing:.3px;white-space:nowrap}
-/* The star, rays, purple combo badge and brown score ribbon are one sprite. */
-.gg-combo{position:absolute;left:50%;top:clamp(4px,.7vw,12px);transform:translateX(-50%);width:clamp(377px,32.3vw,545px);height:clamp(155px,12.7vw,217px);background:var(--gg-scoreStarburst) center/100% 100% no-repeat;text-align:center}
+/* Reserve the combo slot so its artwork can appear without moving surrounding controls. */
+.gg-combo{position:absolute;left:50%;top:clamp(4px,.7vw,12px);transform:translateX(-50%);width:clamp(377px,32.3vw,545px);height:clamp(155px,12.7vw,217px);text-align:center}
+.gg-combo[data-combo-active]{background:var(--gg-scoreStarburst) center/100% 100% no-repeat}
+.gg-combo:not([data-combo-active]) > :is(.gg-combo-title,.gg-combo-count){display:none}
 .gg-combo-title{position:absolute;left:8%;top:19%;width:64%;height:47%;display:flex;align-items:center;justify-content:center;overflow:hidden;overflow-wrap:anywhere;line-height:.93;transform:rotate(-5deg);font-style:italic;letter-spacing:-.7px;color:#ffcd36;font-size:clamp(22px,2.35vw,39px);-webkit-text-stroke:1.2px #802847;text-shadow:2px 3px 0 #682a46,4px 4px 0 #fff2a4,5px 6px 0 #4d2c61}
 .gg-combo-count{position:absolute;left:73%;top:22%;width:22%;height:38%;display:grid;place-items:center;transform:rotate(-7deg);color:#fff8e3;font-size:clamp(10px,1.12vw,17px);line-height:1.12;white-space:pre-line;overflow-wrap:normal;text-shadow:1px 2px #4a2358}
+.gg-current-score{display:contents}
 .gg-score-ribbon{position:absolute;left:11%;right:21%;bottom:6%;height:28%;display:grid;place-items:center}
 .gg-score{font-variant-numeric:tabular-nums;font-size:clamp(27px,2.55vw,44px);letter-spacing:1px;color:#fff8df;text-shadow:2px 3px #3d203c}
 .gg-score-caption{position:absolute;left:32%;right:34%;bottom:1%;font-size:clamp(7px,.58vw,10px);letter-spacing:.4px;color:#fff0ba;white-space:nowrap}
+.gg-combo:not([data-combo-active]) > .gg-current-score{
+ position:absolute;top:0;left:50%;transform:translateX(-50%);
+ display:flex;flex-wrap:wrap;align-items:baseline;justify-content:center;gap:2px 7px;
+ width:max-content;max-width:100%;padding:3px clamp(6px,.7vw,12px);
+ border:1px solid #ac895a;border-radius:12px;background:#302338ed;text-shadow:none;line-height:1.1
+}
+.gg-combo:not([data-combo-active]) .gg-score-caption{
+ position:static;font-size:clamp(9px,.8vw,13px);letter-spacing:.2px;color:#f4ddb0
+}
+.gg-combo:not([data-combo-active]) .gg-score-ribbon{position:static;display:block;width:auto;height:auto;min-width:0}
+.gg-combo:not([data-combo-active]) .gg-score{
+ font-size:clamp(13px,1.18vw,19px);letter-spacing:0;text-shadow:none;overflow-wrap:anywhere
+}
 .gg-combo[data-party-active="true"]{background:none}
 .gg-combo[data-party-active="true"] > :not(.gg-party-scoreboard){display:none}
 .gg-party-scoreboard{
@@ -509,10 +525,10 @@ export class GameHud {
       '<span><b data-tier>KID</b><span class="gg-meter-separator"> · </span><b data-meter>0 / 100</b></span></div></section>' +
       '<section class="gg-combo" data-sprite="' + HUD_SPRITES.scoreStarburst +
       '" data-score-panel aria-label="Chaos combo and score">' +
-      '<div class="gg-combo-title" data-combo-title>GIGGA-GOAT!</div>' +
-      '<div class="gg-combo-count" data-combo-count>START A COMBO!</div>' +
-      '<div class="gg-score-ribbon"><strong class="gg-score" data-score>0</strong></div>' +
-      '<div class="gg-score-caption" data-combo-info>STYLE SCORE</div>' +
+      '<div class="gg-combo-title" data-combo-title></div>' +
+      '<div class="gg-combo-count" data-combo-count></div>' +
+      '<div class="gg-current-score"><span class="gg-score-caption" data-combo-info>STYLE SCORE</span>' +
+      '<div class="gg-score-ribbon"><strong class="gg-score" data-score>0</strong></div></div>' +
       '<div class="gg-party-scoreboard" data-party-scoreboard hidden>' +
       '<div class="gg-party-head"><strong class="gg-party-title" data-party-title></strong>' +
       '<div class="gg-party-clock"><span class="gg-party-clock-label" data-party-clock-label></span>' +
@@ -720,9 +736,11 @@ export class GameHud {
       const label = element.getAttribute('data-stage') ?? element.getAttribute('data-stage-label');
       element.classList.toggle('is-active', label === state.tier);
     }
+    const comboActive = state.comboCount > 0;
+    this.scorePanel.toggleAttribute('data-combo-active', comboActive);
     this.comboTitle.textContent = state.comboTitle;
-    this.comboCount.textContent = state.comboCount ? '×' + state.comboCount + '\nCOMBO!' : 'START A COMBO!';
-    this.comboInfo.textContent = state.comboCount ?
+    this.comboCount.textContent = comboActive ? '×' + state.comboCount + '\nCOMBO!' : '';
+    this.comboInfo.textContent = comboActive ?
       '+' + state.comboPoints + ' COMBO POINTS · STYLE SCORE' : 'STYLE SCORE';
     this.score.textContent = state.score;
     this.place.textContent = state.location;

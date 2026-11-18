@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { EventBus, StyleSystem, TUNING } from '../gameplay';
 import type { HudInput } from './GameHudState';
 import { clampHudPercent, deriveHudState, formatHudObjective, projectHudMap } from './GameHudState';
 
@@ -27,7 +28,7 @@ describe('in-game HUD state projection', () => {
     expect(clampHudPercent(101)).toBe(100);
   });
 
-  it('always renders actual score, combo title, multiplier, and wallet (including an idle combo)', () => {
+  it('preserves the score and wallet between combos and labels active tricks', () => {
     const state = input();
     state.score = 48750;
     state.coins = 1234;
@@ -35,13 +36,26 @@ describe('in-game HUD state projection', () => {
     expect(idle.score).toBe('48,750');
     expect(idle.coins).toBe('1,234');
     expect(idle.comboCount).toBe(0);
-    expect(idle.comboTitle).toBe('GIGGA-GOAT!');
+    expect(idle.comboTitle).toBe('');
     state.combo = { count: 12, points: 2396, title: 'HOOF HURRICANE' };
     const active = deriveHudState(state);
     expect(active.comboTitle).toBe('HOOF HURRICANE');
     expect(active.comboCount).toBe(12);
     expect(active.comboPoints).toBe('2,396');
     expect(state.combo.points).toBe(2396);
+  });
+
+  it('uses live style events and expiry to enter and leave the combo presentation', () => {
+    const style = new StyleSystem(new EventBus());
+    const score = () => deriveHudState({ ...input(), score: style.score, combo: style.combo });
+    expect(score()).toMatchObject({ score: '0', comboTitle: '', comboCount: 0 });
+    style.ingest({ type: 'flip' });
+    expect(score()).toMatchObject({ comboTitle: 'WARM-UP', comboCount: 1 });
+    style.ingest({ type: 'knockback' });
+    const combo = score();
+    expect(combo).toMatchObject({ comboTitle: 'GOAT-ROCKET', comboCount: 2 });
+    style.update(TUNING.style.comboWindow);
+    expect(score()).toMatchObject({ score: combo.score, comboTitle: '', comboCount: 0, comboPoints: '0' });
   });
 
   it('keeps the Hay-Build keys matched to real piece types and computes affordable counts', () => {

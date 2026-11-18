@@ -183,6 +183,7 @@ class ChromePage {
   async key(code: string, type: 'keyDown' | 'keyUp'): Promise<void> {
     const keys: Record<string, [string, number]> = {
       KeyW: ['w', 87], KeyA: ['a', 65], KeyS: ['s', 83], KeyD: ['d', 68],
+      KeyB: ['b', 66], Digit3: ['3', 51],
       KeyI: ['i', 73], KeyK: ['k', 75],
       KeyE: ['e', 69], KeyP: ['p', 80], Space: [' ', 32], Escape: ['Escape', 27],
     };
@@ -401,6 +402,26 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
             // The cream portion of the illustration stops above the bottom rim.
             issues.push('gig footer touches frame art');
           }
+          const scorePanel = document.querySelector<HTMLElement>(selectors.score)!;
+          const measurePanels = () => JSON.stringify(Object.values(selectors).map(selector =>
+            document.querySelector(selector)!.getBoundingClientRect().toJSON()));
+          const hadCombo = scorePanel.hasAttribute('data-combo-active');
+          try {
+            scorePanel.removeAttribute('data-combo-active');
+            const idleBounds = measurePanels();
+            const scoreBounds = scorePanel.getBoundingClientRect();
+            const pill = scorePanel.querySelector('.gg-current-score')!.getBoundingClientRect();
+            if (getComputedStyle(scorePanel).backgroundImage !== 'none' ||
+              pill.width <= 0 || pill.height <= 0 || !inside(pill, scoreBounds) ||
+              pill.width >= scoreBounds.width * .75 || pill.height >= scoreBounds.height * .5) {
+              issues.push('idle score does not clear the combo artwork area');
+            }
+            scorePanel.setAttribute('data-combo-active', '');
+            if (getComputedStyle(scorePanel).backgroundImage === 'none') issues.push('combo art missing');
+            if (measurePanels() !== idleBounds) issues.push('combo shifts other HUD controls');
+          } finally {
+            scorePanel.toggleAttribute('data-combo-active', hadCombo);
+          }
           return issues;
         } finally {
           look.hidden = original.look;
@@ -426,6 +447,9 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
           await page.waitFor(`document.querySelector('.gg-hotbar')?.dataset.active === 'true' &&
             document.querySelector('[data-build-status]')?.textContent?.includes('LMB PLACE')`,
             'build controls to become visible');
+          await page.tap('Digit3');
+          await page.waitFor('!!document.querySelector(\'[data-slot="ramp"].is-selected\')',
+            'keyboard ramp selection');
           const buildIssues = await page.evaluate<string[]>('(' + compactHudIssues.toString() + ')()');
           if (buildIssues.length) throw Error(`Build mode at ${width}×${height}: ${buildIssues.join(', ')}`);
           await page.tap('KeyB');
@@ -512,7 +536,7 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         const labels = Array.from(board.querySelectorAll('.gg-party-metric-label'), row => row.textContent);
         if (JSON.stringify(labels) !== JSON.stringify(metrics)) issues.push('incorrect mode metrics');
         if (!document.querySelector<HTMLElement>('[data-gig-card]')?.hidden ||
-          getComputedStyle(document.querySelector('.gg-score-ribbon')!).display !== 'none') {
+          document.querySelector('[data-score]')?.getClientRects().length !== 0) {
           issues.push('free-roam HUD competes with scoreboard');
         }
         return issues;

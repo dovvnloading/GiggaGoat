@@ -123,7 +123,7 @@ export function deriveHudState(input: HudInput): HudState {
     meter: clampHudPercent(input.meter),
     tier: input.tier,
     score: num(input.score),
-    comboTitle: input.combo.count > 0 ? (input.combo.title || 'TRICK CHAIN') : 'GIGGA-GOAT!',
+    comboTitle: input.combo.count > 0 ? (input.combo.title || 'TRICK CHAIN') : '',
     comboCount: Math.max(0, input.combo.count),
     comboPoints: num(input.combo.points),
     stamina: clampHudPercent(input.stamina),

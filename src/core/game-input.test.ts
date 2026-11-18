@@ -146,6 +146,24 @@ describe('game camera input', () => {
     expect(requestPointerLock).not.toHaveBeenCalled();
   });
 
+  it('queues keyboard build entry, ramp selection, exit, and board interaction', () => {
+    const { input, key } = setup();
+    key('keydown', 'KeyB');
+    key('keyup', 'KeyB');
+    expect(input.sample(1 / 60, false).toggleBuild).toBe(true);
+
+    key('keydown', 'Digit3');
+    key('keyup', 'Digit3');
+    expect(input.sample(1 / 60, true)).toMatchObject({ buildPiece: 'ramp', toggleBuild: false });
+
+    key('keydown', 'KeyB');
+    key('keyup', 'KeyB');
+    expect(input.sample(1 / 60, true).toggleBuild).toBe(true);
+    key('keydown', 'KeyE');
+    key('keyup', 'KeyE');
+    expect(input.sample(1 / 60, false)).toMatchObject({ interact: true, toggleBuild: false });
+  });
+
   it('requests pointer lock on C only during active gameplay and ignores repeat and shortcuts', () => {
     const { requestPointerLock, input, key } = setup();
     input.setActive(false);
