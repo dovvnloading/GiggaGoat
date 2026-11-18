@@ -16,7 +16,9 @@ export class GameInput {
   private mousePrimary = false;
   private mouseSecondary = false;
   private unlockedHover: { x: number; y: number } | null = null;
-  private unlockedPress: { x: number; y: number; elapsed: number; dragged: boolean } | null = null;
+  private unlockedPress: {
+    x: number; y: number; startedAt: number; elapsed: number; dragged: boolean;
+  } | null = null;
   private buildToggleQueued = false;
   private buildPlaceQueued = false;
   private selected: PieceType | undefined;
@@ -79,7 +81,9 @@ export class GameInput {
           this.mousePrimary = true;
           this.buildPlaceQueued = true;
         } else {
-          this.unlockedPress = { x: event.clientX, y: event.clientY, elapsed: 0, dragged: false };
+          this.unlockedPress = {
+            x: event.clientX, y: event.clientY, startedAt: event.timeStamp, elapsed: 0, dragged: false,
+          };
         }
       }
       if (event.button === 2) this.mouseSecondary = true;
@@ -92,7 +96,10 @@ export class GameInput {
         this.mousePrimary = false;
         if (press && !press.dragged && !charged && event.target === canvas) {
           this.buildPlaceQueued = true;
-          void this.requestPointerLock();
+          // A hold can outlast the sampled charge delay when frames stall.
+          if (event.timeStamp - press.startedAt < CHARGE_HOLD_SECONDS * 1000) {
+            void this.requestPointerLock();
+          }
         }
       }
       if (event.button === 2) this.mouseSecondary = false;

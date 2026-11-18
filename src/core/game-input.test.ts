@@ -14,12 +14,14 @@ function setup() {
   vi.stubGlobal('navigator', { getGamepads: () => [] });
   const input = new GameInput(canvas as unknown as HTMLCanvasElement, 0);
 
-  const press = (button = 0) => {
-    canvas.dispatchEvent(Object.assign(new Event('mousedown'), { button, clientX: 60, clientY: 80 }));
+  const press = (button = 0, timeStamp = 10) => {
+    const event = Object.assign(new Event('mousedown'), { button, clientX: 60, clientY: 80 });
+    Object.defineProperty(event, 'timeStamp', { value: timeStamp });
+    canvas.dispatchEvent(event);
   };
-  const release = (button = 0) => {
+  const release = (button = 0, timeStamp = 20) => {
     const event = Object.assign(new Event('mouseup'), { button });
-    Object.defineProperty(event, 'target', { value: canvas });
+    Object.defineProperties(event, { target: { value: canvas }, timeStamp: { value: timeStamp } });
     win.dispatchEvent(event);
   };
   const move = (clientX: number, clientY: number, buttons = 0, movementX = 0, movementY = 0,
@@ -175,6 +177,18 @@ describe('game camera input', () => {
     release();
     expect(input.sample(1 / 60, true).placeBuild).toBe(true);
     expect(input.sample(1 / 60, true).placeBuild).toBe(false);
+  });
+
+  it('does not request pointer lock on a long hold when gameplay frames stall', () => {
+    const { requestPointerLock, input, press, release } = setup();
+    press(0, 100);
+    expect(input.sample(.07, false).chargeHeadbutt).toBe(false);
+    release(0, 750);
+    expect(requestPointerLock).not.toHaveBeenCalled();
+
+    press(0, 800);
+    release(0, 900);
+    expect(requestPointerLock).toHaveBeenCalledTimes(1);
   });
 
   it('clears an interrupted drag so it cannot turn the camera after blur', () => {
