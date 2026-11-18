@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Biome, IslandData, RoadPoint } from './types';
 import { BIOMES } from './types';
 import { clamp, smoothstep } from './random';
-import { gridCoordinate, gridIndex, gridSample } from './terrain';
+import { gridCoordinate, gridIndex } from './terrain';
 import { makeLocalStreets } from './roads';
 import { buildPropVisuals, TOON_RAMP } from './visual-props';
 import { createEnvironmentLod } from './environment-lod';
@@ -116,9 +116,6 @@ function terrainGeometry(
   const sample = (x: number, z: number): number =>
     island.heights[gridIndex(n, Math.max(0, Math.min(n - 1, x)),
       Math.max(0, Math.min(n - 1, z)))]!;
-  const rockBands: readonly (readonly [number, number])[] = [
-    [19, 26], [38, 45], [56, 63], [74, 81], [91, 104],
-  ];
   // Keep every vertex on the seam at native resolution in BOTH LODs. The old
   // four overlapping, double-sided chunk skirts were visible as dark straight
   // lines and produced shadow-map streaks across the landscape.
@@ -141,42 +138,19 @@ function terrainGeometry(
       : biome === 'town' ? COLORS.town
       : biome === 'industrial' ? COLORS.industrial : COLORS.grass;
     color.copy(base);
-    color.lerp(COLORS.sand, 1 - smoothstep(1.8, 7.3, h));
+    color.lerp(COLORS.sand, 1 - smoothstep(1.2, 2.9, h + 0.5 * Math.sin(x * 0.13) * Math.cos(z * 0.11)));
     const cliff = Math.max(smoothstep(0.56, 1.35, slope),
       smoothstep(82, 112, h) * 0.25);
-    color.lerp(COLORS.rock, cliff);
     if (biome === 'freshwater') color.lerp(COLORS.freshwater, 0.7);
     if (h < -0.4) color.lerp(COLORS.submerged, 0.8);
 
-    // Explicit mountain palette, tied to the *sculpted* terrace radii rather
-    // than discontinuous slope/biome classifications after trail stamp cuts.
-    // This preserves broad grey climbing faces and green, usable benches.
-    const radius = Math.hypot(x, z) / (island.size / 600);
+    // Keep Mt Gigga's grassy palette in the vertex colours. Its steep
+    // risers and stratified stone are blended per fragment in the shader.
+    const radius = Math.hypot(x, z) / scale;
     const mountain = 1 - smoothstep(99, 113, radius);
     if (mountain > 0) {
-      let rockFace = 0;
-      for (const [inner, outer] of rockBands) {
-        const band = smoothstep(inner - 1.9, inner + 1.6, radius) *
-          (1 - smoothstep(outer - 1.4, outer + 2.1, radius));
-        rockFace = Math.max(rockFace, band);
-      }
-      rockFace = Math.max(rockFace, smoothstep(1.05, 2.5, slope) * 0.76);
-      // The flat tops of the tiers are grass, even inside a radial stone band.
-      rockFace *= smoothstep(0.55, 1.15, slope);
-      // Cap each steep riser with a grassy lip where the ground falls away
-      // at least 2 m across 3 m in the outward radial direction.
-      const outward = Math.hypot(x, z);
-      if (outward > 0.001 && slope < 0.7) {
-        const drop = h - gridSample(island,
-          x + x / outward * 3 * scale, z + z / outward * 3 * scale);
-        if (drop >= 2 * scale) rockFace = 0;
-      }
       const grassy = COLORS.grass.clone().lerp(COLORS.pine, 0.12);
-      // Height-indexed warm grey strata, with metres normalized for island size.
-      const stone = MT_GIGGA_STONE.clone().multiplyScalar(
-        0.93 + 0.07 * Math.sin(h / scale * 0.85));
-      color.copy(grassy).lerp(stone, rockFace);
-      color.lerp(base, 1 - mountain);
+      color.copy(grassy).lerp(base, 1 - mountain);
     }
     // Cap the beacon's headland in grass, but keep the steep sea-facing
     // walls visibly pale grey rather than the generic low sand/beach palette.
@@ -252,6 +226,57 @@ function buildTerrain(island: IslandData, segments: number): Chunk[] {
   const material = new THREE.MeshToonMaterial({
     vertexColors: true, gradientMap: TOON_RAMP, side: THREE.FrontSide,
   });
+  // Preserve MeshToonMaterial's lighting, fog and shadows; only its diffuse
+  // terrain palette gains a per-pixel rock blend instead of 3.1 m vertex bands.
+  material.onBeforeCompile = shader => {
+    shader.uniforms['uRockStone'] = { value: COLORS.rock };
+    shader.uniforms['uMountainStone'] = { value: MT_GIGGA_STONE };
+    shader.uniforms['uTerrainScale'] = { value: island.size / 600 };
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <common>',
+      `#include <common>
+varying vec3 vWorld;
+varying vec3 vWorldNormal;`,
+    ).replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+vWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
+vWorldNormal = normalize(mat3(modelMatrix) * objectNormal);`,
+    );
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <common>',
+      `#include <common>
+uniform vec3 uRockStone;
+uniform vec3 uMountainStone;
+uniform float uTerrainScale;
+varying vec3 vWorld;
+varying vec3 vWorldNormal;
+
+// Smoothed, texture-free value noise in world-space metres.
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+float noise(vec2 p) {
+  vec2 cell = floor(p);
+  vec2 f = fract(p);
+  vec2 t = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(hash(cell), hash(cell + vec2(1.0, 0.0)), t.x),
+    mix(hash(cell + vec2(0.0, 1.0)), hash(cell + vec2(1.0, 1.0)), t.x),
+    t.y);
+}`,
+    ).replace(
+      '#include <color_fragment>',
+      `#include <color_fragment>
+vec3 worldNormal = normalize(vWorldNormal);
+float mountain = 1.0 - smoothstep(99.0, 113.0, length(vWorld.xz) / uTerrainScale);
+vec3 uStone = mix(uRockStone, uMountainStone, mountain);
+uStone *= 0.93 + 0.07 * sin(vWorld.y / uTerrainScale * 0.85);
+float rock = smoothstep(0.30, 0.42, 1.0 - worldNormal.y +
+  (noise(vWorld.xz * 0.15) - 0.5) * 0.08);
+diffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);`,
+    );
+  };
   const lookup = roadGrid(island, 22);
   const chunks: Chunk[] = [];
   for (let startZ = 0; startZ < n - 1; startZ += segments) {
