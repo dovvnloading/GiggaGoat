@@ -293,7 +293,11 @@ export class LocomotionController {
     if (acceptsRamp && ground && ground.distance > groundedDistance &&
         ground.distance <= rideHeight + .4 * s && wishLength > .1 && this.clock >= this.jumpLockUntil) {
       const ahead = add(position, mul(wish, .6 * s));
-      const support = g.world.raycast(ahead, V(0,-1,0), groundedDistance, { groups: GROUND_QUERY_GROUPS });
+      // On a marked courier ramp, the held parcel can cover the next hoof's
+      // support ray. Its body still takes part in the actual collision solver.
+      const support = g.world.raycast(ahead, V(0,-1,0), groundedDistance, {
+        groups: GROUND_QUERY_GROUPS, excludeBody: g.interactions.tongueBody ?? undefined,
+      });
       if (support && support.normal.y >= minGroundY && acceptsRamp(support.collider.handle)) ground = support;
     }
     this.groundHit = ground;
