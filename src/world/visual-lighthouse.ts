@@ -559,6 +559,21 @@ function capeSurface(island: IslandData, x: number, z: number): number {
     : d + (c - d) * (1 - tx) + (b - d) * (1 - tz);
 }
 
+export function makeLighthouseFooting(island: IslandData, tower: PropDescriptor): THREE.BufferGeometry {
+  const { x, y, z } = tower.transform.position;
+  const scale = island.size / 600;
+  const top = y - tower.size.y * .49 + .025 * scale;
+  const geometry = new THREE.CylinderGeometry(tower.size.x * .49, tower.size.x * .50, 1, 32);
+  const vertices = geometry.getAttribute('position');
+  for (let i = 0; i < vertices.count; i++) {
+    const lower = capeSurface(island, x + vertices.getX(i), z + vertices.getZ(i));
+    vertices.setY(i, vertices.getY(i) > 0 ? top : Math.min(top - .36 * scale, lower - .32 * scale));
+  }
+  geometry.translate(x, 0, z);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
 function makeCliffRocks(island: IslandData, placements: readonly Placement[],
   lighting: ReturnType<typeof makeCapeLighting>): THREE.InstancedMesh {
   const geometry = new THREE.DodecahedronGeometry(1, 0);
@@ -785,6 +800,13 @@ export function buildLighthouseVisuals(island: IslandData,
 
   const lighthouse = get('lighthouse');
   const beacon = lighthouse ? makeBeacon(lighthouse, scale) : undefined;
+  if (lighthouse) {
+    const foundation = new THREE.Mesh(makeLighthouseFooting(island, lighthouse),
+      rockToonMaterial(CLIFF_STONE));
+    foundation.name = 'lighthouse-stone-footing';
+    foundation.receiveShadow = true;
+    group.add(foundation);
+  }
 
   const cave = get('cave-mouth');
   if (cave) {

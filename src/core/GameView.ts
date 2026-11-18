@@ -285,14 +285,16 @@ export class GameView {
     this.scene.add(this.boardMarkers);
     for (const board of this.game.gigs.boards) {
       const root = createBoardLibraryProp(this.propFactory);
-      const roadside = board.poiId === 'hoofington' || board.poiId === 'downtown-bleatsville';
-      if (roadside) {
+      const compact = board.poiId === 'hoofington' || board.poiId === 'downtown-bleatsville' ||
+        board.poiId === 'old-lighthouse';
+      if (compact) {
         root.scale.multiplyScalar(.58);
-        root.rotation.y = -Math.PI / 2;
+        root.rotation.y = board.poiId === 'old-lighthouse' ? Math.PI / 2 : -Math.PI / 2;
       }
-      root.position.set(board.position.x, board.position.y + .15, board.position.z);
+      const base = board.poiId === 'old-lighthouse' ? 0 : .15;
+      root.position.set(board.position.x, board.position.y + base, board.position.z);
       this.instancedProps.add(root);
-      if (roadside) continue;
+      if (compact) continue;
 
       const overlay = new THREE.Group();
       overlay.position.copy(root.position);
