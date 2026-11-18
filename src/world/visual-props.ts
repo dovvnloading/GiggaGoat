@@ -5,6 +5,7 @@ import { loadLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import type { PropDescriptor, PropKind } from './types';
 import { buildArchitecture, isArchitecturalKind } from './visual-architecture';
+import { PINES_GLADE_CASCADE } from './visual-water';
 import type { IslandData } from './types';
 import { WORLD_LOD, completelyOccluded, isSmallWorldModel,
   simplifiedWorldGeometry } from './lod';
@@ -776,7 +777,10 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       const p = prop.transform.position;
       dummy.position.set(p.x, p.y, p.z);
       dummy.rotation.set(0, prop.transform.rotationY, 0);
-      dummy.scale.set(prop.size.x, prop.size.y, prop.size.z);
+      // The glade's wet step is drawn with the river. Keep the stored index
+      // and descriptor, but omit the old stepped model at this one site.
+      if (prop.id === PINES_GLADE_CASCADE) dummy.scale.setScalar(0);
+      else dummy.scale.set(prop.size.x, prop.size.y, prop.size.z);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
       mesh.setColorAt(i, new THREE.Color(foliage.has(kind) || authoredKioskKinds.has(kind) ||

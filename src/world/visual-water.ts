@@ -291,6 +291,45 @@ function resampleRiver(points: readonly RiverPoint[], spacing: number): RiverPoi
 }
 
 const FOREST_OUTFLOW_START = 11;
+export const PINES_GLADE_CASCADE = 'whispering-pines-glade-cascade';
+
+function riverMaterial(stream: THREE.ShaderMaterial): THREE.ShaderMaterial {
+  const material = stream.clone();
+  // The reservoir retains its own shader. All river reaches share this flow
+  // program and the existing lighting/time uniforms in one merged draw.
+  material.uniforms = stream.uniforms;
+  material.vertexShader = stream.vertexShader
+    .replace('varying vec2 vUv;', 'attribute vec2 streamStyle; varying vec2 vStreamStyle; varying vec2 vUv;')
+    .replace('vUv = uv;', 'vUv = uv; vStreamStyle = streamStyle;');
+  material.fragmentShader = stream.fragmentShader.replace('void main() {', `
+varying vec2 vStreamStyle;
+float forestRipple(float phase) {
+  return sin(phase) * (1.0 - smoothstep(0.55, 1.9, fwidth(phase)));
+}
+void main() {
+  if (vStreamStyle.x > 0.5) {
+    float falling = step(1.5, vStreamStyle.x);
+    float across = abs(vUv.x * 2.0 - 1.0);
+    float bend = vUv.x + 0.10 * sin(vUv.y * 1.5 + 0.45 * uTime);
+    float current = forestRipple(1.7 * vUv.y + 13.0 * bend - uTime * 2.05);
+    float crossFlow = forestRipple(2.6 * vUv.y - 17.0 * bend + 0.7 * current - uTime * 1.33);
+    float veins = forestRipple(25.0 * bend + 0.83 * vUv.y - uTime * 0.55);
+    float broken = smoothstep(0.36, 0.84, 0.55 * current + 0.45 * crossFlow);
+    float bank = smoothstep(0.58, 0.98, across);
+    vec3 shaded = mix(vec3(0.055, 0.30, 0.36), vec3(0.11, 0.46, 0.50),
+      0.46 + 0.23 * current + 0.14 * crossFlow);
+    shaded = mix(shaded, vec3(0.14, 0.34, 0.33), 0.74 * bank);
+    shaded = mix(shaded, vec3(0.16, 0.55, 0.60), falling * (0.52 + 0.20 * veins));
+    float foam = 0.34 * broken * vStreamStyle.y * (1.0 - bank);
+    foam += falling * (0.22 * smoothstep(0.2, 0.86, veins) +
+      0.32 * broken * smoothstep(0.7, 1.0, vUv.y));
+    vec3 col = mix(shaded, vec3(0.70, 0.87, 0.81), foam);
+    float cover = 1.0 - smoothstep(0.77, 1.0, across);
+    gl_FragColor = vec4(col * uLight, 0.94 * cover);
+    return;
+  }`);
+  return material;
+}
 
 function riverRibbonSections(points: readonly RiverPoint[], scale: number) {
   const stations = resampleRiver(points, 2 * scale);
@@ -327,10 +366,10 @@ export function makeForestOutflowClearance(island: IslandData): (x: number, z: n
 }
 
 function riverMesh(points: readonly RiverPoint[], material: THREE.Material,
-  island: IslandData, damCenter?: { x: number; z: number }): THREE.Mesh {
+  island: IslandData, damCenter?: { x: number; z: number }, forest = false): THREE.Mesh {
   const scale = island.size / 600;
   const sections = riverRibbonSections(points, scale);
-  const vertices: number[] = [], uvs: number[] = [], indices: number[] = [];
+  const vertices: number[] = [], uvs: number[] = [], indices: number[] = [], style: number[] = [];
   let accumulated = 0;
   for (let i = 0; i < sections.length; i++) {
     const { center: p, left, right } = sections[i]!;
@@ -338,10 +377,30 @@ function riverMesh(points: readonly RiverPoint[], material: THREE.Material,
       const prev = sections[i - 1]!.center;
       accumulated += Math.hypot(p.x - prev.x, p.z - prev.z);
     }
-    // Sample each bank independently: a shared centreline Y would still
-    // leave the wide outer bank floating above uneven ground.
-    vertices.push(left.x, gridSample(island, left.x, left.z) + 0.15 * scale, left.z,
-      right.x, gridSample(island, right.x, right.z) + 0.15 * scale, right.z);
+    if (forest) {
+      const previous = sections[Math.max(0, i - 1)]!.center;
+      const next = sections[Math.min(sections.length - 1, i + 1)]!.center;
+      const centreY = gridSample(island, p.x, p.z);
+      const run = Math.max(0.001, Math.hypot(next.x - previous.x, next.z - previous.z));
+      const drop = gridSample(island, previous.x, previous.z) - gridSample(island, next.x, next.z);
+      const rapids = THREE.MathUtils.smoothstep(drop / run, 0.075, 0.33);
+      const reach = accumulated / scale;
+      for (const [edge, phase] of [[left, 0.2], [right, 2.25]] as const) {
+        const bend = 0.83 + 0.09 * Math.sin(reach * 0.19 + phase) +
+          0.06 * Math.sin(reach * 0.071 - phase);
+        const x = THREE.MathUtils.lerp(p.x, edge.x, bend);
+        const z = THREE.MathUtils.lerp(p.z, edge.z, bend);
+        const ground = gridSample(island, x, z);
+        const y = Math.min(ground, THREE.MathUtils.lerp(centreY, ground, 0.46)) + 0.19 * scale;
+        vertices.push(x, y, z);
+      }
+      style.push(1, rapids, 1, rapids);
+    } else {
+      // The original mountain ribbon keeps its independently draped banks.
+      vertices.push(left.x, gridSample(island, left.x, left.z) + 0.15 * scale, left.z,
+        right.x, gridSample(island, right.x, right.z) + 0.15 * scale, right.z);
+      style.push(0, 0, 0, 0);
+    }
     uvs.push(0, accumulated / 10, 1, accumulated / 10);
     if (i > 0) {
       const prev = sections[i - 1]!.center;
@@ -365,11 +424,91 @@ function riverMesh(points: readonly RiverPoint[], material: THREE.Material,
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setAttribute('streamStyle', new THREE.Float32BufferAttribute(style, 2));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'rippling-river';
   return mesh;
+}
+
+/** Fit a single low, wet rock step inside the existing forest falls site. */
+function forestCascade(island: IslandData, prop: PropDescriptor, outflow: THREE.Mesh) {
+  const scale = island.size / 600;
+  const pool = cascadePoolCentre(prop, scale);
+  const yaw = prop.transform.rotationY;
+  const forward = new THREE.Vector2(Math.sin(yaw), Math.cos(yaw));
+  const side = new THREE.Vector2(forward.y, -forward.x);
+  const poolProbe = new THREE.Raycaster(
+    new THREE.Vector3(pool.x, pool.y + 6 * scale, pool.z),
+    new THREE.Vector3(0, -1, 0), 0, 12 * scale);
+  const poolY = poolProbe.intersectObject(outflow)[0]?.point.y ?? pool.y;
+  const at = (t: number, across: number): Vec3 => {
+    const crest = 0.34 * scale * Math.sin(across / prop.size.x * 4.4);
+    const run = (t - 1) * (prop.size.z * 0.58 + crest);
+    const centre = Math.sin(t * Math.PI) * prop.size.x * 0.065;
+    return {
+      x: pool.x + forward.x * run + side.x * (across + centre),
+      y: poolY + scale * (0.025 + 2.05 * (1 - THREE.MathUtils.smoothstep(t, 0.08, 0.89))),
+      z: pool.z + forward.y * run + side.y * (across + centre),
+    };
+  };
+  const wet: number[] = [], wetUv: number[] = [], wetStyle: number[] = [], wetIndex: number[] = [];
+  const dry: number[] = [], dryIndex: number[] = [];
+  const rows = 14, waterColumns = 4, rockColumns = 4;
+  function stitch(indices: number[], row: number, stride: number): void {
+    if (!row) return;
+    for (let column = 0; column < stride - 1; column++) {
+      const a = (row - 1) * stride + column, b = a + 1, c = a + stride, d = c + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+  for (let row = 0; row <= rows; row++) {
+    const t = row / rows;
+    const wetHalf = prop.size.x * (0.25 + 0.06 * t + 0.028 * Math.sin(5 * t));
+    for (let column = 0; column <= waterColumns; column++) {
+      const u = column / waterColumns;
+      const point = at(t, (u * 2 - 1) * wetHalf);
+      wet.push(point.x, point.y + Math.sin(u * Math.PI) * 0.035 * scale, point.z);
+      wetUv.push(u, t);
+      wetStyle.push(2, 0.48 + 0.52 * t);
+    }
+    for (let column = 0; column <= rockColumns; column++) {
+      const u = (column / rockColumns) * 2 - 1;
+      const lower = Math.abs(u) === 1;
+      const width = prop.size.x * (0.41 + 0.045 * Math.sin(17 * t + u));
+      const point = at(t, u * width);
+      const ground = gridSample(island, point.x, point.z);
+      const height = lower ? Math.min(point.y - 0.35 * scale, ground - 0.25 * scale) :
+        point.y - (u === 0 ? 0.17 : 0.05 + 0.15 * Math.sin(t * 15 + u)) * scale;
+      dry.push(point.x, height, point.z);
+    }
+    stitch(wetIndex, row, waterColumns + 1);
+    stitch(dryIndex, row, rockColumns + 1);
+  }
+  // Ground the back face as well as both sides, so the uphill view reads
+  // a single stone lip instead of an open floating sheet.
+  const rear = dry.length / 3;
+  for (let i = 0; i <= rockColumns; i++) {
+    const x = dry[i * 3]!, y = dry[i * 3 + 1]!, z = dry[i * 3 + 2]!;
+    dry.push(x, Math.min(y, gridSample(island, x, z) - 0.25 * scale), z);
+    if (i > 0) dryIndex.push(i - 1, rear + i - 1, i, i, rear + i - 1, rear + i);
+  }
+  const water = new THREE.BufferGeometry();
+  water.setAttribute('position', new THREE.Float32BufferAttribute(wet, 3));
+  water.setAttribute('uv', new THREE.Float32BufferAttribute(wetUv, 2));
+  water.setAttribute('streamStyle', new THREE.Float32BufferAttribute(wetStyle, 2));
+  water.setIndex(wetIndex);
+  water.computeVertexNormals();
+  const rock = new THREE.BufferGeometry();
+  rock.setAttribute('position', new THREE.Float32BufferAttribute(dry, 3));
+  rock.setIndex(dryIndex);
+  rock.computeVertexNormals();
+  const bed = new THREE.Mesh(rock,
+    new THREE.MeshLambertMaterial({ color: 0x637778, side: THREE.DoubleSide, flatShading: true }));
+  bed.name = 'whispering-pines-rock-step';
+  bed.receiveShadow = true;
+  return { water, bed };
 }
 
 /** One cliff curtain only where a 4 m stretch of real riverbed drops 3 m. */
@@ -715,27 +854,35 @@ export function buildWaterVisuals(island: IslandData,
   const inland = new THREE.Group();
   inland.name = 'rivers-reservoir-and-falls';
   const stream = inlandMaterial(uLight);
+  const riverPaint = riverMaterial(stream.material);
   const damPlot = island.plots.find(plot => plot.poiId === 'the-dam');
   // The bespoke Dam plunge-pool surface occupies the middle reaches. Do
   // not draw the old thin river ribbon over it: its extra side vertices
   // make a bright diagonal sheet across the otherwise sculpted pool.
-  const upstream = riverMesh(island.river.slice(0, 5), stream.material,
+  const upstream = riverMesh(island.river.slice(0, 5), riverPaint,
     island, damPlot?.center);
   upstream.name = 'rippling-river';
-  const forestOutflow = riverMesh(island.river.slice(FOREST_OUTFLOW_START), stream.material,
-    island, damPlot?.center);
+  const forestOutflow = riverMesh(island.river.slice(FOREST_OUTFLOW_START), riverPaint,
+    island, damPlot?.center, true);
   forestOutflow.name = 'forest-river-after-dam';
   // Both reaches use the same animated shader. Merge their disconnected
   // index buffers into one draw so the new shoreline foam costs no extra
   // scene mesh. The Dam plunge pool remains an intentional gap between them.
-  const riverGeometry = mergeGeometries([upstream.geometry, forestOutflow.geometry]);
+  const glade = island.props.find(prop => prop.id === PINES_GLADE_CASCADE);
+  const cascade = glade && forestCascade(island, glade, forestOutflow);
+  const riverParts = [upstream.geometry, forestOutflow.geometry];
+  if (cascade) {
+    riverParts.push(cascade.water);
+    inland.add(cascade.bed);
+  }
+  const riverGeometry = mergeGeometries(riverParts);
   if (riverGeometry) {
-    upstream.geometry.dispose();
-    forestOutflow.geometry.dispose();
+    riverParts.forEach(geometry => geometry.dispose());
     upstream.geometry = riverGeometry;
     inland.add(upstream);
   } else {
     inland.add(upstream, forestOutflow);
+    if (cascade) inland.add(new THREE.Mesh(cascade.water, riverPaint));
   }
   const scale = island.size / 600;
   const reservoir = buildDamReservoir(island, uLight, stream.time);
@@ -746,7 +893,7 @@ export function buildWaterVisuals(island: IslandData,
   for (const prop of island.props) {
     if ((prop.kind === 'cascade' || prop.kind === 'cascade-tall') &&
         (prop.id.startsWith('waterfall-cascade-') ||
-          prop.id === 'whispering-pines-glade-cascade')) {
+          prop.id === PINES_GLADE_CASCADE)) {
       makeWaterfallFoam(inland, prop, scale);
     }
   }

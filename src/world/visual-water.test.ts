@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { createWorldScene, generateIsland } from './index';
-import { buildWaterVisuals, CASCADE_NATIVE_SIZE, cascadePoolCentre, cascadeWaterLine, waterfallSites } from './visual-water';
+import {
+  buildWaterVisuals, CASCADE_NATIVE_SIZE, cascadePoolCentre, cascadeWaterLine,
+  makeForestOutflowClearance, PINES_GLADE_CASCADE, waterfallSites,
+} from './visual-water';
 import { buildSkyVisuals, skyColorGLSL } from './visual-sky';
 import { getDamHeadwater, isDamHeadwater } from './dam-landscape';
 import { gridSample } from './terrain';
@@ -511,6 +514,7 @@ function renderedRibbonQuads(inland: THREE.Group): RibbonQuad[] {
   const river = inland.getObjectByName('rippling-river') as THREE.Mesh;
   expect(river).toBeInstanceOf(THREE.Mesh);
   const positions = river.geometry.getAttribute('position');
+  const style = river.geometry.getAttribute('streamStyle');
   const index = river.geometry.getIndex()!;
   expect(index.count % 6).toBe(0);
   const centre = (left: number, right: number): THREE.Vector3 =>
@@ -522,6 +526,7 @@ function renderedRibbonQuads(inland: THREE.Group): RibbonQuad[] {
   const quads: RibbonQuad[] = [];
   for (let i = 0; i < index.count; i += 6) {
     const a = index.getX(i), b = index.getX(i + 1);
+    if (style.getX(a) === 2) continue;
     const c = index.getX(i + 2), d = index.getX(i + 4);
     expect(index.getX(i + 3)).toBe(b);
     expect(index.getX(i + 5)).toBe(c);
@@ -573,7 +578,7 @@ describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
   it.each([
     { seed: 'billy-isle', size: 600, resolution: 193 },
     { seed: 'dam-ribbon-alt', size: 900, resolution: 97 },
-  ])('drapes every bank vertex onto the final ground on $seed at $size m',
+  ])('keeps the mountain banks draped and the forest banks inside the dry-tree clearance on $seed',
     ({ seed, size, resolution }) => {
       const island = generateIsland({ seed, size, resolution });
       const riverBefore = island.river.map(p => ({ ...p }));
@@ -585,21 +590,33 @@ describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
           .toBeUndefined(); // Both reaches still share one mesh and material.
         const position = river.geometry.getAttribute('position');
         const uv = river.geometry.getAttribute('uv');
+        const style = river.geometry.getAttribute('streamStyle');
         const scale = size / 600;
         const reaches = [island.river.slice(0, 5), island.river.slice(11)];
         const expectedStations = reaches.map(points => 1 + points.slice(1).reduce(
           (sum, point, i) => sum + Math.max(1, Math.ceil(
             Math.hypot(point.x - points[i]!.x, point.z - points[i]!.z) /
               (2 * scale))), 0));
-        expect(position.count).toBe(2 * expectedStations.reduce((a, b) => a + b, 0));
+        const ribbonCount = 2 * expectedStations.reduce((a, b) => a + b, 0);
+        const isGlade = island.props.some(prop => prop.id === PINES_GLADE_CASCADE);
+        expect(position.count).toBe(ribbonCount + (isGlade ? 75 : 0));
         expect(uv.count).toBe(position.count);
-        for (let v = 0; v < position.count; v++) {
+        expect(style.count).toBe(position.count);
+        const outsideForest = makeForestOutflowClearance(island);
+        for (let v = 0; v < ribbonCount; v++) {
           const x = position.getX(v), y = position.getY(v), z = position.getZ(v);
           const terrain = gridSample(island, x, z);
           expect(Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)).toBe(true);
-          expect(Math.abs(y - (terrain + 0.15 * scale)),
-            'bank vertex ' + v).toBeLessThan(0.3 * scale);
-          expect(y - terrain, 'no floating bank vertex ' + v).toBeLessThan(1);
+          const forest = v >= 2 * expectedStations[0]!;
+          expect(style.getX(v)).toBe(forest ? 1 : 0);
+          if (forest) {
+            expect(y - terrain, 'no floating forest bank ' + v).toBeLessThan(0.20 * scale);
+            expect(outsideForest(x, z, 0.05 * scale), 'unchanged bank clearance ' + v).toBe(false);
+            expect(style.getY(v)).toBeGreaterThanOrEqual(0);
+            expect(style.getY(v)).toBeLessThanOrEqual(1);
+          } else {
+            expect(y, 'unchanged mountain bank ' + v).toBeCloseTo(terrain + 0.15 * scale, 4);
+          }
           expect(uv.getX(v)).toBe(v % 2);
           expect(Number.isFinite(uv.getY(v))).toBe(true);
         }
@@ -613,10 +630,11 @@ describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
             });
             const a = centre(row - 1), b = centre(row);
             const run = Math.hypot(b.x - a.x, b.z - a.z);
-            expect(run).toBeLessThanOrEqual(2 * scale + 0.0001);
             expect(run).toBeGreaterThan(0);
-            expect(uv.getY(2 * row)).toBeCloseTo(
-              uv.getY(2 * (row - 1)) + run / 10, 4);
+            const uvStep = uv.getY(2 * row) - uv.getY(2 * (row - 1));
+            expect(uvStep).toBeGreaterThan(0);
+            expect(uvStep).toBeLessThanOrEqual(0.2 * scale + 0.0001);
+            if (!offset) expect(uvStep).toBeCloseTo(run / 10, 4);
           }
           offset += count;
         }
@@ -640,6 +658,7 @@ describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
           const mid = ribbonMidpoint(quad);
           return Math.hypot(mid.x - dam.center.x, mid.z - dam.center.z) <= 70;
         });
+
         expect(near.length).toBeGreaterThan(0);
         for (const quad of near) {
           expect(ribbonGradient(quad), 'Dam-adjacent indexed ribbon quad')
@@ -661,8 +680,9 @@ describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
               const dx = next.x - p.x, dz = next.z - p.z;
               const t = ((v.x - p.x) * dx + (v.z - p.z) * dz) /
                 (dx * dx + dz * dz);
-              return t >= -0.001 && t <= 1.001 &&
-                Math.hypot(v.x - p.x - t * dx, v.z - p.z - t * dz) < 0.001;
+              const tolerance = start === 0 ? 0.001 : 1.5 * island.size / 600;
+              return t >= -0.02 && t <= 1.02 &&
+                Math.hypot(v.x - p.x - t * dx, v.z - p.z - t * dz) < tolerance;
             });
           expect((inside(quad.start, 0, 4) && inside(quad.end, 0, 4)) ||
             (inside(quad.start, 11, island.river.length - 1) &&
@@ -673,6 +693,68 @@ describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
       }
     },
   );
+
+  it('makes one low rocky glade step that flows directly onto the softened Pines river', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const source = island.props.find(prop => prop.id === PINES_GLADE_CASCADE)!;
+    const safeBefore = structuredClone(island.colliders);
+    const view = createWorldScene(island);
+    try {
+      const river = view.group.getObjectByName('rippling-river') as
+        THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
+      const position = river.geometry.getAttribute('position');
+      const uv = river.geometry.getAttribute('uv');
+      const style = river.geometry.getAttribute('streamStyle');
+      const heights: number[] = [];
+      const forestWidth: number[] = [];
+      const builtVertices: number[] = [];
+      for (let i = 0; i < position.count; i++) {
+        if (style.getX(i) === 2) {
+          heights.push(position.getY(i));
+          builtVertices.push(i);
+        }
+        if (style.getX(i) === 1 && uv.getX(i) === 0) {
+          forestWidth.push(Math.hypot(position.getX(i) - position.getX(i + 1),
+            position.getZ(i) - position.getZ(i + 1)));
+        }
+      }
+      expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(2.14);
+      expect(Math.max(...heights) - Math.min(...heights)).toBeGreaterThan(1.95);
+      expect(Math.max(...forestWidth) - Math.min(...forestWidth)).toBeGreaterThan(4);
+      const localCentre = builtVertices.find(i => uv.getX(i) === 0.5 && uv.getY(i) === 1)!;
+      const pool = cascadePoolCentre(source, 1);
+      const y = position.getY(localCentre);
+      expect(position.getX(localCentre)).toBeCloseTo(pool.x, 4);
+      expect(position.getZ(localCentre)).toBeCloseTo(pool.z, 4);
+      view.group.updateMatrixWorld(true);
+      const ray = new THREE.Raycaster(new THREE.Vector3(pool.x, y + 1, pool.z),
+        new THREE.Vector3(0, -1, 0), 0, 2);
+      const streamHit = ray.intersectObject(river).find(hit => style.getX(hit.face!.a) === 1);
+      expect(streamHit).toBeDefined();
+      expect(y - streamHit!.point.y).toBeCloseTo(0.06, 4);
+
+      const bed = view.group.getObjectByName('whispering-pines-rock-step') as THREE.Mesh;
+      const stone = bed.geometry.getAttribute('position');
+      expect(bed).toBeInstanceOf(THREE.Mesh);
+      for (let i = 0; i < stone.count; i++) {
+        if (i % 5 !== 0 && i % 5 !== 4) continue;
+        expect(stone.getY(i)).toBeLessThan(
+          gridSample(island, stone.getX(i), stone.getZ(i)) - 0.24);
+      }
+
+      expect(river.material.fragmentShader).toContain('fwidth(phase)');
+      expect(river.material.fragmentShader).toContain('vStreamStyle.y * (1.0 - bank)');
+      expect(river.material.fragmentShader).toContain('0.94 * cover');
+      const legacy = view.group.getObjectByName('props-cascade') as THREE.InstancedMesh;
+      const index = island.props.filter(prop => prop.kind === 'cascade').indexOf(source);
+      const transform = new THREE.Matrix4();
+      legacy.getMatrixAt(index, transform);
+      expect(new THREE.Vector3().setFromMatrixScale(transform).lengthSq()).toBe(0);
+      expect(island.colliders).toEqual(safeBefore);
+    } finally {
+      view.dispose();
+    }
+  });
 
   it('keeps only real upstream cliff sites and their mesh-free names', () => {
     for (const [seed, size] of [['billy-isle', 600], ['waterfall-cliff-alt', 900]] as const) {
@@ -717,10 +799,12 @@ describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
         'waterfall-cascade-mountain-waterfall-'));
       expect(visuals.inland.children.filter(object =>
         /^mountain-waterfall-\d+$/.test(object.name))).toHaveLength(surviving.length);
-      const pos = (visuals.inland.getObjectByName('rippling-river') as THREE.Mesh)
-        .geometry.getAttribute('position');
+      const ribbon = (visuals.inland.getObjectByName('rippling-river') as THREE.Mesh).geometry;
+      const pos = ribbon.getAttribute('position');
+      const style = ribbon.getAttribute('streamStyle');
       for (let i = 0; i < pos.count; i++) {
-        expect(pos.getY(i)).toBeCloseTo(4 + 0.15, 4);
+        if (style.getX(i) === 2) continue; // Authored glade rock step, independent of river levels.
+        expect(pos.getY(i)).toBeCloseTo(4 + (style.getX(i) === 1 ? 0.19 : 0.15), 4);
       }
     } finally {
       disposeWaterMeshes(visuals);
@@ -810,8 +894,7 @@ describe('IS-22 shared water and foam lighting', () => {
           } else if (object.material instanceof THREE.MeshBasicMaterial) {
             foam.set(object.material, object.material.color.clone());
           } else {
-            // The submerged seabed uses built-in Lambert lighting, not an unlit material.
-            expect(object.name).toBe('seabed-skirt');
+            expect(['seabed-skirt', 'whispering-pines-rock-step']).toContain(object.name);
             expect(object.material).toBeInstanceOf(THREE.MeshLambertMaterial);
           }
         });
