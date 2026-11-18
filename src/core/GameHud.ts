@@ -4,7 +4,8 @@ import { HUD_PIECES, deriveHudState, projectHudMap } from './GameHudState';
 import { PAD_BUILD_BINDINGS, type InputDevice } from './GameInput';
 import { buildArtwork, goatArtwork, renderHudMinimap } from './HudArtwork';
 import { fitGigCardText } from './GigCardLayout';
-import { createHayHaulMapMarker, hayHaulMapPoint, type HayHaulGuidance } from './GigPresentation';
+import { createHayHaulMapMarker, hayHaulMapPoint, separateMapObjective,
+  type HayHaulGuidance } from './GigPresentation';
 import { HUD_SPRITES, hudSpriteImage, hudSpriteVariables } from './HudSprites';
 import { carryStaminaForHud, derivePartyHudState } from './PartyHudState';
 
@@ -516,6 +517,8 @@ export class GameHud {
   private readonly place: HTMLElement;
   private readonly mapCanvas: SVGElement;
   private playerArrow: SVGElement | null = null;
+  private mapSceneryClearance: SVGElement | null = null;
+  private mapObjectives: SVGGElement | null = null;
   private mapOrigin: { x: number; z: number } | null = null;
   private mapZone = '';
   private hayHaulMapMarker: SVGGElement | null = null;
@@ -689,30 +692,38 @@ export class GameHud {
       this.mapZone = zone;
       this.mapCanvas.innerHTML = renderHudMinimap(game.island, this.mapOrigin);
       this.hayHaulMapMarker = null;
-      this.playerArrow = this.mapCanvas.querySelector<SVGElement>('[data-player]');
+      this.playerArrow = this.mapCanvas.querySelector('[data-player]');
+      this.mapSceneryClearance = this.mapCanvas.querySelector('[data-map-player-clearance]');
+      this.mapObjectives = this.mapCanvas.querySelector('[data-map-objectives]');
     }
-    if (this.playerArrow && this.mapOrigin) {
-      const point = projectHudMap(position, this.mapOrigin);
-      const degrees = game.goat.locomotion.heading * 180 / Math.PI;
-      this.playerArrow.setAttribute('transform', 'translate(' + point.x.toFixed(1) + ' ' +
-        point.y.toFixed(1) + ') rotate(' + degrees.toFixed(0) + ')');
+    const point = projectHudMap(position, this.mapOrigin);
+    const degrees = game.goat.locomotion.heading * 180 / Math.PI;
+    const translate = 'translate(' + point.x.toFixed(1) + ' ' + point.y.toFixed(1) + ')';
+    this.playerArrow?.setAttribute('transform', translate + ' rotate(' + degrees.toFixed(0) + ')');
+    if (this.mapSceneryClearance && this.mapSceneryClearance.getAttribute('transform') !== translate) {
+      this.mapSceneryClearance.setAttribute('transform', translate);
     }
-    this.updateHayHaulMap(hayHaul);
+    this.updateHayHaulMap(hayHaul, point);
   }
 
-  private updateHayHaulMap(hayHaul: HayHaulGuidance | null): void {
+  private updateHayHaulMap(hayHaul: HayHaulGuidance | null,
+    player: ReturnType<typeof projectHudMap>): void {
     if (this.hayHaulMapMarker && this.hayHaulMapMarker.dataset.hayHaulMarker !== hayHaul?.kind) {
       this.hayHaulMapMarker.remove();
       this.hayHaulMapMarker = null;
     }
-    if (!hayHaul || !this.mapOrigin) return;
+    if (!hayHaul || !this.mapOrigin || !this.mapObjectives) return;
     if (!this.hayHaulMapMarker) {
       this.hayHaulMapMarker = createHayHaulMapMarker(hayHaul.kind);
-      this.mapCanvas.append(this.hayHaulMapMarker);
+      this.mapObjectives.append(this.hayHaulMapMarker);
     }
-    const point = hayHaulMapPoint(hayHaul.position, this.mapOrigin);
-    this.hayHaulMapMarker.setAttribute('transform', 'translate(' + point.x.toFixed(1) + ' ' +
-      point.y.toFixed(1) + ')');
+    const anchor = hayHaulMapPoint(hayHaul.position, this.mapOrigin);
+    const badge = separateMapObjective(anchor, player);
+    const leader = this.hayHaulMapMarker.querySelector('line');
+    leader?.setAttribute('x2', (anchor.x - badge.x).toFixed(1));
+    leader?.setAttribute('y2', (anchor.y - badge.y).toFixed(1));
+    this.hayHaulMapMarker.setAttribute('transform', 'translate(' + badge.x.toFixed(1) + ' ' +
+      badge.y.toFixed(1) + ')');
   }
 
   private updatePartyScoreboard(game: Game): void {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { V } from '../physics';
 import { Game } from './Game';
-import { hayHaulGuidance, hayHaulMapPoint } from './GigPresentation';
+import { hayHaulGuidance, hayHaulMapPoint, separateMapObjective } from './GigPresentation';
 
 describe('Hay Haul wayfinding', () => {
   it('tracks moved bales, gives the pickup input, and switches to the barn only for a tagged bale', async () => {
@@ -58,5 +58,20 @@ describe('Hay Haul wayfinding', () => {
     const rim = hayHaulMapPoint(V(0, 0, -400), origin);
     expect(rim.x).toBe(140);
     expect(rim.y).toBeCloseTo(32);
+  });
+
+  it('keeps nearby pickup and drop badges clear of the player and within the rim', () => {
+    const center = { x: 140, y: 140 };
+    const far = { x: 140, y: 82 };
+    expect(separateMapObjective(far, center)).toBe(far);
+    expect(separateMapObjective({ x: 145, y: 140 }, center)).toEqual({ x: 180, y: 140 });
+    expect(separateMapObjective(center, center)).toEqual({ x: 180, y: 140 });
+    const player = { x: 240.8, y: 140 };
+    const rim = { x: 248, y: 140 };
+    const badge = separateMapObjective(rim, player);
+    expect(Math.hypot(badge.x - player.x, badge.y - player.y)).toBeCloseTo(40);
+    expect(Math.hypot(badge.x - center.x, badge.y - center.y)).toBeCloseTo(108);
+    expect(separateMapObjective(rim, player)).toEqual(badge);
+    expect(rim).toEqual({ x: 248, y: 140 });
   });
 });
