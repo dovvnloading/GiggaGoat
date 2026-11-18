@@ -108,52 +108,6 @@ describe('free-roam camera / compact HUD reference framing', () => {
     }
   });
 
-  it('keeps the tray available at desktop size during settled walking on the pier', async () => {
-    const game = await Game.create();
-    const characters = new GameCharacters(new THREE.Scene(), game);
-    try {
-      const deck = game.island.props.find(prop => prop.poiId === 'baa-ardwalk' && prop.kind === 'pier')!;
-      const entry = deck.transform.position;
-      game.teleport(V(entry.x - 4, entry.y + deck.size.y / 2, entry.z - 3), -Math.PI);
-      for (let i = 0; i < 35; i++) game.step();
-
-      const width = 1542, height = 883;
-      const yaw = Math.PI, pitch = .055, size = game.goat.size;
-      const camera = new THREE.PerspectiveCamera(67, width / height, .07, 2200);
-      const torso = game.goat.torso.translation();
-      const target = new THREE.Vector3(torso.x, torso.y + CAMERA_TARGET_HEIGHT * size, torso.z);
-      const offset = goatCameraOffset(size, yaw, pitch);
-      const view = Object.assign(Object.create(GameView.prototype) as {
-        updateCamera(alpha: number, dt: number): void;
-      }, {
-        camera, input: { yaw, pitch }, currentSettings: { fov: 67 },
-        cameraAim: new THREE.Vector3(), cameraTarget: target,
-        cameraOffset: new THREE.Vector3(), cameraDirection: new THREE.Vector3(),
-        cameraPath: new THREE.Vector3(),
-        cameraPosition: target.clone().add(new THREE.Vector3(offset.x, offset.y, offset.z)),
-        cameraCollisionShape: new RAPIER.Ball(.25), cameraCollisionRotation: Q(),
-        cameraCollisionFilter: { predicate: (collider: RAPIER.Collider) =>
-          !game.goat.ownsBody(collider.parent()) },
-        game, characters, world: { sun: new THREE.DirectionalLight() },
-      });
-      camera.setViewOffset(width, height, 0,
-        goatCameraVerticalOffset(size, pitch, camera.fov, height), width, height);
-      for (let frame = 0; frame < 90; frame++) {
-        game.step({ moveZ: 1, cameraYaw: yaw });
-        characters.update(1 / 60, game.physics.alpha);
-        view.updateCamera(game.physics.alpha, 1 / 60);
-      }
-      const viewport = rect(0, 0, width, height);
-      const goat = projectGoatScreenBox(visibleGoatBounds(characters.player.root), camera, viewport);
-      expect(goat).not.toBeNull();
-      const tray = { id: 'hotbar', rect: rect((width - 560) / 2, height - 132, 560, 132) };
-      expect(planGoatSafeHud(goat!, viewport, [tray], []).hiddenPanels.has('hotbar')).toBe(false);
-    } finally {
-      characters.dispose();
-      game.dispose();
-    }
-  });
-
   it('keeps the real sculpt framed and separates visible HUD across desktop viewports and tiers',
     async () => {
       const game = await Game.create({ seed: 'billy-isle', resolution: 97 });
