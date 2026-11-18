@@ -6,6 +6,15 @@ import { instantiateLibraryModel } from './visual-lighthouse';
 import { BUILDING_RAMP, TOON_RAMP } from './visual-props';
 import { gridSample } from './terrain';
 
+function renderedCapeSurface(view: ReturnType<typeof createWorldScene>, scale: number) {
+  view.group.updateMatrixWorld(true);
+  const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0), 0, 220 * scale);
+  return (x: number, z: number): number => {
+    ray.ray.origin.set(x, 120 * scale, z);
+    return ray.intersectObjects(view.chunks, false)[0]!.point.y;
+  };
+}
+
 describe('Old Lighthouse painting rebuild', () => {
   it('keeps a tall physically collidable cape, cut-back cave and safe secret relic', () => {
     for (const seed of ['billy-isle', 'lighthouse-cape', 'sea-cave']) {
@@ -66,16 +75,17 @@ describe('Old Lighthouse painting rebuild', () => {
       'lighthouse-red-white-life-ring',
       'lighthouse-rowboat-fallback',
       'lighthouse-leaning-shipwreck-fallback',
-      'lighthouse-fallback-grey-rocks',
+      'lighthouse-cliff-boulders',
+      'lighthouse-lookout-cliff-braces-and-landing',
     ]) {
       expect(view.group.getObjectByName(name), name).toBeDefined();
     }
     expect(view.group.getObjectByName('props-lighthouse')).toBeInstanceOf(THREE.InstancedMesh);
     const cave = view.group.getObjectByName('lighthouse-recessed-sea-cave')!;
     expect(cave.children.length).toBeGreaterThan(1);
-    expect(view.group.getObjectByName('lighthouse-fallback-grey-rocks'))
+    expect(view.group.getObjectByName('lighthouse-cliff-boulders'))
       .toBeInstanceOf(THREE.InstancedMesh);
-    const grey = view.group.getObjectByName('lighthouse-fallback-grey-rocks') as THREE.InstancedMesh;
+    const grey = view.group.getObjectByName('lighthouse-cliff-boulders') as THREE.InstancedMesh;
     expect(grey.count).toBeGreaterThan(10);
     expect(grey.geometry.getAttribute('normal').count).toBeGreaterThan(0);
     expect((grey.material as THREE.MeshLambertMaterial).color.getHex()).not.toBe(0x000000);
@@ -106,7 +116,7 @@ describe('Old Lighthouse painting rebuild', () => {
         const m = matrix.elements;
         expect(Math.hypot(m[0]!, m[5]!, m[10]!), `${seed}: ${prop.id}`).toBeGreaterThan(0);
       });
-      for (const kind of ['cottage', 'shipwreck', 'dock', 'cave-mouth']) {
+      for (const kind of ['cottage', 'shipwreck', 'dock', 'cave-mouth', 'deck-stilts']) {
         const entries = island.props.filter(p => p.kind === kind &&
           !p.id.startsWith('the-dam-compat-'));
         expect(entries.some(p => p.poiId === 'old-lighthouse'), kind).toBe(true);
@@ -305,28 +315,25 @@ describe('Old Lighthouse painting rebuild', () => {
     }
   });
 
-  it('halves shore/shoulder boulder attempts and embeds every rock 35% into the ground', () => {
+  it('embeds the actual faceted cliff boulder bases and shades their stone into the cape', () => {
     for (const seed of ['billy-isle', 'lighthouse-cape']) {
       const island = generateIsland({ seed, resolution: 97 });
       const view = createWorldScene(island);
       try {
-        const rockFallback = view.group.getObjectByName(
-          'lighthouse-fallback-grey-rocks') as THREE.InstancedMesh;
-        expect(rockFallback).toBeInstanceOf(THREE.InstancedMesh);
-        const fallbackMaterial = rockFallback.material as THREE.MeshToonMaterial;
-        expect(fallbackMaterial).toBeInstanceOf(THREE.MeshToonMaterial);
-        expect(fallbackMaterial.emissive.getHex()).toBe(0);
-        expect(fallbackMaterial.gradientMap).toBe(BUILDING_RAMP);
+        const cliff = view.group.getObjectByName('lighthouse-cliff-boulders') as THREE.InstancedMesh;
+        expect(cliff).toBeInstanceOf(THREE.InstancedMesh);
+        const material = cliff.material as THREE.MeshToonMaterial;
+        expect(material).toBeInstanceOf(THREE.MeshToonMaterial);
+        expect(material.color.getHex()).toBe(0x8c919e);
+        expect(material.emissive.getHex()).toBe(0);
+        expect(material.gradientMap).toBe(TOON_RAMP);
+        expect(material.vertexColors).toBe(true);
+        expect(cliff.receiveShadow).toBe(true);
 
         const centre = island.pois.find(p => p.id === 'old-lighthouse')!.center;
         const scale = island.size / 600;
-        const expected: Array<{ x: number; y: number; z: number; height: number }> =
-          island.props.filter(p => p.poiId === 'old-lighthouse' && p.kind === 'rock')
-            .map(p => ({
-              x: p.transform.position.x, z: p.transform.position.z,
-              y: p.transform.position.y - p.size.y / 2, height: p.size.y,
-            }));
-        const descriptorCount = expected.length;
+        const groundAt = renderedCapeSurface(view, scale);
+        const expected: Array<{ x: number; y: number; z: number; height: number }> = [];
         let shoreCount = 0, shoulderCount = 0;
         // Source loops now visit only even slots, 8 rather than 16 and
         // 44 rather than 88; conditional cliff/cave skips stay unchanged.
@@ -360,22 +367,90 @@ describe('Old Lighthouse painting rebuild', () => {
         expect(shoreCount).toBeLessThanOrEqual(8);
         expect(shoulderCount).toBeGreaterThan(0);
         expect(shoulderCount).toBeLessThanOrEqual(44);
-        expect(rockFallback.count).toBe(descriptorCount + shoreCount + shoulderCount);
+        expect(cliff.count).toBe(shoreCount + shoulderCount);
+        const positions = cliff.geometry.getAttribute('position');
+        const colors = cliff.geometry.getAttribute('color');
+        const feet = new Map<string, THREE.Vector3>();
+        for (let i = 0; i < positions.count; i++) {
+          const vertex = new THREE.Vector3().fromBufferAttribute(positions, i);
+          if (vertex.y < 0) feet.set(vertex.toArray().join(','), vertex);
+          if (vertex.y < -0.4) expect(colors.getX(i)).toBeLessThan(0.74);
+          if (vertex.y > 0.45) expect(colors.getX(i)).toBeCloseTo(1, 5);
+        }
+        expect(feet.size).toBeGreaterThan(5);
         const matrix = new THREE.Matrix4();
         const position = new THREE.Vector3();
         for (const [i, rock] of expected.entries()) {
-          rockFallback.getMatrixAt(i, matrix);
+          cliff.getMatrixAt(i, matrix);
           position.setFromMatrixPosition(matrix);
           expect(position.x, seed + ': rock ' + i).toBeCloseTo(rock.x, 4);
           expect(position.z, seed + ': rock ' + i).toBeCloseTo(rock.z, 4);
-          // Before sinking the fallback centre was baseY + 0.5 * height.
-          // Subtracting 0.35 * height leaves baseY + 0.15 * height.
-          expect(position.y, seed + ': rock ' + i)
-            .toBeCloseTo(rock.y + 0.15 * rock.height, 4);
+          expect(position.y, seed + ': rock ' + i).toBeLessThanOrEqual(
+            rock.y + 0.15 * rock.height + 0.0001);
+          const buried = [...feet.values()].filter(foot => {
+            const vertex = foot.clone().applyMatrix4(matrix);
+            return groundAt(vertex.x, vertex.z) - vertex.y >= 0.235 * scale;
+          });
+          expect(buried.length, seed + ': rock ' + i).toBeGreaterThanOrEqual(feet.size / 2);
         }
       } finally {
         view.dispose();
       }
+    }
+  });
+
+  it.each([
+    { seed: 'billy-isle', size: 600, resolution: 193 },
+    { seed: 'lighthouse-cape', size: 850, resolution: 97 },
+  ])('seats both west lookout brackets into the actual cliff ($seed)', options => {
+    const island = generateIsland(options);
+    const view = createWorldScene(island);
+    try {
+      const deck = island.props.find(prop => prop.poiId === 'old-lighthouse' &&
+        prop.kind === 'platform')!;
+      const { x, y, z } = deck.transform.position;
+      const scale = options.size / 600;
+      const groundAt = renderedCapeSurface(view, scale);
+      const underside = y - deck.size.y / 2;
+      const supportPaint = view.group.getObjectByName('lighthouse-static-painted-landmarks') as
+        THREE.Mesh<THREE.BufferGeometry>;
+      const positions = supportPaint.geometry.getAttribute('position');
+      const rgb = supportPaint.geometry.getAttribute('color');
+      const darkTimber = new THREE.Color(0x63432e);
+      const isTimber = (i: number): boolean =>
+        Math.abs(rgb.getX(i) - darkTimber.r) < 0.00001 &&
+        Math.abs(rgb.getY(i) - darkTimber.g) < 0.00001 &&
+        Math.abs(rgb.getZ(i) - darkTimber.b) < 0.00001;
+      const vertices = Array.from({ length: positions.count }, (_, i) =>
+        isTimber(i) ? new THREE.Vector3().fromBufferAttribute(positions, i) : undefined)
+        .filter((point): point is THREE.Vector3 => point !== undefined);
+      for (const sign of [-1, 1]) {
+        const legZ = z + sign * deck.size.z * 0.36;
+        const underDeck = x - deck.size.x * 0.43;
+        const inCliff = x + deck.size.x * 0.39;
+        expect(vertices.some(point =>
+          Math.hypot(point.x - underDeck, point.z - legZ) < 0.25 * scale &&
+          Math.abs(point.y - underside) < 0.24 * scale)).toBe(true);
+        expect(vertices.some(point =>
+          Math.hypot(point.x - inCliff, point.z - legZ) < 0.25 * scale &&
+          point.y < groundAt(point.x, point.z) - 0.22 * scale)).toBe(true);
+      }
+      expect(island.colliders.some(collider => 'id' in collider && collider.id === deck.id))
+        .toBe(true);
+      const deckTop = y + deck.size.y / 2;
+      const fromLand = groundAt(x + deck.size.x / 2 + 0.6 * scale, z);
+      expect(fromLand).toBeGreaterThan(deckTop);
+      const gold = new THREE.Color(0xffcf56);
+      expect(Array.from({ length: rgb.count }, (_, i) => i).some(i =>
+        Math.abs(rgb.getX(i) - gold.r) < 0.00001 &&
+        Math.abs(rgb.getY(i) - gold.g) < 0.00001 &&
+        Math.abs(rgb.getZ(i) - gold.b) < 0.00001 &&
+        Math.abs(positions.getX(i) - x) < deck.size.x * 0.3 &&
+        Math.abs(positions.getZ(i) - z) < deck.size.z * 0.3 &&
+        positions.getY(i) > deckTop && positions.getY(i) < deckTop + 0.07 * scale,
+      )).toBe(true);
+    } finally {
+      view.dispose();
     }
   });
 
