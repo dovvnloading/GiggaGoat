@@ -175,12 +175,11 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
     const northwest = spiral.points.findIndex(point => point.bridge && point.x < 0 &&
       point.z > -82 * scale && point.z < -60 * scale);
     if (northwest >= 0) {
-      let first = northwest, last = northwest;
-      while (spiral.points[first - 1]?.bridge) first--;
+      let last = northwest;
       while (spiral.points[last + 1]?.bridge) last++;
-      // Fit the abutments after seeded placement so the terrain cut cannot
-      // change scenery selection and random draws in other districts.
-      clearTerrainUnderBridge(island, { ...spiral, points: spiral.points.slice(Math.max(first - 2, 0), last + 3) },
+      // Only the uphill handoff intersects the cliff. Start the fit at its
+      // approach panel so the lower span keeps the adjacent planted terrace.
+      clearTerrainUnderBridge(island, { ...spiral, points: spiral.points.slice(Math.max(last - 1, 0), last + 3) },
         spiral.width + 1);
     }
   }
