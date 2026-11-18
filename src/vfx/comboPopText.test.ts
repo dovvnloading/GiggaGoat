@@ -76,6 +76,34 @@ describe('08 combo pop tier choice and absolute-age timeline', () => {
 });
 
 describe('08 combo pop pooled Three.js sprites (headless)', () => {
+  it('keeps a close gameplay popup above the center and inside its screen size budget', () => {
+    const fx = createComboPopText({ capacity: 1 });
+    try {
+      const camera = new THREE.PerspectiveCamera(52, 1024 / 576, .08, 100);
+      camera.updateMatrixWorld(true);
+      fx.emit({ x: 0, y: -2, z: -.55 }, 4);
+      for (const aspect of [1024 / 576, 390 / 844]) {
+        camera.aspect = aspect;
+        camera.updateProjectionMatrix();
+        fx.update(.14, camera);
+        const sprite = billboard(fx.group, 0);
+        const center = sprite.position.clone().project(camera);
+        const width = sprite.scale.x * camera.projectionMatrix.elements[0]! / 1.1;
+        const height = sprite.scale.y * camera.projectionMatrix.elements[5]! / 1.1;
+        expect(sprite.visible).toBe(true);
+        expect(width).toBeLessThanOrEqual(.20001);
+        expect(height).toBeLessThanOrEqual(.12001);
+        expect(center.y).toBeGreaterThanOrEqual(.21999);
+      }
+      camera.position.z = -1;
+      camera.updateMatrixWorld(true);
+      fx.update(.04, camera);
+      expect(billboard(fx.group, 0).visible).toBe(false);
+    } finally {
+      fx.dispose();
+    }
+  });
+
   it('reuses sprites, materials and per-count textures across overlapping triggers', () => {
     const fx = createComboPopText({ capacity: 2 });
     const scene = new THREE.Scene();

@@ -220,7 +220,10 @@ export class GameVfx {
     const goat = this.game.goat;
     const p = goat.torso.translation();
     this.hoofAnchor.position.set(p.x, p.y - .92 * goat.size, p.z);
-    for (const effect of this.pools) effect.update(dt);
+    for (const effect of this.pools) {
+      if (camera && effect === this.effects.combo) this.effects.combo.update(dt, camera);
+      else effect.update(dt);
+    }
   }
 
   dispose(): void {

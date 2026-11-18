@@ -19,6 +19,9 @@ interface ComboSlot {
 }
 
 const CACHED_COUNT_LIMIT = 16;
+const MAX_PLAY_WIDTH = .20;
+const MAX_PLAY_HEIGHT = .12;
+const MIN_PLAY_CENTER_Y = .22;
 
 /**
  * Camera-facing COMBO xN feedback. One preallocated sprite/material per slot;
@@ -29,6 +32,8 @@ export class ComboPopText {
   readonly group = new THREE.Group();
   private readonly slots: ComboSlot[] = [];
   private readonly textures = new Map<number, THREE.Texture>();
+  private readonly viewPosition = new THREE.Vector3();
+  private readonly cameraUp = new THREE.Vector3();
   private nextSlot = 0;
   private disposed = false;
 
@@ -86,7 +91,7 @@ export class ComboPopText {
   }
 
   /** Render-clock seconds, not frame counts. A large step equals small steps. */
-  update(dt: number): void {
+  update(dt: number, camera?: THREE.Camera): void {
     if (this.disposed) throw new Error('ComboPopText is disposed');
     if (!Number.isFinite(dt) || dt < 0) {
       throw new RangeError('Combo pop dt must be finite and non-negative');
@@ -96,6 +101,31 @@ export class ComboPopText {
       if (!slot.cue) continue;
       slot.age += dt;
       this.paint(slot);
+      if (camera && slot.sprite.visible) this.fitPlayView(slot.sprite, camera);
+    }
+  }
+
+  private fitPlayView(sprite: THREE.Sprite, camera: THREE.Camera): void {
+    const p = this.viewPosition.copy(sprite.position).applyMatrix4(camera.matrixWorldInverse);
+    const m = camera.projectionMatrix.elements;
+    const w = m[11]! * p.z + m[15]!;
+    const depth = m[10]! * p.z + m[14]!;
+    if (w <= 0 || Math.abs(depth) > w) {
+      sprite.visible = false;
+      return;
+    }
+    // Projection maps one viewport width or height to two clip units.
+    const sx = Math.abs(m[0]!) * sprite.scale.x;
+    const sy = Math.abs(m[5]!) * sprite.scale.y;
+    const scale = Math.min(1, MAX_PLAY_WIDTH * 2 * w / sx, MAX_PLAY_HEIGHT * 2 * w / sy);
+    sprite.scale.x *= scale;
+    sprite.scale.y *= scale;
+
+    const y = m[5]! * p.y + m[9]! * p.z + m[13]!;
+    const rise = (MIN_PLAY_CENTER_Y * w - y) / m[5]!;
+    if (rise > 0) {
+      this.cameraUp.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+      sprite.position.addScaledVector(this.cameraUp, rise);
     }
   }
 
