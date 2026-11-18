@@ -198,9 +198,8 @@ describe('sprite-backed menu DOM', () => {
           }
         }
       };
-      check(); // Title, including all stat cards and the CUD coin icon
+      check(); // Title buttons and the returning player's CUD coin icon
       expect(root.innerHTML).toContain('data-sprite="icons/cud_coin"');
-      expect((root.innerHTML.match(/data-sprite="menu\/stat_card"/g) ?? []).length).toBe(3);
       setScreen('pause'); check();
       setScreen('settings'); check();
       expect(root.innerHTML).toContain('data-sprite="menu/toggle_off"');
@@ -266,6 +265,22 @@ describe('sprite-backed menu DOM', () => {
       ] });
       view.onFrame?.();
       expect(root.querySelector('[data-action="resume"]')).not.toBeNull();
+    } finally { menu.dispose(); }
+  });
+
+  it('shows the Billy Isle art and presents Play before optional saved progress', () => {
+    const { menu, root, game, setScreen } = setup();
+    try {
+      expect(root.innerHTML).toMatch(/<img[^>]*07_key_art\.png[^>]*alt="Gigga-Goat"/);
+      expect(root.innerHTML.indexOf('data-action="play"')).toBeLessThan(
+        root.innerHTML.indexOf('class="gg-title-progress"'));
+      expect(root.innerHTML).toContain('20 CUD COINS');
+      expect(root.innerHTML).not.toContain('GEAR REWARD');
+
+      game.rules.wallet.coins = 0;
+      setScreen('title');
+      expect(root.innerHTML).not.toContain('class="gg-title-progress"');
+      expect(root.innerHTML).toContain('QUICK START');
     } finally { menu.dispose(); }
   });
 
