@@ -593,6 +593,7 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         const selectors = ['[data-party-title]', '[data-party-clock-label]', '[data-party-clock]',
           '[data-party-goal]', '[data-party-status]', '.gg-party-metric-label', '.gg-party-metric-value'];
         for (const row of board.querySelectorAll(selectors.join(','))) {
+          if (row instanceof HTMLElement && row.hidden && row.hasAttribute('data-party-status')) continue;
           text.selectNodeContents(row);
           const rect = text.getBoundingClientRect();
           if (rect.width <= 0 || rect.height <= 0 || rect.left < panel.left - 1 ||
@@ -630,9 +631,12 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         await page.waitFor('document.querySelector(".gg-shell")?.hidden === true',
           mode + ' round to start');
         await page.waitFor('document.querySelector("[data-party-scoreboard]")?.hidden === false && ' +
-          'document.querySelector("[data-party-title]")?.textContent === ' + JSON.stringify(title) + ' && ' +
-          'document.querySelector("[data-party-clock-label]")?.textContent === "ROUND"',
-          mode + ' round clock', 20000);
+          'document.querySelector("[data-party-title]")?.textContent === ' + JSON.stringify(title),
+          mode + ' scoreboard to appear', 20000);
+        // The countdown advances on simulation ticks. Software rendering can
+        // take substantially longer than its three displayed seconds.
+        await page.waitFor('document.querySelector("[data-party-clock-label]")?.textContent === "ROUND"',
+          mode + ' countdown to finish', 45000);
         try {
           for (const [width, height] of [[1024, 576], [540, 360], [390, 844]] as const) {
             await page.send('Emulation.setDeviceMetricsOverride',
