@@ -150,7 +150,15 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   // Restore the full water gap after footings have feathered toward the bridge.
   preserveLighthouseChannel(island, lighthouse.center);
   const lighthouseRoad = island.roads.find(road => road.to === 'old-lighthouse' || road.from === 'old-lighthouse');
-  if (lighthouseRoad) clearTerrainUnderBridge(island, lighthouseRoad, lighthouseRoad.width + 1);
+  const capeRockGround = new Map<PropDescriptor, number>();
+  if (lighthouseRoad) {
+    for (const prop of island.props) {
+      if (prop.poiId !== 'old-lighthouse' || prop.kind !== 'rock') continue;
+      const { x, z } = prop.transform.position;
+      capeRockGround.set(prop, gridSample(island, x, z));
+    }
+    clearTerrainUnderBridge(island, lighthouseRoad, lighthouseRoad.width + 1);
+  }
   // The channel is carved after scenery placement. Drop any newly unsupported
   // ground dressing (rather than moving it) without consuming further RNG draws.
   const groundKinds = new Set<PropDescriptor['kind']>([
@@ -159,8 +167,15 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   ]);
   island.props = island.props.filter(prop => {
     if (!groundKinds.has(prop.kind)) return true;
-    const { x, y, z } = prop.transform.position;
-    return y - prop.size.y / 2 - gridSample(island, x, z) <= 0.5;
+    const position = prop.transform.position;
+    const ground = gridSample(island, position.x, position.z);
+    const capeGround = capeRockGround.get(prop);
+    if (capeGround === undefined) return position.y - prop.size.y / 2 - ground <= 0.5;
+    // Retain the channel's original culling, then keep surviving rocks seated
+    // at their authored offset on the newly graded terrain.
+    if (position.y - prop.size.y / 2 - capeGround > 0.5) return false;
+    position.y += ground - capeGround;
+    return true;
   });
   assignBiomes(island);
   island.spawns = makeSpawns(island);
