@@ -13,6 +13,7 @@ import { buildGroundDetails } from './visual-ground';
 import { buildStreetDetails } from './visual-streets';
 import { buildMeadowScatter } from './visual-meadow';
 import { buildWaterVisuals } from './visual-water';
+import { buildTideRouteCues } from './visual-tide-routes';
 import { buildDamVisuals } from './visual-dam';
 import { buildLighthouseVisuals, makeCapeLighting } from './visual-lighthouse';
 import { buildHoofingtonVisuals } from './visual-hoofington';
@@ -43,8 +44,8 @@ export interface WorldScene {
   setDayNight(phase: number): void;
   /** Day, painterly golden hour and starry night bookmarks. */
   setLightingPreset(preset: LightingPreset): void;
-  /** Sea shader and surface position both follow the mutable tide level. */
-  setTideLevel(level: number): void;
+  /** Set the sea level. The Lab shows escape cues above baseline unless the host opts out. */
+  setTideLevel(level: number, showRoutes?: boolean): void;
   /** Call with elapsed seconds to animate sea, waterfalls and foliage. */
   update(time: number): void;
   /** Frustum/terrain LOD; true when camera culling changed shadow-caster visibility. */
@@ -374,9 +375,14 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const capeLighting = makeCapeLighting(island);
   const chunks = buildTerrain(island, segments, capeLighting);
   for (const chunk of chunks) group.add(chunk.mesh);
-  group.add(buildRoads(island));
+  const roads = buildRoads(island);
+  group.add(roads);
   const roadsideSigns = buildRoadsideSigns(island);
   if (roadsideSigns) group.add(roadsideSigns);
+  const tideRoutes = buildTideRouteCues(island, roads, chunks.map(chunk => ({
+    geometry: chunk.low, x: chunk.mesh.position.x, z: chunk.mesh.position.z,
+  })));
+  group.add(tideRoutes.mesh);
   group.add(buildStreetDetails(island));
   // Coalesce unchanged ground decals to keep the extra zebra mesh within the draw budget.
   group.add(buildGroundDetails(island, 192));
@@ -451,11 +457,12 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     };
     setDayNight(phases[preset]);
   }
-  function setTideLevel(level: number): void {
+  function setTideLevel(level: number, showRoutes = level > island.seaLevel): void {
     if (!Number.isFinite(level)) throw new RangeError('Tide height must be finite');
     tide = level;
     waterVisuals.update(elapsed, tide);
     dam.setWaterLevel(tide);
+    tideRoutes.update(tide, showRoutes);
   }
   function update(time: number): void {
     elapsed = Number.isFinite(time) ? Math.max(0, time) : elapsed;

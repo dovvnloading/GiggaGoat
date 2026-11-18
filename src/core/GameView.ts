@@ -86,6 +86,7 @@ export class GameView {
   private shadowTimer = 1;
   private hudTimer = 1;
   private lastTide = Number.NaN;
+  private showingTideRoutes = false;
   private readonly perfStats: FramePerformance = {
     fps: 60, frameMs: 16.67, renderMs: 0, physicsMs: 0,
     drawCalls: 0, triangles: 0, textures: 0, pixelRatio: 1,
@@ -760,9 +761,12 @@ export class GameView {
     this.updateProps(alpha);
     this.updateBuildings();
     this.updateDebris(alpha);
-    if (this.lastTide !== this.game.water.seaLevel) {
+    const match = this.game.party.match;
+    const showTideRoutes = match?.mode === 'rising-tide' && match.phase !== 'results';
+    if (this.lastTide !== this.game.water.seaLevel || this.showingTideRoutes !== showTideRoutes) {
       this.lastTide = this.game.water.seaLevel;
-      this.world.setTideLevel(this.lastTide);
+      this.showingTideRoutes = showTideRoutes;
+      this.world.setTideLevel(this.lastTide, showTideRoutes);
     }
     this.world.update(this.game.physics.time);
     const dayPhase = .5 + Math.sin(this.game.physics.time / 150) * .035;
