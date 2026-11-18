@@ -19,7 +19,7 @@ import { buildDamVisuals } from './visual-dam';
 import { buildLighthouseVisuals, makeCapeLighting } from './visual-lighthouse';
 import { buildHoofingtonVisuals } from './visual-hoofington';
 import { buildDowntownVisuals } from './visual-downtown';
-import { buildMountainSpiralBridgeDecks, buildMountainWayfinding } from './visual-mountain';
+import { buildMountainWayfinding } from './visual-mountain';
 import { MOUNTAIN_SPIRAL_BRIDGE_PREFIX } from './roads';
 import { buildSkyVisuals, type LightingPreset } from './visual-sky';
 
@@ -404,7 +404,6 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const chunks = buildTerrain(island, segments, capeLighting);
   for (const chunk of chunks) group.add(chunk.mesh);
   const roads = buildRoads(island);
-  const mountainBridges = buildMountainSpiralBridgeDecks(island);
   group.add(roads);
   const roadsideSigns = buildRoadsideSigns(island);
   if (roadsideSigns) group.add(roadsideSigns);
@@ -417,15 +416,16 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(buildGroundDetails(island, 192));
   group.add(buildMeadowScatter(island));
   const external = options.externallyRenderedPropKinds;
-  const scenery = external?.size || mountainBridges
-    ? { ...island, props: island.props.filter(prop => !external?.has(prop.kind) &&
-      !(mountainBridges && prop.id.startsWith(MOUNTAIN_SPIRAL_BRIDGE_PREFIX))) }
+  const scenery = external?.size
+    ? { ...island, props: island.props.filter(prop => !external.has(prop.kind)) }
     : island;
   const sky = buildSkyVisuals();
   const waterVisuals = buildWaterVisuals(island, sky.atmosphere);
-  const props = buildPropVisuals(scenery.props, options.propChunkSize ?? 96, scenery,
-    waterVisuals.replacedCascadeIds);
-  if (mountainBridges) props.group.add(mountainBridges);
+  const replacedProps = new Set(waterVisuals.replacedCascadeIds);
+  for (const deck of island.colliders) {
+    if (deck.shape === 'convex' && deck.id.startsWith(MOUNTAIN_SPIRAL_BRIDGE_PREFIX)) replacedProps.add(deck.id);
+  }
+  const props = buildPropVisuals(scenery.props, options.propChunkSize ?? 96, scenery, replacedProps);
   group.add(props.group);
   const hoofington = buildHoofingtonVisuals(scenery, props.group);
   group.add(hoofington.group);

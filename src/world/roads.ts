@@ -305,7 +305,7 @@ export function makeBridgeDecks(island: IslandData): import('./types').PropDescr
   return decks;
 }
 
-const MOUNTAIN_SPIRAL_TRAIL = 'downtown-bleatsville--mt-gigga';
+export const MOUNTAIN_SPIRAL_TRAIL = 'downtown-bleatsville--mt-gigga';
 export const MOUNTAIN_SPIRAL_BRIDGE_PREFIX = 'bridge-' + MOUNTAIN_SPIRAL_TRAIL + '-';
 
 /** Sloped decks on the coastal and mountain grades share a cross section at each seam. */

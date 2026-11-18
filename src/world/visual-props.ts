@@ -707,7 +707,7 @@ function poseSummitLandmark(prop: PropDescriptor, art: THREE.Object3D): void {
 
 /** Spatially batched instancing; LOD/culling works without per-object draw calls. */
 export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 96,
-  island?: IslandData, replacedCascadeIds?: ReadonlySet<string>): PropVisuals {
+  island?: IslandData, replacedPropIds?: ReadonlySet<string>): PropVisuals {
   const group = new THREE.Group();
   group.name = 'handcrafted-props';
   // A full-detail far batch uses the near mesh. Preserve existing far-name
@@ -802,8 +802,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       const p = prop.transform.position;
       dummy.position.set(p.x, p.y, p.z);
       dummy.rotation.set(0, prop.transform.rotationY, 0);
-      // A connected cascade is drawn with the river at the reserved site.
-      if (replacedCascadeIds?.has(prop.id)) dummy.scale.setScalar(0);
+      // Preserve the stable instance slot when connected scenery draws this prop.
+      if (replacedPropIds?.has(prop.id)) dummy.scale.setScalar(0);
       else dummy.scale.set(prop.size.x, prop.size.y, prop.size.z);
       if (summitLandmark(prop)) poseSummitLandmark(prop, dummy);
       dummy.updateMatrix();

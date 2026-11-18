@@ -250,6 +250,13 @@ export function buildMountainWayfinding(island: IslandData): THREE.Group {
     if (cut.jump) parts.push(['box', 0, .83, 0, .34, .14, .34, 0xe39740, yaw]);
     add({ id: cut.id, markers: cut.markers, parts });
   }
+  const bridgeDecks = mountainSpiralBridgeGeometry(island);
+  if (bridgeDecks) {
+    features['mountain-spiral-bridge-decks'] = {
+      start: vertices, count: bridgeDecks.getAttribute('position').count,
+    };
+    pieces.push(bridgeDecks);
+  }
   if (pieces.length === 0) return group;
   const geometry = mergeGeometries(pieces);
   pieces.forEach(piece => piece.dispose());
@@ -265,7 +272,7 @@ export function buildMountainWayfinding(island: IslandData): THREE.Group {
   return group;
 }
 
-export function buildMountainSpiralBridgeDecks(island: IslandData): THREE.Mesh | undefined {
+function mountainSpiralBridgeGeometry(island: IslandData): THREE.BufferGeometry | undefined {
   const positions: number[] = [], colors: number[] = [];
   const timber = new THREE.Color(0x996841), alternate = new THREE.Color(0xa6744c);
   const seams = new THREE.Color(0x765135);
@@ -304,10 +311,5 @@ export function buildMountainSpiralBridgeDecks(island: IslandData): THREE.Mesh |
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geometry.computeVertexNormals();
-  const mesh = new THREE.Mesh(geometry, new THREE.MeshToonMaterial({
-    vertexColors: true, gradientMap: TOON_RAMP,
-  }));
-  mesh.name = 'mountain-spiral-bridge-decks';
-  mesh.receiveShadow = true;
-  return mesh;
+  return geometry;
 }

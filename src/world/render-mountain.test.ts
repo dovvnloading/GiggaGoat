@@ -90,7 +90,7 @@ it('renders distinguishable, grounded tier landmarks off existing trails and cas
     const paint = geometry.getAttribute('color');
     const features = geometry.userData['features'] as
       Record<string, { start: number; count: number }>;
-    expect(Object.keys(features)).toEqual([...tierNames, 'northwest-cut', 'summit-cut']);
+    expect(Object.keys(features)).toEqual([...tierNames, 'northwest-cut', 'summit-cut', 'mountain-spiral-bridge-decks']);
     let cursor = 0;
     for (const { start, count } of Object.values(features)) {
       expect(start).toBe(cursor);
@@ -188,10 +188,11 @@ it('walks through the bridge after the northwest shortcut and renders its real d
     world.group.updateMatrixWorld(true);
     const road = game.island.roads.find(r => r.id === 'downtown-bleatsville--mt-gigga')!;
     const span = road.points.slice(95, 102);
-    const mesh = world.group.getObjectByName('mountain-spiral-bridge-decks')!;
+    const mesh = world.group.getObjectByName('mountain-wayfinding-batched') as THREE.Mesh;
     const flatDecks = world.group.getObjectByName('props-bridge')!;
     expect(mesh).toBeInstanceOf(THREE.Mesh);
     expect(flatDecks).toBeInstanceOf(THREE.InstancedMesh);
+    const { start: firstBridgeVertex, count: bridgeVertices } = mesh.geometry.userData.features['mountain-spiral-bridge-decks'];
     const deckHandles = new Set([...game.colliders.props]
       .filter(([id]) => id.startsWith(MOUNTAIN_SPIRAL_BRIDGE_PREFIX)).map(([, collider]) => collider.handle));
 
@@ -209,10 +210,27 @@ it('walks through the bridge after the northwest shortcut and renders its real d
         const ray = new THREE.Raycaster(origin, down, 0, 60);
         const visible = ray.intersectObject(mesh)[0];
         expect(visible?.point.y).toBeCloseTo(support!.point.y, 1);
+        expect(visible!.faceIndex! * 3).toBeGreaterThanOrEqual(firstBridgeVertex);
+        expect(visible!.faceIndex! * 3).toBeLessThan(firstBridgeVertex + bridgeVertices);
         expect(ray.intersectObject(flatDecks)).toHaveLength(0);
         return support!.point.y;
       });
       expect(Math.abs(sampledHeights[1]! - sampledHeights[0]!)).toBeLessThan(.16);
+    }
+
+    const landing = road.points[99]!;
+    const deckStart = road.points[98]!;
+    for (const t of [.43, .64, .83]) {
+      const origin = { x: THREE.MathUtils.lerp(deckStart.x, landing.x, t), y: 65,
+        z: THREE.MathUtils.lerp(deckStart.z, landing.z, t) };
+      const down = { x: 0, y: -1, z: 0 };
+      const terrain = game.physics.raycast(origin, down, 60, {
+        predicate: collider => collider.handle === game.colliders.terrain.handle,
+      });
+      const deck = game.physics.raycast(origin, down, 60, {
+        predicate: collider => deckHandles.has(collider.handle),
+      });
+      expect(terrain!.point.y).toBeLessThan(deck!.point.y);
     }
 
     const start = span[0]!;
