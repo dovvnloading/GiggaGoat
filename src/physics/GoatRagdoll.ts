@@ -48,6 +48,7 @@ export class GoatRagdoll {
   private detachBefore: () => void;
   private detachAfter: () => void;
   private detachContact: () => void;
+  private plantedAtWalkingSpeed = false;
   private destroyed = false;
 
   constructor(world: PhysicsWorld, options: GoatOptions = {}) {
@@ -65,6 +66,14 @@ export class GoatRagdoll {
       this.balance.update(dt);
       this.interactions.update(dt);
       this.driveMotors();
+      // Sample before the contact solver changes velocity. A planted goat
+      // walking into scenery can generate a large impulse as its legs and
+      // torso are stopped together, even during an ordinary walking bump.
+      const velocity = this.torso.linvel();
+      const walkSpeed = this.locomotion.tuning.walkSpeed * this.size ** .16;
+      this.plantedAtWalkingSpeed = this.locomotion.grounded && !this.isRagdoll &&
+        Math.abs(velocity.y) < 2 * Math.sqrt(this.size) &&
+        Math.hypot(velocity.x, velocity.z) <= walkSpeed * 1.05;
     });
     this.detachAfter = this.world.onAfterStep(dt => { this.locomotion.afterStep(dt); });
     this.detachContact = this.world.onContact(contact => { this.handleContact(contact); });
@@ -162,7 +171,12 @@ export class GoatRagdoll {
     const mineA = this.ownsBody(contact.bodyA);
     const mineB = this.ownsBody(contact.bodyB);
     if (mineA === mineB) return; // self-contact and non-goat contacts are not damage.
-    this.balance.handleImpact(contact.impulse, mineA ? contact.bodyB : contact.bodyA);
+    const other = mineA ? contact.bodyB : contact.bodyA;
+    const fixed = other === null || this.world.raw.getRigidBody(other)?.isFixed();
+    // Keep the real solid-body stop. Only hard collisions can knock the goat
+    // down, so holding movement against a rail cannot chain ragdolls.
+    if (fixed && this.plantedAtWalkingSpeed) return;
+    this.balance.handleImpact(contact.impulse, other);
   }
 
   /** Live size progression: rebuild joints/colliders, preserving heading and velocity. */

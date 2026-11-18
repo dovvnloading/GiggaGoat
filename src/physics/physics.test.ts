@@ -103,6 +103,21 @@ describe('real Rapier physics simulation', () => {
     expect(rotate(g.torso.rotation(),V(0,1,0)).y).toBeGreaterThan(.55);
   });
 
+  it('still enters ragdoll when a moving crate strikes a planted goat', async () => {
+    const w = await scene();
+    const g = goat(w, .6);
+    simulate(w, .65);
+    const knockdowns: string[] = [];
+    g.events.on(event => {
+      if (event.type === 'ragdollStart') knockdowns.push(event.reason);
+    });
+    const crate = w.createBox(V(0, .5, -3.6), V(.45, .5, .40), 24);
+    crate.setLinvel(V(0, 0, 12), true);
+    simulate(w, .65);
+    expect(knockdowns).toEqual(['impact']);
+    expect(g.isRagdoll).toBe(true);
+  });
+
   it('clings and climbs measurable height on a steep vertical wall', async () => {
     const w = await scene(), g = goat(w);
     const wall = w.raw.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0,2,-1.35));
