@@ -1,9 +1,8 @@
 import type { PlayerIntent } from './Game';
 import type { PieceType } from '../gameplay';
+import { PLAY_CAMERA_PITCH, clampCameraPitch } from './GoatCamera';
 
 const PIECES: readonly PieceType[] = ['floor', 'wall', 'ramp', 'launch-pad'];
-const DRAG_THRESHOLD = 5;
-const CHARGE_HOLD_SECONDS = .16;
 const axis = (value: number): number => Math.abs(value) < .14 ? 0 :
   Math.sign(value) * (Math.abs(value) - .14) / .86;
 const down = (pad: Gamepad, index: number): boolean => pad.buttons[index]?.pressed ?? false;
@@ -15,10 +14,7 @@ export class GameInput {
   private active = true;
   private mousePrimary = false;
   private mouseSecondary = false;
-  private unlockedHover: { x: number; y: number } | null = null;
-  private unlockedPress: {
-    x: number; y: number; startedAt: number; elapsed: number; dragged: boolean;
-  } | null = null;
+  private unlockedMouse: { x: number; y: number } | null = null;
   private buildToggleQueued = false;
   private buildPlaceQueued = false;
   private selected: PieceType | undefined;
@@ -35,7 +31,7 @@ export class GameInput {
   private pendingInteract = false;
   private readonly unsubscribers: Array<() => void> = [];
   yaw: number;
-  pitch = .3;
+  pitch = PLAY_CAMERA_PITCH;
   debugVisible = false;
   sensitivity = 1;
   invertY = false;
@@ -50,9 +46,14 @@ export class GameInput {
       this.unsubscribers.push(() => target.removeEventListener(type, fn as EventListener));
     };
     listen(window, 'keydown', event => {
-      if (event.repeat) return;
+      if (!this.active || event.ctrlKey || event.metaKey || event.altKey) return;
       const code = event.code;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'F3'].includes(code)) event.preventDefault();
+      if (event.repeat) return;
+      if (code === 'KeyC') {
+        void this.requestPointerLock();
+        return;
+      }
       this.keys.add(code);
       if (code === 'KeyB') this.buildToggleQueued = true;
       if (code === 'F3') this.debugVisible = !this.debugVisible;
@@ -69,67 +70,42 @@ export class GameInput {
     listen(document, 'visibilitychange', () => {
       if (document.hidden) this.reset();
     });
-    const clearHover = () => { this.unlockedHover = null; };
-    listen(canvas, 'mouseleave', clearHover);
-    listen(document, 'pointerlockchange', clearHover);
-    listen(document, 'pointerlockerror', clearHover);
+    const clearMouseAnchor = () => { this.unlockedMouse = null; };
+    listen(canvas, 'mouseleave', clearMouseAnchor);
+    listen(document, 'pointerlockchange', clearMouseAnchor);
+    listen(document, 'pointerlockerror', clearMouseAnchor);
     listen(canvas, 'mousedown', event => {
       if (!this.active) return;
-      clearHover();
+      if (document.pointerLockElement !== canvas) {
+        this.unlockedMouse = { x: event.clientX, y: event.clientY };
+      }
       if (event.button === 0) {
-        if (document.pointerLockElement === canvas) {
-          this.mousePrimary = true;
-          this.buildPlaceQueued = true;
-        } else {
-          this.unlockedPress = {
-            x: event.clientX, y: event.clientY, startedAt: event.timeStamp, elapsed: 0, dragged: false,
-          };
-        }
+        this.mousePrimary = true;
+        this.buildPlaceQueued = true;
       }
       if (event.button === 2) this.mouseSecondary = true;
     });
     listen(window, 'mouseup', event => {
-      if (event.button === 0) {
-        const press = this.unlockedPress;
-        const charged = this.mousePrimary;
-        this.unlockedPress = null;
-        this.mousePrimary = false;
-        if (press && !press.dragged && !charged && event.target === canvas) {
-          this.buildPlaceQueued = true;
-          // A hold can outlast the sampled charge delay when frames stall.
-          if (event.timeStamp - press.startedAt < CHARGE_HOLD_SECONDS * 1000) {
-            void this.requestPointerLock();
-          }
-        }
-      }
+      if (event.button === 0) this.mousePrimary = false;
       if (event.button === 2) this.mouseSecondary = false;
     });
     listen(canvas, 'contextmenu', event => { event.preventDefault(); });
     listen(document, 'mousemove', event => {
       if (!this.active) return;
+      // The button state also recovers a release that landed outside the page.
+      if (!(event.buttons & 1)) this.mousePrimary = false;
+      if (!(event.buttons & 2)) this.mouseSecondary = false;
       if (document.pointerLockElement === canvas) {
         this.look(event.movementX, event.movementY);
         return;
       }
-      if (this.unlockedPress && !(event.buttons & 1)) {
-        this.unlockedPress = null;
-        this.mousePrimary = false;
-      }
-      if (event.buttons === 0 && event.target === canvas) {
-        const previous = this.unlockedHover;
-        this.unlockedHover = { x: event.clientX, y: event.clientY };
-        if (previous) this.look(event.clientX - previous.x, event.clientY - previous.y);
+      if (event.target !== canvas) {
+        clearMouseAnchor();
         return;
       }
-      clearHover();
-      const press = this.unlockedPress;
-      if (!press || this.mousePrimary) return;
-      const dx = event.clientX - press.x, dy = event.clientY - press.y;
-      if (!press.dragged && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-      press.dragged = true;
-      press.x = event.clientX;
-      press.y = event.clientY;
-      this.look(dx, dy);
+      const previous = this.unlockedMouse;
+      this.unlockedMouse = { x: event.clientX, y: event.clientY };
+      if (previous) this.look(event.clientX - previous.x, event.clientY - previous.y);
     });
   }
 
@@ -149,18 +125,17 @@ export class GameInput {
 
   private look(dx: number, dy: number): void {
     this.yaw += dx * .0026 * this.sensitivity;
-    this.pitch = Math.max(-.22, Math.min(1.15,
-      this.pitch + dy * .0021 * this.sensitivity * (this.invertY ? -1 : 1)));
+    this.pitch = clampCameraPitch(
+      this.pitch + dy * .0021 * this.sensitivity * (this.invertY ? -1 : 1));
   }
 
   sample(dt: number, buildMode: boolean): PlayerIntent {
-    const press = this.unlockedPress;
-    if (press && !press.dragged && !buildMode) {
-      // Let a quick drag choose look before a stationary hold begins charging.
-      press.elapsed += dt;
-      this.mousePrimary ||= press.elapsed >= CHARGE_HOLD_SECONDS;
-    }
+    if (!this.active) return { cameraYaw: this.yaw };
     const pressed = (code: string): boolean => this.keys.has(code);
+    const lookX = Number(pressed('KeyL')) - Number(pressed('KeyJ'));
+    const lookY = Number(pressed('KeyK')) - Number(pressed('KeyI'));
+    this.yaw += lookX * dt * 2.8;
+    this.pitch = clampCameraPitch(this.pitch + lookY * dt * 1.9);
     let moveX = Number(pressed('KeyD') || pressed('ArrowRight')) -
       Number(pressed('KeyA') || pressed('ArrowLeft'));
     let moveZ = Number(pressed('KeyW') || pressed('ArrowUp')) -
@@ -185,9 +160,9 @@ export class GameInput {
       if (Math.hypot(px, pz) > Math.hypot(moveX, moveZ) * .7) {
         moveX = px; moveZ = pz;
       }
-      this.yaw -= axis(pad.axes[2] ?? 0) * dt * 2.8 * this.sensitivity;
-      this.pitch = Math.max(-.22, Math.min(1.15,
-        this.pitch + axis(pad.axes[3] ?? 0) * dt * 1.9 * (this.invertY ? 1 : -1)));
+      this.yaw += axis(pad.axes[2] ?? 0) * dt * 2.8 * this.sensitivity;
+      this.pitch = clampCameraPitch(
+        this.pitch + axis(pad.axes[3] ?? 0) * dt * 1.9 * (this.invertY ? -1 : 1));
       sprint ||= down(pad, 5);
       const padJump = down(pad, 0);
       jump ||= padJump;
@@ -243,11 +218,11 @@ export class GameInput {
     this.keys.clear();
     this.mousePrimary = false;
     this.mouseSecondary = false;
-    this.unlockedHover = null;
-    this.unlockedPress = null;
+    this.unlockedMouse = null;
     this.pendingJump = this.pendingBleat = this.pendingFlop = this.pendingFling = false;
     this.pendingGraze = this.pendingInteract = false;
-    this.buildPlaceQueued = false;
+    this.buildToggleQueued = this.buildPlaceQueued = false;
+    this.selected = undefined;
   }
 
   dispose(): void {

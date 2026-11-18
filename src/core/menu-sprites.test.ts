@@ -138,7 +138,7 @@ function setup() {
   const game = {
     rules: { wallet: { coins: 20 } },
     gigs: { director: { ownedCosmetics: [] }, active: null },
-    party: { match: null, title: 'Rising Tide' },
+    party: { match: null, title: 'Rising Tide', start: vi.fn() },
     physics: { stepCount: 0 },
   };
   const view = {
@@ -149,6 +149,7 @@ function setup() {
     hud: { setVisible: vi.fn() },
     renderer: { domElement: new NodeStub(doc) },
     applySettings: vi.fn(),
+    alignCameraForPlay: vi.fn(),
   };
   const settings = { ...DEFAULT_SETTINGS };
   const menu = new GameMenu(host as unknown as HTMLElement,
@@ -156,7 +157,7 @@ function setup() {
     view as unknown as ConstructorParameters<typeof GameMenu>[2], settings);
   const setScreen = (screen: string): void =>
     (menu as unknown as { setScreen: (value: string) => void }).setScreen(screen);
-  return { menu, doc, win, view, settings, setScreen, root: host.children[0]! };
+  return { menu, doc, win, game, view, settings, setScreen, root: host.children[0]! };
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -202,6 +203,31 @@ describe('sprite-backed menu DOM', () => {
       expect(seen).toContain(MENU_SPRITES.yellowNormal);
       expect(seen).toContain(MENU_SPRITES.purpleNormal);
       expect(menuSpriteUrl(MENU_SPRITES.panel)).toMatch(/assets\/ui\/sprites\/menu\/panel_tall\.png$/);
+    } finally { menu.dispose(); }
+  });
+
+  it('sets the gameplay orbit when Play or Launch Round starts a session', () => {
+    const { menu, game, view, root, setScreen } = setup();
+    try {
+      expect(view.alignCameraForPlay).not.toHaveBeenCalled();
+      expect(root.innerHTML).toContain('WASD or arrows move · Mouse or IJKL look · C capture mouse');
+
+      root.querySelector<ButtonStub>('[data-action="play"]')!.click();
+      expect(view.alignCameraForPlay).toHaveBeenCalledTimes(1);
+      expect(view.input.requestPointerLock).toHaveBeenCalledTimes(1);
+      expect(view.paused).toBe(false);
+
+      setScreen('pause');
+      root.querySelector<ButtonStub>('[data-action="resume"]')!.click();
+      expect(view.alignCameraForPlay).toHaveBeenCalledTimes(1);
+      expect(view.paused).toBe(false);
+
+      setScreen('party');
+      root.querySelector<ButtonStub>('[data-action="start-party"]')!.click();
+      expect(view.alignCameraForPlay).toHaveBeenCalledTimes(2);
+      expect(game.party.start.mock.invocationCallOrder[0]!)
+        .toBeLessThan(view.alignCameraForPlay.mock.invocationCallOrder[1]!);
+      expect(view.paused).toBe(false);
     } finally { menu.dispose(); }
   });
 

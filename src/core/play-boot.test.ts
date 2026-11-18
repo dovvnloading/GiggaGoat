@@ -59,6 +59,7 @@ vi.mock('./GameView', async () => {
         this.input = new GameInput(this.renderer.domElement,
           -game.island.spawns[0]!.heading + SPAWN_CAMERA_YAW_OFFSET);
       }
+      alignCameraForPlay(): void {}
       applySettings(_settings: unknown): void {}
       dispose(): void { this.input.dispose(); }
     },

@@ -269,7 +269,7 @@ export class GameHud {
       '<div class="gg-hint" data-sprite="' + HUD_SPRITES.promptPill +
       '" data-hint><span class="gg-prompt-key gg-prompt-mouse" data-sprite="' +
       HUD_SPRITES.keyBadge + '" aria-hidden="true">🖱</span>' +
-      '<span class="gg-prompt-copy" data-hint-copy>MOUSE TO LOOK · CLICK TO LOCK</span></div>' +
+      '<span class="gg-prompt-copy" data-hint-copy>MOUSE / IJKL LOOK · C CAPTURE MOUSE</span></div>' +
       '<div class="gg-debug" data-debug hidden></div>';
     host.appendChild(this.root);
     const get = (name: string): HTMLElement => {

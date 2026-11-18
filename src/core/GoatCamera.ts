@@ -5,10 +5,17 @@ import type { Vec3 } from '../physics';
 export const SPAWN_CAMERA_YAW_OFFSET = Math.PI * .75;
 export const SPAWN_CAMERA_PITCH = 0;
 export const CAMERA_TARGET_HEIGHT = .28;
+export const PLAY_CAMERA_PITCH = .12;
+
+export function clampCameraPitch(pitch: number): number {
+  return Math.max(-Math.PI / 3, Math.min(5 * Math.PI / 12, pitch));
+}
+
+const cameraDistance = (size: number): number => Math.max(3.25, 4.55 * Math.pow(size, 1.16));
 
 /** A size-aware orbit at street-eye height, with room to see the town. */
 export function goatCameraOffset(size: number, yaw: number, pitch: number): Vec3 {
-  const distance = Math.max(3.25, 4.55 * Math.pow(size, 1.16));
+  const distance = cameraDistance(size);
   return {
     x: -Math.sin(yaw) * Math.cos(pitch) * distance,
     y: Math.sin(pitch) * distance + 1.6 * size,
@@ -28,14 +35,37 @@ export function goatCameraLookAhead(size: number, yaw: number, clearance = 1): V
   };
 }
 
+/** Keep a clear boom above the follow point even when the player looks up. */
+export function goatOrbitOffset(size: number, yaw: number, pitch: number): Vec3 {
+  const radius = cameraDistance(size);
+  const boomPitch = Math.max(.05, Math.min(1.45, pitch + .24));
+  const horizontal = Math.cos(boomPitch) * radius;
+  return {
+    x: -Math.sin(yaw) * horizontal,
+    y: Math.sin(boomPitch) * radius,
+    z: Math.cos(yaw) * horizontal,
+  };
+}
+
+/** The horizontal component uses the same heading as camera-relative movement. */
+export function goatViewDirection(yaw: number, pitch: number): Vec3 {
+  const horizontal = Math.cos(pitch);
+  return {
+    x: Math.sin(yaw) * horizontal,
+    y: -Math.sin(pitch),
+    z: -Math.cos(yaw) * horizontal,
+  };
+}
+
 /** Frame a nominal heel in the unobstructed chase pose. The lens only responds
  * to the chosen orbit, size and viewport, so the animated ragdoll cannot move it. */
 export function goatCameraVerticalOffset(size: number, pitch: number, fov: number,
-  height: number): number {
+  height: number, titleShot = true): number {
   if (!(height > 0)) return 0;
-  const eye = goatCameraOffset(size, 0, pitch);
-  const aim = goatCameraLookAhead(size, 0);
-  const forwardY = aim.y - eye.y, forwardZ = aim.z - eye.z;
+  const eye = titleShot ? goatCameraOffset(size, 0, pitch) : goatOrbitOffset(size, 0, pitch);
+  const aim = titleShot ? goatCameraLookAhead(size, 0) : goatViewDirection(0, pitch);
+  const forwardY = titleShot ? aim.y - eye.y : aim.y;
+  const forwardZ = titleShot ? aim.z - eye.z : aim.z;
   const heelY = -.38 * size - eye.y, heelZ = .5 * size - eye.z;
   // Camera-space up and depth share the same normalisation, which cancels in
   // the perspective divide.
