@@ -59,9 +59,21 @@ describe('free-roam camera / compact HUD reference framing', () => {
   it('keeps the settled chase framing near center and reserves more space on short viewports', () => {
     const desktopLift = goatCameraVerticalOffset(.6, .055, 67, 883);
     const compactLift = goatCameraVerticalOffset(.6, .055, 67, 600);
-    expect(desktopLift).toBeLessThan(12);
+    expect(desktopLift).toBeLessThan(25);
     expect(compactLift / 600).toBeGreaterThan(desktopLift / 883);
     expect(goatCameraVerticalOffset(1, 1.15, 42, 360)).toBeLessThanOrEqual(36);
+  });
+
+  it('leaves room for the build tray at the level spawn angle', () => {
+    const viewport = rect(0, 0, 1542, 883);
+    const panel = { id: 'hotbar', rect: rect(462, 714, 618, 159) };
+    // In the live default shot the unshifted goat extends down to 702px.
+    const goat = rect(688, 434, 166, 268);
+    const lift = goatCameraVerticalOffset(.6, 0, 67, 883);
+    expect(planGoatSafeHud(goat, viewport, [panel], []).hiddenPanels.has('hotbar')).toBe(true);
+    expect(planGoatSafeHud({
+      ...goat, top: goat.top - lift, bottom: goat.bottom - lift,
+    }, viewport, [panel], []).hiddenPanels.has('hotbar')).toBe(false);
   });
 
   it('does not move the world projection as the rendered goat bounds change', () => {

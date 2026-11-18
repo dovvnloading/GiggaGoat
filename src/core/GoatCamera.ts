@@ -45,5 +45,6 @@ export function goatCameraVerticalOffset(size: number, pitch: number, fov: numbe
   const bottom = .5 * (1 - up / (depth * Math.tan(fov * Math.PI / 360)));
   const safeBottom = Math.min(.775, 1 - 150 / height);
   const lift = (bottom - safeBottom) * height;
-  return Number.isFinite(lift) ? Math.max(0, Math.min(height * .1, lift)) : 0;
+  // Leave room for the build tray's painted edge at the level spawn angle.
+  return Number.isFinite(lift) ? Math.max(height * .025, Math.min(height * .1, lift)) : 0;
 }
