@@ -176,14 +176,22 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
     put('container', x, z, 12.2, 3.2, 3.0, { yaw, color });
   }
 
-  // Deliberate cargo stacks, pipe pyramids, worksite cones and striped blocks.
-  for (const [x, z, count] of [
-    [17, 23, 3], [24, 23, 2], [17, 28, 2], [-15, 22, 2], [-21, 22, 1],
+  // Keep the heavy freight stack in the staging bay. The two low groups
+  // flank the front approach and can be licked or broken on the first visit.
+  put('crate', -13.8, 26, 2.5, 1.9, 2.3, { color: 0x9d744a });
+  put('crate', -13.8, 26, 2.2, 1.65, 2.0, { bottom: 1.9, color: 0xad8252 });
+  for (const [x, z, yaw, width, height, color] of [
+    [-19, 20.8, -0.10, 1.25, 1.06, 0xc39159],
+    [-17, 20.6, 0.12, 1.1, 0.95, 0xb88a61],
+    [-18.6, 22.8, 0.18, 1.32, 1.18, 0xc39159],
+    [-16.5, 22.6, -0.08, 1.02, 0.91, 0xd4a36a],
+    [26.5, 22.8, -0.18, 1.32, 1.18, 0xc39159],
+    [28.6, 23.1, 0.10, 1.15, 1.0, 0xd4a36a],
+    [26.6, 25.1, 0.09, 1.12, 0.95, 0xb88a61],
+    [28.5, 25.2, -0.12, 1.28, 1.13, 0xc39159],
   ] as const) {
-    for (let level = 0; level < count; level++) {
-      put('crate', x, z, 3.6, 3.0, 3.6,
-        { bottom: level * 3, fixedToPad: true, color: level % 2 ? 0xae7d4e : 0xc39159 });
-    }
+    put('crate', x, z, width, height, width * 0.94,
+      { yaw, color, dynamicMass: 5 + width * height * 5, climbable: false });
   }
   for (const [x, z] of [[-29, 25], [-20, 27], [28, -24]] as const) {
     put('pipe-stack', x, z, 6, 4.2, 6.2,
