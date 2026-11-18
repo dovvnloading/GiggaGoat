@@ -66,6 +66,7 @@ export class GameView {
   private readonly instancedProps = new InstancedPropRenderer(this.scene);
   private readonly propVisuals: PropVisual[] = [];
   private readonly libraryWorldProps: LibraryWorldVisual[] = [];
+  private readonly suppressedWorldLabKinds = new Set<string>();
   private readonly buildVisuals = new Map<number, THREE.Group>();
   private readonly debrisVisuals = new Map<number, THREE.Group>();
   private readonly activeBuildIds = new Set<number>();
@@ -198,6 +199,20 @@ export class GameView {
       }
       object.frustumCulled = true;
     });
+  }
+
+  /** Loaded World Lab near/far draws arrive after bindWorldProps. Layer-mask
+   * them once as well, so the dynamic per-prop roots never double-render. */
+  private hideWorldLabLoadedProps(): void {
+    for (const kind of WORLD_LIBRARY_KINDS) {
+      if (this.suppressedWorldLabKinds.has(kind)) continue;
+      const near = this.world.group.getObjectByName('render-near-' + kind);
+      if (!(near instanceof THREE.InstancedMesh)) continue;
+      near.layers.disable(0);
+      const far = this.world.group.getObjectByName('render-far-' + kind);
+      if (far instanceof THREE.InstancedMesh) far.layers.disable(0);
+      this.suppressedWorldLabKinds.add(kind);
+    }
   }
 
   private updateProps(alpha: number): void {
@@ -680,6 +695,7 @@ export class GameView {
         document.pointerLockElement === this.renderer.domElement, goatScreenBox, this.perfStats);
     }
     this.world.updateCulling(this.camera);
+    this.hideWorldLabLoadedProps();
     this.limitDrawDistance();
     this.instancedProps.update(this.camera, range);
     this.shadowTimer += dt;
