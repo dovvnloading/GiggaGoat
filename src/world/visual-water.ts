@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { IslandData, RiverPoint } from './types';
+import type { IslandData, PropDescriptor, RiverPoint, Vec3 } from './types';
 import { gridSample } from './terrain';
 import { findBookmark } from './viewer/bookmarks';
 
@@ -342,25 +342,55 @@ export interface WaterfallSite {
   width: number;
 }
 
-/** The GLB supplies the lip, steps and pool; only foam and debug names live here. */
-function makeWaterfallFoam(group: THREE.Group, site: WaterfallSite, scale: number): void {
-  const { id, top, bottom, width } = site;
-  const run = Math.hypot(bottom.x - top.x, bottom.z - top.z);
-  const downstream = new THREE.Vector3(
-    run > 1e-6 ? (bottom.x - top.x) / run : 0,
-    0,
-    run > 1e-6 ? (bottom.z - top.z) / run : 1,
-  );
-  const newWidth = width * 2.6;
-  const sideways = new THREE.Vector3(downstream.z, 0, -downstream.x);
-  const depth = THREE.MathUtils.clamp(run + 2 * scale, 4 * scale, 12 * scale);
-  // The round pool sits beyond the original fall's bottom point, toward +Z.
-  const pool = bottom.clone().addScaledVector(downstream, 0.3 * depth);
+/** Native dimensions in metres of the two painted models (no rotation). */
+export const CASCADE_NATIVE_SIZE = {
+  cascade: { x: 6.6, y: 10.5, z: 9.2 },
+  'cascade-tall': { x: 6.6, y: 14, z: 4 },
+} as const;
+
+type CascadePlacement = Pick<PropDescriptor, 'size' | 'transform'>;
+
+/** The +Z pool centre is shared by placement, trail checks and foam. */
+export function cascadePoolCentre(prop: CascadePlacement, scale: number): Vec3 {
+  const distance = prop.size.z * 0.25;
+  const yaw = prop.transform.rotationY;
+  return {
+    x: prop.transform.position.x + Math.sin(yaw) * distance,
+    y: prop.transform.position.y - prop.size.y / 2 + 0.3 * scale,
+    z: prop.transform.position.z + Math.cos(yaw) * distance,
+  };
+}
+
+/** Six model-local lip-to-pool clearance samples transformed to world space. */
+export function cascadeWaterLine(prop: CascadePlacement, scale: number): Vec3[] {
+  const { size, transform } = prop;
+  const lipY = 0.92 * size.y, poolY = 0.3 * scale;
+  const lipZ = -size.z / 2 + 0.12 * size.z;
+  const poolZ = size.z / 2 - 0.25 * size.z;
+  const sin = Math.sin(transform.rotationY), cos = Math.cos(transform.rotationY);
+  return [0.1, 0.26, 0.42, 0.58, 0.74, 0.9].map(t => {
+    const localZ = lipZ + (poolZ - lipZ) * t;
+    return {
+      x: transform.position.x + sin * localZ,
+      y: transform.position.y - size.y / 2 + lipY + (poolY - lipY) * t,
+      z: transform.position.z + cos * localZ,
+    };
+  });
+}
+
+/** The GLB supplies the water silhouette; foam follows the placed pool. */
+function makeWaterfallFoam(group: THREE.Group, prop: PropDescriptor, scale: number): void {
+  const id = prop.id.startsWith('waterfall-cascade-')
+    ? prop.id.slice('waterfall-cascade-'.length) : prop.id;
+  const centre = cascadePoolCentre(prop, scale);
+  const pool = new THREE.Vector3(centre.x, centre.y, centre.z);
+  const yaw = prop.transform.rotationY;
+  const sideways = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+  const width = prop.size.x;
   const marker = new THREE.Group();
   marker.name = id;
   group.add(marker);
 
-  // Five shallow flecks still become one shared InstancedMesh for every fall.
   const offsets = [-0.4, -0.2, 0, 0.2, 0.4] as const;
   const sizeJitter = [0.94, 1.11, 0.89, 1.07, 0.97] as const;
   const foam = new THREE.InstancedMesh(
@@ -369,11 +399,11 @@ function makeWaterfallFoam(group: THREE.Group, site: WaterfallSite, scale: numbe
       color: 0xeaf8ff, transparent: true, opacity: 0.6, depthWrite: false,
     }), offsets.length);
   foam.name = id + '-foam';
+  foam.userData['cascadeFoam'] = true;
   const dummy = new THREE.Object3D();
   for (const [index, offset] of offsets.entries()) {
-    dummy.position.copy(pool).addScaledVector(sideways, offset * newWidth);
-    dummy.position.y -= newWidth * 0.03;
-    const fleckWidth = newWidth * sizeJitter[index]!;
+    dummy.position.copy(pool).addScaledVector(sideways, offset * width);
+    const fleckWidth = width * sizeJitter[index]!;
     dummy.scale.set(fleckWidth * 0.16, fleckWidth * 0.07, fleckWidth * 0.16);
     dummy.updateMatrix();
     foam.setMatrixAt(index, dummy.matrix);
@@ -390,9 +420,7 @@ function makeWaterfallFoam(group: THREE.Group, site: WaterfallSite, scale: numbe
  */
 function batchWaterfallFoam(group: THREE.Group): void {
   const foams = group.children.filter((object): object is THREE.InstancedMesh =>
-    object instanceof THREE.InstancedMesh && object.name.endsWith('-waterfall-foam') ||
-    object instanceof THREE.InstancedMesh && object.name.includes('-waterfall-') &&
-      object.name.endsWith('-foam'));
+    object instanceof THREE.InstancedMesh && object.userData['cascadeFoam'] === true);
   if (!foams.length) return;
   const first = foams[0]!;
   const total = foams.reduce((sum, foam) => sum + foam.count, 0);
@@ -448,7 +476,7 @@ function hoofingtonBackdropWaterfall(island: IslandData):
   }
   for (const prop of island.props) {
     // A cascade is the result of this search, never an obstacle to itself.
-    if (prop.kind === 'cascade') continue;
+    if (prop.kind === 'cascade' || prop.kind === 'cascade-tall') continue;
     const point = prop.transform.position;
     if (Math.hypot(point.x - cx, point.z - cz) <= reach) obstacles.push(point);
   }
@@ -635,7 +663,13 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
   inland.add(reservoir, foam);
   // The authored cascade GLB owns all waterfall silhouettes and plunge pools.
   // Keep the named mesh-free markers and the single instanced foam draw.
-  for (const site of waterfallSites(island)) makeWaterfallFoam(inland, site, scale);
+  for (const prop of island.props) {
+    if ((prop.kind === 'cascade' || prop.kind === 'cascade-tall') &&
+        (prop.id.startsWith('waterfall-cascade-') ||
+          prop.id === 'whispering-pines-glade-cascade')) {
+      makeWaterfallFoam(inland, prop, scale);
+    }
+  }
   batchWaterfallFoam(inland);
   // MeshBasicMaterial ignores light uniforms; retain each foam/fleck base colour
   // so changing phase never compounds its tint or alters the daytime palette.
