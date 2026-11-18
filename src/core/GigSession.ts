@@ -166,8 +166,20 @@ export class GigSession {
     }
     const pickup = setup.spawns.find(prop => prop.id === config.parcelId)?.position ??
       config.checkpoints[0] ?? setup.start;
-    const heading = Math.atan2(pickup.x - setup.start.x, setup.start.z - pickup.z);
-    this.game.teleport(setup.start, -heading);
+    const start = { ...setup.start };
+    if (this.game.goat.size === 3) {
+      const deck = rooftopDecks(this.game.island.props).find(prop =>
+        prop.transform.position.x === pickup.x && prop.transform.position.z === pickup.z);
+      if (deck) {
+        // Leave room to aim past the GIGGA goat's front hooves. The shorter
+        // roof limits the runway, so the launch always remains on the deck.
+        const scale = this.game.island.size / 600;
+        const runway = Math.min(3.8 * scale, deck.size.z / 2 - .4 * scale);
+        start.z = pickup.z + Math.sign(start.z - pickup.z) * runway;
+      }
+    }
+    const heading = Math.atan2(pickup.x - start.x, start.z - pickup.z);
+    this.game.teleport(start, -heading);
   }
   abandon(): void {
     this.director.abandon();

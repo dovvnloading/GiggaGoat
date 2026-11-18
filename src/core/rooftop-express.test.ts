@@ -3,7 +3,6 @@ import { GameSimulation } from '../gameplay';
 import { BOARD_CYCLE_TICKS, GigCatalog, GigDirector } from '../gigs';
 import { V } from '../physics';
 import { generateIsland } from '../world';
-import { rooftopDecks } from '../world/rooftop-course';
 import { Game } from './Game';
 
 const seed = 'billy-isle';
@@ -29,22 +28,13 @@ async function startCourier(cycle: number, tier: 'Kid' | keyof typeof grownState
     if (setup.config.kind !== 'rooftop-express') throw new Error('Expected the courier contract');
     const id = setup.config.parcelId;
     const parcel = game.gigs.props.get(id)!.body;
-    const heading = parcel.translation().z > setup.start.z ? Math.PI : 0;
-    const launch = { ...setup.start };
-    if (tier === 'GIGGA') {
-      const pickup = setup.config.checkpoints[0]!;
-      const deck = rooftopDecks(island.props).find(prop => prop.transform.position.z === pickup.z)!;
-      const runway = Math.min(3.8, deck.size.z / 2 - .4);
-      launch.z = pickup.z - Math.sign(pickup.z - launch.z) * runway;
-      // Reproduce the close parcel from the short-roof saved attempt.
-      parcel.setTranslation(setup.spawns.find(spawn => spawn.id === id)!.position, true);
-    }
-    game.teleport(launch, -heading);
+    const heading = game.goat.locomotion.heading;
+    expect(game.goat.torso.translation().y).toBeGreaterThan(setup.config.streetY + 1.3);
     for (let tick = 0; tick < 45; tick++) game.step({ cameraYaw: heading });
     for (let tick = 0; tick < 10; tick++) game.step({ cameraYaw: heading, tongue: true });
     expect(game.goat.interactions.tongueBody?.handle).toBe(parcel.handle);
     expect(game.gigs.active?.checkpointIndex).toBe(1);
-    return { game, heading, parcel, required: setup.config.checkpoints.length };
+    return { game, heading, parcel, maxTicks: setup.maxTicks, required: setup.config.checkpoints.length };
   } catch (error) {
     game.dispose();
     throw error;
@@ -52,15 +42,15 @@ async function startCourier(cycle: number, tier: 'Kid' | keyof typeof grownState
 }
 
 describe('Rooftop Express on actual Rapier steps', () => {
-  it.each([[2, 'Kid', 5], [1, 'Big', 4], [6, 'GIGGA', 3]] as const)(
+  it.each([[0, 'Kid', 3], [1, 'Kid', 4], [2, 'Kid', 5], [1, 'Big', 4], [6, 'GIGGA', 3]] as const)(
     'finishes board cycle %i through the real ramp collisions as %s',
     async (cycle, tier, roofs) => {
-      const { game, heading, required } = await startCourier(cycle, tier);
+      const { game, heading, maxTicks, required } = await startCourier(cycle, tier);
       try {
         const launchSize = game.goat.size;
         if (tier === 'GIGGA') expect(launchSize).toBe(3);
         expect(required).toBe(roofs);
-        for (let tick = 0; tick < 1300 && game.gigs.active?.status === 'running'; tick++) {
+        for (let tick = 0; tick < maxTicks && game.gigs.active?.status === 'running'; tick++) {
           game.step({ cameraYaw: heading, tongue: true, moveZ: 1 });
         }
         expect(game.gigs.active).toMatchObject({ status: 'completed', checkpointIndex: roofs });
@@ -84,16 +74,18 @@ describe('Rooftop Express on actual Rapier steps', () => {
   });
 
   it('still breaks the parcel under an external impact immediately after a shrink', async () => {
-    const { game, heading, parcel } = await startCourier(6, 'GIGGA');
+    const { game, heading, maxTicks, parcel } = await startCourier(6, 'GIGGA');
     try {
-      for (let tick = 0; tick < 400 && game.goat.size === 3; tick++) {
+      for (let tick = 0; tick < maxTicks && game.goat.size === 3 &&
+          game.gigs.active?.status === 'running'; tick++) {
         game.step({ cameraYaw: heading, tongue: true, moveZ: 1 });
       }
       expect(game.goat.size).toBe(1.6);
       expect(game.goat.interactions.tongueBody?.handle).toBe(parcel.handle);
       const at = parcel.translation();
-      const incoming = game.physics.createBox(V(at.x - 1.2, at.y, at.z), V(.4, .35, .35), 90);
-      incoming.setLinvel(V(28, 0, 0), true);
+      const side = at.x >= game.goat.torso.translation().x ? 1 : -1;
+      const incoming = game.physics.createBox(V(at.x + side * 1.2, at.y, at.z), V(.4, .35, .35), 90);
+      incoming.setLinvel(V(-side * 28, 0, 0), true);
       for (let tick = 0; tick < 12 && game.gigs.active?.status === 'running'; tick++) {
         game.step({ cameraYaw: heading, tongue: true, moveZ: 1 });
       }
