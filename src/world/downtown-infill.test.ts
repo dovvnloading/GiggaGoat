@@ -22,10 +22,10 @@ function extents(prop: PropDescriptor): { x: number; z: number } {
 }
 
 describe('Downtown DT-14 deterministic shop infill', () => {
-  it('chooses only fitting gap interiors, maximizes width and keeps both side clearances', () => {
+  it('chooses the widest fitting model while keeping side and rooftop clearances', () => {
     expect(DOWNTOWN_INFILL.map(({ side, z, model }) =>
       ({ side, z: Number(z.toFixed(2)), model }))).toEqual([
-      { side: -1, z: -26.9, model: 'cornerShop' },
+      { side: -1, z: -26.9, model: 'kayShop' },
       { side: 1, z: -28.34, model: 'bakery' },
       { side: 1, z: -9.66, model: 'cornerShop' },
       { side: 1, z: 9.5, model: 'cornerShop' },
@@ -38,14 +38,17 @@ describe('Downtown DT-14 deterministic shop infill', () => {
         const left = shops[row]!.model, right = shops[row + 1]!.model;
         const leftEdge = (row - 2) * 19 + DOWNTOWN_BUILDING_SIZES[left].x / 2;
         const rightEdge = (row - 1) * 19 - DOWNTOWN_BUILDING_SIZES[right].x / 2;
+        const lowerRoof = Math.min(DOWNTOWN_BUILDING_SIZES[left].y, DOWNTOWN_BUILDING_SIZES[right].y);
         const available = CANDIDATES.filter(model =>
-          DOWNTOWN_BUILDING_SIZES[model].x <= rightEdge - leftEdge - 0.8);
+          DOWNTOWN_BUILDING_SIZES[model].x <= rightEdge - leftEdge - 0.8 &&
+          (side === 1 || DOWNTOWN_BUILDING_SIZES[model].y <= lowerRoof));
         const entries = DOWNTOWN_INFILL.filter(p => p.side === side &&
           p.z >= leftEdge && p.z <= rightEdge);
         expect(entries, side + '/' + row).toHaveLength(available.length ? 1 : 0);
         if (!available.length) continue;
         const entry = entries[0]!;
         const width = DOWNTOWN_BUILDING_SIZES[entry.model].x;
+        if (side === -1) expect(DOWNTOWN_BUILDING_SIZES[entry.model].y).toBeLessThanOrEqual(lowerRoof);
         const notNeighbours = available.filter(model => model !== left && model !== right);
         const preferred = notNeighbours.length ? notNeighbours : available;
         expect(preferred).toContain(entry.model);
