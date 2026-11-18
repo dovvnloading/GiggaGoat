@@ -203,7 +203,7 @@ const nice = (value: string): string => value.replace(/-/g, ' ').toUpperCase();
 const PARTY_ROUNDS: Record<ModeId, { name: string; venue: string; objective: string }> = {
   'rising-tide': {
     name: 'Rising Tide', venue: 'Billy Isle · start in Hoofington',
-    objective: 'Follow the amber arrows uphill. Outlast the other goats.',
+    objective: 'As the sea rises, follow amber arrows uphill. Outlast the other goats.',
   },
   'king-of-the-peak': {
     name: 'King of the Peak', venue: 'Mt. Gigga summit',
