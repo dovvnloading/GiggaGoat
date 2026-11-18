@@ -2,6 +2,8 @@ import type { PlayerIntent } from './Game';
 import type { PieceType } from '../gameplay';
 
 const PIECES: readonly PieceType[] = ['floor', 'wall', 'ramp', 'launch-pad'];
+const DRAG_THRESHOLD = 5;
+const CHARGE_HOLD_SECONDS = .16;
 const axis = (value: number): number => Math.abs(value) < .14 ? 0 :
   Math.sign(value) * (Math.abs(value) - .14) / .86;
 const down = (pad: Gamepad, index: number): boolean => pad.buttons[index]?.pressed ?? false;
@@ -12,6 +14,7 @@ export class GameInput {
   private readonly keys = new Set<string>();
   private mousePrimary = false;
   private mouseSecondary = false;
+  private unlockedPress: { x: number; y: number; elapsed: number; dragged: boolean } | null = null;
   private buildToggleQueued = false;
   private buildPlaceQueued = false;
   private selected: PieceType | undefined;
@@ -64,26 +67,73 @@ export class GameInput {
     });
     listen(canvas, 'mousedown', event => {
       if (event.button === 0) {
-        this.mousePrimary = true;
-        this.buildPlaceQueued = true;
+        if (document.pointerLockElement === canvas) {
+          this.mousePrimary = true;
+          this.buildPlaceQueued = true;
+        } else {
+          this.unlockedPress = { x: event.clientX, y: event.clientY, elapsed: 0, dragged: false };
+        }
       }
       if (event.button === 2) this.mouseSecondary = true;
-      if (document.pointerLockElement !== canvas) void canvas.requestPointerLock();
     });
     listen(window, 'mouseup', event => {
-      if (event.button === 0) this.mousePrimary = false;
+      if (event.button === 0) {
+        const press = this.unlockedPress;
+        const charged = this.mousePrimary;
+        this.unlockedPress = null;
+        this.mousePrimary = false;
+        if (press && !press.dragged && !charged && event.target === canvas) {
+          this.buildPlaceQueued = true;
+          void this.requestPointerLock();
+        }
+      }
       if (event.button === 2) this.mouseSecondary = false;
     });
     listen(canvas, 'contextmenu', event => { event.preventDefault(); });
     listen(document, 'mousemove', event => {
-      if (document.pointerLockElement !== canvas) return;
-      this.yaw -= event.movementX * .0026 * this.sensitivity;
-      this.pitch = Math.max(-.22, Math.min(1.15,
-        this.pitch + event.movementY * .0021 * this.sensitivity * (this.invertY ? 1 : -1)));
+      if (document.pointerLockElement === canvas) {
+        this.look(event.movementX, event.movementY);
+        return;
+      }
+      const press = this.unlockedPress;
+      if (!press) return;
+      if (!(event.buttons & 1)) {
+        this.unlockedPress = null;
+        this.mousePrimary = false;
+        return;
+      }
+      if (this.mousePrimary) return;
+      const dx = event.clientX - press.x, dy = event.clientY - press.y;
+      if (!press.dragged && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+      press.dragged = true;
+      press.x = event.clientX;
+      press.y = event.clientY;
+      this.look(dx, dy);
     });
   }
 
+  async requestPointerLock(): Promise<void> {
+    if (document.pointerLockElement === this.canvas) return;
+    try {
+      await this.canvas.requestPointerLock?.();
+    } catch {
+      // Embedded or unfocused browsers can reject lock. Drag look is always available.
+    }
+  }
+
+  private look(dx: number, dy: number): void {
+    this.yaw -= dx * .0026 * this.sensitivity;
+    this.pitch = Math.max(-.22, Math.min(1.15,
+      this.pitch + dy * .0021 * this.sensitivity * (this.invertY ? 1 : -1)));
+  }
+
   sample(dt: number, buildMode: boolean): PlayerIntent {
+    const press = this.unlockedPress;
+    if (press && !press.dragged && !buildMode) {
+      // Let a quick drag choose look before a stationary hold begins charging.
+      press.elapsed += dt;
+      this.mousePrimary ||= press.elapsed >= CHARGE_HOLD_SECONDS;
+    }
     const pressed = (code: string): boolean => this.keys.has(code);
     let moveX = Number(pressed('KeyD') || pressed('ArrowRight')) -
       Number(pressed('KeyA') || pressed('ArrowLeft'));
@@ -167,6 +217,7 @@ export class GameInput {
     this.keys.clear();
     this.mousePrimary = false;
     this.mouseSecondary = false;
+    this.unlockedPress = null;
     this.pendingJump = this.pendingBleat = this.pendingFlop = this.pendingFling = false;
     this.pendingGraze = this.pendingInteract = false;
     this.buildPlaceQueued = false;

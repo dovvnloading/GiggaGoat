@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {
   createWorldScene, type PropDescriptor, type WorldScene,
 } from '../world';
-import { V, type Vec3 } from '../physics';
+import { Q, RAPIER, type Vec3 } from '../physics';
 import { SKY_HORIZON_COLOR } from '../world/visual-sky';
 import { DEFAULT_SETTINGS, type GameSettings } from './Persistence';
 import { AdaptiveResolution } from './AdaptiveResolution';
@@ -39,6 +39,7 @@ interface LibraryWorldVisual {
 
 const lerpAlpha = (speed: number, dt: number): number => 1 - Math.exp(-speed * dt);
 const vec = (p: Vec3): THREE.Vector3 => new THREE.Vector3(p.x, p.y, p.z);
+const CAMERA_COLLISION_SKIN = .04;
 
 /** All graphics, time sampling, DOM and input live outside the headless Game. */
 export class GameView {
@@ -89,6 +90,11 @@ export class GameView {
   private readonly cameraPath = new THREE.Vector3();
   private readonly cameraDesired = new THREE.Vector3();
   private readonly cameraAim = new THREE.Vector3();
+  private readonly cameraCollisionShape = new RAPIER.Ball(.25);
+  private readonly cameraCollisionRotation = Q();
+  private readonly cameraCollisionFilter = {
+    predicate: (collider: RAPIER.Collider) => !this.game.goat.ownsBody(collider.parent()),
+  };
   private readonly audioForward = new THREE.Vector3();
   private readonly audioPose = {
     position: this.camera.position, forward: this.audioForward, up: { x: 0, y: 1, z: 0 },
@@ -582,6 +588,12 @@ export class GameView {
     }
   }
 
+  private cameraTravel(direction: THREE.Vector3, distance: number): number {
+    const hit = this.game.physics.shapeCast(this.cameraTarget, this.cameraCollisionRotation,
+      direction, this.cameraCollisionShape, distance, this.cameraCollisionFilter);
+    return hit ? Math.max(0, hit.distance - CAMERA_COLLISION_SKIN) : distance;
+  }
+
   private updateCamera(alpha: number, dt: number): void {
     const pose = this.game.physics.getInterpolatedTransform(this.game.goat.torso, alpha);
     const size = this.game.rules.style.scale;
@@ -592,24 +604,18 @@ export class GameView {
     this.cameraOffset.set(offset.x, offset.y, offset.z);
     const desiredDistance = this.cameraOffset.length();
     this.cameraDirection.copy(this.cameraOffset).normalize();
-    const direction = this.cameraDirection;
-    const hit = this.game.physics.raycast(this.cameraTarget, V(direction.x, direction.y, direction.z),
-      desiredDistance, { predicate: collider => !this.game.goat.ownsBody(collider.parent()) });
-    let safe = hit ? Math.max(1.1 * size, Math.min(desiredDistance, hit.distance - .36 * size)) :
-      desiredDistance;
-    this.cameraAim.copy(this.cameraTarget).addScaledVector(direction, safe);
+    // Sweep the camera volume to catch corners that a centre ray misses.
+    const travel = this.cameraTravel(this.cameraDirection, desiredDistance);
+    this.cameraAim.copy(this.cameraTarget).addScaledVector(this.cameraDirection, travel);
     this.cameraPosition.lerp(this.cameraAim, lerpAlpha(9, dt));
     this.cameraPath.copy(this.cameraPosition).sub(this.cameraTarget);
     const pathLength = this.cameraPath.length();
-    if (pathLength > .01) {
-      const immediate = this.game.physics.raycast(this.cameraTarget,
-        V(this.cameraPath.x / pathLength, this.cameraPath.y / pathLength,
-          this.cameraPath.z / pathLength),
-        pathLength, { predicate: collider => !this.game.goat.ownsBody(collider.parent()) });
-      if (immediate) {
-        safe = Math.max(.6, immediate.distance - .24 * size);
-        this.cameraPosition.copy(this.cameraTarget).addScaledVector(this.cameraPath.normalize(), safe);
-      }
+    let actualDistance = pathLength;
+    if (pathLength > .001) {
+      this.cameraPath.divideScalar(pathLength);
+      // Smoothing the orbit can cut a corner even when the desired pose is clear.
+      actualDistance = this.cameraTravel(this.cameraPath, pathLength);
+      this.cameraPosition.copy(this.cameraTarget).addScaledVector(this.cameraPath, actualDistance);
     }
     const velocity = this.game.goat.torso.linvel();
     const speed = Math.hypot(velocity.x, velocity.y, velocity.z);
@@ -623,10 +629,17 @@ export class GameView {
     }
     this.camera.position.copy(this.cameraPosition);
     const clearance = Math.max(0, Math.min(1,
-      (this.cameraPosition.distanceTo(this.cameraTarget) - 1.1 * size) /
+      (actualDistance - 1.1 * size) /
       Math.max(.01, desiredDistance - 1.1 * size)));
     const ahead = goatCameraLookAhead(size, this.input.yaw, clearance);
     this.cameraAim.copy(this.cameraTarget).add(this.cameraOffset.set(ahead.x, ahead.y, ahead.z));
+    if (actualDistance < .05) {
+      this.cameraAim.addScaledVector(this.cameraDirection, -.05);
+    }
+    const goat = this.characters.player.root;
+    // In a tight squeeze the camera may enter the goat's body. Keep the route visible
+    // until there is room for the full model again.
+    goat.visible = actualDistance > (goat.visible ? .85 : 1) * size;
     this.camera.lookAt(this.cameraAim);
     this.world.sun.position.set(this.cameraTarget.x + 70, this.cameraTarget.y + 125,
       this.cameraTarget.z - 65);
