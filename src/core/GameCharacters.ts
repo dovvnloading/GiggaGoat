@@ -44,11 +44,10 @@ export class GameCharacters {
 
   constructor(private readonly scene: THREE.Scene, private readonly game: Game) {
     this.player = createGoatCharacter(game.goat);
-    this.scene.add(this.player.root);
     this.contacts.name = 'player hoof contacts';
     this.contacts.frustumCulled = false;
     this.contacts.count = 0;
-    this.player.root.add(this.contacts);
+    this.scene.add(this.player.root, this.contacts);
     // Commands can execute before a new bot has been added to this render scene.
     // Buffer visual-only cues until the next render-frame roster sync.
     this.offCue = game.onVisualCue(cue => { this.pendingCues.push(cue); });
