@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GameHud } from './GameHud';
+import { fitGigCardText } from './GigCardLayout';
 
 /**
  * Vitest runs in Node without a browser DOM. This small DOM stub indexes the
@@ -55,6 +56,19 @@ class ElementStub {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('live free-roam HUD DOM', () => {
+  it('clears previous desktop font overrides and lets the portrait gig card grow', () => {
+    const removeProperty = vi.fn();
+    const label = { style: { removeProperty } };
+    const paper = { clientHeight: 72 };
+    const computedStyle = vi.fn(() => ({ position: 'static' }));
+    vi.stubGlobal('getComputedStyle', computedStyle);
+    const card = { querySelector: (selector: string) => selector === '.gg-gig-paper' ? paper : label };
+    fitGigCardText(card as unknown as HTMLElement);
+    expect(removeProperty).toHaveBeenCalledTimes(4);
+    expect(removeProperty).toHaveBeenCalledWith('font-size');
+    expect(computedStyle).toHaveBeenCalledExactlyOnceWith(paper);
+  });
+
   it('reserves the numbered shortcuts for build pieces and separates the Supplies totals', () => {
     const head = new ElementStub();
     vi.stubGlobal('document', { head, createElement: () => new ElementStub() });
