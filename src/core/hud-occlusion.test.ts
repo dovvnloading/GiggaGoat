@@ -93,12 +93,31 @@ describe('goat-safe HUD in free roam', () => {
       [{ id: 'click', width: 250, height: 48 }]);
     expect(layout.hiddenPanels.has('stamina')).toBe(true);
     expect(layout.prompts.size).toBe(0);
-    // An intersecting near-plane view conservatively protects the whole screen.
+  });
+
+  it('preserves DOMRect-style edges for HUD protection and skips invalid framing samples', () => {
+    const edges = rect(12, 24, 360, 600);
+    const viewport = Object.create({
+      get left() { return edges.left; },
+      get top() { return edges.top; },
+      get right() { return edges.right; },
+      get bottom() { return edges.bottom; },
+    }) as ScreenRect;
+    expect(Object.keys(viewport)).toHaveLength(0);
+
     const camera = new THREE.PerspectiveCamera(67, 360 / 600, .07, 2200);
-    camera.updateMatrixWorld(true);
-    const box = new THREE.Box3(new THREE.Vector3(-1, -1, -1),
+    const nearPlaneBox = new THREE.Box3(new THREE.Vector3(-1, -1, -1),
       new THREE.Vector3(1, 1, 1));
-    expect(projectGoatScreenBox(box, camera, viewport)).toEqual(viewport);
+    expect(projectGoatScreenBox(nearPlaneBox, camera, viewport)).toEqual(edges);
+    expect(projectGoatScreenBox(nearPlaneBox, camera, viewport, false)).toBeNull();
+
+    const inFront = nearPlaneBox.clone().translate(new THREE.Vector3(0, 0, -5));
+    expect(projectGoatScreenBox(inFront, camera, viewport, false)).not.toBeNull();
+    camera.projectionMatrix.elements[5] = NaN;
+    expect(projectGoatScreenBox(inFront, camera, viewport)).toEqual(edges);
+    expect(projectGoatScreenBox(inFront, camera, viewport, false)).toBeNull();
+    camera.updateProjectionMatrix();
+    expect(projectGoatScreenBox(inFront, camera, viewport, false)).not.toBeNull();
   });
   it('keeps visible prompts clear of the real spawn goat at desktop sizes', async () => {
     const game = await Game.create({ seed: 'billy-isle', resolution: 97 });

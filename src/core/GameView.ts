@@ -685,12 +685,15 @@ export class GameView {
       const goatBounds = visibleGoatBounds(this.characters.player.root, this.playerWorldBox);
       this.camera.clearViewOffset();
       const unframed = projectGoatScreenBox(goatBounds, this.camera, viewport, false);
-      if (unframed && viewport.width > 0 && viewport.height > 0) {
-        const desired = goatCameraVerticalOffset(unframed, viewport);
-        this.cameraShiftY += (desired - this.cameraShiftY) * lerpAlpha(10, dt);
-        this.cameraShiftY = Math.max(this.cameraShiftY, desired);
+      const desired = unframed ? goatCameraVerticalOffset(unframed, viewport) : null;
+      if (desired === null || !Number.isFinite(desired)) {
+        this.cameraShiftY = 0;
+      } else {
+        const bounded = THREE.MathUtils.clamp(desired, -viewport.height, viewport.height);
+        const previous = Number.isFinite(this.cameraShiftY) ? this.cameraShiftY : 0;
+        this.cameraShiftY = Math.max(previous + (bounded - previous) * lerpAlpha(10, dt), bounded);
       }
-      if (viewport.width > 0 && viewport.height > 0) {
+      if (viewport.width > 0 && viewport.height > 0 && this.cameraShiftY !== 0) {
         this.camera.setViewOffset(viewport.width, viewport.height,
           0, this.cameraShiftY, viewport.width, viewport.height);
       }

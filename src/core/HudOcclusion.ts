@@ -42,13 +42,17 @@ export function visibleGoatBounds(root: THREE.Object3D, output = new THREE.Box3(
 }
 
 /** Project the actual sculpt's world-space bounding box through the live camera.
- * If the camera intersects the box, conservatively protect the entire viewport
- * rather than projecting corners behind the near plane to bogus locations. */
+ * An invalid projection conservatively protects the viewport for HUD layout.
+ * Unclipped camera framing needs a measured box and skips those samples. */
 export function projectGoatScreenBox(bounds: THREE.Box3, camera: THREE.PerspectiveCamera,
   viewport: ScreenRect, clipToViewport = true): ScreenRect | null {
   if (bounds.isEmpty() || viewport.right <= viewport.left || viewport.bottom <= viewport.top) {
     return null;
   }
+  // DOMRect exposes its edges through prototype getters, so spreading it loses them.
+  const fallback: ScreenRect | null = clipToViewport ? {
+    left: viewport.left, top: viewport.top, right: viewport.right, bottom: viewport.bottom,
+  } : null;
   camera.updateWorldMatrix(true, false);
   const point = new THREE.Vector3();
   const inCamera = new THREE.Vector3();
@@ -58,12 +62,12 @@ export function projectGoatScreenBox(bounds: THREE.Box3, camera: THREE.Perspecti
       for (const z of [bounds.min.z, bounds.max.z]) {
         point.set(x, y, z);
         if (inCamera.copy(point).applyMatrix4(camera.matrixWorldInverse).z >= -camera.near) {
-          return { ...viewport };
+          return fallback;
         }
         point.project(camera);
         const px = viewport.left + (point.x + 1) * (viewport.right - viewport.left) / 2;
         const py = viewport.top + (1 - point.y) * (viewport.bottom - viewport.top) / 2;
-        if (!Number.isFinite(px) || !Number.isFinite(py)) return { ...viewport };
+        if (!Number.isFinite(px) || !Number.isFinite(py)) return fallback;
         left = Math.min(left, px); right = Math.max(right, px);
         top = Math.min(top, py); bottom = Math.max(bottom, py);
       }
