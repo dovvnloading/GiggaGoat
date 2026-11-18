@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { BOARD_CYCLE_TICKS, type Difficulty } from '../gigs';
-import { forward, V } from '../physics';
+import { add, forward, mul, RAPIER, sub, V } from '../physics';
+import { heightAt } from '../world';
 import { Game, type PlayerIntent } from './Game';
 
 async function createWithPostedTier(tier: Difficulty): Promise<Game> {
@@ -18,6 +19,49 @@ async function createWithPostedTier(tier: Difficulty): Promise<Game> {
   snapshot.gigs.tick = cycle! * BOARD_CYCLE_TICKS;
   return Game.create({ progress: snapshot });
 }
+
+it('licks a nearby marked Hay Haul bale when the normal ray misses and the mouth has a clear path', async () => {
+  const game = await createWithPostedTier('medium');
+  try {
+    const board = game.gigs.boards.find(board => board.poiId === 'hoofington')!;
+    game.teleport(board.position);
+    const offer = game.gigs.board('hoofington').find(offer => offer.gigId === 'hay-haul')!;
+    game.gigs.accept(offer.id);
+    const config = game.gigs.active!.setup.config;
+    if (config.kind !== 'hay-haul') throw new Error('Expected Hay Haul');
+    const id = config.bales[0]!.id;
+    const bale = game.colliders.bodies.get(id)!;
+    const spot = bale.translation();
+    const x = spot.x + 1.9;
+    const heading = -Math.PI / 2 + .66;
+    game.teleport(V(x, heightAt(game.island, x, spot.z), spot.z), -heading);
+    for (let tick = 0; tick < 35; tick++) game.step({ cameraYaw: heading });
+
+    const tongue = game.goat.interactions;
+    const toBale = () => sub(bale.translation(), tongue.tongueOrigin);
+    expect(tongue.raycastTongue()?.body?.handle).not.toBe(bale.handle);
+    const post = add(tongue.tongueOrigin, mul(toBale(), .4));
+    const blocker = game.physics.raw.createCollider(RAPIER.ColliderDesc.cuboid(.075, .45, .075)
+      .setTranslation(post.x, post.y, post.z));
+    game.step({ cameraYaw: heading });
+    expect(tongue.raycastTongue(toBale())?.collider.handle).toBe(blocker.handle);
+
+    for (let tick = 0; tick < 5; tick++) game.step({ cameraYaw: heading, tongue: true });
+    expect(tongue.tongueBody?.handle).not.toBe(bale.handle);
+    expect(game.gigs.active?.seenIds).not.toContain(id);
+
+    game.physics.raw.removeCollider(blocker, false);
+    for (let tick = 0; tick < 30; tick++) game.step({ cameraYaw: heading });
+    for (let tick = 0; tick < 5; tick++) game.step({ cameraYaw: heading, tongue: true });
+    expect(tongue.tongueBody?.handle).toBe(bale.handle);
+    expect(game.gigs.active?.seenIds).toContain(id);
+    const initialLength = tongue.tongueLength!;
+    for (let tick = 0; tick < 5; tick++) game.step({ cameraYaw: heading, tongue: true, reelTongue: true });
+    expect(tongue.tongueLength).toBeLessThan(initialLength);
+  } finally {
+    game.dispose();
+  }
+});
 
 it.each([
   ['easy', 3, 'gold'], ['medium', 4, 'gold'], ['hard', 5, 'silver'],

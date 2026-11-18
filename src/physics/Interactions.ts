@@ -1,6 +1,6 @@
 import RAPIER, { type ImpulseJoint, type RigidBody, type Collider } from '@dimforge/rapier3d-compat';
 import type { GoatRagdoll } from './GoatRagdoll';
-import type { PhysicsWorld } from './PhysicsWorld';
+import type { PhysicsWorld, RayHit } from './PhysicsWorld';
 import { add, clamp, distance, dot, forward, length, localPoint, mul, normalize,
   sub, V, worldPoint, type Vec3 } from './math';
 
@@ -162,16 +162,22 @@ export class GoatInteractions {
     return results;
   }
 
-  /** Lick the first collider (including a static world collider) along the look ray. */
+  /** Find the first collider the tongue can touch, including static scenery. */
+  raycastTongue(direction?: Vec3): RayHit | null {
+    const g = this.goat;
+    const rayDirection = direction ?? add(forward(g.locomotion.heading),V(0,-.12,0));
+    return g.world.raycast(this.tongueOrigin,rayDirection,this.tuning.tongueRange*g.size,{
+      predicate:collider=>!g.ownsBody(collider.parent()),
+    });
+  }
+
+  /** Lick the first collider along the look ray. */
   attachTongue(direction?: Vec3): boolean {
     const g = this.goat;
     if (this.tether) this.detachTongue('replaced');
     const s = g.size;
-    const rayDirection = direction ?? add(forward(g.locomotion.heading),V(0,-.12,0));
     const from = this.tongueOrigin;
-    const hit = g.world.raycast(from,rayDirection,this.tuning.tongueRange*s,{
-      predicate:collider=>!g.ownsBody(collider.parent()),
-    });
+    const hit = this.raycastTongue(direction);
     if (!hit) return false;
     let target = hit.body;
     let anchorBody: RigidBody | null = null;
