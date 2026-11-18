@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { generateIsland } from './index';
-import { gridSample, riverAt } from './terrain';
+import { gridSample, riverAt, segmentProjection } from './terrain';
 import type { IslandData, PropDescriptor } from './types';
 
 function props(island: IslandData, kind: 'fern' | 'lily-pads' | 'mushroom'): PropDescriptor[] {
@@ -68,6 +68,26 @@ describe('Whispering Pines seeded glade dressing (WP-6)', () => {
         expect(pad.size.x, pad.id).toBeLessThanOrEqual(1.6);
         expect(pad.size.z).toBeCloseTo(pad.size.x, 6);
         expect(pad.size.y).toBeCloseTo(0.08, 6);
+      }
+
+      const pavedRoads = island.roads.filter(road => road.type === 'road' &&
+        (road.from === 'whispering-pines' || road.to === 'whispering-pines'));
+      const lowDetails = island.props.filter(prop => prop.poiId === 'whispering-pines' &&
+        ['mushroom', 'stump', 'fern', 'bush', 'flower', 'grass-tuft'].includes(prop.kind));
+      for (const prop of lowDetails) {
+        const radius = Math.hypot(prop.size.x, prop.size.z) / 2;
+        for (const road of pavedRoads) {
+          const nearest = Math.min(...road.points.slice(1).map((point, i) =>
+            segmentProjection(prop.transform.position, road.points[i]!, point).distance));
+          expect(nearest, prop.id + ' clear of ' + road.id).toBeGreaterThan(road.width / 2 + radius);
+        }
+      }
+
+      const upstreamWater = island.river.slice(0, 5);
+      for (const pine of island.props.filter(prop => prop.poiId === 'mt-gigga' && prop.kind === 'tree-pine')) {
+        const water = riverAt(pine.transform.position, upstreamWater);
+        expect(water.distance, pine.id + ' clear of the upper river')
+          .toBeGreaterThanOrEqual(water.width / 2 + Math.min(.9, pine.size.x * .2));
       }
 
       const mushrooms = props(island, 'mushroom');

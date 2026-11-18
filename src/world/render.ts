@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Biome, IslandData } from './types';
+import type { Biome, IslandData, PropKind } from './types';
 import { BIOMES } from './types';
 import { clamp, smoothstep } from './random';
 import { gridCoordinate, gridIndex } from './terrain';
@@ -25,6 +25,8 @@ export interface WorldSceneOptions {
   cullingDistance?: number;
   /** Spatial extent of one prop instancing batch, default 96 metres. */
   propChunkSize?: number;
+  /** Playable views may render these props through their physics-bound roots. */
+  externallyRenderedPropKinds?: ReadonlySet<PropKind>;
 }
 export interface WorldScene {
   group: THREE.Group;
@@ -375,17 +377,21 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   // Coalesce unchanged ground decals to keep the extra zebra mesh within the draw budget.
   group.add(buildGroundDetails(island, 192));
   group.add(buildMeadowScatter(island));
-  const props = buildPropVisuals(island.props, options.propChunkSize ?? 96, island);
+  const external = options.externallyRenderedPropKinds;
+  const scenery = external?.size
+    ? { ...island, props: island.props.filter(prop => !external.has(prop.kind)) }
+    : island;
+  const props = buildPropVisuals(scenery.props, options.propChunkSize ?? 96, scenery);
   group.add(props.group);
-  const hoofington = buildHoofingtonVisuals(island, props.group);
+  const hoofington = buildHoofingtonVisuals(scenery, props.group);
   group.add(hoofington.group);
-  const downtown = buildDowntownVisuals(island, props.group);
+  const downtown = buildDowntownVisuals(scenery, props.group);
   group.add(downtown.group);
   const waterVisuals = buildWaterVisuals(island);
   group.add(waterVisuals.inland, waterVisuals.sea);
   const dam = buildDamVisuals(island);
   group.add(dam.group);
-  const lighthouse = buildLighthouseVisuals(island, props.group);
+  const lighthouse = buildLighthouseVisuals(scenery, props.group);
   group.add(lighthouse.group);
   const sky = buildSkyVisuals();
   const fogColor = new THREE.Color();

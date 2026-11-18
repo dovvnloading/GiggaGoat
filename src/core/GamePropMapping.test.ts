@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { PropFactory, BUILD_PIECE_SIZES, DEFAULT_CRATE_SIZE } from '../props';
 import type { WorldLibraryPropKind } from '../props/PropFactory';
-import { generateIsland } from '../world';
+import { createWorldScene, generateIsland } from '../world';
+import * as hoofingtonArt from '../world/visual-hoofington';
 import { PROP_LIBRARY_MODELS } from '../world/library-props';
 import { fitLibraryModel, isAuthoredLibraryAsset } from '../world/library-fit';
 import type { GigPropSpawn } from '../gigs';
@@ -25,6 +26,24 @@ function factory(): PropFactory {
 }
 
 describe('GameView factory prop mapping', () => {
+  it('keeps physics-bound props out of both scenery rendering paths', () => {
+    const island = generateIsland({ resolution: 65 });
+    const source = vi.spyOn(hoofingtonArt, 'buildHoofingtonVisuals');
+    const world = createWorldScene(island, { externallyRenderedPropKinds: WORLD_LIBRARY_KINDS });
+    try {
+      const descriptors = source.mock.calls[0]![0].props;
+      expect(descriptors.some(prop => WORLD_LIBRARY_KINDS.has(prop.kind))).toBe(false);
+      expect(descriptors.some(prop => prop.kind === 'house')).toBe(true);
+      for (const kind of WORLD_LIBRARY_KINDS) {
+        expect(world.group.getObjectByName('props-' + kind)).toBeUndefined();
+      }
+      expect(island.props.some(prop => prop.kind === 'fence' && prop.breakable)).toBe(true);
+    } finally {
+      world.dispose();
+      source.mockRestore();
+    }
+  });
+
   it('maps the supported world kinds, leaving unrelated world art alone', () => {
     const f = factory();
     const cases = [
@@ -124,15 +143,17 @@ function loadedMesh(root: THREE.Group): THREE.Mesh {
 }
 
 describe('world props use World Lab art rather than gig/build toys', () => {
-  it('requests the exact World Lab GLB for all six kinds, with descriptor-coloured placeholders', async () => {
+  it('requests the exact World Lab GLB for all six kinds and draws fitted placeholders', async () => {
     const load = vi.fn(async (url: string) => mockWorldModel(url));
     const f = new PropFactory({ loadModel: load, assetBaseUrl: assetBase });
     for (const kind of worldKinds) {
       const root = createWorldLibraryProp(f, {
         kind, color: 0x728f43, size: { x: 3, y: 1.5, z: .9 },
       })!;
-      const box = root.children[0]!.children[0] as THREE.Mesh;
-      expect((box.material as THREE.MeshToonMaterial).color.getHex()).toBe(0x728f43);
+      const placeholder = root.children[0]!.children[0] as THREE.Mesh;
+      const material = placeholder.material as THREE.MeshToonMaterial;
+      expect(material.color.getHex()).toBe(kind === 'fence' ? 0xffffff : 0x728f43);
+      expect(material.vertexColors).toBe(kind === 'fence');
       expect(root.userData.assetStatus).toBe('loading');
     }
     await f.whenReady();
@@ -228,7 +249,7 @@ describe('world props use World Lab art rather than gig/build toys', () => {
     f.dispose();
   });
 
-  it('uses the original PropFactory toy art only after a failed GLB request', async () => {
+  it('keeps a single picket silhouette while the fence model loads or fails', async () => {
     const fail = vi.fn(async (): Promise<THREE.Object3D> => {
       throw new Error('asset unavailable');
     });
@@ -236,10 +257,13 @@ describe('world props use World Lab art rather than gig/build toys', () => {
     const root = createWorldLibraryProp(f, {
       kind: 'fence', size: { x: 9.2, y: 1.85, z: .35 },
     })!;
-    expect(root.getObjectByName('prop-build-wall')).toBeUndefined();
+    const proxy = root.getObjectByName('world-picket-fence');
+    expect(proxy).toBeInstanceOf(THREE.Mesh);
+    expect((proxy as THREE.Mesh).geometry.getAttribute('position').count).toBeGreaterThan(36);
     await f.whenReady();
     expect(root.userData.assetStatus).toBe('fallback');
-    expect(root.getObjectByName('prop-build-wall')).toBeInstanceOf(THREE.Group);
+    expect(root.getObjectByName('world-picket-fence')).toBe(proxy);
+    expect(root.getObjectByName('library-slot')?.children).toHaveLength(1);
     expect(new THREE.Box3().setFromObject(root).isEmpty()).toBe(false);
     f.dispose();
   });

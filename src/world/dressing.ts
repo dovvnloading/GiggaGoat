@@ -1,4 +1,4 @@
-import type { IslandData, PoiId, PropDescriptor, PropKind } from './types';
+import type { IslandData, PoiId, PropDescriptor, PropKind, Vec2 } from './types';
 import { SeededRandom } from './random';
 import { gridSample, riverAt, segmentProjection, stampPlot } from './terrain';
 import { getDamPlacement } from './the-dam';
@@ -575,6 +575,19 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       { shape: 'cylinder', yaw });
     accepted++;
   }
+  const nearbyFoliageSpot = (origin: Vec2, clear: (x: number, z: number) => boolean,
+    limit = 24): Vec2 | undefined => {
+    for (let distance = 1; distance <= limit; distance++) {
+      for (let side = 0; side < 16; side++) {
+        const angle = side * Math.PI / 8;
+        const x = origin.x + Math.cos(angle) * distance * scale;
+        const z = origin.z + Math.sin(angle) * distance * scale;
+        if (clear(x, z)) return { x, z };
+      }
+    }
+    return undefined;
+  };
+
   // MG-7: Populate the grassy mountain tiers with the same low-poly foliage
   // family used in Whispering Pines. Run after island-wide scenery so that
   // existing authored placements and their RNG sequence stay unchanged.
@@ -615,6 +628,35 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       accepted++;
     }
     // On unusually dense seeds, retain every safe candidate rather than throw.
+  }
+
+  // Shift tier pines off the upstream ribbon visible from the Pines glade.
+  // Fit a dry bank after sampling so subsequent seeded placements stay stable.
+  const upstreamWater = island.river.slice(0, 5);
+  const tierPines = result.filter(prop => prop.poiId === peak && prop.kind === 'tree-pine');
+  for (const tree of tierPines) {
+    const { position } = tree.transform;
+    const trunkRadius = Math.min(.9, tree.size.x * .2);
+    const offStream = (x: number, z: number): boolean => {
+      const water = riverAt({ x, z }, upstreamWater);
+      return water.distance >= water.width / 2 + trunkRadius + .75 * scale;
+    };
+    if (offStream(position.x, position.z)) continue;
+    const dryBank = nearbyFoliageSpot(position, (x, z) => {
+      const radius = Math.hypot(x - summit.x, z - summit.z) / scale;
+      return tierBands.some(([inner, outer]) => radius >= inner && radius <= outer) &&
+        offStream(x, z) && gridSample(island, x, z) > island.seaLevel &&
+        mountainSlope(x, z) < .5 &&
+        !mountainRoadPoints.some(point => Math.hypot(x - point.x, z - point.z) < clearance) &&
+        !mountainProps.some(point => Math.hypot(x - point.x, z - point.z) < clearance) &&
+        !tierPines.some(other => other !== tree &&
+          Math.hypot(x - other.transform.position.x, z - other.transform.position.z) < 2 * scale);
+    }, 48);
+    if (dryBank) {
+      Object.assign(position, dryBank, { y: gridSample(island, dryBank.x, dryBank.z) + tree.size.y / 2 });
+    } else {
+      result.splice(result.indexOf(tree), 1);
+    }
   }
 
   // Whispering Pines glade: independent seeded streams keep all legacy
@@ -694,6 +736,46 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       width / scale, forest, { yaw: fernRng.range(0, Math.PI * 2) });
     otherProps.push(fern);
     fernCount++;
+  }
+
+  // Move intersecting low Pines foliage onto dry shoulders while keeping its
+  // original dimensions, colors and seeded IDs.
+  const pinesPavement = island.roads.filter(road => road.type === 'road' &&
+    (road.from === forest || road.to === forest));
+  const clearsPinesPavement = (x: number, z: number, radius: number): boolean =>
+    !pinesPavement.some(road => road.points.some((b, i) => i > 0 &&
+      segmentProjection({ x, z }, road.points[i - 1]!, b).distance <
+        road.width / 2 + radius + .35 * scale));
+  const lowPinesDetails = new Set<PropKind>(['mushroom', 'stump', 'fern', 'bush', 'flower', 'grass-tuft']);
+  const pinesObstacles = [...island.props, ...result];
+  for (const prop of result.filter(prop => prop.poiId === forest && lowPinesDetails.has(prop.kind))) {
+    const { position, rotationY } = prop.transform;
+    const { x: sx, z: sz } = prop.size;
+    const radius = Math.hypot(sx, sz) / 2;
+    if (clearsPinesPavement(position.x, position.z, radius)) continue;
+    const shoulder = nearbyFoliageSpot(position, (x, z) => {
+      if (!clearsPinesPavement(x, z, radius)) return false;
+      const river = riverAt({ x, z }, island.river);
+      if (gridSample(island, x, z) <= island.seaLevel ||
+        river.distance < river.width / 2 + radius + .5 * scale) return false;
+      return !pinesObstacles.some(other => {
+        if (other === prop) return false;
+        const { x: ox, z: oz } = other.transform.position;
+        const distance = Math.hypot(x - ox, z - oz);
+        if ((other.kind === 'fern' || prop.kind === 'fern') && distance < 1.5) return true;
+        return other.collidable && distance < radius + Math.hypot(other.size.x, other.size.z) / 2 &&
+          footprintOverlaps({ x, z, sx, sz, yaw: rotationY }, {
+            x: ox, z: oz, sx: other.size.x, sz: other.size.z, yaw: other.transform.rotationY,
+          });
+      });
+    });
+    if (shoulder) {
+      position.y += gridSample(island, shoulder.x, shoulder.z) -
+        gridSample(island, position.x, position.z);
+      Object.assign(position, shoulder);
+    } else {
+      result.splice(result.indexOf(prop), 1);
+    }
   }
 
   // MG-12: Profile the *chosen* model rather than forcing a long, flat

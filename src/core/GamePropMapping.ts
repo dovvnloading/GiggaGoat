@@ -30,8 +30,6 @@ function legacyWorldProp(factory: PropFactory,
     case 'hay-bale':
       return fitRoot(factory.createGigProp(DEFAULT_CRATE_SIZE, 'hay'),
         prop.size, DEFAULT_CRATE_SIZE);
-    case 'fence':
-      return fitRoot(factory.createBuildPiece('wall'), prop.size, BUILD_PIECE_SIZES.wall);
     case 'ramp':
       return fitRoot(factory.createBuildPiece('ramp'), prop.size, BUILD_PIECE_SIZES.ramp);
     case 'trampoline':

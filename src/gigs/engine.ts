@@ -1,5 +1,6 @@
 import type { PoiId } from '../world';
 import { BOARD_CYCLE_TICKS, GIG_INFO, GigCatalog, TICKS_PER_SECOND } from './catalog';
+import { HAY_HAUL_TAG_RADIUS } from './types';
 import type {
   Difficulty, GigAward, GigBest, GigConfig, GigEvent, GigFrame,
   GigId, GigMetrics, GigObjective, GigOffer, GigRun, GigSetup, GigSnapshot,
@@ -278,7 +279,7 @@ export class GigDirector {
           for (const id of [action.targetId, ...(action.targetIds ?? [])]) {
             if (!id || run.seenIds.includes(id) || !c.bales.some(b => b.id === id)) continue;
             const p = props.get(id);
-            if (p && planar(p.position, frame.goat.position) <= 6 * frame.goat.size) {
+            if (p && planar(p.position, frame.goat.position) <= HAY_HAUL_TAG_RADIUS * frame.goat.size) {
               run.seenIds.push(id);
             }
           }

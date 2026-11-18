@@ -113,7 +113,7 @@ const foliage = new Set<PropKind>([
 ]);
 
 /** Build one reusable, genuinely compound silhouette per prop kind. */
-function geometryFor(kind: PropKind): THREE.BufferGeometry {
+export function buildProceduralPropGeometry(kind: PropKind): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   function append(g: THREE.BufferGeometry, x: number, y: number, z: number,
     sx: number, sy: number, sz: number, color = 0xffffff,
@@ -734,7 +734,10 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
   for (const [kind, entries] of buckets) {
     const architecture = isArchitecturalKind(kind) ? buildArchitecture(kind) : null;
     let geometry = geometries.get(kind);
-    if (!geometry) { geometry = architecture?.shell ?? geometryFor(kind); geometries.set(kind, geometry); }
+    if (!geometry) {
+      geometry = architecture?.shell ?? buildProceduralPropGeometry(kind);
+      geometries.set(kind, geometry);
+    }
     let material = materials.get(kind);
     if (!material) {
       material = new THREE.MeshToonMaterial({
