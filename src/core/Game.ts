@@ -18,6 +18,7 @@ import {
 } from '../chaos';
 import { addRapierPropCollider } from '../world/colliders';
 import { boardwalkPierDecks } from '../world/boardwalk';
+import { HOOFINGTON_HAUL_BALE_PREFIX } from '../world/hoofington-entrances';
 import { getDamHeadwater, isDamHeadwater } from '../world/dam-landscape';
 import { DAM_FRONT_GUARD } from '../world/the-dam';
 import { GigSession } from './GigSession';
@@ -368,7 +369,9 @@ export class Game {
       if (!prop) continue;
       this.water.track(body, { buoyancyScale: prop.kind === 'barrel' || prop.kind === 'hay-bale' ? 1.15 : .8 });
       if (prop.breakable) {
-        const threshold = Math.max(9, Math.min(38, body.mass() * .92));
+        // Packed loading bales endure routine handling and still break on a hard hit.
+        const threshold = id.startsWith(HOOFINGTON_HAUL_BALE_PREFIX) ? 36 :
+          Math.max(9, Math.min(38, body.mass() * .92));
         this.breakables.register(body, {
           impulseThreshold: threshold, damageThreshold: threshold * 2.5,
           chunks: prop.kind === 'hay-bale' ? 4 : 6, burstImpulse: 13,

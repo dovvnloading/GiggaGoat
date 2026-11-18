@@ -26,3 +26,9 @@ export const HOOFINGTON_FIELD_ENTRANCES = HOOFINGTON_FIELD_RAILS.flatMap(rails =
     return [{ x, z: (start + end) / 2, length: towing ? 13 : 9, width, towing }];
   }),
 );
+
+export const HOOFINGTON_HAUL_BALE_PREFIX = 'hoofington-haul-bale-';
+export const HOOFINGTON_HAUL_PARKING = [-13.2, -9.7, -6.2, -2.7, .8, 4.3, 7.8]
+  .map(z => ({ x: -29.25, z }));
+// The marked bales sit off the towing lane with room to turn back toward the barn.
+export const HOOFINGTON_HAUL_LANE = { x: -28, z: -3.25, length: 4.75, width: 25.5 };

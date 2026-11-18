@@ -7,6 +7,7 @@ import { DOWNTOWN_BUILDING_SIZES, DOWNTOWN_INFILL, SHOP_FRONTS,
   downtownRearHouseModel } from './visual-downtown';
 import { getDamPlacement } from './the-dam';
 import { buildRooftopCourse } from './rooftop-course';
+import { HOOFINGTON_HAUL_BALE_PREFIX, HOOFINGTON_HAUL_PARKING } from './hoofington-entrances';
 
 interface AddOptions {
   id?: string;
@@ -133,6 +134,15 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   site(farm, 'bench', -7.6, 34, 2, .95, .75, {
     id: 'hoofington-verge-south-bench', yaw: -Math.PI / 2,
   });
+
+  // The contract loads from the inside of the field. Keep the original
+  // paddock supply and its saved body IDs for Free Roam and older contracts.
+  for (const [i, slot] of HOOFINGTON_HAUL_PARKING.entries()) {
+    site(farm, 'hay-bale', slot.x, slot.z, 1.7, 1.3, 1.7, {
+      id: HOOFINGTON_HAUL_BALE_PREFIX + (i + 1), dynamicMass: 8,
+      shape: 'cylinder', climbable: false, yaw: i * .17,
+    });
+  }
 
   // BAA-ARDWALK: one cohesive shore-connected, walkable pier scene.
   props.push(...buildBaaardwalk(island));

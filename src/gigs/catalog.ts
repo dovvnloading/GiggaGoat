@@ -1,3 +1,4 @@
+import { HOOFINGTON_HAUL_BALE_PREFIX } from '../world/hoofington-entrances';
 import type { IslandData, PoiDescriptor, PropDescriptor, PoiId } from '../world';
 import { rooftopDecks } from '../world/rooftop-course';
 import {
@@ -16,7 +17,7 @@ export const GIG_INFO: Readonly<Record<GigId, GigInfo>> = {
   'hay-haul': {
     id: 'hay-haul', title: 'HAY HAUL', poiId: 'hoofington',
     pitch: 'One tongue. Too much hay. Nobody said it had to be tidy.',
-    instruction: 'Drag the marked bales to the drop beside the barn. Chain-tow two for a combo.',
+    instruction: 'Drag marked bales to the barn drop. Link two quick tows for Gold.',
     verbs: ['tongue'], baseCoins: 64,
     cosmetic: { id: 'hay-hat', name: 'Haywire Hat', slot: 'hat', color: '#F2C14F' },
   },
@@ -324,13 +325,17 @@ export class GigCatalog {
     const current = this.build(saved.offer);
     const serialized = JSON.stringify(saved);
     if (JSON.stringify(current) === serialized) return saved;
-    if ((current.config.kind === 'hay-haul' || current.config.kind === 'mow-down' ||
-        current.config.kind === 'rooftop-express') &&
+    if (current.config.kind === 'hay-haul') {
+      const fieldSupply = this.buildVariant(saved.offer, false, true);
+      if (JSON.stringify(fieldSupply) === serialized) return saved;
+      if (JSON.stringify(this.buildVariant(saved.offer, true, true)) === serialized) return fieldSupply;
+    }
+    if ((current.config.kind === 'mow-down' || current.config.kind === 'rooftop-express') &&
         JSON.stringify(this.buildVariant(saved.offer, true)) === serialized) return current;
     return null;
   }
 
-  private buildVariant(offer: GigOffer, legacyLayout: boolean): GigSetup {
+  private buildVariant(offer: GigOffer, legacyLayout: boolean, fieldSupply = false): GigSetup {
     if (offer.poiId !== GIG_INFO[offer.gigId]?.poiId ||
       offer.variantSeed !== this.makeOffer(offer.gigId, offer.difficulty, offer.cycle,
         Number(offer.id.split(':')[2])).variantSeed) throw new RangeError('Offer does not match catalog');
@@ -345,8 +350,12 @@ export class GigCatalog {
     switch (offer.gigId) {
       case 'hay-haul': {
         const barn = requireKind(this.props, 'hoofington', 'barn')[0]!;
-        const bales = rng.shuffle(requireKind(this.props, 'hoofington', 'hay-bale')
-          .filter(p => p.body.type === 'dynamic')).slice(0, [3, 4, 5][tier]!);
+        const supply = requireKind(this.props, 'hoofington', 'hay-bale').filter(p => p.body.type === 'dynamic');
+        const loadLine = supply.filter(p => p.id.startsWith(HOOFINGTON_HAUL_BALE_PREFIX));
+        const useField = fieldSupply || loadLine.length < 5;
+        const eligible = useField ? supply.filter(p => !p.id.startsWith(HOOFINGTON_HAUL_BALE_PREFIX))
+          : loadLine.slice(0, [4, 6, 7][tier]);
+        const bales = rng.shuffle(eligible).slice(0, [3, 4, 5][tier]!);
         const { position, rotationY } = barn.transform;
         const scale = this.islandSize / 600;
         // In the open apron south-east of the barn, between the silo and the house.
@@ -540,8 +549,9 @@ export class GigCatalog {
     }
     const maxTicks = LIMIT_SECONDS[offer.gigId][tier]! * TICKS_PER_SECOND;
     const info = this.info(offer.gigId);
-    if (legacyLayout && offer.gigId === 'hay-haul') {
-      info.instruction = 'Lick the marked bales into the barn. Chain-tow two for a combo.';
+    if (offer.gigId === 'hay-haul') {
+      if (legacyLayout) info.instruction = 'Lick the marked bales into the barn. Chain-tow two for a combo.';
+      else if (fieldSupply) info.instruction = 'Drag the marked bales to the drop beside the barn. Chain-tow two for a combo.';
     }
     if (legacyLayout && offer.gigId === 'mow-down') {
       info.instruction = 'Eat every glowing grass patch. Plan an efficient bite path.';

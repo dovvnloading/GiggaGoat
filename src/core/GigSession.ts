@@ -1,4 +1,4 @@
-import type { RigidBody } from '@dimforge/rapier3d-compat';
+import type { Collider, CoefficientCombineRule, RigidBody } from '@dimforge/rapier3d-compat';
 import { GigCatalog, GigDirector, GigGameplayBridge, type AbilityFact, type GigEvent,
   type GigOffer, type GigRun, type GigPropSpawn, type GigSetup, type GigSnapshot,
   type PropFact, type StyleFact } from '../gigs';
@@ -25,6 +25,7 @@ export class GigSession {
   private readonly bridge: GigGameplayBridge;
   private readonly temporary = new Map<string, TemporaryProp>();
   private readonly restockedHayBales = new Map<string, RigidBody>();
+  private towingHay: { collider: Collider; friction: number; combine: CoefficientCombineRule } | null = null;
   private readonly impacts = new Map<number, number>();
   private readonly courierSupports = new Set<number>();
   private courierPressure = 0;
@@ -218,6 +219,22 @@ export class GigSession {
     }
   }
 
+  private setHayTowCollider(collider: Collider | null): void {
+    const previous = this.towingHay;
+    if ((previous?.collider ?? null) === collider) return;
+    if (previous?.collider.isValid()) {
+      previous.collider.setFriction(previous.friction);
+      previous.collider.setFrictionCombineRule(previous.combine);
+    }
+    this.towingHay = null;
+    if (!collider?.isValid()) return;
+    // An assigned bale needs to slide under a Kid's tongue pull while
+    // retaining its weight and normal contact when released at the drop.
+    this.towingHay = { collider, friction: collider.friction(), combine: collider.frictionCombineRule() };
+    collider.setFriction(.19);
+    collider.setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min);
+  }
+
   noteAbility(fact: AbilityFact): void { this.abilities.push(fact); }
   noteCourierShrink(previousSize: number): void {
     this.courierShrink = {
@@ -262,13 +279,17 @@ export class GigSession {
     if (climbed > 0) abilities.push({ type: 'climb', metres: climbed });
     const style = this.style.splice(0);
     const props: PropFact[] = [];
+    const held = this.game.goat.interactions.tongueBody?.handle;
+    const hay = run?.status === 'running' && run.setup.config.kind === 'hay-haul' && held !== undefined
+      ? run.setup.config.bales.find(({ id }) => this.game.colliders.bodies.get(id)?.handle === held)
+      : undefined;
+    this.setHayTowCollider(hay ? this.game.colliders.props.get(hay.id) ?? null : null);
     if (run?.status === 'running') {
       this.keepHayBalesAvailable(run);
       const relevant = new Set<string>(run.setup.spawns.map(s => s.id));
       if (run.setup.config.kind === 'hay-haul') {
         for (const bale of run.setup.config.bales) relevant.add(bale.id);
       }
-      const held = this.game.goat.interactions.tongueBody?.handle;
       for (const id of relevant) {
         const entry = this.temporary.get(id);
         const body = entry?.body ?? this.game.colliders.bodies.get(id);
@@ -326,6 +347,7 @@ export class GigSession {
   }
   get props(): ReadonlyMap<string, TemporaryProp> { return this.temporary; }
   private clear(): void {
+    this.setHayTowCollider(null);
     for (const { body } of this.temporary.values()) {
       this.game.water.untrack(body);
       if (this.game.physics.raw.getRigidBody(body.handle)) this.game.physics.removeBody(body);
