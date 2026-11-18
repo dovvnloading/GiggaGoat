@@ -1,0 +1,70 @@
+import { describe, expect, it } from 'vitest';
+import { heightAt } from '../world';
+import { Game } from './Game';
+
+const create = () => Game.create({ resolution: 97 });
+
+describe('retrying a failed gig', () => {
+  it('restarts the exact posted Hay Haul offer from the field and saves only the new attempt', async () => {
+    const game = await create();
+    try {
+      const offer = game.gigs.board('hoofington').find(entry => entry.gigId === 'hay-haul')!;
+      game.gigs.accept(offer.id);
+      const run = game.gigs.active!;
+      const config = run.setup.config;
+      if (config.kind !== 'hay-haul') throw new Error('Expected Hay Haul');
+      const bale = config.bales[0]!;
+      const director = game.gigs.director;
+      const field = { x: -190, z: game.goat.torso.translation().z };
+      const ground = heightAt(game.island, field.x, field.z);
+      game.teleport({ ...field, y: ground }, 0);
+      const position = game.goat.torso.translation();
+      director.step({ goat: { position: bale.start, size: game.goat.size },
+        abilities: [{ type: 'tongue', targetId: bale.id }], props: [{ id: bale.id, position: bale.start }] });
+      director.step({ goat: { position, size: game.goat.size }, props: [{ id: bale.id, position: config.barn }] });
+      for (let tick = 2; tick < run.setup.maxTicks; tick++) {
+        director.step({ goat: { position, size: game.goat.size }, props: [] });
+      }
+      const failure = game.pendingGigResult!;
+      expect(failure.status).toBe('failed');
+      expect(failure.objective).toMatchObject({ done: 1, required: config.required });
+      expect(game.gigs.retryableOffer?.id).toBe(offer.id);
+      expect(game.gigs.nearBoard()).toBeNull();
+      expect(() => game.gigs.accept(offer.id)).toThrow('Offer unavailable at this board');
+
+      game.gigs.retryFailed();
+      const retry = game.gigs.active!;
+      expect(retry.attemptId).toBeGreaterThan(failure.attemptId);
+      expect(retry.setup.offer).toEqual(failure.setup.offer);
+      expect(retry.status).toBe('running');
+      expect(retry.elapsedTicks).toBe(0);
+      expect(retry.objective).toMatchObject({ done: 0, required: config.required });
+      expect(game.goat.torso.translation()).toMatchObject(position);
+      expect(game.pendingGigResult).toBeNull();
+      expect(game.gigs.retryableOffer).toBeNull();
+
+      const loaded = await Game.create({ resolution: 97, progress: game.exportProgress() });
+      try {
+        expect(loaded.pendingGigResult).toBeNull();
+        expect(loaded.gigs.active?.attemptId).toBe(retry.attemptId);
+        expect(loaded.gigs.active?.status).toBe('running');
+      } finally { loaded.dispose(); }
+    } finally { game.dispose(); }
+  });
+
+  it('retains a failed result after its exact offer expires', async () => {
+    const game = await create();
+    try {
+      const offer = game.gigs.board('hoofington').find(entry => entry.gigId === 'hay-haul')!;
+      game.gigs.accept(offer.id);
+      const director = game.gigs.director;
+      const frame = { goat: { position: game.goat.torso.translation(), size: game.goat.size } };
+      while (director.tick < offer.expiresTick) director.step(frame);
+      const failure = game.pendingGigResult;
+      expect(failure?.status).toBe('failed');
+      expect(game.gigs.retryableOffer).toBeNull();
+      expect(() => game.gigs.retryFailed()).toThrow('no longer available');
+      expect(game.pendingGigResult).toEqual(failure);
+    } finally { game.dispose(); }
+  });
+});

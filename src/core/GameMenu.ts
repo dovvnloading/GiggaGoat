@@ -2,6 +2,7 @@ import type { Game } from './Game';
 import type { GameView } from './GameView';
 import type { GameAudio } from './GameAudio';
 import { saveGame, type GameSettings } from './Persistence';
+import { formatHudObjective } from './GameHudState';
 import { MODE_DEFAULTS, TICKS_PER_SECOND, type ModeId, type Difficulty as BotDifficulty } from '../modes';
 import type { PoiId } from '../world';
 import { HUD_SPRITES, hudSpriteImage } from './HudSprites';
@@ -92,6 +93,10 @@ const CSS = `
 .gg-shell .gg-stat-line{display:flex;gap:3px;align-items:center;justify-content:center}
 .gg-shell .gg-stat strong{display:block;color:#ffe147;font-size:clamp(17px,2.1vw,24px);line-height:1.1}
 .gg-shell .gg-stat-coin{width:26px;height:26px;object-fit:contain}
+.gg-shell .gg-gig-progress strong{
+  font-size:clamp(13px,2.1vw,24px);overflow-wrap:anywhere
+}
+.gg-shell .gg-gig-result-return{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .gg-shell .gg-results{list-style:none;margin:8px 0 20px;padding:0;max-height:34vh;overflow:auto}
 .gg-shell .gg-results li{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:3px 10px;
   padding:7px 10px;margin:4px 0;border-radius:8px;background:#ffffff19;font-size:clamp(11px,1.45vw,14px)}
@@ -423,6 +428,13 @@ export class GameMenu {
       try {
         this.game.gigs.accept(key.slice(6));
         this.save();
+        this.resume();
+      } catch (error) { this.error(error); }
+    } else if (key === 'retry-gig' && this.screen === 'gig-results') {
+      try {
+        this.game.gigs.retryFailed();
+        // The new attempt replaces the failed one. Leaving results saves the
+        // running attempt through the same acknowledgement path as Free Roam.
         this.resume();
       } catch (error) { this.error(error); }
     } else if (key === 'leave-party') {
@@ -788,23 +800,32 @@ export class GameMenu {
       ${board ? `<p class="gg-board-refresh">Offers rotate after ${Math.ceil(board.refreshInTicks / 60)}s of play</p>` : ''}`;
   }
   private gigResultsBody(): string {
-    const run = this.game.gigs.active;
+    const run = this.game.pendingGigResult;
     if (!run) return '';
     const best = this.game.gigs.director.personalBests.find(b =>
       b.gigId === run.setup.offer.gigId && b.difficulty === run.setup.offer.difficulty);
     const success = run.status === 'completed';
-    return `<div class="gg-shell-eyebrow">${success?'GIG CLEARED':'GIG ENDED'}</div>
+    const status = success ? 'GIG CLEARED' + (run.rating ? ' · ' + nice(run.rating) : '') : 'GIG ENDED';
+    const canRetry = this.game.gigs.retryableOffer !== null;
+    const objective = run.objective;
+    const progress = objective.kind === 'deliver' ? {
+      measure: objective.done + ' / ' + objective.required, label: 'BALES DELIVERED',
+    } : { measure: formatHudObjective(objective), label: 'OBJECTIVE PROGRESS' };
+    return `<div class="gg-shell-eyebrow">${status}</div>
       <h2>${esc(run.setup.info.title)}</h2>
       <p>${esc(success?'That was a solid run. Now go cause more trouble.':
         run.failReason ?? 'Try a different route and go again.')}</p>
       <div class="gg-stats">
-        <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}><strong>${esc(nice(run.rating ?? 'no medal'))}</strong>RATING</div>
+        <div class="gg-stat gg-gig-progress" ${menuSkin(MENU_SPRITES.stat)}>
+          <strong>${esc(progress.measure)}</strong><span>${progress.label}</span></div>
         <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}><strong>+${run.payout ?? 0}</strong>CUD COINS</div>
         <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}><strong>${(run.elapsedTicks/60).toFixed(1)}s</strong>TIME</div>
       </div>
       <p>${best ? 'PERSONAL BEST: '+nice(best.rating)+' · '+(best.ticks/60).toFixed(1)+'s' : 'PERSONAL BEST: not yet'}</p>
-      <div class="gg-options">${menuButton('play','▶ BACK TO FREE ROAM',true)}
-      ${menuButton('title','⌂ TITLE')}</div>`;
+      <div class="gg-options">${canRetry ? menuButton('retry-gig','↻ RETRY CONTRACT',true) :
+        menuButton('play','▶ BACK TO FREE ROAM',true)}
+      ${canRetry ? `<div class="gg-gig-result-return">${menuButton('play','▶ FREE ROAM')}${menuButton('title','⌂ TITLE')}</div>` :
+        menuButton('title','⌂ TITLE')}</div>`;
   }
   private partyResultsBody(): string {
     const match = this.game.party.match;

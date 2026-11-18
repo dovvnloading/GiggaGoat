@@ -8,6 +8,8 @@ import { MODE_DEFAULTS, type PartyMatch } from '../modes';
 import { GigCatalog, type GigBoard } from '../gigs';
 import { generateIsland, type PoiId } from '../world';
 import { frame, goat, readyMatch } from '../modes/test-utils';
+import { GigCatalog, GigDirector, type GigOffer, type GigRun } from '../gigs';
+import { generateIsland } from '../world';
 
 const manifest = JSON.parse(readFileSync(
   resolve(process.cwd(), 'public/assets/ui/sprites/sprites.json'), 'utf8',
@@ -406,6 +408,47 @@ describe('sprite-backed menu DOM', () => {
       win.dispatch('keydown', { code: 'Escape', repeat: false,
         preventDefault: vi.fn(), stopPropagation: vi.fn() });
       expect(root.querySelector('[data-action="resume"]')).not.toBeNull();
+    } finally { menu.dispose(); }
+  });
+
+  it('shows delivery progress and lets the eligible retry exit through results acknowledgement', () => {
+    const { menu, doc, game, root, setScreen, view } = setup();
+    try {
+      const catalog = new GigCatalog(generateIsland({ resolution: 97 }));
+      const director = new GigDirector(catalog);
+      const offer = director.board('hoofington').offers.find(entry => entry.gigId === 'hay-haul')!;
+      const contract = director.accept(offer.id);
+      if (contract.config.kind !== 'hay-haul') throw new Error('Expected Hay Haul');
+      const frame = { goat: { position: contract.start, size: 1 } };
+      for (let i = 0; i < contract.maxTicks; i++) director.step(frame);
+      const failed = director.active!;
+      expect(failed.status).toBe('failed');
+      const resultGame = Object.assign(game, {
+        pendingGigResult: failed as GigRun | null, acknowledgeGigResult: vi.fn(),
+      });
+      Object.assign(game.gigs.director, { personalBests: [] });
+      const gigs = Object.assign(game.gigs, {
+        retryableOffer: offer as GigOffer | null,
+        retryFailed: vi.fn(() => { resultGame.pendingGigResult = null; }),
+      });
+      setScreen('gig-results');
+      expect(root.innerHTML).toContain('<strong>0 / ' + contract.config.required + '</strong><span>BALES DELIVERED</span>');
+      expect(root.innerHTML).toContain('Time up');
+      const retry = root.querySelector<ButtonStub>('[data-action="retry-gig"]')!;
+      expect(retry).not.toBeNull();
+      expect(doc.activeElement).toBe(retry);
+      expect(root.querySelector('[data-action="play"]')).not.toBeNull();
+      expect(root.querySelector('[data-action="title"]')).not.toBeNull();
+      retry.click();
+      expect(gigs.retryFailed).toHaveBeenCalledOnce();
+      expect(resultGame.acknowledgeGigResult).toHaveBeenCalledOnce();
+      expect(view.paused).toBe(false);
+
+      resultGame.pendingGigResult = failed;
+      gigs.retryableOffer = null;
+      setScreen('gig-results');
+      expect(root.querySelector('[data-action="retry-gig"]')).toBeNull();
+      expect(root.innerHTML).toContain('BALES DELIVERED');
     } finally { menu.dispose(); }
   });
 
