@@ -386,12 +386,27 @@ describe('modelled Mt. Gigga cascades (MG-12, DM-1)', () => {
     dam.center.z = island.river[0]!.z;
     expect(waterfallSites(island).some(site => site.id === 'mountain-waterfall-0'))
       .toBe(false);
+    // Site discovery uses current terrain; foam instead follows the cascade
+    // descriptor that was already placed on the original terrain.
+    const prop = island.props.find(p => p.id === 'waterfall-cascade-mountain-waterfall-0');
     const visuals = buildWaterVisuals(island);
     try {
-      expect(visuals.inland.getObjectByName('mountain-waterfall-0')).toBeUndefined();
-      expect(visuals.inland.getObjectByName('mountain-waterfall-0-foam')).toBeUndefined();
+      expect(visuals.inland.getObjectByName('mountain-waterfall-0') instanceof THREE.Group)
+        .toBe(Boolean(prop));
+      expect(visuals.inland.getObjectByName('mountain-waterfall-0-foam') instanceof THREE.Group)
+        .toBe(Boolean(prop));
     } finally {
       disposeWaterMeshes(visuals);
+    }
+    // Removing/skipping the descriptor must remove its foam even if the
+    // original site search would still find a waterfall here.
+    island.props = island.props.filter(p => p.id !== 'waterfall-cascade-mountain-waterfall-0');
+    const skipped = buildWaterVisuals(island);
+    try {
+      expect(skipped.inland.getObjectByName('mountain-waterfall-0')).toBeUndefined();
+      expect(skipped.inland.getObjectByName('mountain-waterfall-0-foam')).toBeUndefined();
+    } finally {
+      disposeWaterMeshes(skipped);
     }
   });
 });
