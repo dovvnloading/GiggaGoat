@@ -104,6 +104,18 @@ describe('in-game HUD state projection', () => {
     expect(deriveHudState(state).headbutt).toBe(100);
   });
 
+  it('shows low stamina only below the ability start threshold', () => {
+    const state = input();
+    state.stamina = TUNING.stamina.minStart;
+    expect(deriveHudState(state).staminaLow).toBe(false);
+    state.stamina = TUNING.stamina.minStart - .01;
+    expect(deriveHudState(state).staminaLow).toBe(true);
+    state.stamina = 0;
+    expect(deriveHudState(state).staminaLow).toBe(true);
+    state.stamina = TUNING.stamina.max;
+    expect(deriveHudState(state).staminaLow).toBe(false);
+  });
+
   it('shows the next-gig prompt unless a real contract is active', () => {
     const state = input();
     const inactive = deriveHudState(state);

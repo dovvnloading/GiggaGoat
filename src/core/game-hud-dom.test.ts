@@ -158,6 +158,22 @@ describe('live free-roam HUD DOM', () => {
     }
   });
 
+  it('uses one readable value for each gameplay meter', () => {
+    const head = new ElementStub();
+    vi.stubGlobal('document', { head, createElement: () => new ElementStub() });
+    const host = new ElementStub();
+    const hud = new GameHud(host as unknown as HTMLElement);
+    try {
+      const root = host.children[0]!;
+      expect(root.querySelectorAll('[data-meter]')).toHaveLength(1);
+      expect(root.querySelector<ElementStub>('[data-meter]')?.textContent).toBe('0 / 100');
+      expect(root.querySelectorAll('[data-stamina-number]')).toHaveLength(1);
+      expect(root.querySelector<ElementStub>('[data-stamina-number]')?.textContent).toBe('100 / 100');
+    } finally {
+      hud.dispose();
+    }
+  });
+
   it.each([1280, 1600, 1920])('keeps both sprite prompts on a single row at %ipx', width => {
     const head = new ElementStub();
     vi.stubGlobal('document', { head, createElement: () => new ElementStub() });

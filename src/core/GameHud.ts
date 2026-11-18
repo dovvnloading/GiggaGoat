@@ -1,5 +1,5 @@
 import type { Game } from './Game';
-import { TUNING, type PlacementFailure, type Validation } from '../gameplay';
+import type { PlacementFailure, Validation } from '../gameplay';
 import { HUD_PIECES, deriveHudState, projectHudMap } from './GameHudState';
 import { buildArtwork, goatArtwork, renderHudMinimap } from './HudArtwork';
 import { fitGigCardText } from './GigCardLayout';
@@ -31,7 +31,12 @@ const CSS = `
 .gg-meter-stage-labels{position:absolute;left:8%;right:6%;top:80%;height:13%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:center}
 .gg-meter-stage-labels span{text-align:center;white-space:nowrap;color:#fff8dd;font-size:clamp(12px,1.1vw,19px);line-height:1;text-shadow:1px 2px 1px #42304f}
 .gg-meter-stage-labels span.is-active{color:#fffbd1;text-shadow:0 0 7px #fff5ac,1px 2px 1px #56264a}
-.gg-meter-caption{position:absolute;top:98%;left:8%;right:8%;display:flex;justify-content:space-between;gap:8px;color:#fff0ae;font-size:clamp(8px,.67vw,11px);letter-spacing:.3px;white-space:nowrap}
+.gg-meter-caption{
+ position:absolute;top:58%;height:14.8%;left:6%;right:5.8%;display:grid;place-items:center;
+ color:#fff9db;font-size:clamp(9px,1.05vw,18px);font-variant-numeric:tabular-nums;
+ line-height:1;text-shadow:none;white-space:nowrap
+}
+.gg-meter-caption [data-meter]{display:block;padding:0 6px;border-radius:6px;background:#301f33ed}
 /* Reserve the combo slot so its artwork can appear without moving surrounding controls. */
 .gg-combo{position:absolute;left:50%;top:clamp(4px,.7vw,12px);transform:translateX(-50%);width:clamp(377px,32.3vw,545px);height:clamp(155px,12.7vw,217px);text-align:center}
 .gg-combo[data-combo-active]{background:var(--gg-scoreStarburst) center/100% 100% no-repeat}
@@ -136,13 +141,33 @@ const CSS = `
 .gg-gig-wallet{display:flex;align-items:center;gap:3px;flex-shrink:0;min-width:0}
 .gg-gig-footer [data-mode]{flex-shrink:0;text-align:right}
 .gg-coin{width:18px;height:18px;flex-shrink:0;object-fit:contain;image-rendering:auto;opacity:1;filter:none;transform:none}
+@media(min-width:1101px){
+ .gg-gig-paper{bottom:23%}
+ .gg-gig-footer{
+  left:14%;right:11%;bottom:14%;height:8%;gap:6px;font-size:clamp(9px,.72vw,12px);
+  line-height:1.15;font-variant-numeric:tabular-nums
+ }
+ .gg-coin{width:clamp(12px,.86vw,16px);height:clamp(12px,.86vw,16px)}
+}
 /* Progress is a live masked conic arc painted on top of the illustrated ring. */
 .gg-stamina{position:absolute;left:clamp(11px,1.5vw,29px);bottom:clamp(10px,1.5vw,26px);width:clamp(138px,12.7vw,215px);aspect-ratio:243/252;background:var(--gg-staminaRing) center/100% 100% no-repeat}
-.gg-stamina-progress{position:absolute;inset:8%;border-radius:50%;background:conic-gradient(from -90deg,#9aff33 0 var(--gg-stamina,100%),#3c304c var(--gg-stamina,100%) 100%);-webkit-mask:radial-gradient(farthest-side,transparent 60%,#000 63% 84%,transparent 87%);mask:radial-gradient(farthest-side,transparent 60%,#000 63% 84%,transparent 87%)}
+.gg-stamina-progress{position:absolute;inset:8%;border-radius:50%;background:conic-gradient(from -90deg,var(--gg-stamina-color,#9aff33) 0 var(--gg-stamina,100%),#3c304c var(--gg-stamina,100%) 100%);-webkit-mask:radial-gradient(farthest-side,transparent 60%,#000 63% 84%,transparent 87%);mask:radial-gradient(farthest-side,transparent 60%,#000 63% 84%,transparent 87%)}
 .gg-stamina-inner{position:absolute;inset:23% 17% 17%;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .gg-hoof{width:56%;height:55%;filter:drop-shadow(0 2px 1px #422c3b)}
 .gg-stamina-label{margin-top:2px;color:#ffe8ad;font-size:clamp(13px,1.2vw,20px);line-height:1.1;transform:rotate(6deg);text-shadow:2px 2px #4b2840}
 .gg-stamina-value{font-size:clamp(8px,.72vw,12px);color:#fff7c9;margin-top:2px}
+@media(min-width:761px),(orientation:landscape){
+ .gg-stamina-inner{inset:21% 13% 16%;gap:2px}
+ .gg-hoof{width:50%;height:42%;min-height:0}
+ .gg-stamina-label{transform:none;margin:0;white-space:nowrap}
+ .gg-stamina-value{
+  margin:0;padding:1px 4px;border-radius:6px;background:#302338ed;text-shadow:none;
+  font-size:clamp(10px,1.05vw,18px);line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap
+ }
+ .gg-stamina[data-low="true"] .gg-stamina-progress{--gg-stamina-color:#ff926f}
+ .gg-stamina[data-low="true"] .gg-stamina-label::after{content:" LOW";color:#ffac93}
+ .gg-stamina[data-low="true"] .gg-stamina-value{background:#512c38;color:#ffe4d3}
+}
 .gg-hotbar{position:absolute;left:50%;bottom:clamp(3px,.6vw,10px);transform:translateX(-50%);width:clamp(500px,40vw,665px);height:clamp(126px,10.35vw,186px);isolation:isolate}
 /* Continue the outer rim beneath the clipped button artwork without moving the tray slots. */
 .gg-hotbar[data-active="true"]::before,.gg-hotbar[data-active="true"]::after{content:"";position:absolute;pointer-events:none}
@@ -184,7 +209,6 @@ const CSS = `
  .gg-meter{left:12px;top:13px}
  .gg-map-panel{right:10px}
  .gg-gig-card{right:9px}
- .gg-meter-caption{display:none}
 }
 @media(max-width:760px){
  .gg-meter{left:6px;top:8px;width:min(270px,51vw);height:clamp(105px,21vw,128px)}
@@ -323,7 +347,12 @@ const CSS = `
  }
  .gg-prompt-copy{min-width:0}
  .gg-stamina{left:8px;bottom:5px;width:var(--gg-landscape-stamina-width)}
+ .gg-stamina-inner{gap:1px}
+ .gg-hoof{height:36%}
  .gg-stamina-label{font-size:clamp(8px,1.66vw,10px)}
+ .gg-stamina-value{padding:0 2px;font-size:clamp(8px,1.48vw,10px)}
+ .gg-stamina[data-low="true"] .gg-stamina-label{font-size:0}
+ .gg-stamina[data-low="true"] .gg-stamina-label::after{content:"LOW";font-size:clamp(8px,1.66vw,10px)}
  .gg-hotbar{
    bottom:4px;width:min(calc(100% - 2 * (var(--gg-landscape-stamina-width) + 18px)),460px);
    height:var(--gg-landscape-tray-height)
@@ -347,7 +376,6 @@ const CSS = `
   top:58%;height:14.8%;left:6%;right:5.8%;display:grid;place-items:center;
   color:#fff9db;font-size:clamp(9px,2.65vw,12px);letter-spacing:0;font-variant-numeric:tabular-nums;text-shadow:none
  }
- .gg-meter-caption :is(.gg-meter-tagline,.gg-meter-separator,[data-tier]){display:none}
  .gg-meter-caption [data-meter]{display:block;padding:0 4px;border-radius:6px;background:#301f33db}
  .gg-map-panel{top:8px;right:8px;width:var(--gg-portrait-map-width)}
  .gg-map-location{
@@ -448,7 +476,6 @@ export class GameHud {
   private readonly styles = document.createElement('style');
   private readonly fill: HTMLElement;
   private readonly meterText: HTMLElement;
-  private readonly tier: HTMLElement;
   private readonly needle: HTMLElement;
   private readonly stages: HTMLElement[];
   private readonly stageLabels: HTMLElement[];
@@ -523,8 +550,7 @@ export class GameHud {
       '<div class="gg-meter-track"><div class="gg-meter-fill" data-fill></div>' +
       '<div class="gg-meter-ticks"></div><div class="gg-meter-arrow" data-needle></div></div>' +
       '<div class="gg-meter-stage-labels">' + stageLabels + '</div>' +
-      '<div class="gg-meter-caption"><span class="gg-meter-tagline">CHAOS MAKES YOU BIGGER</span>' +
-      '<span><b data-tier>KID</b><span class="gg-meter-separator"> · </span><b data-meter>0 / 100</b></span></div></section>' +
+      '<div class="gg-meter-caption"><b data-meter>0 / 100</b></div></section>' +
       '<section class="gg-combo" data-sprite="' + HUD_SPRITES.scoreStarburst +
       '" data-score-panel aria-label="Chaos combo and score">' +
       '<div class="gg-combo-title" data-combo-title></div>' +
@@ -562,7 +588,7 @@ export class GameHud {
       '<div class="gg-stamina-inner">' +
       hudSpriteImage(HUD_SPRITES.staminaHooves, 'gg-hoof') +
       '<strong class="gg-stamina-label">STAMINA</strong>' +
-      '<span class="gg-stamina-value" data-stamina-number>100</span></div></section>' +
+      '<span class="gg-stamina-value" data-stamina-number>100 / 100</span></div></section>' +
       '<section class="gg-hotbar" data-sprite="' + HUD_SPRITES.hotbarTray +
       '" data-hotbar data-active="false" aria-label="Hay-Build hotbar">' +
       '<div class="gg-build-controls"><span data-build-status>B · BUILD</span>' +
@@ -588,7 +614,7 @@ export class GameHud {
       if (!element) throw new Error('HUD element missing: ' + name);
       return element;
     };
-    this.fill = get('fill'); this.meterText = get('meter'); this.tier = get('tier');
+    this.fill = get('fill'); this.meterText = get('meter');
     this.needle = get('needle');
     this.stages = Array.from(this.root.querySelectorAll<HTMLElement>('[data-stage]'));
     this.stageLabels = Array.from(this.root.querySelectorAll<HTMLElement>('[data-stage-label]'));
@@ -733,7 +759,6 @@ export class GameHud {
     this.fill.style.width = state.meter.toFixed(2) + '%';
     this.needle.style.left = state.meter.toFixed(2) + '%';
     this.meterText.textContent = Math.floor(state.meter) + ' / 100';
-    this.tier.textContent = state.tier.toUpperCase();
     for (const element of this.stageElements) {
       const label = element.getAttribute('data-stage') ?? element.getAttribute('data-stage-label');
       element.classList.toggle('is-active', label === state.tier);
@@ -751,7 +776,11 @@ export class GameHud {
     this.updateMap(game, state.location, hayHaul);
 
     this.stamina.style.setProperty('--gg-stamina', state.stamina.toFixed(2) + '%');
-    this.stamina.dataset.low = String(state.stamina < TUNING.stamina.minStart);
+    const staminaLow = String(state.staminaLow);
+    if (staminaLow !== this.stamina.dataset.low) {
+      this.stamina.dataset.low = staminaLow;
+      this.stamina.setAttribute('aria-label', state.staminaLow ? 'Low stamina' : 'Stamina');
+    }
     this.staminaNumber.textContent = Math.floor(state.stamina) + ' / 100';
     this.charge.style.width = state.headbutt.toFixed(2) + '%';
     this.mode.textContent = state.mode;

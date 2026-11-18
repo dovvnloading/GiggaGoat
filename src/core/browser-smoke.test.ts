@@ -292,7 +292,72 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
       await page.click('[data-action="play"]');
       await page.waitFor('document.querySelector(".gg-shell")?.hidden === true',
         'free roam to start');
-      page.phase = 'compact HUD geometry';
+      page.phase = 'HUD geometry';
+      const meterAndFooterIssues = () => {
+        const growth = document.querySelector<HTMLElement>('[data-meter]')!;
+        const track = document.querySelector('.gg-meter-track')!.getBoundingClientRect();
+        const stamina = document.querySelector<HTMLElement>('[data-stamina]')!;
+        const label = stamina.querySelector('.gg-stamina-label')!;
+        const value = stamina.querySelector<HTMLElement>('[data-stamina-number]')!;
+        const progress = stamina.querySelector('.gg-stamina-progress')!;
+        const wallet = document.querySelector<HTMLElement>('[data-wallet]')!;
+        const mode = document.querySelector<HTMLElement>('[data-mode]')!;
+        const original = { growth: growth.textContent, value: value.textContent,
+          low: stamina.dataset.low, wallet: wallet.textContent, mode: mode.textContent };
+        const issues: string[] = [];
+        const range = document.createRange();
+        const ink = (element: Element) => {
+          range.selectNodeContents(element);
+          return range.getBoundingClientRect();
+        };
+        const inside = (rect: DOMRect, bounds: DOMRect) => rect.width > 0 && rect.height > 0 &&
+          rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1 &&
+          rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1;
+        const wide = innerWidth > 1100;
+        try {
+          growth.textContent = '100 / 100';
+          if (!inside(ink(growth), track) ||
+            Number.parseFloat(getComputedStyle(growth).fontSize) < (wide ? 13 : 9)) {
+            issues.push('growth value does not fit its track');
+          }
+          const staminaBounds = stamina.getBoundingClientRect();
+          for (const low of [false, true]) {
+            stamina.dataset.low = String(low);
+            value.textContent = low ? '7 / 100' : '100 / 100';
+            if (!inside(ink(value), staminaBounds) ||
+              Number.parseFloat(getComputedStyle(value).fontSize) < (wide ? 13 : 8)) {
+              issues.push('stamina reading is small or clipped');
+            }
+            const warning = getComputedStyle(label, '::after').content.includes('LOW');
+            const warningColor = getComputedStyle(progress).backgroundImage.includes('255, 146, 111');
+            if (warning !== low || warningColor !== low || !inside(label.getBoundingClientRect(), staminaBounds)) {
+              issues.push('stamina warning is misplaced or does not follow the low state');
+            }
+          }
+          if (wide) {
+            wallet.textContent = '123,456 CUD COINS';
+            mode.textContent = 'KING OF THE PEAK';
+            const card = document.querySelector('[data-gig-card]')!.getBoundingClientRect();
+            const footer = document.querySelector('.gg-gig-footer')!.getBoundingClientRect();
+            const paper = document.querySelector('.gg-gig-paper')!.getBoundingClientRect();
+            const walletInk = ink(wallet.parentElement!);
+            const modeInk = ink(mode);
+            const creamBottom = card.top + card.height * .875;
+            if (paper.bottom >= footer.top || !inside(walletInk, footer) || !inside(modeInk, footer) ||
+              walletInk.right + 4 > modeInk.left || Math.max(walletInk.bottom, modeInk.bottom) > creamBottom - 2) {
+              issues.push('desktop gig footer exceeds its inset or the labels overlap');
+            }
+          }
+          return issues;
+        } finally {
+          growth.textContent = original.growth;
+          value.textContent = original.value;
+          wallet.textContent = original.wallet;
+          mode.textContent = original.mode;
+          if (original.low === undefined) delete stamina.dataset.low;
+          else stamina.dataset.low = original.low;
+        }
+      };
       const compactHudIssues = () => {
         const selectors = {
           meter: '.gg-meter', score: '.gg-combo', map: '.gg-map-panel',
@@ -436,6 +501,13 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         }
       };
       try {
+        for (const [width, height] of [[1280, 720], [1863, 883]] as const) {
+          await page.send('Emulation.setDeviceMetricsOverride',
+            { width, height, deviceScaleFactor: 1, mobile: false });
+          await page.waitFor('innerWidth === ' + width + ' && innerHeight === ' + height, 'wide HUD viewport');
+          const issues = await page.evaluate<string[]>('(' + meterAndFooterIssues.toString() + ')()');
+          if (issues.length) throw Error(width + '×' + height + ': ' + issues.join(', '));
+        }
         for (const [width, height] of [[1024, 576], [540, 360], [390, 844]] as const) {
           await page.send('Emulation.setDeviceMetricsOverride',
             { width, height, deviceScaleFactor: 1, mobile: false });
@@ -443,6 +515,8 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
             `${width}×${height} viewport`);
           const issues = await page.evaluate<string[]>('(' + compactHudIssues.toString() + ')()');
           if (issues.length) throw Error(`${width}×${height}: ${issues.join(', ')}`);
+          const meterIssues = await page.evaluate<string[]>('(' + meterAndFooterIssues.toString() + ')()');
+          if (meterIssues.length) throw Error(width + '×' + height + ': ' + meterIssues.join(', '));
           await page.tap('KeyB');
           await page.waitFor(`document.querySelector('.gg-hotbar')?.dataset.active === 'true' &&
             document.querySelector('[data-build-status]')?.textContent?.includes('LMB PLACE')`,

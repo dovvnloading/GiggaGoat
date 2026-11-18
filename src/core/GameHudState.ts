@@ -45,6 +45,7 @@ export interface HudState {
   comboCount: number;
   comboPoints: string;
   stamina: number;
+  staminaLow: boolean;
   headbutt: number;
   mode: string;
   buildMode: boolean;
@@ -119,6 +120,7 @@ export function deriveHudState(input: HudInput): HudState {
         active: false };
     }
   }
+  const stamina = clampHudPercent(input.stamina);
   return {
     meter: clampHudPercent(input.meter),
     tier: input.tier,
@@ -126,7 +128,8 @@ export function deriveHudState(input: HudInput): HudState {
     comboTitle: input.combo.count > 0 ? (input.combo.title || 'TRICK CHAIN') : '',
     comboCount: Math.max(0, input.combo.count),
     comboPoints: num(input.combo.points),
-    stamina: clampHudPercent(input.stamina),
+    stamina,
+    staminaLow: stamina < TUNING.stamina.minStart,
     headbutt: clampHudPercent(input.headbuttCharge / TUNING.headbutt.maxCharge * 100),
     mode: input.partyTitle ?? (input.buildMode ? 'HAY-BUILD' : input.ragdoll ? 'FLOP MODE' : 'FREE ROAM'),
     buildMode: input.buildMode,
