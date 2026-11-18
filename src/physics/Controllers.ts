@@ -68,6 +68,8 @@ export class BalanceController {
     }
     this.timeSinceRecovery += dt;
     this.value = clamp(this.value + this.tuning.recoveryPerSecond*dt,0,1);
+    // A deliberate airborne flip owns rotation until the turn is complete.
+    if (g.locomotion.isFlipping) return;
     const torso = g.torso;
     const q = torso.rotation();
     const omega = torso.angvel();
@@ -155,7 +157,7 @@ export class LocomotionController {
     maxSlopeDegrees: 53, jumpHeight: 1.75,
     coyoteSeconds: .15, jumpBufferSeconds: .16,
     climbSpeed: 3.25, climbReach: .78,
-    flipAngularSpeed: 13,
+    flipAngularSpeed: 20,
   };
   readonly staminaRates: StaminaRates = {
     sprintPerSecond: 9, climbPerSecond: 17, chargePerSecond: 13, climbJumpCost: 11,
@@ -170,7 +172,8 @@ export class LocomotionController {
   private jumpBufferUntil = -Infinity;
   private jumpLockUntil = 0;
   private jumpConsumed = false;
-  private flipped = false;
+  private flipAxis: Vec3 | null = null;
+  private flipEndsAt = -Infinity;
   private flipAngle = 0;
   private flipScored = false;
   private flightStarted: number | null = null;
@@ -184,16 +187,59 @@ export class LocomotionController {
     this.input.x = clamp(this.input.x,-1,1);
     this.input.z = clamp(this.input.z,-1,1);
   }
+  get isFlipping(): boolean { return this.airFlipActive && !this.flipScored; }
+
+  private get airFlipActive(): boolean {
+    return this.flipAxis !== null && this.clock <= this.flipEndsAt &&
+      !this.grounded && !this.isClinging && !this.goat.isRagdoll;
+  }
+
   /** Call on key down (not every frame); a second aerial press triggers a flip. */
   requestJump(): void {
-    if (!this.grounded && this.jumpConsumed && !this.flipped) {
-      this.flipped = true;
-      const g = this.goat;
-      g.torso.applyTorqueImpulse(V(g.mass*g.size*g.size*.095*this.tuning.flipAngularSpeed,0,0),true);
+    if (!this.grounded && this.jumpConsumed && this.flipAxis === null && !this.goat.isRagdoll) {
+      if (!this.hasTimeToFlip()) return;
+      this.flipAxis = rotate(this.goat.torso.rotation(), V(1, 0, 0));
+      this.flipEndsAt = this.clock + .78;
     } else {
       this.jumpBufferUntil = this.clock + this.tuning.jumpBufferSeconds;
     }
   }
+
+  private hasTimeToFlip(): boolean {
+    const g = this.goat;
+    const floor = g.world.raycast(g.torso.translation(), V(0, -1, 0), 12 * g.size,
+      { groups: GROUND_QUERY_GROUPS });
+    if (!floor) return true;
+    const drop = Math.max(0, floor.distance - (g.balance.tuning.rideHeight + .16) * g.size);
+    const vertical = g.torso.linvel().y;
+    const gravity = -g.world.raw.gravity.y;
+    // Budget time to accelerate the hinged body and to slow before landing.
+    const requiredAirtime = Math.PI * 2 / this.tuning.flipAngularSpeed + .16;
+    if (gravity <= 0) return vertical >= 0 || drop / -vertical > requiredAirtime;
+    const airtime = (vertical + Math.sqrt(vertical * vertical + 2 * gravity * drop)) / gravity;
+    return airtime > requiredAirtime;
+  }
+
+  private driveAirFlip(dt: number): void {
+    const axis = this.flipAxis;
+    if (!axis || !this.airFlipActive) return;
+    const g = this.goat;
+    const remaining = Math.PI * 2 - this.flipAngle;
+    const angularSpeed = dot(g.torso.angvel(), axis);
+    const scale = g.mass * g.size * g.size;
+    if (this.flipScored) {
+      // Brake the completed rotation while the balance controller brings the
+      // goat upright. The other six bodies still carry angular momentum.
+      const targetSpeed = clamp(remaining * 36, -9, 3);
+      const correction = clamp((targetSpeed - angularSpeed) * 42, -360, 360);
+      g.torso.applyTorqueImpulse(mul(axis, scale * .16 * correction * dt), true);
+      return;
+    }
+    const speed = Math.min(this.tuning.flipAngularSpeed, Math.max(6, remaining * 14));
+    const correction = clamp((speed - angularSpeed) * 30, -225, 225);
+    g.torso.applyTorqueImpulse(mul(axis, scale * .12 * correction * dt), true);
+  }
+
   private get minWalkingNormalY(): number {
     return Math.cos(this.tuning.maxSlopeDegrees * Math.PI / 180);
   }
@@ -260,7 +306,7 @@ export class LocomotionController {
     if (this.grounded) {
       this.lastGroundAt = this.clock;
       this.jumpConsumed = false;
-      this.flipped = false;
+      this.flipAxis = null;
       this.flipAngle = 0;
       this.flipScored = false;
     }
@@ -329,6 +375,7 @@ export class LocomotionController {
       g.setPose('climb',g.phase+dt*9);
       return;
     }
+    this.driveAirFlip(dt);
     if (this.grounded && wishLength > .08) {
       this.heading = Math.atan2(wish.x,-wish.z);
     }
@@ -368,9 +415,10 @@ export class LocomotionController {
   }
 
   afterStep(dt: number): void {
-    if (!this.flipped || this.grounded) return;
-    this.flipAngle += Math.abs(this.goat.torso.angvel().x)*dt;
-    if (this.flipAngle >= Math.PI*2 && !this.flipScored) {
+    const axis = this.flipAxis;
+    if (!axis || !this.airFlipActive) return;
+    this.flipAngle += dot(this.goat.torso.angvel(), axis) * dt;
+    if (!this.flipScored && this.flipAngle >= Math.PI * 2) {
       this.flipScored = true;
       this.goat.events.emit({type:'flipped',goatId:this.goat.id,
         time:this.goat.world.time,rotations:1});
