@@ -26,3 +26,22 @@ Five painted variants of the 4.6 x 1.4 x 0.3 m kiosk sign, each with an icon rou
 `kiosk-sign-icecream.glb` (pink), `kiosk-sign-popcorn.glb` (red), `kiosk-sign-games.glb` (blue),
 `kiosk-sign-prizes.glb` (purple), `kiosk-sign-candy.glb` (green). 1.5k-4.2k triangles each (lettering).
 Own colours, no tint.
+
+## Themed kiosks (QA pass 3, BW-20 / BW-19)
+
+Five own-colour kiosks, 5.0 x 4.8 x 4.5 m (front = glTF +Z), replacing the tintable `kiosk.glb` shed. The booth
+tint multiplies every vertex colour, so stripes and goods are authored per variant (no descriptor tint):
+pitched canopy striped paint/white down both slopes with a scalloped valance on the front and sides, open
+counter with themed goods, stocked shelves inside, two warm hanging lanterns at the front corners, ball finials.
+The eave is at 3.05 m and the ridge at 4.55 m; a kiosk sign (4.6 x 1.4 x 0.3) centred 4.2 m up and 0.3 m in front
+of the front wall stands on the canopy front like a billboard.
+
+| File | Paint | Goods |
+|---|---|---|
+| kiosk-icecream.glb | #f0757c | ice cream cones (pink, mint, cream scoops) |
+| kiosk-popcorn.glb | #ffc567 | red/white popcorn tubs |
+| kiosk-games.glb | #65c8cc | can pyramid and coloured balls |
+| kiosk-prizes.glb | #d78abf | plush toys |
+| kiosk-candy.glb | #ff9469 | lollipops and sweet jars |
+
+1.1k-1.4k triangles each. Own colours, no tint.

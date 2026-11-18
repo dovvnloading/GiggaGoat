@@ -25,3 +25,9 @@ orange hoof-mark pennant (#f28a2e) inside a 0.72 x 7.8 x 0.72 m frame.
 |---|---|---|
 | hay-bale.glb | 2.2 x 1.5 x 2.2 | kind `hay-bale` and Hoofington `hay` (upright golden round bale, twine bands; QA HF-3) |
 | wooden-ramp.glb | 6 x 2 x 11 | kind `ramp` (plank ramp rising toward -Z like the Kenney ramp; QA HF-5) |
+
+## Grass clump (QA pass 3, IS-19)
+
+| File | Built at | For |
+|---|---|---|
+| grass-clump.glb | 0.6 x 0.4 x 0.6 | meadow grass instance replacing the squashed-octahedron tufts: 7 tall tapered blades + 2 short ones fanning from one root, each blade a closed 3-sided spike so it reads from every side with single-sided materials; #6fae4f / #8cc65c / #a9d77a; 27 triangles. Own colours. |
