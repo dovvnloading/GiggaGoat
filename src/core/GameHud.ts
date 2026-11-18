@@ -1,7 +1,6 @@
 import type { Game } from './Game';
 import { HUD_PIECES, deriveHudState, projectHudMap } from './GameHudState';
 import { buildArtwork, goatArtwork, renderHudMinimap } from './HudArtwork';
-import { planGoatSafeHud, type ScreenRect } from './HudOcclusion';
 import { fitGigCardText } from './GigCardLayout';
 import { HUD_SPRITES, hudSpriteImage, hudSpriteVariables } from './HudSprites';
 
@@ -87,8 +86,9 @@ const CSS = `
 .gg-hotbar-charge{position:absolute;left:16%;right:16%;bottom:4.5%;height:3px;border-radius:6px;background:#442742;overflow:hidden}
 .gg-hotbar-charge>div{height:100%;width:0;background:linear-gradient(90deg,#f6a32c,#fff071);transition:width .12s linear}
 /* The prompt, key badge and slot art are genuine nine-slice border images. */
-.gg-board-hint,.gg-hint{position:absolute;left:50%;top:clamp(184px,14.5vw,232px);transform:translateX(-50%);display:flex;flex-wrap:nowrap;align-items:center;justify-content:center;gap:6px;width:max-content;max-width:82vw;min-height:37px;padding:1px 11px;border:13px solid transparent;border-image:var(--gg-promptPill) 37 fill / 13px / 0 stretch;text-align:center;color:#5a352c;font-size:clamp(11px,.88vw,14px);line-height:1.15;text-shadow:none;white-space:nowrap}
-.gg-board-hint{top:clamp(219px,17vw,275px)}
+.gg-prompts{position:absolute;left:50%;top:calc(clamp(4px,.7vw,12px) + clamp(155px,12.7vw,217px) + 10px);transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:5px}
+.gg-board-hint,.gg-hint{display:flex;flex-wrap:nowrap;align-items:center;justify-content:center;gap:6px;width:max-content;max-width:82vw;min-height:37px;padding:1px 11px;border:13px solid transparent;border-image:var(--gg-promptPill) 37 fill / 13px / 0 stretch;text-align:center;color:#5a352c;font-size:clamp(11px,.88vw,14px);line-height:1.15;text-shadow:none;white-space:nowrap}
+.gg-hint{order:-1}
 .gg-prompt-key{display:grid;place-items:center;flex:0 0 auto;min-width:28px;height:26px;padding:0 5px;border:7px solid transparent;border-image:var(--gg-keyBadge) 31 fill / 7px / 0 stretch;color:#603827;text-shadow:none}
 .gg-prompt-copy{flex:0 0 auto;white-space:nowrap}
 .gg-prompt-mouse{font-family:"Segoe UI Symbol","Apple Color Emoji",system-ui,sans-serif;font-size:13px;line-height:1}
@@ -124,13 +124,15 @@ const CSS = `
  .gg-slot{border-width:7px;border-image-width:7px}
  .gg-slot-key{width:21px;height:23px;font-size:10px;border-width:5px;border-image-width:5px}
  .gg-slot-count{font-size:10px}.gg-slot-name{font-size:6px}
- .gg-board-hint,.gg-hint{top:164px;font-size:9px;white-space:normal;max-width:54vw;padding:0 5px;width:auto;flex-wrap:wrap}
+ .gg-prompts{left:31%;top:262px;width:54vw}
+ .gg-board-hint,.gg-hint{font-size:9px;white-space:normal;max-width:100%;padding:0 5px;width:auto;flex-wrap:wrap}
  .gg-prompt-copy{flex:0 1 auto;white-space:normal}
- .gg-board-hint{top:208px}.gg-prompt-key{min-width:22px;height:22px}
+ .gg-prompt-key{min-width:22px;height:22px}
  .gg-debug{top:280px;left:5px;font-size:9px}
 }
 @media(max-height:680px) and (min-width:761px){
  .gg-combo{height:155px}.gg-gig-card{top:207px}.gg-stamina{width:130px}
+ .gg-prompts{top:calc(clamp(4px,.7vw,12px) + 165px)}
  .gg-hotbar{height:125px}
 }
 `;
@@ -186,7 +188,6 @@ export class GameHud {
   private readonly gigDetail: HTMLElement;
   private readonly board: HTMLElement;
   private readonly hotbar: HTMLElement;
-  private readonly panels: Array<{ id: string; element: HTMLElement }>;
 
   constructor(host: HTMLElement) {
     this.styles.textContent = CSS + '\n.gg-ui{' + hudSpriteVariables() + '}';
@@ -263,13 +264,13 @@ export class GameHud {
       '<span class="gg-slot-name">SUPPLIES</span><span class="gg-slot-count" data-supply>×0</span></div></div>' +
       '<div class="gg-hotbar-foot"><span class="gg-build-tip" data-build-status>B TO BUILD · 1–4 SELECT</span>' +
       '<strong data-materials></strong></div><div class="gg-hotbar-charge"><div data-charge></div></div></section>' +
-      '<div class="gg-board-hint" data-sprite="' + HUD_SPRITES.promptPill +
+      '<div class="gg-prompts"><div class="gg-board-hint" data-sprite="' + HUD_SPRITES.promptPill +
       '" data-board-hint hidden><span class="gg-prompt-key" data-sprite="' +
       HUD_SPRITES.keyBadge + '">E</span><span class="gg-prompt-copy">GOAT GIGS · GAMEPAD X</span></div>' +
       '<div class="gg-hint" data-sprite="' + HUD_SPRITES.promptPill +
       '" data-hint><span class="gg-prompt-key gg-prompt-mouse" data-sprite="' +
       HUD_SPRITES.keyBadge + '" aria-hidden="true">🖱</span>' +
-      '<span class="gg-prompt-copy" data-hint-copy>MOUSE / IJKL LOOK · C CAPTURE MOUSE</span></div>' +
+      '<span class="gg-prompt-copy" data-hint-copy>MOUSE / IJKL LOOK · C CAPTURE MOUSE</span></div></div>' +
       '<div class="gg-debug" data-debug hidden></div>';
     host.appendChild(this.root);
     const get = (name: string): HTMLElement => {
@@ -299,17 +300,6 @@ export class GameHud {
     this.gigTitle = get('gig-title'); this.gigTask = get('gig-task');
     this.gigDetail = get('gig-detail'); this.board = get('board-hint');
     this.hotbar = get('hotbar');
-    const panel = (id: string, selector: string): { id: string; element: HTMLElement } => {
-      const element = this.root.querySelector<HTMLElement>(selector);
-      if (!element) throw new Error('HUD panel missing: ' + selector);
-      return { id, element };
-    };
-    this.panels = [
-      panel('meter', '.gg-meter'), panel('combo', '.gg-combo'),
-      panel('map', '.gg-map-panel'), panel('gig', '.gg-gig-card'),
-      panel('stamina', '.gg-stamina'), panel('hotbar', '.gg-hotbar'),
-      panel('debug', '.gg-debug'),
-    ];
   }
 
   private updateMap(game: Game, location: string): void {
@@ -372,66 +362,8 @@ export class GameHud {
   }
 
 
-  /** Move transient prompts above the projected goat, then hide any remaining
-   * fixed panel whose painted bounds would obscure its visible silhouette.
-   * Visibility preserves layout measurements, so panels reappear as soon as
-   * the player/camera moves clear on the next render frame. */
-  private clearGoat(goat: ScreenRect | null): void {
-    if (!goat || this.root.clientWidth === 0 || this.root.clientHeight === 0) {
-      for (const panel of this.panels) panel.element.style.visibility = 'visible';
-      for (const prompt of [this.board, this.hint]) {
-        prompt.style.visibility = 'visible';
-        prompt.style.removeProperty('left');
-        prompt.style.removeProperty('top');
-      }
-      return;
-    }
-
-    const paintedBox = (element: HTMLElement): ScreenRect => {
-      const initial = element.getBoundingClientRect();
-      const result = { left: initial.left, top: initial.top,
-        right: initial.right, bottom: initial.bottom };
-      // These labels/ornaments extend beyond the containing panel border.
-      element.querySelectorAll<HTMLElement>(
-        '.gg-meter-label,.gg-meter-icons,.gg-map-north,.gg-map-location,.gg-gig-clipboard,.gg-hotbar-header'
-      ).forEach(child => {
-        const edge = child.getBoundingClientRect();
-        result.left = Math.min(result.left, edge.left);
-        result.top = Math.min(result.top, edge.top);
-        result.right = Math.max(result.right, edge.right);
-        result.bottom = Math.max(result.bottom, edge.bottom);
-      });
-      return result;
-    };
-    const viewport = this.root.getBoundingClientRect();
-    const panels = this.panels.filter(({ element }) => !element.hidden)
-      .map(({ id, element }) => ({ id, rect: paintedBox(element) }));
-    const candidates = [
-      { id: 'board', element: this.board },
-      { id: 'hint', element: this.hint },
-    ].filter(({ element }) => !element.hidden && element.style.display !== 'none');
-    const layout = planGoatSafeHud(goat, viewport, panels,
-      candidates.map(({ id, element }) => {
-        const rect = element.getBoundingClientRect();
-        return { id, width: rect.width, height: rect.height };
-      }));
-    for (const panel of this.panels) {
-      panel.element.style.visibility = layout.hiddenPanels.has(panel.id) ? 'hidden' : 'visible';
-    }
-    for (const { id, element } of candidates) {
-      const rect = layout.prompts.get(id);
-      element.style.visibility = rect ? 'visible' : 'hidden';
-      if (rect) {
-        element.style.bottom = 'auto';
-        element.style.left = ((rect.left + rect.right) / 2 - viewport.left) + 'px';
-        element.style.top = (rect.top - viewport.top) + 'px';
-      }
-    }
-  }
-
   update(game: Game, fps: number, stepMilliseconds: number, debugVisible: boolean,
-    pointerLocked: boolean, goatScreenBox: ScreenRect | null = null,
-    perf?: FramePerformance): void {
+    pointerLocked: boolean, perf?: FramePerformance): void {
     const rules = game.rules;
     const run = game.gigs.active;
     const state = deriveHudState({
@@ -499,7 +431,8 @@ export class GameHud {
       fitGigCardText(this.gigCard);
       this.gigLayoutKey = gigLayoutKey;
     }
-    this.board.hidden = !game.gigs.nearBoard();
+    // Enter a little inside the interaction radius to avoid blinking at its edge.
+    this.board.hidden = !game.gigs.nearBoard(this.board.hidden ? 8.75 : 9);
     this.setPointerLockHint(pointerLocked);
     this.debug.hidden = !debugVisible;
     if (debugVisible) this.debug.textContent = 'F3 · PERFORMANCE\n' +
@@ -513,7 +446,6 @@ export class GameHud {
       'PIXEL RATIO: ' + (perf?.pixelRatio ?? 1).toFixed(2) + '×\n' +
       'BODIES: ' + game.bodyCount + '\n' +
       'TICK: ' + game.physics.stepCount;
-    this.clearGoat(goatScreenBox);
   }
 
   /** Preserve the CSS flex row when unlocked; hidden hides it under pointer lock. */

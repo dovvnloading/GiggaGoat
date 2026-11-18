@@ -19,11 +19,10 @@ Source assets (and their conventions) are described in
 
 All six baked clips have identical names in each file: **Idle, Walk, Run,
 Jump, Headbutt, Bleat**. They are 30 fps, in-place, with forward at -Z and
-hooves at y=0. The mesh is authored for local -Z, but the exported `purebind_armature` root in
-all three GLBs includes a 180° Y rotation, which reverses that direction after
-loading. `alignRiggedSceneForward` cancels this baked rotation on each cloned
-scene (not on the GLB template or physics torso), so the visible nose follows
-`forward(yaw)` at every heading while physical pitch and roll remain intact.
+hooves at y=0 in the exported scene. The `purebind_armature` root converts
+the mesh’s authored +Z direction to the game’s −Z forward convention. The
+renderer keeps that transform and uses the Rapier torso for facing, pitch,
+and roll.
 
 `SkeletonUtils.clone` creates one skinned instance per goat;
 each instance owns one `AnimationMixer` while model templates and embedded

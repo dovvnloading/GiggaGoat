@@ -74,10 +74,7 @@ export class BalanceController {
     const tilt = cross(rotate(q,V(0,1,0)),V(0,1,0));
     const currentForward = rotate(q,V(0,0,-1));
     const wanted = forward(g.locomotion.heading);
-    const yawError = Math.atan2(
-      currentForward.x*wanted.z - currentForward.z*wanted.x,
-      currentForward.x*wanted.x + currentForward.z*wanted.z,
-    );
+    const yawError = Math.atan2(cross(currentForward,wanted).y,dot(currentForward,wanted));
     const restoring = V(
       tilt.x*this.tuning.uprightStiffness - omega.x*this.tuning.uprightDamping,
       yawError*this.tuning.turnStiffness - omega.y*this.tuning.turnDamping,

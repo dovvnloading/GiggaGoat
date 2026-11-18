@@ -4,6 +4,7 @@ import type {
 } from './types';
 import { makeDamColliderDescriptors } from './the-dam';
 import { makeLighthouseBridgeColliders } from './roads';
+import { roadRibbonData } from './road-ribbons';
 
 function hull(prop: PropDescriptor): Float32Array {
   const { x, y, z } = prop.size;
@@ -94,6 +95,15 @@ export function buildRapierColliders(world: RAPIER.World, island: IslandData): C
       .setTranslation(first.position.x, first.position.y, first.position.z)
       .setFriction(0.92),
   );
+  const paths: RAPIER.Collider[] = [];
+  for (const type of ['road', 'trail'] as const) {
+    const { positions, supportIndices } = roadRibbonData(island, type);
+    if (supportIndices.length === 0) continue;
+    paths.push(world.createCollider(RAPIER.ColliderDesc.trimesh(
+      new Float32Array(positions), new Uint32Array(supportIndices),
+      RAPIER.TriMeshFlags.FIX_INTERNAL_EDGES | RAPIER.TriMeshFlags.DELETE_DEGENERATE_TRIANGLES,
+    ).setFriction(0.92)));
+  }
   const props = new Map<string, RAPIER.Collider>();
   const bodies = new Map<string, RAPIER.RigidBody>();
   for (const collider of island.colliders) {
@@ -128,5 +138,5 @@ export function buildRapierColliders(world: RAPIER.World, island: IslandData): C
     }
     props.set(collider.id, result);
   }
-  return { terrain, props, bodies };
+  return { terrain, paths, props, bodies };
 }

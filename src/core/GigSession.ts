@@ -2,7 +2,7 @@ import type { RigidBody } from '@dimforge/rapier3d-compat';
 import { GigCatalog, GigDirector, GigGameplayBridge, type AbilityFact, type GigEvent,
   type GigOffer, type GigPropSpawn, type GigSnapshot, type PropFact, type StyleFact } from '../gigs';
 import { RAPIER, collisionGroups, type PhysicsContact } from '../physics';
-import type { PoiId } from '../world';
+import { heightAt, type PoiId } from '../world';
 import type { Game } from './Game';
 
 export interface GigBodySave {
@@ -45,9 +45,18 @@ export class GigSession {
 
   get active() { return this.director.active; }
   get boards(): { poiId: PoiId; position: { x: number; y: number; z: number }; name: string }[] {
-    return this.game.island.pois.map(poi => ({
-      poiId: poi.id, position: { ...poi.center }, name: poi.name,
-    })).filter(poi => this.director.board(poi.poiId).offers.length > 0);
+    const { island } = this.game;
+    const scale = island.size / 600;
+    return island.pois.filter(poi => this.director.board(poi.id).offers.length > 0).map(poi => {
+      const position = { ...poi.center };
+      if (poi.id === 'hoofington') {
+        // Put the introductory board beyond the sidewalk, beside the start lane.
+        position.x += 6.4 * scale;
+        position.z += 3 * scale;
+        position.y = heightAt(island, position.x, position.z);
+      }
+      return { poiId: poi.id, position, name: poi.name };
+    });
   }
   nearBoard(radius = 9): PoiId | null {
     if (this.game.party.match || this.active?.status === 'running') return null;

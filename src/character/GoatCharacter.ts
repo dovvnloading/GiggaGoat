@@ -8,7 +8,7 @@ import {
 } from './motion';
 import { LegacyGoatCharacter } from './LegacyGoatCharacter';
 import {
-  GOAT_CLIPS, GOAT_GLB_FILES, alignRiggedSceneForward, clipForAction, goatPublicAssetUrl,
+  GOAT_CLIPS, GOAT_GLB_FILES, clipForAction, goatPublicAssetUrl,
   locomotionBlend, selectGoatVariant, type GoatCharacterOptions,
   type GoatClip, type GoatOneShot, type GoatVariant,
 } from './rigged';
@@ -336,9 +336,7 @@ export class GoatCharacter {
     // Every goat gets its own skeleton and its own AnimationMixer; neither is
     // allowed to animate another goat or mutate a cached template.
     const skeleton = cloneSkeleton(gltf.scene);
-    // The exported armature root is yawed 180°; cancel it before applying the
-    // authoritative, interpolated torso quaternion to the outer model.
-    alignRiggedSceneForward(skeleton);
+    // The authored scene already places the muzzle on the model's forward axis.
     const model = new THREE.Group();
     model.name = 'rigged goat | ' + this.variantValue;
     model.add(skeleton);
@@ -358,6 +356,8 @@ export class GoatCharacter {
     this.root.add(model);
     try {
       model.updateWorldMatrix(true, true);
+      const modelRotation = model.getWorldQuaternion(new THREE.Quaternion());
+      const boneRotation = new THREE.Quaternion();
       for (const name of MOUNT_NAMES) {
         const bone = findMountBone(skeleton, name, model);
         if (!bone) throw new Error('No bones available for ' + name + ' mount');
@@ -366,7 +366,9 @@ export class GoatCharacter {
         bone.add(this.mounts[name]);
         bone.updateWorldMatrix(true, false);
         this.mounts[name].position.copy(bone.worldToLocal(at));
-        this.mounts[name].quaternion.identity();
+        // Keep accessories model-aligned at attachment, then follow bone animation.
+        bone.getWorldQuaternion(boneRotation).invert().multiply(modelRotation);
+        this.mounts[name].quaternion.copy(boneRotation);
         this.mounts[name].scale.setScalar(1);
       }
       this.rig = {

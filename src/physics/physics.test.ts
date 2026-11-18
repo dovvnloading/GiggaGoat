@@ -3,7 +3,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { CollisionLayer, collisionGroups } from './CollisionGroups';
 import { GoatRagdoll, type GoatSize } from './GoatRagdoll';
 import { PhysicsWorld } from './PhysicsWorld';
-import { dot, rotate, V } from './math';
+import { dot, forward, rotate, sub, V } from './math';
 
 const worlds: PhysicsWorld[] = [];
 const goats: GoatRagdoll[] = [];
@@ -49,6 +49,28 @@ describe('real Rapier physics simulation', () => {
     simulate(w,3);
     expect(g.torso.translation().z).toBeLessThan(before-3);
     expect(g.torso.isDynamic()).toBe(true);
+  });
+
+  it.each([-1, 1])('faces its travel direction after a quarter-turn (sign %i)', async sign => {
+    const w = await scene(), g = goat(w);
+    simulate(w,.6);
+    const start = g.torso.translation();
+    const cameraYaw = sign * Math.PI / 2;
+    const travel = forward(cameraYaw);
+    const facingTravel = (): number => {
+      const { x, z } = rotate(g.torso.rotation(),V(0,0,-1));
+      return dot(V(x,0,z),travel) / Math.hypot(x,z);
+    };
+    g.locomotion.setInput({z:1,cameraYaw});
+    simulate(w,2);
+
+    expect(dot(sub(g.torso.translation(),start),travel)).toBeGreaterThan(3);
+    expect(facingTravel()).toBeGreaterThan(.95);
+    g.locomotion.setInput({z:0});
+    simulate(w,1);
+    expect(g.isRagdoll).toBe(false);
+    expect(facingTravel()).toBeGreaterThan(.98);
+    expect(dot(sub(g.head.translation(),g.torso.translation()),travel)).toBeGreaterThan(.2);
   });
 
   it('turns its motors off on flop, and autonomously gets upright again', async () => {

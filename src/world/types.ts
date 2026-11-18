@@ -165,6 +165,7 @@ export interface IslandOptions {
 
 export interface ColliderBuild {
   terrain: import('@dimforge/rapier3d-compat').Collider;
+  paths: import('@dimforge/rapier3d-compat').Collider[];
   props: Map<string, import('@dimforge/rapier3d-compat').Collider>;
   bodies: Map<string, import('@dimforge/rapier3d-compat').RigidBody>;
 }

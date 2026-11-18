@@ -183,6 +183,7 @@ class ChromePage {
   async key(code: string, type: 'keyDown' | 'keyUp'): Promise<void> {
     const keys: Record<string, [string, number]> = {
       KeyW: ['w', 87], KeyA: ['a', 65], KeyS: ['s', 83], KeyD: ['d', 68],
+      KeyI: ['i', 73], KeyK: ['k', 75],
       KeyE: ['e', 69], KeyP: ['p', 80], Space: [' ', 32], Escape: ['Escape', 27],
     };
     const [key, virtualKey] = keys[code] ?? [code, 0];
@@ -290,6 +291,23 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
       await page.click('[data-action="play"]');
       await page.waitFor('document.querySelector(".gg-shell")?.hidden === true',
         'free roam to start');
+      const readHudVisibility = '[".gg-hotbar",".gg-hint",".gg-meter",".gg-combo",".gg-map-panel",' +
+        '".gg-gig-card",".gg-stamina"].map(s => getComputedStyle(document.querySelector(s)).visibility)';
+      await page.evaluate('(() => {' +
+        'const read = () => JSON.stringify(' + readHudVisibility + ');' +
+        'const start = read(); window.__ggHudChanges = [];' +
+        'const observer = new MutationObserver(() => {' +
+        'const frame = read(); if (frame !== start) window.__ggHudChanges.push(frame); });' +
+        'observer.observe(document.querySelector(".gg-ui"),' +
+        '{attributes:true,subtree:true,attributeFilter:["style","hidden"]});' +
+        'window.__ggHudDisconnect = () => observer.disconnect(); })()');
+      await page.hold('KeyI', 600);
+      await page.hold('KeyK', 1000);
+      const hudChanges = await page.evaluate<string[]>('(() => {' +
+        'window.__ggHudDisconnect(); return window.__ggHudChanges; })()');
+      expect(hudChanges).toEqual([]);
+      expect(await page.evaluate('getComputedStyle(document.querySelector(".gg-hotbar")).visibility'))
+        .toBe('visible');
       // Spawn is close to Hoofington's board; E must open the real board UI.
       await page.tap('KeyE');
       await page.waitFor('document.querySelector(".gg-shell h2")?.textContent === "MAKE CUD COINS"',

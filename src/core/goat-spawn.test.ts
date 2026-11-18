@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { forward } from '../physics';
+import { forward, RAPIER, V } from '../physics';
 import { heightAt } from '../world';
 import { Game } from './Game';
 import { GameCharacters } from './GameCharacters';
@@ -20,11 +20,15 @@ describe('Player spawn pose and approved goat silhouette', () => {
     const game = await create();
     try {
       const spawn = game.island.spawns[0]!;
-      const ground = heightAt(game.island, spawn.position.x, spawn.position.z);
+      const terrain = heightAt(game.island, spawn.position.x, spawn.position.z);
+      const ray = new RAPIER.Ray(spawn.position, V(0, -1, 0));
+      const hit = Math.min(...[game.colliders.terrain, ...game.colliders.paths]
+        .map(collider => collider.castRay(ray, 4, false)).filter(distance => distance >= 0));
+      const ground = spawn.position.y - hit;
       const size = game.goat.size;
       expect(size).toBe(.6);
       // The world spawn is an elevated safe placement marker, not a foot origin.
-      expect(spawn.position.y - ground).toBeGreaterThan(1);
+      expect(spawn.position.y - terrain).toBeGreaterThan(1);
       expect(game.goat.torso.translation().y - ground).toBeCloseTo(.92 * size, 4);
       expect(torsoUp(game)).toBeGreaterThan(.99);
       // At spawn the rigid-body head, eyes and horns start above the torso.

@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import type { Biome, IslandData, RoadPoint } from './types';
+import type { Biome, IslandData } from './types';
 import { BIOMES } from './types';
 import { clamp, smoothstep } from './random';
 import { gridCoordinate, gridIndex } from './terrain';
-import { makeLocalStreets } from './roads';
+import { roadRibbonData } from './road-ribbons';
 import { buildPropVisuals, TOON_RAMP } from './visual-props';
 import { createEnvironmentLod } from './environment-lod';
 import { buildGroundDetails } from './visual-ground';
@@ -15,6 +15,8 @@ import { buildLighthouseVisuals } from './visual-lighthouse';
 import { buildHoofingtonVisuals } from './visual-hoofington';
 import { buildDowntownVisuals } from './visual-downtown';
 import { buildSkyVisuals, type LightingPreset } from './visual-sky';
+
+export { isDowntownRoadOverlay, isHoofingtonTrailOverlay } from './road-ribbons';
 
 export interface WorldSceneOptions {
   /** Segments per terrain chunk, default 32. */
@@ -304,49 +306,6 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);`,
   }
   return chunks;
 }
-/**
- * The POI road network and the authored Downtown high street both terminate
- * at the same city centre. Rendering every inter-POI endpoint over the local
- * street produces fanned, vertically tilted road planks in the shop corridor.
- *
- * Suppress only those redundant VISUAL pieces inside the main-street plot.
- * The actual island roads, graded terrain, collision and connected graph are
- * deliberately unchanged; the continuous local street remains visible.
- */
-export function isDowntownRoadOverlay(
-  island: IslandData, roadId: string,
-  a: { x: number; z: number }, b: { x: number; z: number },
-): boolean {
-  if (!roadId.includes('--')) return false;
-  const centre = island.pois.find(p => p.id === 'downtown-bleatsville')?.center;
-  if (!centre) return false;
-  const scale = island.size / 600;
-  const x = (a.x + b.x) / 2 - centre.x;
-  const z = (a.z + b.z) / 2 - centre.z;
-  return Math.abs(x) < 21 * scale && Math.abs(z) < 42 * scale;
-}
-
-/**
- * Trail boxes are drawn after asphalt and can cover Hoofington's through-street.
- * Cull only the visual trail pieces whose footprint meets that carriageway;
- * never change the actual road graph, terrain stamps or physics descriptors.
- * Keep the existing overlap margin at the edge of the through-street.
- */
-export function isHoofingtonTrailOverlay(
-  island: IslandData, trailWidth: number,
-  a: { x: number; z: number }, b: { x: number; z: number },
-): boolean {
-  const farm = island.pois.find(p => p.id === 'hoofington')?.center;
-  if (!farm) return false;
-  const scale = island.size / 600;
-  const halfX = 3.4 * scale + trailWidth / 2 + 0.2;
-  const halfZ = 42 * scale + trailWidth / 2 + 0.2;
-  return Math.max(a.x, b.x) > farm.x - halfX &&
-    Math.min(a.x, b.x) < farm.x + halfX &&
-    Math.max(a.z, b.z) > farm.z - halfZ &&
-    Math.min(a.z, b.z) < farm.z + halfZ;
-}
-
 /** Avoid painting yellow centre dashes through the white zebra. */
 function isHoofingtonCrossingDash(
   island: IslandData,
@@ -361,127 +320,20 @@ function isHoofingtonCrossingDash(
     Math.abs(z - (farm.z - 18 * scale)) < 3.25 * scale + 1.3;
 }
 
-interface RoadRibbonRun {
-  points: RoadPoint[];
-  width: number;
-}
-interface RibbonSegment {
-  a: RoadPoint;
-  b: RoadPoint;
-  tangent: THREE.Vector3;
-}
-
-/**
- * Every kept polyline run gets one joined strip, but all runs of a surface
- * type share a single indexed geometry. A point has two top vertices and
- * separate skirt vertices so side normals cannot tilt the asphalt normals.
- */
-function roadRibbonGeometry(runs: RoadRibbonRun[], topOffset: number): {
-  geometry: THREE.BufferGeometry; segments: RibbonSegment[];
-} {
-  const positions: number[] = [];
-  const indices: number[] = [];
-  const segments: RibbonSegment[] = [];
-
-  for (const { points, width } of runs) {
-    const firstVertex = positions.length / 3;
-    const directions = points.slice(1).map((b, i) => {
-      const a = points[i]!;
-      const dx = b.x - a.x, dz = b.z - a.z;
-      const length = Math.hypot(dx, dz);
-      return length > 1e-6 ? new THREE.Vector2(dx / length, dz / length) :
-        new THREE.Vector2(0, 0);
-    });
-    const tangents: THREE.Vector2[] = [];
-    for (let i = 0; i < points.length; i++) {
-      const point = points[i]!;
-      const prev = directions[Math.max(0, i - 1)]!;
-      const next = directions[Math.min(i, directions.length - 1)]!;
-      // Coincident horizontal points and 180-degree turns must stay finite.
-      const incoming = prev.lengthSq() > 1e-12 ? prev :
-        next.lengthSq() > 1e-12 ? next : new THREE.Vector2(0, 1);
-      const outgoing = next.lengthSq() > 1e-12 ? next : incoming;
-      const tangent = incoming.clone().add(outgoing);
-      if (tangent.lengthSq() < 1e-12) tangent.copy(outgoing);
-      tangent.normalize();
-      tangents.push(tangent);
-
-      const perp = new THREE.Vector2(-tangent.y, tangent.x);
-      const perpIn = new THREE.Vector2(-incoming.y, incoming.x);
-      const mitre = Math.min(2, 1 / Math.max(0.5, perpIn.dot(perp)));
-      const x = perp.x * width / 2 * mitre;
-      const z = perp.y * width / 2 * mitre;
-      const top = point.y + topOffset, bottom = point.y - 0.15;
-      positions.push(
-        point.x + x, top, point.z + z,   // top left
-        point.x - x, top, point.z - z,   // top right
-        point.x + x, top, point.z + z,   // independent left skirt normal
-        point.x - x, top, point.z - z,   // independent right skirt normal
-        point.x + x, bottom, point.z + z,
-        point.x - x, bottom, point.z - z,
-      );
-    }
-
-    for (let i = 0; i < points.length - 1; i++) {
-      const a = firstVertex + i * 6, b = a + 6;
-      // Two top triangles and one quad (two triangles) for each outside skirt.
-      // Shared indexed vertices at b are reused as a in the next segment.
-      indices.push(
-        a, b, a + 1, a + 1, b, b + 1,
-        a + 2, a + 4, b + 2, b + 2, a + 4, b + 4,
-        a + 3, b + 3, a + 5, b + 3, b + 5, a + 5,
-      );
-      const p = points[i]!, q = points[i + 1]!;
-      const tangent = tangents[i]!.clone().add(tangents[i + 1]!);
-      if (tangent.lengthSq() < 1e-12) tangent.copy(directions[i]!);
-      if (tangent.lengthSq() < 1e-12) tangent.set(0, 1);
-      tangent.normalize();
-      const horizontal = Math.hypot(q.x - p.x, q.z - p.z);
-      segments.push({
-        a: p, b: q,
-        tangent: new THREE.Vector3(tangent.x,
-          horizontal > 1e-6 ? (q.y - p.y) / horizontal : 0, tangent.y).normalize(),
-      });
-    }
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  geometry.computeBoundingSphere();
-  return { geometry, segments };
-}
-
 function buildRoads(island: IslandData): THREE.Group {
   const group = new THREE.Group();
   group.name = 'graded-ring-road-and-trails';
-  const allRoads = [...island.roads, ...makeLocalStreets(island)];
   const forward = new THREE.Vector3(0, 0, 1);
   const midpoint = new THREE.Vector3(), rotation = new THREE.Quaternion();
   const matrix = new THREE.Matrix4();
 
   for (const type of ['road', 'trail'] as const) {
-    const runs: RoadRibbonRun[] = [];
-    for (const road of allRoads) {
-      if (road.type !== type) continue;
-      let kept: RoadPoint[] = [];
-      for (let i = 1; i < road.points.length; i++) {
-        const a = road.points[i - 1]!, b = road.points[i]!;
-        const hidden = isDowntownRoadOverlay(island, road.id, a, b) ||
-          (type === 'trail' && isHoofingtonTrailOverlay(island, road.width, a, b));
-        if (hidden) {
-          if (kept.length > 1) runs.push({ points: kept, width: road.width });
-          kept = [];
-        } else {
-          if (kept.length === 0) kept.push(a);
-          kept.push(b);
-        }
-      }
-      if (kept.length > 1) runs.push({ points: kept, width: road.width });
-    }
-
-    const { geometry, segments } = roadRibbonGeometry(
-      runs, type === 'road' ? 0.2 : 0.19);
+    const { positions, indices, segments } = roadRibbonData(island, type);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    geometry.computeBoundingSphere();
     const material = new THREE.MeshToonMaterial({
       color: type === 'road' ? 0x727e8a : 0xc3a06c, gradientMap: TOON_RAMP,
     });
