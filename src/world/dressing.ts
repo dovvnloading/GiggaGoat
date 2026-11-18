@@ -2,6 +2,7 @@ import type { IslandData, PoiId, PropDescriptor, PropKind } from './types';
 import { SeededRandom } from './random';
 import { gridSample, riverAt, segmentProjection, stampPlot } from './terrain';
 import { getDamPlacement } from './the-dam';
+import { roadSideOffset } from './roads';
 import { damChannelAt } from './dam-landscape';
 import { isInsideDowntownInfillFootprint } from './visual-downtown';
 import { CASCADE_NATIVE_SIZE, cascadePoolCentre, cascadeWaterLine, waterfallSites } from './visual-water';
@@ -506,9 +507,10 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     for (let i = 0; i < bridge.points.length; i += 2) {
       const p = bridge.points[i]!;
       if (!p.bridge) continue;
-      for (const offset of [-1, 1]) {
-        place('rope-rail', p.x + offset * (bridge.width * 0.5 + 0.3),
-          p.z, 0.35, 3, 0.35, light, { y: p.y + 1.1 * scale, color: 0x996b49 });
+      const side = roadSideOffset(bridge, i, bridge.width * 0.5 + 0.3 * scale);
+      for (const sign of [-1, 1]) {
+        place('rope-rail', p.x + sign * side.x, p.z + sign * side.z,
+          0.35, 3, 0.35, light, { y: p.y + 1.1 * scale, color: 0x996b49 });
       }
     }
   }

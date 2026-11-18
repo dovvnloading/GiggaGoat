@@ -92,6 +92,7 @@ export class Game {
   private lastActionTime = -Infinity;
   private lastStyle = new Map<string, number>();
   private buildOrigin: Vec3;
+  private readonly pierDecks: readonly PropDescriptor[];
   private disposed = false;
 
   static async create(options: GameOptions = {}): Promise<Game> {
@@ -113,6 +114,8 @@ export class Game {
     this.physics = physics;
     this.island = island;
     this.colliders = colliders;
+    this.pierDecks = island.props.filter(prop =>
+      prop.poiId === 'baa-ardwalk' && prop.kind === 'pier' && prop.collidable);
     // Restore only validated, complete progression. Any corrupt save is ignored.
     try {
       this.rules = options.progress ? GameSimulation.fromJSON(options.progress.gameplay) :
@@ -664,6 +667,18 @@ export class Game {
     }
   }
 
+  /** The authored pier extends beyond the normal offshore rescue boundary. */
+  private isAbovePierDeck(p: Vec3): boolean {
+    return this.pierDecks.some(deck => {
+      const { position, rotationY } = deck.transform;
+      if (p.y < position.y) return false;
+      const x = p.x - position.x, z = p.z - position.z;
+      const c = Math.cos(rotationY), s = Math.sin(rotationY);
+      return Math.abs(c * x - s * z) <= deck.size.x / 2 &&
+        Math.abs(s * x + c * z) <= deck.size.z / 2;
+    });
+  }
+
   private afterTick(dt: number): void {
     const g = this.goat, p = g.torso.translation();
     let tickClimb = 0;
@@ -674,7 +689,8 @@ export class Game {
       this.climbRunMetres += climbed;
     }
     this.lastY = p.y;
-    const out = Math.max(Math.abs(p.x), Math.abs(p.z)) > this.island.size * .57 ||
+    const offshoreLimit = Math.max(Math.abs(p.x), Math.abs(p.z)) > this.island.size * .57;
+    const out = (offshoreLimit && !this.isAbovePierDeck(p)) ||
       p.y < -35 || p.y > 500 || !Number.isFinite(p.y);
     const offshore = heightAt(this.island, Math.max(-this.island.size/2, Math.min(this.island.size/2, p.x)),
       Math.max(-this.island.size/2, Math.min(this.island.size/2, p.z))) < this.water.seaLevel - .3;

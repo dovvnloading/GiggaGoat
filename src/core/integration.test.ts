@@ -8,6 +8,68 @@ const ticks = (game: Game, count: number, input: Parameters<Game['step']>[0] = {
   for (let i = 0; i < count; i++) game.step(input);
 };
 
+function standAt(game: Game, x: number, z: number): void {
+  game.step();
+  const floor = game.physics.raycast(V(x, 120, z), V(0, -1, 0), 160, {
+    predicate: collider => !game.goat.ownsBody(collider.parent()),
+  });
+  expect(floor, `floor at (${x}, ${z})`).not.toBeNull();
+  game.teleport(V(x, floor!.point.y, z), 0);
+  ticks(game, 30);
+}
+
+function walkTo(game: Game, target: { x: number; z: number }): void {
+  for (let i = 0; i < 360; i++) {
+    const p = game.goat.torso.translation();
+    const dx = target.x - p.x, dz = target.z - p.z;
+    if (Math.hypot(dx, dz) < .65) return;
+    game.step({ moveZ: 1, cameraYaw: Math.atan2(dx, -dz) });
+  }
+  const { x, y, z } = game.goat.torso.translation();
+  throw new Error(`Walk to (${target.x.toFixed(2)}, ${target.z.toFixed(2)}) stopped at (${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)})`);
+}
+
+describe('Walkable coastal routes', () => {
+  it('walks from dry sand to the far end of the Baa-ardwalk without a rescue', async () => {
+    const game = await Game.create();
+    try {
+      const decks = game.island.props.filter(p => p.poiId === 'baa-ardwalk' && p.kind === 'pier');
+      const [entrance, wheel] = decks;
+      expect(decks).toHaveLength(2);
+      const x = entrance!.transform.position.x - 4;
+      const start = entrance!.transform.position.z - entrance!.size.z / 2 - 3;
+      const finish = wheel!.transform.position.z + wheel!.size.z / 2 - 2;
+      expect(finish).toBeGreaterThan(game.island.size * .57);
+      standAt(game, x, start);
+      for (let z = start + 6; z < finish; z += 6) walkTo(game, { x, z });
+      walkTo(game, { x, z: finish });
+      expect(game.respawns).toBe(0);
+      expect(game.goat.torso.translation().z).toBeGreaterThan(finish - .65);
+
+      // The exception must stay on the pier, even at the same offshore Z.
+      game.teleport(V(x + wheel!.size.x, game.goat.torso.translation().y, finish), 0);
+      game.step();
+      expect(game.respawns).toBe(1);
+    } finally { game.dispose(); }
+  });
+
+  it('walks the Old Lighthouse bridge in both directions without jumping', async () => {
+    const game = await Game.create();
+    try {
+      const road = game.island.roads.find(r => r.to === 'old-lighthouse')!;
+      const first = road.points.findIndex(p => p.bridge);
+      const last = road.points.reduce((index, p, i) => p.bridge ? i : index, -1);
+      expect(first).toBeGreaterThan(0);
+      expect(last).toBeGreaterThan(first);
+      const route = road.points.slice(first - 1, last + 2);
+      standAt(game, route[0]!.x, route[0]!.z);
+      for (const point of route.slice(1)) walkTo(game, point);
+      for (const point of route.slice(0, -1).reverse()) walkTo(game, point);
+      expect(game.respawns).toBe(0);
+    } finally { game.dispose(); }
+  });
+});
+
 describe('First playable — real Billy Isle with Rapier, gameplay and chaos', () => {
   it('simulates ten real seconds on land without a fallen or submerged goat', async () => {
     const game = await create();
