@@ -68,9 +68,8 @@ export function createSpawnLibraryProp(factory: PropFactory,
   return fitRoot(root, spawn.size, DEFAULT_CRATE_SIZE);
 }
 
-export function createHeistHayLibraryProp(factory: PropFactory): THREE.Group {
-  return fitRoot(factory.createGigProp(DEFAULT_CRATE_SIZE, 'hay'),
-    { x: 1.5, y: 1, z: 1.1 }, DEFAULT_CRATE_SIZE);
+export function createHeistHayLibraryProp(factory: PropFactory, teamId: string): THREE.Group {
+  return factory.createHeistBale(teamId === 'red' ? 'red' : 'blue');
 }
 
 export function createBuildLibraryProp(factory: PropFactory,

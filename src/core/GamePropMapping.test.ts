@@ -1,7 +1,9 @@
+import { readFile } from 'node:fs/promises';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { describe, expect, it, vi } from 'vitest';
 import { PropFactory, BUILD_PIECE_SIZES, DEFAULT_CRATE_SIZE } from '../props';
-import type { WorldLibraryPropKind } from '../props/PropFactory';
+import { HEIST_BALE_SIZE, type WorldLibraryPropKind } from '../props/PropFactory';
 import { createWorldScene, generateIsland } from '../world';
 import * as hoofingtonArt from '../world/visual-hoofington';
 import { PROP_LIBRARY_MODELS } from '../world/library-props';
@@ -80,7 +82,7 @@ describe('GameView factory prop mapping', () => {
         { kind: 'trampoline', halfExtents: { x: 2.1, y: .23, z: 2.1 } }), 'trampoline'],
       ['launch marker', createSurfaceLibraryProp(f,
         { kind: 'launch', halfExtents: { x: 2.1, y: .23, z: 2.1 } }), 'launch'],
-      ['gig hay bale', createHeistHayLibraryProp(f), 'gig-hay'],
+      ['Hay Heist bale', createHeistHayLibraryProp(f, 'red'), 'heist-hay'],
       ['world barrel', createWorldLibraryProp(f,
         { kind: 'barrel', size: DEFAULT_CRATE_SIZE }), 'world-barrel'],
       ['gig supplies', createSpawnLibraryProp(f,
@@ -99,6 +101,50 @@ describe('GameView factory prop mapping', () => {
     expect(debris.scale.x).toBeCloseTo(.42 / .35);
     expect(cases[8]![1]!.userData.nominalSize).toEqual(BUILD_PIECE_SIZES.floor);
     f.dispose();
+  });
+
+  it('keeps each team’s bindings legible on the proxy and the shipped straw roll', async () => {
+    const path = PROP_LIBRARY_MODELS['hay-bale'];
+    const bytes = await readFile(new URL('../../public/' + path, import.meta.url));
+    const { scene } = await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, '');
+    const loadModel = vi.fn(async () => scene);
+    const f = new PropFactory({ loadModel, assetBaseUrl: 'https://game.example/GiggaGoat/' });
+    try {
+      const red = createHeistHayLibraryProp(f, 'red');
+      const blue = createHeistHayLibraryProp(f, 'blue');
+      const colors = (root: THREE.Group): number[] => {
+        const hex: number[] = [];
+        root.traverse(object => {
+          if (!(object instanceof THREE.Mesh)) return;
+          const materials = Array.isArray(object.material) ? object.material : [object.material];
+          for (const material of materials) if (material instanceof THREE.MeshToonMaterial) {
+            hex.push(material.color.getHex());
+          }
+        });
+        return hex;
+      };
+      expect(colors(red).filter(color => color === 0xdd2a49)).toHaveLength(2);
+      expect(colors(blue).filter(color => color === 0x117adc)).toHaveLength(2);
+      await f.whenReady();
+      expect(loadModel).toHaveBeenCalledExactlyOnceWith('https://game.example/GiggaGoat/' + path);
+      const redArt = colors(red).filter(color => color !== 0xdd2a49);
+      const blueArt = colors(blue).filter(color => color !== 0x117adc);
+      expect(redArt.length).toBeGreaterThanOrEqual(4);
+      expect(blueArt).toEqual(redArt);
+      expect(colors(red)).toContain(0xdd2a49);
+      expect(colors(blue)).toContain(0x117adc);
+      for (const root of [red, blue]) {
+        expect(root.userData.assetStatus).toBe('ready');
+        const bounds = new THREE.Box3().setFromObject(root);
+        const size = bounds.getSize(new THREE.Vector3());
+        expect(size.x).toBeCloseTo(HEIST_BALE_SIZE.x, 4);
+        expect(size.z).toBeCloseTo(HEIST_BALE_SIZE.z, 4);
+        expect(bounds.min.y).toBeCloseTo(-HEIST_BALE_SIZE.y / 2, 4);
+        expect(bounds.max.y).toBeCloseTo(HEIST_BALE_SIZE.y / 2, 4);
+      }
+    } finally {
+      f.dispose();
+    }
   });
 
   it('routes all currently defined gig spawn roles to sized library supplies', () => {

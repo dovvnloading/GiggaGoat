@@ -32,6 +32,7 @@ export const BUILD_PIECE_SIZES: Readonly<Record<BuildPieceType, Readonly<Size3>>
 export const SURFACE_HALF_EXTENTS: Readonly<Size3> = { x: 2.1, y: .23, z: 2.1 };
 export const GIG_BOARD_SIZE: Readonly<Size3> = { x: 3.6, y: 4.25, z: .6 };
 export const DEFAULT_CRATE_SIZE: Readonly<Size3> = { x: 1.5, y: 1.5, z: 1.5 };
+export const HEIST_BALE_SIZE: Readonly<Size3> = { x: 1.3, y: 1, z: 1.3 };
 
 /** All entries are existing CC0 items in public/assets/library/manifest.json. */
 export const LIBRARY_MODELS = {
@@ -51,6 +52,7 @@ const COLORS = {
   wood: 0xb9722d, woodLight: 0xe5a44e, woodDark: 0x79421f,
   iron: 0x69738b, silver: 0xbac1d3, gold: 0xf9bf31,
   red: 0xe83d50, redLight: 0xff7581, orange: 0xff921d,
+  heistRed: 0xdd2a49, heistBlue: 0x117adc,
   paper: 0xffedbb, ink: 0x9c542e, spring: 0x8494b5,
 } as const;
 type ColorName = keyof typeof COLORS;
@@ -194,7 +196,8 @@ export class PropFactory {
 
   /** Makes each model a centred, exact-size part regardless of source units. */
   private fitted(prototype: THREE.Object3D, bounds: Size3,
-    yRotation = 0, xRotation = 0): THREE.Object3D | null {
+    yRotation = 0, xRotation = 0,
+    paint?: ReadonlyMap<string, THREE.Material>): THREE.Object3D | null {
     const clone = prototype.clone(true);
     if (yRotation) clone.rotation.y += yRotation;
     if (xRotation) clone.rotation.x += xRotation;
@@ -216,6 +219,8 @@ export class PropFactory {
       object.castShadow = true;
       object.receiveShadow = true;
       const toon = (m: THREE.Material): THREE.Material => {
+        const override = paint?.get(m.name);
+        if (override) return override;
         if (!(m instanceof THREE.MeshStandardMaterial)) return m;
         let mat = this.convertedMaterials.get(m);
         if (!mat) {
@@ -355,7 +360,7 @@ export class PropFactory {
   /** A model occupies only its allotted slot; all trim remains independent. */
   private mount(owner: THREE.Group, parent: THREE.Object3D, path: string,
     size: Size3, at: THREE.Vector3, fallback: ColorName | ((slot: THREE.Group) => void),
-    yRotation = 0, xRotation = 0): void {
+    yRotation = 0, xRotation = 0, paint?: ReadonlyMap<string, THREE.Material>): void {
     const slot = new THREE.Group();
     slot.name = 'library-slot';
     slot.position.copy(at);
@@ -364,7 +369,7 @@ export class PropFactory {
     else fallback(slot);
     void this.request(path).then(prototype => {
       if (this.disposed || !this.instances.has(owner)) return;
-      const model = prototype && this.fitted(prototype, size, yRotation, xRotation);
+      const model = prototype && this.fitted(prototype, size, yRotation, xRotation, paint);
       if (model) {
         slot.clear();
         slot.add(model);
@@ -469,6 +474,21 @@ export class PropFactory {
       this.box(root, { x: size.x * .96, y: size.y * .12, z: size.z * .058 },
         'rope', 0, size.y * .43, size.z * z);
     }
+    return root;
+  }
+
+  /** Team-coloured twine on the farm's round straw bale. */
+  createHeistBale(team: 'red' | 'blue'): THREE.Group {
+    const size = HEIST_BALE_SIZE;
+    const root = this.root('heist-hay', size);
+    const binding = team === 'red' ? 'heistRed' : 'heistBlue';
+    const asset = PROP_LIBRARY_MODELS['hay-bale'].replace(/^assets\/library\//, '');
+    this.mount(root, root, asset, size, new THREE.Vector3(), slot => {
+      this.cylinder(slot, .635, .60, size.y, 'hay', 0, 0, 0, 16);
+      for (const y of [-.22, .15]) {
+        this.cylinder(slot, .65, .65, .065, binding, 0, y, 0, 16);
+      }
+    }, 0, 0, new Map([['twine', this.material(binding)]]));
     return root;
   }
 
