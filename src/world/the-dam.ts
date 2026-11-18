@@ -11,6 +11,15 @@ export interface DamPlacement {
 
 export const DAM_DECK_HEIGHT = 18.8;
 
+/** Front rail dimensions in the Dam GLB's local space. The gap serves all Dam Bomb launches. */
+export const DAM_FRONT_GUARD = {
+  prefix: 'the-dam-front-guard-',
+  spans: [[-29.85, 12.05], [16.95, 27.65]],
+  z: 3.75,
+  depth: .30,
+  top: 20.21,
+} as const;
+
 export function getDamPlacement(island: IslandData): DamPlacement {
   const scale = island.size / 600;
   const lake = island.reservoir;
@@ -28,8 +37,8 @@ export function getDamPlacement(island: IslandData): DamPlacement {
 
 /**
  * Solid architecture only: the water sheets and foam are NOT colliders.
- * Keeping the +Z spillway edge open lets a goat tumble off the deck into
- * the falls. Small ladder rungs offer successive footholds for climbing.
+ * The spillway opening on the +Z edge gives Dam Bomb a clear drop into the falls.
+ * Small ladder rungs offer successive footholds for climbing.
  */
 export function makeDamColliderDescriptors(island: IslandData): PropColliderDescriptor[] {
   const { position, scale } = getDamPlacement(island);
@@ -50,9 +59,13 @@ export function makeDamColliderDescriptors(island: IslandData): PropColliderDesc
   });
 
   const colliders: PropColliderDescriptor[] = [
-    // Recessed solid back of the wall, leaving the water-facing edge open.
+    // Recess the wall below the deck so the spillway drop stays clear.
     makeBox('wall', 0, 9, -1.6, 58, 18, 2.4),
     makeBox('deck', 0, 18.35, 0, 60, 0.9, 7.4),
+    ...DAM_FRONT_GUARD.spans.map(([left, right], index) =>
+      makeBox('front-guard-' + index, (left + right) / 2,
+        (DAM_DECK_HEIGHT + DAM_FRONT_GUARD.top) / 2, DAM_FRONT_GUARD.z,
+        right - left, DAM_FRONT_GUARD.top - DAM_DECK_HEIGHT, DAM_FRONT_GUARD.depth)),
     // Four openings and five masonry piers as visible in the hero art.
     ...[-12, -2, 8, 18, 28].map((x, i) =>
       makeBox('pier-' + i, x, 8.7, 1.8, 2.6, 17.4, 4.8)),

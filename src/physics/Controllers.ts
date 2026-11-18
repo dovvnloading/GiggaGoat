@@ -111,6 +111,7 @@ export interface LocomotionTuning {
   walkSpeed: number;
   sprintSpeed: number;
   groundAcceleration: number;
+  reversalBrakeAcceleration: number;
   airAcceleration: number;
   maxSlopeDegrees: number;
   jumpHeight: number;
@@ -133,7 +134,7 @@ export class LocomotionController {
   };
   readonly tuning: LocomotionTuning = {
     walkSpeed: 4.4, sprintSpeed: 7.6,
-    groundAcceleration: 22, airAcceleration: 5,
+    groundAcceleration: 22, reversalBrakeAcceleration: 26, airAcceleration: 5,
     maxSlopeDegrees: 53, jumpHeight: 1.75,
     coyoteSeconds: .15, jumpBufferSeconds: .16,
     climbSpeed: 3.25, climbReach: .78,
@@ -275,10 +276,23 @@ export class LocomotionController {
       surfaceWish = normalize(sub(wish,mul(ground.normal,dot(wish,ground.normal))));
     }
     const v = torso.linvel();
-    const target = mul(surfaceWish,targetSpeed);
-    const difference = V(target.x-v.x,0,target.z-v.z);
+    const velocity = V(v.x,0,v.z);
+    const target = V(surfaceWish.x*targetSpeed,0,surfaceWish.z*targetSpeed);
     const accel = this.grounded ? this.tuning.groundAcceleration : this.tuning.airAcceleration;
-    const deltaV = clampLength(difference,accel*dt);
+    let deltaV = clampLength(sub(target,velocity),accel*dt);
+    if (this.grounded && wishLength > 0) {
+      const direction = normalize(target);
+      const speed = length(velocity);
+      const opposingSpeed = -dot(velocity,direction);
+      if (opposingSpeed > .5 * speed) {
+        // Fade in extra braking for counter-steering and scale it by the stick
+        // input. Only the ordinary acceleration builds speed in the new direction.
+        const opposition = 2 * opposingSpeed / speed - 1;
+        const remaining = opposingSpeed - dot(deltaV,direction);
+        const brake = clamp(remaining,0,this.tuning.reversalBrakeAcceleration * dt * wishLength * opposition);
+        deltaV = add(deltaV,mul(direction,brake));
+      }
+    }
     // Body parts share their load through the joint solver.
     torso.applyImpulse(mul(deltaV,g.mass),true);
     if (this.grounded) {

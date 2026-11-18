@@ -80,6 +80,49 @@ describe('The Dam hero POI', () => {
     expect(texture.offset.y).toBe(0);
   });
 
+  it('shows the same split front rail in the loaded Dam and its fallback', () => {
+    const island = generateIsland({ seed: 'dam-rail', resolution: 65 });
+    const source = new THREE.Group();
+    const paint = new THREE.MeshStandardMaterial({ color: 0xf2c12e });
+    const fullRail = new THREE.Mesh(new THREE.BoxGeometry(57.5, .22, .22), paint);
+    fullRail.name = 'RailFront_Bar_19.4';
+    fullRail.position.set(-1.1, 19.45, 3.75);
+    source.add(fullRail);
+    const middlePost = new THREE.Mesh(new THREE.BoxGeometry(.30, 1.35, .30), paint);
+    middlePost.name = 'RailFront_Post_17';
+    middlePost.position.set(14.5, 19.48, 3.75);
+    source.add(middlePost);
+
+    const loaded = prepareDamModel(source, island);
+    const visuals = buildDamVisuals(island);
+    try {
+      const fallback = visuals.group.getObjectByName('the-dam-procedural-fallback')!;
+      const { position, scale } = getDamPlacement(island);
+      const testRail = (model: THREE.Object3D, origin: { x: number; y: number; z: number },
+        modelScale: number): void => {
+        expect(model.getObjectByName('dam-front-rail')).toBeInstanceOf(THREE.Mesh);
+        model.updateWorldMatrix(true, true);
+        const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, 0, 1), 0, modelScale);
+        const hitAt = (x: number): number => {
+          ray.ray.origin.set(origin.x + x * modelScale,
+            origin.y + 19.45 * modelScale, origin.z + 3 * modelScale);
+          return ray.intersectObject(model, true).length;
+        };
+        expect(hitAt(10)).toBeGreaterThan(0);
+        expect(hitAt(17.1)).toBeGreaterThan(0);
+        for (const x of [13.5, 14.5, 15.5]) expect(hitAt(x)).toBe(0);
+      };
+      testRail(loaded.group, { x: 0, y: 0, z: 0 }, 1);
+      testRail(fallback, position, scale);
+    } finally {
+      loaded.group.traverse(object => {
+        if (object instanceof THREE.Mesh) object.geometry.dispose();
+      });
+      paint.dispose();
+      visuals.dispose();
+    }
+  });
+
   it('keeps a recognizable, collider-aligned Dam visible without the GLB', () => {
     const island = generateIsland({ seed: 'dam-fallback', resolution: 65 });
     const visuals = buildDamVisuals(island);
@@ -92,7 +135,8 @@ describe('The Dam hero POI', () => {
         .toBeInstanceOf(THREE.Mesh);
       expect(fallback?.getObjectByName('dam-fallback-spillways'))
         .toBeInstanceOf(THREE.Mesh);
-      expect(fallback?.children).toHaveLength(4);
+      expect(fallback?.getObjectByName('dam-front-rail')).toBeInstanceOf(THREE.Mesh);
+      expect(fallback?.children).toHaveLength(5);
       expect(fallback?.children.filter(child => (child as THREE.Mesh).castShadow))
         .toHaveLength(1);
     } finally {

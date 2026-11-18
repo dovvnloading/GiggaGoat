@@ -15,6 +15,7 @@ import {
   WaterSystem, BreakableRegistry, ChainReactions, SurfaceSystem,
   DynamicBodyBudget, applyPhysicsMaterial,
 } from '../chaos';
+import { DAM_FRONT_GUARD } from '../world/the-dam';
 import { GigSession } from './GigSession';
 import { PartySession } from './PartySession';
 import type { GameProgress } from './Persistence';
@@ -93,6 +94,7 @@ export class Game {
   private lastStyle = new Map<string, number>();
   private buildOrigin: Vec3;
   private readonly pierDecks: readonly PropDescriptor[];
+  private readonly damFrontGuardHandles = new Set<number>();
   private readonly spawnGround: number;
   private disposed = false;
 
@@ -115,6 +117,9 @@ export class Game {
     this.physics = physics;
     this.island = island;
     this.colliders = colliders;
+    for (const [id, collider] of colliders.props) {
+      if (id.startsWith(DAM_FRONT_GUARD.prefix)) this.damFrontGuardHandles.add(collider.handle);
+    }
     this.pierDecks = island.props.filter(prop =>
       prop.poiId === 'baa-ardwalk' && prop.kind === 'pier' && prop.collidable);
     // Restore only validated, complete progression. Any corrupt save is ignored.
@@ -543,7 +548,8 @@ export class Game {
     const hit = this.physics.raycast(origin, wish, 1.05 * goat.size, {
       predicate: collider => !goat.ownsBody(collider.parent()),
     });
-    return !!hit && hit.normal.y < .46 && hit.normal.x * wish.x + hit.normal.z * wish.z < -.45;
+    return !!hit && !this.damFrontGuardHandles.has(hit.collider.handle) &&
+      hit.normal.y < .46 && hit.normal.x * wish.x + hit.normal.z * wish.z < -.45;
   }
 
   /** Cosmetic events come from executed commands, never unaccepted input edges. */
