@@ -4,8 +4,8 @@ import { PhysicsWorld, Q, RAPIER, V } from '../physics';
 import { Game } from './Game';
 import { GameCharacters } from './GameCharacters';
 import { GameView } from './GameView';
-import { CAMERA_TARGET_HEIGHT, SPAWN_CAMERA_PITCH,
-  goatCameraLookAhead, goatCameraOffset, goatCameraVerticalOffset } from './GoatCamera';
+import { CAMERA_TARGET_HEIGHT, PLAY_CAMERA_PITCH, clampCameraPitch, goatCameraVerticalOffset,
+  goatOrbitOffset, goatViewDirection } from './GoatCamera';
 import { planGoatSafeHud, projectGoatScreenBox, rectsIntersect, visibleGoatBounds,
   type ScreenRect } from './HudOcclusion';
 
@@ -14,31 +14,36 @@ const rect = (left: number, top: number, width: number, height: number): ScreenR
   left, top, right: left + width, bottom: top + height,
 });
 
+function cameraFixture(physics: PhysicsWorld) {
+  const player = new THREE.Group();
+  const camera = new THREE.PerspectiveCamera(67, 16 / 9, .07, 2200);
+  const input = { yaw: 0, pitch: PLAY_CAMERA_PITCH };
+  const view = Object.assign(Object.create(GameView.prototype) as {
+    updateCamera(alpha: number, dt: number): void;
+  }, {
+    camera, input, currentSettings: { fov: 67 }, titleCamera: false, cameraDistance: Infinity,
+    cameraAim: new THREE.Vector3(), cameraTarget: new THREE.Vector3(),
+    cameraOffset: new THREE.Vector3(), cameraDirection: new THREE.Vector3(),
+    cameraCollisionShape: new RAPIER.Ball(.25), cameraCollisionRotation: Q(),
+    cameraCollisionFilter: {},
+    game: { physics: Object.assign(Object.create(physics) as PhysicsWorld, {
+      getInterpolatedTransform: () => ({ translation: V(0, -CAMERA_TARGET_HEIGHT, 0) }),
+    }), rules: { style: { scale: 1 } }, goat: {
+      ownsBody: () => false, locomotion: { input: { sprint: false } }, torso: { linvel: () => V() },
+    } },
+    characters: { player: { root: player } }, world: { sun: new THREE.DirectionalLight() },
+  });
+  return { view, camera, input, player };
+}
+
 describe('free-roam camera / compact HUD reference framing', () => {
   it.each([0, .24])('keeps the chase camera clear of a close obstacle at x=%s', async x => {
     const physics = await PhysicsWorld.create();
     try {
       const wall = physics.createGround(V(.13, 2, .04), V(x, 0, .52));
       physics.step(physics.fixedDt);
-      const offset = goatCameraOffset(1, 0, 0);
-      const player = new THREE.Group();
-      const camera = new THREE.PerspectiveCamera(67, 16 / 9, .07, 2200);
-      const view = Object.assign(Object.create(GameView.prototype) as {
-        updateCamera(alpha: number, dt: number): void;
-      }, {
-        camera, input: { yaw: 0, pitch: 0 }, currentSettings: { fov: 67 },
-        cameraAim: new THREE.Vector3(), cameraTarget: new THREE.Vector3(),
-        cameraOffset: new THREE.Vector3(), cameraDirection: new THREE.Vector3(),
-        cameraPath: new THREE.Vector3(), cameraPosition: new THREE.Vector3(offset.x, offset.y, offset.z),
-        cameraCollisionShape: new RAPIER.Ball(.25), cameraCollisionRotation: Q(),
-        cameraCollisionFilter: {},
-        game: { physics: Object.assign(Object.create(physics) as PhysicsWorld, {
-          getInterpolatedTransform: () => ({ translation: V(0, -CAMERA_TARGET_HEIGHT, 0) }),
-        }), rules: { style: { scale: 1 } }, goat: {
-          ownsBody: () => false, locomotion: { input: { sprint: false } }, torso: { linvel: () => V() },
-        } },
-        characters: { player: { root: player } }, world: { sun: new THREE.DirectionalLight() },
-      });
+      const offset = goatOrbitOffset(1, 0, PLAY_CAMERA_PITCH);
+      const { view, camera, player } = cameraFixture(physics);
       if (x > 0) expect(physics.raycast(V(), offset, 5)).toBeNull();
       view.updateCamera(0, 1 / 60);
       expect(camera.position.z).toBeLessThan(.36);
@@ -51,6 +56,33 @@ describe('free-roam camera / compact HUD reference framing', () => {
       expect(camera.position.z).toBeGreaterThan(4);
       expect(camera.quaternion.toArray().every(Number.isFinite)).toBe(true);
       expect(player.visible).toBe(true);
+    } finally {
+      physics.dispose();
+    }
+  });
+
+  it('uses the movement heading on the first frame of a turn and leaves room to look up', async () => {
+    const physics = await PhysicsWorld.create();
+    try {
+      const { view, camera, input } = cameraFixture(physics);
+      view.updateCamera(0, 1 / 60);
+      const distance = camera.position.length();
+      const direction = new THREE.Vector3();
+      for (const yaw of [Math.PI / 2, -Math.PI / 2, Math.PI - .01, -Math.PI + .01]) {
+        input.yaw = yaw;
+        view.updateCamera(0, 1 / 60);
+        camera.getWorldDirection(direction).setY(0).normalize();
+        expect(direction.x).toBeCloseTo(Math.sin(yaw), 8);
+        expect(direction.z).toBeCloseTo(-Math.cos(yaw), 8);
+        expect(camera.position.length()).toBeCloseTo(distance, 8);
+        expect(camera.position.dot(direction)).toBeLessThan(-3);
+      }
+      for (const pitch of [clampCameraPitch(-4), clampCameraPitch(4)]) {
+        input.pitch = pitch;
+        view.updateCamera(0, 1 / 60);
+        expect(camera.position.y).toBeGreaterThan(0);
+        expect(camera.getWorldDirection(direction).y).toBeCloseTo(-Math.sin(pitch), 8);
+      }
     } finally {
       physics.dispose();
     }
@@ -90,7 +122,7 @@ describe('free-roam camera / compact HUD reference framing', () => {
       updateCameraFraming(dt: number): void;
       updateHud(): void;
     }, {
-      camera,
+      camera, titleCamera: false,
       cameraViewport: new THREE.Vector2(width, height),
       input: { yaw: Math.PI, pitch: .055 },
       currentSettings: { fov: 67 },
@@ -100,7 +132,7 @@ describe('free-roam camera / compact HUD reference framing', () => {
       playerWorldBox: new THREE.Box3(),
       hud: { update },
     });
-    view.applyCameraFraming(goatCameraVerticalOffset(.6, .055, 67, height));
+    view.applyCameraFraming(goatCameraVerticalOffset(.6, .055, 67, height, false));
     const projection = camera.projectionMatrix.clone();
     vi.stubGlobal('document', { pointerLockElement: null });
     try {
@@ -133,18 +165,18 @@ describe('free-roam camera / compact HUD reference framing', () => {
           characters.update(0, game.physics.alpha);
           const pose = game.goat.torso.translation();
           const target = new THREE.Vector3(pose.x, pose.y + CAMERA_TARGET_HEIGHT * size, pose.z);
-          const offset = goatCameraOffset(size, yaw, SPAWN_CAMERA_PITCH);
-          const ahead = goatCameraLookAhead(size, yaw);
+          const offset = goatOrbitOffset(size, yaw, PLAY_CAMERA_PITCH);
+          const direction = goatViewDirection(yaw, PLAY_CAMERA_PITCH);
           const bounds = visibleGoatBounds(characters.player.root);
           for (const [width, height] of VIEWPORTS) {
             const camera = new THREE.PerspectiveCamera(67, width / height, .07, 2200);
             camera.position.copy(target).add(new THREE.Vector3(offset.x, offset.y, offset.z));
-            camera.lookAt(target.clone().add(new THREE.Vector3(ahead.x, ahead.y, ahead.z)));
+            camera.lookAt(camera.position.clone().add(new THREE.Vector3(direction.x, direction.y, direction.z)));
             const viewport = rect(0, 0, width, height);
             const unframed = projectGoatScreenBox(bounds, camera, viewport, false);
             expect(unframed, `tier ${size} at ${width}x${height}`).not.toBeNull();
             camera.setViewOffset(width, height, 0,
-              goatCameraVerticalOffset(size, SPAWN_CAMERA_PITCH, camera.fov, height), width, height);
+              goatCameraVerticalOffset(size, PLAY_CAMERA_PITCH, camera.fov, height, false), width, height);
             const goat = projectGoatScreenBox(bounds, camera, viewport);
             expect(goat, `tier ${size} at ${width}x${height}`).not.toBeNull();
             const box = goat!;

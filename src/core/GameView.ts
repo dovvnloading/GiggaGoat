@@ -13,8 +13,9 @@ import { Game } from './Game';
 import { GameCharacters } from './GameCharacters';
 import { GameVfx } from './GameVfx';
 import { GameInput } from './GameInput';
-import { CAMERA_TARGET_HEIGHT, SPAWN_CAMERA_PITCH, SPAWN_CAMERA_YAW_OFFSET,
-  goatCameraLookAhead, goatCameraOffset, goatCameraVerticalOffset } from './GoatCamera';
+import { CAMERA_TARGET_HEIGHT, PLAY_CAMERA_PITCH, SPAWN_CAMERA_PITCH, SPAWN_CAMERA_YAW_OFFSET,
+  goatCameraLookAhead, goatCameraOffset, goatCameraVerticalOffset, goatOrbitOffset,
+  goatViewDirection } from './GoatCamera';
 import { GameHud, type FramePerformance } from './GameHud';
 import { projectGoatScreenBox, visibleGoatBounds } from './HudOcclusion';
 import {
@@ -84,12 +85,11 @@ export class GameView {
     drawCalls: 0, triangles: 0, textures: 0, pixelRatio: 1,
   };
   private readonly cameraTarget = new THREE.Vector3();
-  private readonly cameraPosition = new THREE.Vector3();
   private readonly cameraOffset = new THREE.Vector3();
   private readonly cameraDirection = new THREE.Vector3();
-  private readonly cameraPath = new THREE.Vector3();
-  private readonly cameraDesired = new THREE.Vector3();
   private readonly cameraAim = new THREE.Vector3();
+  private cameraDistance = Infinity;
+  private titleCamera = true;
   private readonly cameraCollisionShape = new RAPIER.Ball(.25);
   private readonly cameraCollisionRotation = Q();
   private readonly cameraCollisionFilter = {
@@ -156,25 +156,32 @@ export class GameView {
     const p = vec(game.goat.torso.translation());
     const size = game.rules.style.scale;
     this.cameraTarget.copy(p).add(new THREE.Vector3(0, CAMERA_TARGET_HEIGHT * size, 0));
-    // Match the opening pose to the follow-camera formula immediately, even
-    // while the title menu pauses physics; no back-view camera fly-in.
-    this.cameraPosition.copy(this.cameraTarget).add(vec(
+    // Keep the presentation view ready for the first title frame.
+    this.camera.position.copy(this.cameraTarget).add(vec(
       goatCameraOffset(size, this.input.yaw, this.input.pitch)));
-    this.camera.position.copy(this.cameraPosition);
     this.camera.lookAt(this.cameraTarget.clone().add(vec(
       goatCameraLookAhead(size, this.input.yaw))));
     this.onResize = () => {
       const width = Math.max(1, host.clientWidth), height = Math.max(1, host.clientHeight);
       if (width !== this.cameraViewport.x || height !== this.cameraViewport.y) {
         this.cameraViewport.set(width, height);
-        this.applyCameraFraming(goatCameraVerticalOffset(this.game.rules.style.scale,
-          this.input.pitch, this.currentSettings.fov, height));
+        this.applyCameraFraming(this.desiredCameraFraming());
       }
       this.renderer.setSize(width, height, false);
     };
     window.addEventListener('resize', this.onResize);
     this.onResize();
     this.renderer.setAnimationLoop(time => { this.frame(time); });
+  }
+
+  alignCameraForPlay(): void {
+    const { x, y, z } = this.game.goat.torso.translation();
+    this.titleCamera = false;
+    this.input.yaw = this.game.goat.locomotion.heading;
+    this.input.pitch = PLAY_CAMERA_PITCH;
+    this.cameraTarget.set(x, y + CAMERA_TARGET_HEIGHT * this.game.rules.style.scale, z);
+    this.cameraDistance = Infinity;
+    this.applyCameraFraming(this.desiredCameraFraming());
   }
 
   /** Keep only unsupported world batches on the procedural renderer.
@@ -604,10 +611,13 @@ export class GameView {
     this.camera.setViewOffset(width, height, 0, lift, width, height);
   }
 
+  private desiredCameraFraming(): number {
+    return goatCameraVerticalOffset(this.game.rules.style.scale, this.input.pitch,
+      this.currentSettings.fov, this.cameraViewport.y, this.titleCamera);
+  }
+
   private updateCameraFraming(dt: number): void {
-    const desired = goatCameraVerticalOffset(this.game.rules.style.scale,
-      this.input.pitch, this.currentSettings.fov, this.cameraViewport.y);
-    const delta = desired - this.cameraShiftY;
+    const delta = this.desiredCameraFraming() - this.cameraShiftY;
     if (Math.abs(delta) > .01) {
       this.applyCameraFraming(this.cameraShiftY + delta * lerpAlpha(8, dt));
     }
@@ -624,28 +634,44 @@ export class GameView {
   private updateCamera(alpha: number, dt: number): void {
     const pose = this.game.physics.getInterpolatedTransform(this.game.goat.torso, alpha);
     const size = this.game.rules.style.scale;
+    const { yaw, pitch } = this.input;
     this.cameraAim.set(pose.translation.x, pose.translation.y + CAMERA_TARGET_HEIGHT * size,
       pose.translation.z);
-    this.cameraTarget.lerp(this.cameraAim, lerpAlpha(12, dt));
-    const offset = goatCameraOffset(size, this.input.yaw, this.input.pitch);
+    if (this.cameraTarget.distanceToSquared(this.cameraAim) > 16 * 16) {
+      this.cameraTarget.copy(this.cameraAim);
+      this.cameraDistance = Infinity;
+    } else {
+      this.cameraTarget.lerp(this.cameraAim, lerpAlpha(12, dt));
+    }
+    const offset = this.titleCamera ? goatCameraOffset(size, yaw, pitch) :
+      goatOrbitOffset(size, yaw, pitch);
     this.cameraOffset.set(offset.x, offset.y, offset.z);
     const desiredDistance = this.cameraOffset.length();
     this.cameraDirection.copy(this.cameraOffset).normalize();
-    // Sweep the camera volume to catch corners that a centre ray misses.
+    // Follow position and obstruction recovery can ease independently of aim.
+    // Keep the camera on the current boom so it shares the movement heading.
     const travel = this.cameraTravel(this.cameraDirection, desiredDistance);
-    this.cameraAim.copy(this.cameraTarget).addScaledVector(this.cameraDirection, travel);
-    this.cameraPosition.lerp(this.cameraAim, lerpAlpha(9, dt));
-    this.cameraPath.copy(this.cameraPosition).sub(this.cameraTarget);
-    const pathLength = this.cameraPath.length();
-    let actualDistance = pathLength;
-    if (pathLength > .001) {
-      this.cameraPath.divideScalar(pathLength);
-      // Smoothing the orbit can cut a corner even when the desired pose is clear.
-      actualDistance = this.cameraTravel(this.cameraPath, pathLength);
-      this.cameraPosition.copy(this.cameraTarget).addScaledVector(this.cameraPath, actualDistance);
+    this.cameraDistance = travel <= this.cameraDistance ? travel :
+      this.cameraDistance + (travel - this.cameraDistance) * lerpAlpha(9, dt);
+    this.camera.position.copy(this.cameraTarget).addScaledVector(this.cameraDirection,
+      this.cameraDistance);
+    if (this.titleCamera) {
+      const clearance = Math.max(0, Math.min(1,
+        (this.cameraDistance - 1.1 * size) / Math.max(.01, desiredDistance - 1.1 * size)));
+      const ahead = goatCameraLookAhead(size, yaw, clearance);
+      this.cameraAim.copy(this.cameraTarget).add(this.cameraOffset.set(ahead.x, ahead.y, ahead.z));
+      if (this.cameraDistance < .05) {
+        this.cameraAim.addScaledVector(this.cameraDirection, -.05);
+      }
+    } else {
+      const direction = goatViewDirection(yaw, pitch);
+      this.cameraAim.copy(this.camera.position)
+        .add(this.cameraOffset.set(direction.x, direction.y, direction.z));
     }
+    this.camera.lookAt(this.cameraAim);
+
     const velocity = this.game.goat.torso.linvel();
-    const speed = Math.hypot(velocity.x, velocity.y, velocity.z);
+    const speed = Math.hypot(velocity.x, velocity.z);
     const kick = this.game.goat.locomotion.input.sprint ?
       7 : Math.min(14, Math.max(0, speed - 8) * 1.4);
     const fov = this.currentSettings.fov + kick;
@@ -654,20 +680,10 @@ export class GameView {
       this.camera.fov = nextFov;
       this.camera.updateProjectionMatrix();
     }
-    this.camera.position.copy(this.cameraPosition);
-    const clearance = Math.max(0, Math.min(1,
-      (actualDistance - 1.1 * size) /
-      Math.max(.01, desiredDistance - 1.1 * size)));
-    const ahead = goatCameraLookAhead(size, this.input.yaw, clearance);
-    this.cameraAim.copy(this.cameraTarget).add(this.cameraOffset.set(ahead.x, ahead.y, ahead.z));
-    if (actualDistance < .05) {
-      this.cameraAim.addScaledVector(this.cameraDirection, -.05);
-    }
     const goat = this.characters.player.root;
     // In a tight squeeze the camera may enter the goat's body. Keep the route visible
     // until there is room for the full model again.
-    goat.visible = actualDistance > (goat.visible ? .85 : 1) * size;
-    this.camera.lookAt(this.cameraAim);
+    goat.visible = this.cameraDistance > (goat.visible ? .85 : 1) * size;
     this.world.sun.position.set(this.cameraTarget.x + 70, this.cameraTarget.y + 125,
       this.cameraTarget.z - 65);
     this.world.sun.target.position.copy(this.cameraTarget);

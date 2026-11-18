@@ -159,7 +159,7 @@ export class GameMenu {
   private readonly fullscreenChange: () => void;
   private readonly pointerLockChange: () => void;
   private wasPointerLocked = false;
-  private pointerLockNeedsCanvasClick = false;
+  private pointerLockNeedsUserRequest = false;
 
   constructor(private readonly host: HTMLElement, private readonly game: Game,
     private readonly view: GameView, public settings: GameSettings,
@@ -252,10 +252,10 @@ export class GameMenu {
       }
       const locked = document.pointerLockElement === this.view.renderer.domElement;
       if (this.wasPointerLocked && !locked) {
-        this.pointerLockNeedsCanvasClick = true;
+        this.pointerLockNeedsUserRequest = true;
         this.setScreen('pause');
       }
-      if (locked) this.pointerLockNeedsCanvasClick = false;
+      if (locked) this.pointerLockNeedsUserRequest = false;
       this.wasPointerLocked = locked;
     };
     document.addEventListener('pointerlockchange', this.pointerLockChange);
@@ -274,7 +274,7 @@ export class GameMenu {
     if (next !== 'playing') {
       this.wasPointerLocked = false;
       if (document.pointerLockElement === this.view.renderer.domElement) {
-        this.pointerLockNeedsCanvasClick = true;
+        this.pointerLockNeedsUserRequest = true;
       }
     }
     this.view.paused = next !== 'playing';
@@ -289,14 +289,17 @@ export class GameMenu {
   private resume(): void {
     this.setScreen('playing');
     // Chrome rejects immediate pointer-lock reacquisition after Escape with a
-    // SecurityError. Resume with unlocked mouse look until the next canvas click.
-    if (!this.pointerLockNeedsCanvasClick) {
+    // SecurityError. Resume with unlocked mouse look so C can request capture.
+    if (!this.pointerLockNeedsUserRequest) {
       void this.view.input.requestPointerLock();
     }
   }
   private action(key: string): void {
     if (key !== 'back') this.audio?.queueCue({ sound: key === 'pause' ? 'ui-back' : 'ui-confirm' });
-    if (key === 'play' || key === 'resume') this.resume();
+    if (key === 'play') {
+      this.view.alignCameraForPlay();
+      this.resume();
+    } else if (key === 'resume') this.resume();
     else if (key === 'pause') this.setScreen('pause');
     else if (key === 'title') {
       this.game.party.returnToFreeRoam();
@@ -314,6 +317,7 @@ export class GameMenu {
     else if (key === 'start-party') {
       try {
         this.game.party.start(this.mode, this.botCount, this.difficulty);
+        this.view.alignCameraForPlay();
         this.resume();
       } catch (error) { this.error(error); }
     } else if (key.startsWith('offer:')) {
@@ -539,7 +543,7 @@ export class GameMenu {
       <div class="gg-options">${menuButton('play','▶ PLAY · FREE ROAM',true)}
       ${menuButton('party','⚡ PARTY MODES')}
       ${menuButton('settings','⚙ SETTINGS')}</div>
-      <footer>WASD move · mouse to look · SPACE jump · E job boards · P party · ESC pause</footer>`;
+      <footer>WASD or arrows move · Mouse or IJKL look · C capture mouse · Space jump · E job boards · P party · Esc pause</footer>`;
   }
   private partyBody(): string {
     return `<div class="gg-shell-eyebrow">SOLO VS PHYSICS-DRIVEN BOTS</div><h2>START A PARTY</h2>
