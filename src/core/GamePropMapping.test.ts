@@ -106,7 +106,7 @@ const assetBase = 'https://game.example/GiggaGoat/';
 
 function mockWorldModel(url: string): THREE.Object3D {
   const kind = worldKinds.find(k => url.endsWith(PROP_LIBRARY_MODELS[k]));
-  const dims = kind ? native[kind] : [1, 1, 1];
+  const dims: [number, number, number] = kind ? native[kind] : [1, 1, 1];
   const root = new THREE.Group();
   // Offset and non-cubic native meshes exercise centroid correction, grounding
   // and the aspect-preserving quarter-turn path.
