@@ -531,7 +531,8 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         await page.click('[data-action="start-party"]');
         await page.waitFor('document.querySelector(".gg-shell")?.hidden === true',
           mode + ' round to start');
-        await page.waitFor(
+        await page.waitFor('document.querySelector("[data-party-scoreboard]")?.hidden === false && ' +
+          'document.querySelector("[data-party-title]")?.textContent === ' + JSON.stringify(title) + ' && ' +
           'document.querySelector("[data-party-clock-label]")?.textContent === "ROUND"',
           mode + ' round clock', 20000);
         try {
