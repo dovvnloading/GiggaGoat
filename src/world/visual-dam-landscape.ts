@@ -30,10 +30,12 @@ interface AssetSet {
 export interface DamLandscapeVisuals {
   group: THREE.Group;
   update(seconds: number): void;
+  setWaterLevel(tide: number): void;
+  refreshWaterLight(): void;
   dispose(): void;
 }
 
-function channelWater(): { mesh: THREE.Mesh; time: { value: number } } {
+function channelWater(light: THREE.Vector3, tide: { value: number }, scale: number) {
   const vertices: number[] = [];
   const uv: number[] = [];
   const triangles: number[] = [];
@@ -61,21 +63,28 @@ function channelWater(): { mesh: THREE.Mesh; time: { value: number } } {
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   geometry.setIndex(triangles);
   geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
   const time = { value: 0 };
   const material = new THREE.ShaderMaterial({
-    uniforms: { uTime: time },
+    uniforms: { uTime: time, uLight: { value: light }, uTide: tide, uScale: { value: scale } },
     transparent: true, depthWrite: true, side: THREE.DoubleSide,
     vertexShader: [
       'varying vec2 vUv;',
+      'varying float vHeight;',
       'void main() {',
       ' vUv = uv;',
+      ' vHeight = (modelMatrix * vec4(position, 1.0)).y;',
       ' gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
       '}',
     ].join('\n'),
     fragmentShader: [
-      'uniform float uTime;',
+      'uniform float uTime, uTide, uScale;',
+      'uniform vec3 uLight;',
       'varying vec2 vUv;',
+      'varying float vHeight;',
       'void main() {',
+      ' float exposed = 1.0 - smoothstep(-0.18, 0.45, (uTide - vHeight) / uScale);',
+      ' if (exposed <= 0.001) discard;',
       ' float flow = sin(vUv.y * 6.4 - uTime * 3.0 + sin(vUv.x * 16.0 + vUv.y * 1.3) * 1.7);',
       ' float wash = sin(vUv.y * 16.0 - uTime * 4.1 - vUv.x * 8.0);',
       ' float edge = smoothstep(0.70, 0.99, abs(vUv.x * 2.0 - 1.0));',
@@ -83,10 +92,12 @@ function channelWater(): { mesh: THREE.Mesh; time: { value: number } } {
       ' float flash = smoothstep(0.35, 0.92, flow * 0.68 + wash * 0.32);',
       ' float foam = clamp(edge * 0.57 + head * (0.35 + flash * 0.38)',
       '   + flash * 0.12, 0.0, 0.90);',
+      ' foam *= mix(0.42, 1.0, smoothstep(0.16, 1.0, uLight.x));',
       ' vec3 turquoise = mix(vec3(0.01, 0.50, 0.61), vec3(0.13, 0.79, 0.86),',
       '   0.52 + 0.085 * flow + 0.035 * wash);',
       ' vec3 color = mix(turquoise, vec3(0.91, 0.99, 0.98), foam);',
-      ' gl_FragColor = vec4(color, 0.98);',
+      ' gl_FragColor = sRGBTransferEOTF(vec4(color * uLight, 0.98 * exposed));',
+      ' #include <colorspace_fragment>',
       '}',
     ].join('\n'),
   });
@@ -98,7 +109,7 @@ function channelWater(): { mesh: THREE.Mesh; time: { value: number } } {
   return { mesh, time };
 }
 
-function foamAtFalls(group: THREE.Group): void {
+function foamAtFalls(group: THREE.Group) {
   // All four splashes and the downstream eddies share two small instance draws.
   const splashes = new THREE.InstancedMesh(
     new THREE.TorusGeometry(1, 0.11, 5, 20),
@@ -138,8 +149,14 @@ function foamAtFalls(group: THREE.Group): void {
   for (const mesh of [splashes, soft]) {
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
+    mesh.computeBoundingBox();
     group.add(mesh);
   }
+  return [splashes, soft].map(mesh => ({
+    mesh,
+    displayColor: mesh.material.color.clone().convertLinearToSRGB(),
+    opacity: mesh.material.opacity,
+  }));
 }
 
 const PATH: readonly [number, number][] = [
@@ -433,7 +450,7 @@ function signLabel(group: THREE.Group, x: number, y: number, z: number, yaw: num
 
 /** Scenic assets are optional at runtime; headless tests retain all geometry. */
 export function buildDamLandscape(
-  island: IslandData, changed: () => void,
+  island: IslandData, changed: () => void, light = new THREE.Vector3(1, 1, 1),
 ): DamLandscapeVisuals {
   const group = new THREE.Group();
   group.name = 'dam-plunge-pool-rocky-banks-and-foreground';
@@ -442,9 +459,10 @@ export function buildDamLandscape(
   const height = (x: number, z: number): number =>
     (gridSample(island, origin.x + x * scale, origin.z + z * scale) - origin.y) / scale;
   const rng = new SeededRandom(String(island.seed) + ':dam-stylized-assets');
-  const water = channelWater();
+  const tide = { value: island.seaLevel };
+  const water = channelWater(light, tide, scale);
   group.add(water.mesh);
-  foamAtFalls(group);
+  const foam = foamAtFalls(group);
   cliffUnderpainting(island, group, origin, scale);
   reeds(group);
   const fence = pathAndFence(island, group, origin, scale);
@@ -628,9 +646,28 @@ export function buildDamLandscape(
     }
   }
 
+  function refreshWaterLight(): void {
+    const strength = 0.55 + 0.45 * THREE.MathUtils.smoothstep(light.x, 0.16, 1);
+    for (const { mesh, displayColor, opacity } of foam) {
+      const highest = origin.y + mesh.boundingBox!.max.y * scale;
+      const exposed = 1 - THREE.MathUtils.smoothstep((tide.value - highest) / scale, -0.18, 0.45);
+      mesh.visible = exposed > 0.001;
+      mesh.material.opacity = opacity * strength * exposed;
+      mesh.material.color.setRGB(displayColor.r * light.x, displayColor.g * light.y,
+        displayColor.b * light.z, THREE.SRGBColorSpace);
+    }
+  }
+
   return {
     group,
     update(seconds: number): void { water.time.value = Math.max(0, seconds); },
+    setWaterLevel(level: number): void {
+      tide.value = level;
+      const highest = origin.y + water.mesh.geometry.boundingBox!.max.y * scale;
+      water.mesh.visible = level < highest + 0.45 * scale;
+      refreshWaterLight();
+    },
+    refreshWaterLight,
     dispose(): void { disposed = true; },
   };
 }

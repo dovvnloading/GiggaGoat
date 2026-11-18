@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { generateIsland } from './island';
 import { buildRapierColliders } from './colliders';
@@ -141,6 +142,53 @@ describe('The Dam hero POI', () => {
         .toHaveLength(1);
     } finally {
       visuals.dispose();
+    }
+  });
+
+  it('applies current night and flood conditions when the authored Dam water arrives', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 65 });
+    const { position, scale } = getDamPlacement(island);
+    const source = new THREE.Group();
+    const foamMaterial = new THREE.MeshStandardMaterial({
+      color: 0xd5f2fa, emissive: 0x424b50, emissiveIntensity: 0.5,
+    });
+    const foam = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), foamMaterial);
+    foam.name = 'Water_Foam_0_0';
+    foam.position.y = 6;
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2),
+      new THREE.MeshStandardMaterial());
+    wall.name = 'Wall_Main';
+    source.add(foam, wall);
+    let completeModelLoad: (() => void) | undefined;
+    vi.stubGlobal('document', { createElement: () => ({ getContext: () => null }) });
+    const load = vi.spyOn(GLTFLoader.prototype, 'load').mockImplementation((url, onLoad) => {
+      if (url.endsWith('/the-dam/the-dam.glb')) completeModelLoad =
+        () => onLoad({ scene: source } as Awaited<ReturnType<GLTFLoader['loadAsync']>>);
+    });
+    const light = new THREE.Vector3(1, 1, 1);
+    const dam = buildDamVisuals(island, light);
+    try {
+      dam.setWaterLevel(position.y + 9 * scale);
+      light.set(0.16, 0.20, 0.34);
+      dam.refreshWaterLight();
+      expect(completeModelLoad).toBeTypeOf('function');
+      completeModelLoad!();
+      const sculpted = dam.group.getObjectByName('the-dam-model')!;
+      const submerged = sculpted.children.find(part => part.userData['damWater'])!;
+      const structure = sculpted.children.find(part => part.castShadow)!;
+      expect(submerged.visible).toBe(false);
+      expect(structure.visible).toBe(true);
+      expect(foamMaterial.emissiveIntensity).toBeCloseTo(0.08);
+
+      dam.setWaterLevel(island.seaLevel);
+      light.set(1, 1, 1);
+      dam.refreshWaterLight();
+      expect(submerged.visible).toBe(true);
+      expect(foamMaterial.emissiveIntensity).toBe(0.5);
+    } finally {
+      dam.dispose();
+      load.mockRestore();
+      vi.unstubAllGlobals();
     }
   });
 });

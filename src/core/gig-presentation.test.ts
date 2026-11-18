@@ -37,7 +37,7 @@ describe('Hay Haul wayfinding', () => {
       expect(hayHaulGuidance(game, run)).toEqual({
         kind: 'delivery',
         position: config.barn,
-        task: 'Drag bale to barn',
+        task: 'Drag bale to barn drop',
       });
 
       run.finishedIds.push(config.bales[0]!.id);

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CLOUD_LIBRARY_MODELS, loadLibraryCloudGeometry } from './library-props';
 
-/** Daytime horizon RGB in the sky shader's linear working space. */
+/** Display RGB from the original painted sky. */
 export const SKY_HORIZON_COLOR = new THREE.Color(0.76, 0.88, 0.98);
 
 /** Golden-hour palette in Three.js linear colour space; daytime stays separate. */
@@ -30,15 +30,15 @@ export type LightingPreset = 'day' | 'golden-hour' | 'night';
 
 export interface SkyVisuals {
   group: THREE.Group;
+  atmosphere: ReturnType<typeof skyUniforms>;
   update(phase: number): { daylight: number; altitude: number;
     direction: THREE.Vector3; golden: number; horizon: THREE.Color };
 }
 
-/** Gradient dome with an actual sun disc, cloud banks and softly glowing night stars. */
-export function buildSkyVisuals(): SkyVisuals {
-  const group = new THREE.Group();
-  group.name = 'storybook-sky';
-  const uniforms = {
+const DOME_RADIUS = 1800;
+
+export function skyUniforms() {
+  return {
     uDay: { value: 1 },
     uGolden: { value: 0 },
     uSun: { value: new THREE.Vector3(0, 1, 0) },
@@ -48,32 +48,51 @@ export function buildSkyVisuals(): SkyVisuals {
     uSunsetZenith: { value: GOLDEN_HOUR_SKY.zenith },
     uSunGlowStrength: { value: 0.29 },
   };
-  const dome = new THREE.Mesh(new THREE.SphereGeometry(1800, 32, 18),
+}
+
+/** The sea uses the same view ray and painted gradient as the dome at its edge. */
+export const skyColorGLSL = /* glsl */ `
+uniform float uDay, uGolden, uSunGlowStrength;
+uniform vec3 uSun, uHorizon, uSunsetHorizon, uSunsetMid, uSunsetZenith;
+vec3 skyColor(vec3 worldPosition) {
+  vec3 ray = normalize(worldPosition - cameraPosition);
+  float projectedEye = dot(cameraPosition, ray);
+  float reach = -projectedEye + sqrt(max(0.0, projectedEye * projectedEye +
+    ${DOME_RADIUS}.0 * ${DOME_RADIUS}.0 - dot(cameraPosition, cameraPosition)));
+  vec3 dir = (cameraPosition + reach * ray) / ${DOME_RADIUS}.0;
+  float horizon = smoothstep(-0.15, 0.90, dir.y);
+  vec3 sunny = mix(uHorizon, vec3(0.08, 0.48, 0.94), horizon);
+  vec3 sunset = mix(uSunsetHorizon, uSunsetMid, smoothstep(0.0, 0.5, horizon));
+  sunset = mix(sunset, uSunsetZenith, smoothstep(0.5, 1.0, horizon));
+  vec3 night = mix(vec3(0.18, 0.22, 0.38), vec3(0.018, 0.045, 0.14), horizon);
+  vec3 dayColor = mix(sunny, sunset, uGolden);
+  float glow = max(dot(dir, normalize(uSun)), 0.0);
+  glow *= glow; glow *= glow; glow *= glow; glow *= glow; glow *= glow;
+  dayColor += vec3(1.0, 0.72, 0.36) * glow * uSunGlowStrength;
+  return mix(night, dayColor, max(uDay, uGolden));
+}`;
+
+/** Gradient dome with an actual sun disc, cloud banks and softly glowing night stars. */
+export function buildSkyVisuals(): SkyVisuals {
+  const group = new THREE.Group();
+  group.name = 'storybook-sky';
+  const uniforms = skyUniforms();
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(DOME_RADIUS, 32, 18),
     new THREE.ShaderMaterial({
       uniforms, side: THREE.BackSide, depthWrite: false, fog: false,
       vertexShader: [
-        'varying vec3 vDirection;',
+        'varying vec3 vSkyWorld;',
         'void main() {',
-        '  vDirection = normalize(position);',
+        '  vSkyWorld = (modelMatrix * vec4(position, 1.0)).xyz;',
         '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
         '}',
       ].join('\n'),
       fragmentShader: [
-        'uniform float uDay, uGolden, uSunGlowStrength;',
-        'uniform vec3 uSun, uHorizon, uSunsetHorizon, uSunsetMid, uSunsetZenith;',
-        'varying vec3 vDirection;',
+        'varying vec3 vSkyWorld;',
+        skyColorGLSL,
         'void main() {',
-        '  vec3 dir = normalize(vDirection);',
-        '  float horizon = smoothstep(-0.15, 0.90, dir.y);',
-        '  vec3 sunny = mix(uHorizon, vec3(0.08, 0.48, 0.94), horizon);',
-        '  vec3 sunset = mix(uSunsetHorizon, uSunsetMid, smoothstep(0.0, 0.5, horizon));',
-        '  sunset = mix(sunset, uSunsetZenith, smoothstep(0.5, 1.0, horizon));',
-        '  vec3 night = mix(vec3(0.18, 0.22, 0.38), vec3(0.018, 0.045, 0.14), horizon);',
-        '  vec3 dayColor = mix(sunny, sunset, uGolden);',
-        '  float glow = max(dot(dir, normalize(uSun)), 0.0);',
-        '  glow *= glow; glow *= glow; glow *= glow; glow *= glow; glow *= glow;',
-        '  dayColor += vec3(1.0, 0.72, 0.36) * glow * uSunGlowStrength;',
-        '  gl_FragColor = vec4(mix(night, dayColor, max(uDay, uGolden)), 1.0);',
+        '  gl_FragColor = sRGBTransferEOTF(vec4(skyColor(vSkyWorld), 1.0));',
+        '  #include <colorspace_fragment>',
         '}',
       ].join('\n'),
     }));
@@ -190,7 +209,8 @@ export function buildSkyVisuals(): SkyVisuals {
     const golden = Math.min(1,
       Math.pow(1 - Math.min(1, Math.abs(altitude) * 1.9), 1.7) * daylight * 4.2);
     dayHorizon.copy(sunnyHorizon).lerp(sunsetHorizon, golden);
-    horizon.copy(nightHorizon).lerp(dayHorizon, Math.max(daylight, golden));
+    horizon.copy(nightHorizon).lerp(dayHorizon, Math.max(daylight, golden))
+      .convertSRGBToLinear();
     // Diagonal warm key, not a nearly vertical noon light that erases facade relief.
     const direction = new THREE.Vector3(Math.cos(angle) * 0.7 + 0.48 * daylight,
       altitude * 0.87, -0.63).normalize();
@@ -208,5 +228,5 @@ export function buildSkyVisuals(): SkyVisuals {
     return { daylight, altitude, direction, golden, horizon };
   }
   update(0.5);
-  return { group, update };
+  return { group, atmosphere: uniforms, update };
 }

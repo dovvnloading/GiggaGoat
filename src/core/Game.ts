@@ -16,6 +16,7 @@ import {
   WaterSystem, BreakableRegistry, ChainReactions, SurfaceSystem,
   DynamicBodyBudget, applyPhysicsMaterial,
 } from '../chaos';
+import { addRapierPropCollider } from '../world/colliders';
 import { DAM_FRONT_GUARD } from '../world/the-dam';
 import { GigSession } from './GigSession';
 import { PartySession } from './PartySession';
@@ -200,13 +201,7 @@ export class Game {
           direction: forward(this.goat.locomotion.heading),
           size: Math.max(prop.size.x, prop.size.y, prop.size.z) });
       }
-      if (prop) {
-        const removed = this.colliders.bodies.get(prop.id);
-        if (removed) this.water.untrack(removed);
-        this.destroyedProps.add(prop.id);
-        this.colliders.bodies.delete(prop.id);
-        this.propByBody.delete(event.bodyHandle);
-      }
+      if (prop) this.forgetWorldProp(prop.id);
       if (this.nearPlayer(event.position, 24) && this.recentChaos()) {
         this.award('destruction', 1 + Math.min(1, event.mass / 50));
       }
@@ -300,18 +295,58 @@ export class Game {
         this.colliders.props.set(prop.id, replacement);
         this.colliders.bodies.set(prop.id, body);
       }
-      const collider = this.colliders.props.get(prop.id)!;
-      collider.setCollisionGroups(collisionGroups('prop'));
-      collider.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS);
-      const material = prop.kind === 'rock' ? 'rock' :
-        prop.kind === 'ramp' ? 'wood' : prop.kind === 'hay-bale' ? 'grass' :
-        prop.kind === 'bumper' ? 'rubber' : 'wood';
-      applyPhysicsMaterial(collider, material);
-      if (body) {
-        this.physics.registerBody(body, { kind: 'prop', owner: prop.id, data: prop.kind });
-        this.propByBody.set(body.handle, prop);
-      }
+      this.configureWorldProp(prop, body);
     }
+  }
+
+  private configureWorldProp(prop: PropDescriptor, body: RigidBody | undefined): void {
+    const collider = this.colliders.props.get(prop.id)!;
+    collider.setCollisionGroups(collisionGroups('prop'));
+    collider.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS);
+    const material = prop.kind === 'rock' ? 'rock' :
+      prop.kind === 'ramp' ? 'wood' : prop.kind === 'hay-bale' ? 'grass' :
+      prop.kind === 'bumper' ? 'rubber' : 'wood';
+    applyPhysicsMaterial(collider, material);
+    if (body) {
+      this.physics.registerBody(body, { kind: 'prop', owner: prop.id, data: prop.kind });
+      this.propByBody.set(body.handle, prop);
+    }
+  }
+
+  private forgetWorldProp(id: string): void {
+    const body = this.colliders.bodies.get(id);
+    if (body) {
+      this.water.untrack(body);
+      this.propByBody.delete(body.handle);
+    }
+    this.colliders.bodies.delete(id);
+    this.colliders.props.delete(id);
+    this.destroyedProps.add(id);
+  }
+
+  /** Lend a contract a replacement for a lost world bale using its original art and shape. */
+  restockHayBale(id: string): RigidBody | undefined {
+    if (this.colliders.bodies.get(id)?.isValid()) return;
+    const prop = this.island.props.find(p => p.id === id && p.kind === 'hay-bale');
+    const shape = this.island.colliders.find(c => c.shape !== 'heightfield' && c.id === id);
+    if (!prop || !shape || shape.shape === 'heightfield' || shape.body.type !== 'dynamic') return;
+    this.forgetWorldProp(id);
+    addRapierPropCollider(this.physics.raw, this.colliders, shape);
+    const body = this.colliders.bodies.get(id)!;
+    this.configureWorldProp(prop, body);
+    this.water.track(body, { buoyancyScale: 1.15 });
+    // Contract replacements can still be pushed and licked. Skipping breakable
+    // registration keeps the same lost bale from creating infinite debris or score.
+    this.destroyedProps.delete(id);
+    return body;
+  }
+
+  removeRestockedHayBale(id: string, body: RigidBody): void {
+    if (this.colliders.bodies.get(id) !== body) return;
+    const tether = this.goat.interactions;
+    if (tether.tongueBody?.handle === body.handle) tether.detachTongue('replaced');
+    if (body.isValid()) this.physics.removeBody(body);
+    this.forgetWorldProp(id);
   }
 
   private registerChaosProps(): void {
@@ -473,10 +508,7 @@ export class Game {
       // before-step maintenance. Never wake a stale Rapier handle on tide rise.
       for (const [id, body] of this.colliders.bodies) {
         if (this.physics.raw.getRigidBody(body.handle)) continue;
-        this.water.untrack(body);
-        this.colliders.bodies.delete(id);
-        this.propByBody.delete(body.handle);
-        this.destroyedProps.add(id);
+        this.forgetWorldProp(id);
       }
       this.water.setSeaLevel(this.party.match.tideLevel);
     }

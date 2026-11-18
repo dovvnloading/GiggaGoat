@@ -381,13 +381,13 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(hoofington.group);
   const downtown = buildDowntownVisuals(scenery, props.group);
   group.add(downtown.group);
-  const waterVisuals = buildWaterVisuals(island);
+  const sky = buildSkyVisuals();
+  const waterVisuals = buildWaterVisuals(island, sky.atmosphere);
   group.add(waterVisuals.inland, waterVisuals.sea);
-  const dam = buildDamVisuals(island);
+  const dam = buildDamVisuals(island, waterVisuals.light);
   group.add(dam.group);
   const lighthouse = buildLighthouseVisuals(scenery, props.group);
   group.add(lighthouse.group);
-  const sky = buildSkyVisuals();
   const fogColor = new THREE.Color();
   group.add(sky.group);
   const sun = new THREE.DirectionalLight(0xffe9c5, 1.65);
@@ -424,6 +424,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   function setDayNight(phase: number): void {
     const state = sky.update(((phase % 1) + 1) % 1);
     waterVisuals.setLighting(state.daylight, state.golden);
+    dam.refreshWaterLight();
     fogColor.copy(state.horizon);
     sun.position.copy(state.direction).multiplyScalar(560);
     sun.intensity = 0.07 + state.daylight * 1.55;
@@ -440,6 +441,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     if (!Number.isFinite(level)) throw new RangeError('Tide height must be finite');
     tide = level;
     waterVisuals.update(elapsed, tide);
+    dam.setWaterLevel(tide);
   }
   function update(time: number): void {
     elapsed = Number.isFinite(time) ? Math.max(0, time) : elapsed;

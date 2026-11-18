@@ -198,7 +198,11 @@ describe('Gig boards and real world integration', () => {
     const ids = new Set(island.props.filter(p => p.kind === 'hay-bale').map(p => p.id));
     expect(hay.bales.every(b => ids.has(b.id))).toBe(true);
     const barn = island.props.find(p => p.kind === 'barn')!;
-    expect(hay.barn.x).toBe(barn.transform.position.x);
+    const dx = hay.barn.x - barn.transform.position.x;
+    const dz = hay.barn.z - barn.transform.position.z;
+    const { rotationY } = barn.transform;
+    const localX = dx * Math.cos(rotationY) - dz * Math.sin(rotationY);
+    expect(localX + hay.radius).toBeLessThan(-barn.size.x / 2);
     const roof = configOf(catalog.build(catalog.makeOffer('rooftop-express', 'hard')), 'rooftop-express');
     expect(roof.checkpoints.length).toBe(4);
     expect(roof.checkpoints.every(cp => island.props.some(p =>

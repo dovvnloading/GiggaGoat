@@ -19,7 +19,8 @@ const CONCRETE = new THREE.Color('#A7A3A0');
 const WARM = new THREE.Color('#999493');
 const JOINT = new THREE.Color('#858789');
 const MARKING = new THREE.Color('#EDC350');
-const PUDDLE = new THREE.Color(0x5f7f8f);
+const PUDDLE = new THREE.Color(0x53686e);
+const WET_EDGE = new THREE.Color(0x656663);
 const SOIL = new THREE.Color(0x7b5a3a);
 const CROP_ROW = new THREE.Color(0x6fb34a);
 const OLD_GARDEN = new THREE.Color('#6F8549');
@@ -95,23 +96,23 @@ describe('Crane Yard CY-11 ground apron', () => {
     scale = island.size / 600;
   });
 
-  it('covers the same 80 x 72 m apron with exactly 10 x 9 large 7.92 m slabs', () => {
+  it('tiles the entire 80 x 72 m apron with flush joints between slabs', () => {
     const slabs = details.quads.filter(quad =>
       Math.abs(Math.hypot(quad[1].x - quad[0].x, quad[1].z - quad[0].z)
-        - 7.92 * scale) < 0.001 &&
+        - 8 * scale) < 0.001 &&
       Math.abs(Math.hypot(quad[2].x - quad[0].x, quad[2].z - quad[0].z)
-        - 7.92 * scale) < 0.001);
+        - 8 * scale) < 0.001);
     expect(slabs).toHaveLength((80 / 8) * (72 / 8));
 
     for (let ix = -40; ix < 40; ix += 8) {
       for (let iz = -36; iz < 36; iz += 8) {
         const matches = slabs.filter(quad => footprint(quad,
           yard.x + (ix + 4) * scale, yard.z + (iz + 4) * scale,
-          7.92 * scale, 7.92 * scale));
+          8 * scale, 8 * scale));
         expect(matches, 'slab at ' + ix + ',' + iz).toHaveLength(1);
 
         const slabX = (ix + 40) / 8, slabZ = (iz + 36) / 8;
-        const shade = 0.97 + 0.03 * ((slabX * 7 + slabZ * 3) % 3) / 2;
+        const shade = .988 + .012 * ((slabX * 7 + slabZ * 3) % 3) / 2;
         for (const v of matches[0]!) {
           // Check every vertex, not just the slab's average tint.
           for (const channel of ['r', 'g', 'b'] as const) {
@@ -127,16 +128,18 @@ describe('Crane Yard CY-11 ground apron', () => {
     }
   });
 
-  it('draws exactly three raised dark disc puddles at the requested offsets and radii', () => {
+  it('draws grounded irregular puddles with a separate wet rim and glossy finish', () => {
     const puddleVertices = details.vertices.filter(v => {
       const shade = v.r / PUDDLE.r;
-      return shade >= 0.92 && shade <= 1.04 &&
+      return shade >= .869 && shade <= 1.021 &&
         Math.abs(v.g / PUDDLE.g - shade) < 0.0001 &&
         Math.abs(v.b / PUDDLE.b - shade) < 0.0001;
     });
-    expect(puddleVertices).toHaveLength(3 * 29); // 28 rim points + centre per disc
-    const centres = puddleVertices.filter(v => shadeOf(v, PUDDLE, 1.035));
+    expect(puddleVertices).toHaveLength(3 * 33);
+    const centres = puddleVertices.filter(v => shadeOf(v, PUDDLE, 1.02));
+    const rim = details.vertices.filter(v => shadeOf(v, WET_EDGE, 1));
     expect(centres).toHaveLength(3);
+    expect(rim).toHaveLength(96);
     for (const [dx, dz, radius] of [
       [-8, 14, 1.6], [15, -4, 1.1], [-24, -2, 2.0],
     ] as const) {
@@ -145,11 +148,18 @@ describe('Crane Yard CY-11 ground apron', () => {
         Math.abs(v.x - x) < 0.001 && Math.abs(v.z - z) < 0.001);
       expect(centre, 'puddle centre at ' + dx + ',' + dz).toBeDefined();
       expect(centre!.y - gridSample(island, x, z)).toBeGreaterThan(0.08 * scale);
-      const rim = puddleVertices.filter(v =>
-        !shadeOf(v, PUDDLE, 1.035) &&
-        Math.abs(Math.hypot(v.x - x, v.z - z) - radius * scale) < 0.001);
-      expect(rim, 'puddle radius ' + radius).toHaveLength(28);
+      const edge = rim.filter(v => Math.hypot(v.x - x, v.z - z) <= 1.21 * radius * scale);
+      expect(edge).toHaveLength(32);
+      const radii = edge.map(v => Math.hypot(v.x - x, v.z - z));
+      expect(Math.max(...radii) - Math.min(...radii)).toBeGreaterThan(.21 * radius * scale);
+      for (const v of edge) {
+        expect(v.y).toBeCloseTo(gridSample(island, v.x, v.z) + .087 * scale, 4);
+      }
     }
+    const group = buildGroundDetails(island);
+    const pools = group.getObjectByName('ground-detail-crane-puddles') as THREE.Mesh;
+    expect(pools.material).toBeInstanceOf(THREE.MeshPhongMaterial);
+    expect(pools.geometry.index?.count).toBe(3 * 32 * 9);
   });
 
   it('preserves all 37 yellow markings, including their original exact footprints', () => {
