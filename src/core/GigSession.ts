@@ -278,6 +278,7 @@ export class GigSession {
       body.setLinvel(V(), true);
       body.setAngvel(V(), true);
       body.setEnabled(true);
+      this.game.seatStockHayBale(prop, body);
       this.game.physics.registerBody(body, { kind: 'prop', owner: id, data: 'hay-bale' });
     }
     this.collectedHay.clear();

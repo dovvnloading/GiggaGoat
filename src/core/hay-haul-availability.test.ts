@@ -225,8 +225,13 @@ describe('Hay Haul assigned bales', () => {
         expect(received.isEnabled()).toBe(false);
         expect(received.translation().z).toBeGreaterThan(config.barn.z + config.radius);
         const savedBale = progress.gigBodies.find(body => body.id === second!.id);
-        expect(resumed.colliders.bodies.get(second!.id)?.translation().x)
-          .toBeCloseTo(savedBale?.position.x ?? second!.start.x);
+        const pending = resumed.colliders.bodies.get(second!.id)!;
+        expect(pending.translation().x).toBeCloseTo(savedBale?.position.x ?? second!.start.x);
+        if (savedBale) {
+          expect(pending.translation()).toEqual(savedBale.position);
+          expect(pending.rotation()).toEqual(savedBale.rotation);
+          expect(pending.linvel()).toEqual(savedBale.velocity);
+        }
         expect(run.objective).toMatchObject({ kind: 'deliver', done: 1, required: 4 });
         const wallet = resumed.rules.wallet.coins;
         resumed.step();

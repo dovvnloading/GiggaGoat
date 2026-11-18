@@ -182,8 +182,13 @@ export const DOWNTOWN_INFILL: readonly DowntownInfill[] = (() => {
       // Shop local X runs along world Z after its +/-90 degree rotation.
       const leftEdge = (row - 2) * 19 + DOWNTOWN_BUILDING_SIZES[left].x / 2;
       const rightEdge = (row - 1) * 19 - DOWNTOWN_BUILDING_SIZES[right].x / 2;
+      // Courier ramps bridge the west shop roofs. Keep infill roofs below
+      // their lowest supported end so the ramp and house have separate space.
+      const roofLimit = side < 0 ? Math.min(DOWNTOWN_BUILDING_SIZES[left].y,
+        DOWNTOWN_BUILDING_SIZES[right].y) : Infinity;
       const fitting = INFILL_MODELS.filter(model =>
-        DOWNTOWN_BUILDING_SIZES[model].x <= rightEdge - leftEdge - 0.8)
+        DOWNTOWN_BUILDING_SIZES[model].x <= rightEdge - leftEdge - 0.8 &&
+        DOWNTOWN_BUILDING_SIZES[model].y <= roofLimit)
         .sort((a, b) => DOWNTOWN_BUILDING_SIZES[b].x -
           DOWNTOWN_BUILDING_SIZES[a].x);
       const model = fitting.find(choice => choice !== left && choice !== right)

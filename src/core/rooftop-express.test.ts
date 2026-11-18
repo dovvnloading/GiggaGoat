@@ -3,6 +3,7 @@ import { GameSimulation } from '../gameplay';
 import { BOARD_CYCLE_TICKS, GigCatalog, GigDirector } from '../gigs';
 import { V } from '../physics';
 import { generateIsland } from '../world';
+import { ROOFTOP_SPAN_PREFIX } from '../world/rooftop-course';
 import { Game } from './Game';
 
 const seed = 'billy-isle';
@@ -44,6 +45,33 @@ async function startCourier(cycle: number, tier: 'Kid' | keyof typeof grownState
 }
 
 describe('Rooftop Express on actual Rapier steps', () => {
+  it('clears the first infill roof across the real courier ramp', async () => {
+    const game = await Game.create({ seed, resolution });
+    try {
+      const span = game.island.props.find(prop => prop.id === ROOFTOP_SPAN_PREFIX + '0')!;
+      const house = game.island.props.find(prop => prop.id === 'downtown-bleatsville-house-54')!;
+      const at = span.transform.position, roof = house.transform.position;
+      const ramp = game.colliders.props.get(span.id)!;
+      const infill = game.colliders.props.get(house.id)!;
+      const start = roof.z - house.size.x / 2;
+      const end = roof.z + house.size.x / 2;
+      game.step();
+      for (const dx of [-1.25, 0, 1.25]) {
+        for (const z of [start + .15, roof.z, end - .15]) {
+          const origin = V(at.x + dx, at.y + 5, z), down = V(0, -1, 0);
+          const rampTop = game.physics.raycast(origin, down, 18, {
+            predicate: collider => collider.handle === ramp.handle,
+          });
+          const roofTop = game.physics.raycast(origin, down, 18, {
+            predicate: collider => collider.handle === infill.handle,
+          });
+          expect(rampTop!.point.y - roofTop!.point.y).toBeGreaterThan(.8);
+        }
+      }
+      expect(at.y - span.size.y / 2 - (roof.y + house.size.y / 2)).toBeGreaterThan(.5);
+    } finally { game.dispose(); }
+  });
+
   it.each([[0, 'Kid', 3], [1, 'Kid', 4], [2, 'Kid', 5], [1, 'Big', 4], [6, 'GIGGA', 3]] as const)(
     'finishes board cycle %i through the real ramp collisions as %s',
     async (cycle, tier, roofs) => {
