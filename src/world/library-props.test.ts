@@ -25,7 +25,7 @@ describe('library prop catalog', () => {
   it('covers every PropKind and every path exists locally with the right licence', () => {
     // The satisfies Record<PropKind, string> declaration enforces exhaustive
     // coverage at typecheck time, including any newly added descriptor kind.
-    expect(mapped).toHaveLength(87);
+    expect(mapped).toHaveLength(88);
     expect(new Set(mapped.map(([kind]) => kind)).size).toBe(mapped.length);
     for (const [kind, path] of mapped) {
       const entry = byPath.get(path);
@@ -72,6 +72,31 @@ describe('library prop catalog', () => {
     expect(paint.getY(0)).toBeGreaterThan(0);
     geometry!.dispose();
     box.dispose();
+  });
+
+  it('registers the authored cascade GLB and retains a box fallback', () => {
+    const path = 'assets/library/custom/props/cascade.glb';
+    expect(PROP_LIBRARY_MODELS.cascade).toBe(path);
+    expect(byPath.get(path)?.license).toBe('CC0');
+    expect(existsSync(new URL('../../public/' + path, import.meta.url))).toBe(true);
+    expect(AUTHORED_HERO_DRESSING_KINDS.has('cascade')).toBe(true);
+    const prop: PropDescriptor = {
+      id: 'cascade-fallback', kind: 'cascade',
+      transform: { position: { x: 0, y: 7, z: 0 }, rotationY: 1 },
+      size: { x: 8, y: 14, z: 7 }, body: { type: 'static' },
+      shape: 'cuboid', collidable: false,
+      breakable: false, lickable: false, climbable: false,
+    };
+    const visuals = buildPropVisuals([prop]);
+    try {
+      const mesh = visuals.group.getObjectByName('props-cascade') as THREE.InstancedMesh;
+      expect(mesh).toBeInstanceOf(THREE.InstancedMesh);
+      expect(mesh.count).toBe(1);
+      expect(mesh.geometry.getAttribute('position').count).toBe(36);
+      expect(mesh.geometry.getAttribute('color')).toBeDefined();
+    } finally {
+      visuals.dispose();
+    }
   });
 
   it('registers native-proportioned Pines ferns and lily pads as CC0 assets', () => {

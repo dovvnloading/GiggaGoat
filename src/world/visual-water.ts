@@ -331,27 +331,33 @@ function riverCliffDrop(island: IslandData, a: RiverPoint, b: RiverPoint,
   }
   return best;
 }
-function makeFalls(group: THREE.Group, material: THREE.Material,
-  a: THREE.Vector3, b: THREE.Vector3, width: number, id: string): void {
-  const direction = new THREE.Vector3().subVectors(b, a);
+/** Rendering-only identity for the exact river, terrace and backdrop fall sites. */
+export interface WaterfallSite {
+  id: string;
+  top: THREE.Vector3;
+  bottom: THREE.Vector3;
+  width: number;
+}
+
+/** The GLB supplies the lip, steps and pool; only foam and debug names live here. */
+function makeWaterfallFoam(group: THREE.Group, site: WaterfallSite, scale: number): void {
+  const { id, top, bottom, width } = site;
+  const run = Math.hypot(bottom.x - top.x, bottom.z - top.z);
+  const downstream = new THREE.Vector3(
+    run > 1e-6 ? (bottom.x - top.x) / run : 0,
+    0,
+    run > 1e-6 ? (bottom.z - top.z) / run : 1,
+  );
   const newWidth = width * 2.6;
-  const side = new THREE.Vector3(direction.z, 0, -direction.x).normalize()
-    .multiplyScalar(newWidth / 2);
-  if (side.lengthSq() < 0.001) side.set(newWidth / 2, 0, 0);
-  const vertices = [
-    ...a.clone().sub(side).toArray(), ...a.clone().add(side).toArray(),
-    ...b.clone().sub(side).toArray(), ...b.clone().add(side).toArray(),
-  ];
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-  g.setAttribute('uv', new THREE.Float32BufferAttribute([0,0, 1,0, 0,5, 1,5], 2));
-  g.setIndex([0,2,1, 1,2,3]);
-  g.computeVertexNormals();
-  const fall = new THREE.Mesh(g, material);
-  fall.name = id;
-  group.add(fall);
-  // Five shallow, partly submerged foam flecks share one draw per cascade.
-  // Fixed size variations keep the silhouettes organic without consuming RNG.
+  const sideways = new THREE.Vector3(downstream.z, 0, -downstream.x);
+  const depth = THREE.MathUtils.clamp(run + 2 * scale, 4 * scale, 12 * scale);
+  // The round pool sits beyond the original fall's bottom point, toward +Z.
+  const pool = bottom.clone().addScaledVector(downstream, 0.3 * depth);
+  const marker = new THREE.Group();
+  marker.name = id;
+  group.add(marker);
+
+  // Five shallow flecks still become one shared InstancedMesh for every fall.
   const offsets = [-0.4, -0.2, 0, 0.2, 0.4] as const;
   const sizeJitter = [0.94, 1.11, 0.89, 1.07, 0.97] as const;
   const foam = new THREE.InstancedMesh(
@@ -360,11 +366,10 @@ function makeFalls(group: THREE.Group, material: THREE.Material,
       color: 0xeaf8ff, transparent: true, opacity: 0.6, depthWrite: false,
     }), offsets.length);
   foam.name = id + '-foam';
-  const sideways = side.clone().normalize();
   const dummy = new THREE.Object3D();
   for (const [index, offset] of offsets.entries()) {
-    dummy.position.copy(b).addScaledVector(sideways, offset * newWidth);
-    dummy.position.y -= newWidth * 0.03; // sink the centre below the pool surface
+    dummy.position.copy(pool).addScaledVector(sideways, offset * newWidth);
+    dummy.position.y -= newWidth * 0.03;
     const fleckWidth = newWidth * sizeJitter[index]!;
     dummy.scale.set(fleckWidth * 0.16, fleckWidth * 0.07, fleckWidth * 0.16);
     dummy.updateMatrix();
@@ -439,6 +444,8 @@ function hoofingtonBackdropWaterfall(island: IslandData):
     if (Math.hypot(point.x - cx, point.z - cz) <= reach) obstacles.push(point);
   }
   for (const prop of island.props) {
+    // A cascade is the result of this search, never an obstacle to itself.
+    if (prop.kind === 'cascade') continue;
     const point = prop.transform.position;
     if (Math.hypot(point.x - cx, point.z - cz) <= reach) obstacles.push(point);
   }
@@ -483,6 +490,48 @@ function hoofingtonBackdropWaterfall(island: IslandData):
     }
   }
   return best;
+}
+
+/**
+ * Pure, deterministic site selection matching the former makeFalls calls.
+ * Uses final sampled terrain (not authored water levels); never consumes RNG.
+ * Returned vectors are newly allocated and may be used by both the descriptor
+ * pass and the water-foam renderer without mutating the island.
+ */
+export function waterfallSites(island: IslandData): WaterfallSite[] {
+  const sites: WaterfallSite[] = [];
+  const scale = island.size / 600;
+  const damPlot = island.plots.find(plot => plot.poiId === 'the-dam');
+  const insideDamPlot = (x: number, z: number): boolean =>
+    damPlot !== undefined && Math.hypot(x - damPlot.center.x,
+      z - damPlot.center.z) <= damPlot.radius;
+
+  for (let i = 0; i < island.river.length - 1; i++) {
+    const fall = riverCliffDrop(island, island.river[i]!, island.river[i + 1]!,
+      damPlot?.center);
+    if (fall) sites.push({ id: 'mountain-waterfall-' + i, ...fall });
+  }
+  for (const [i, angle] of [0.54, 0.89].entries()) {
+    const upperRadius = (i === 0 ? 38 : 74) * scale;
+    const lowerRadius = (i === 0 ? 46 : 83) * scale;
+    const x0 = Math.cos(angle) * upperRadius, z0 = Math.sin(angle) * upperRadius;
+    const x1 = Math.cos(angle) * lowerRadius, z1 = Math.sin(angle) * lowerRadius;
+    if (insideDamPlot(x0, z0)) continue;
+    const upper = gridSample(island, x0, z0);
+    const lower = gridSample(island, x1, z1);
+    if (upper - lower > 3 * scale) sites.push({
+      id: 'front-terrace-waterfall-' + (i + 1),
+      top: new THREE.Vector3(x0, upper + 0.26 * scale, z0),
+      bottom: new THREE.Vector3(x1, lower + 0.18 * scale, z1),
+      width: (i === 0 ? 5.1 : 4.2) * scale,
+    });
+  }
+  const backdrop = hoofingtonBackdropWaterfall(island);
+  if (backdrop) sites.push({
+    id: 'hoofington-backdrop-waterfall',
+    ...backdrop, width: 6 * scale,
+  });
+  return sites;
 }
 
 /** Reusable animated sea, river, reservoir and waterfall visual effects. */
@@ -576,45 +625,9 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
   foam.position.set(lake.center.x, reservoirHeight + 0.05 * scale, lake.center.z);
   foam.scale.set(lake.radiusX, lake.radiusZ, 1);
   inland.add(reservoir, foam);
-  // River-cliff curtains require a real 3 m descent across a 4 m run.
-  // Never infer a cascade from the old authored water-level steps.
-  const insideDamPlot = (x: number, z: number): boolean =>
-    damPlot !== undefined && Math.hypot(x - damPlot.center.x,
-      z - damPlot.center.z) <= damPlot.radius;
-  for (let i = 0; i < island.river.length - 1; i++) {
-    const fall = riverCliffDrop(island, island.river[i]!, island.river[i + 1]!,
-      damPlot?.center);
-    if (!fall) continue;
-    makeFalls(inland, stream.material, fall.top, fall.bottom, fall.width,
-      'mountain-waterfall-' + i);
-  }
-  // Visible terrace cascades on the southeast face. The northern stream's
-  // waterfalls are on the opposite side of Mt. Gigga from bookmark 12.
-  // Anchor each curtain to the sampled terraced slope, rather than projecting
-  // giant floating waterfall billboards from an arbitrary height.
-  for (const [i, angle] of [0.54, 0.89].entries()) {
-    const upperRadius = (i === 0 ? 38 : 74) * scale;
-    const lowerRadius = (i === 0 ? 46 : 83) * scale;
-    const x0 = Math.cos(angle) * upperRadius, z0 = Math.sin(angle) * upperRadius;
-    const x1 = Math.cos(angle) * lowerRadius, z1 = Math.sin(angle) * lowerRadius;
-    if (insideDamPlot(x0, z0)) continue;
-    const upper = gridSample(island, x0, z0);
-    const lower = gridSample(island, x1, z1);
-    if (upper - lower > 3 * scale) {
-      makeFalls(inland, stream.material,
-        new THREE.Vector3(x0, upper + 0.26 * scale, z0),
-        new THREE.Vector3(x1, lower + 0.18 * scale, z1),
-        (i === 0 ? 5.1 : 4.2) * scale,
-        'front-terrace-waterfall-' + (i + 1));
-    }
-  }
-  // HF-10: one hillside curtain in bookmark 08, using the same widened
-  // animated cascade and five foam instances as the other Mt. Gigga falls.
-  const hoofingtonFall = hoofingtonBackdropWaterfall(island);
-  if (hoofingtonFall) {
-    makeFalls(inland, stream.material, hoofingtonFall.top, hoofingtonFall.bottom,
-      6 * scale, 'hoofington-backdrop-waterfall');
-  }
+  // The authored cascade GLB owns all waterfall silhouettes and plunge pools.
+  // Keep the named mesh-free markers and the single instanced foam draw.
+  for (const site of waterfallSites(island)) makeWaterfallFoam(inland, site, scale);
   batchWaterfallFoam(inland);
   // The four spillway sheets and their foam now come from the custom Dam GLB.
   // Keep the mountain and river cascades, but do not draw duplicate dam falls.

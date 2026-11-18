@@ -75,7 +75,7 @@ const COLORS: Partial<Record<PropKind, number>> = {
   'kiosk-sign-candy': 0xffb19c,
   'palm-tree': 0x6d9b56, floodlight: 0xdfe4df, 'life-ring': 0xf5e1d4,
   'cable-spool': 0x9c7655, 'pallet-stack': 0xba8f62, 'log-bridge': 0x906742,
-  fern: 0x548e57, 'lily-pads': 0x5d9a65,
+  fern: 0x548e57, 'lily-pads': 0x5d9a65, cascade: 0x65bfdf,
 };
 const authoredKioskSignKinds = new Set<PropKind>([
   'kiosk-sign-icecream', 'kiosk-sign-popcorn', 'kiosk-sign-games',
@@ -84,7 +84,7 @@ const authoredKioskSignKinds = new Set<PropKind>([
 /** Authored painted hero dressing keeps its GLB vertex colours and full far LOD. */
 export const AUTHORED_HERO_DRESSING_KINDS: ReadonlySet<PropKind> = new Set([
   'palm-tree', 'floodlight', 'life-ring', 'cable-spool',
-  'pallet-stack', 'log-bridge', 'lily-pads',
+  'pallet-stack', 'log-bridge', 'lily-pads', 'cascade',
 ]);
 const authoredCraneYardKinds = new Set<PropKind>([
   'crane', 'crane-jib', 'crane-cab', 'crane-cable', 'red-girder',

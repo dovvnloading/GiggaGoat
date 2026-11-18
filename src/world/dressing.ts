@@ -4,6 +4,7 @@ import { gridSample, riverAt, segmentProjection, stampPlot } from './terrain';
 import { getDamPlacement } from './the-dam';
 import { damChannelAt } from './dam-landscape';
 import { isInsideDowntownInfillFootprint } from './visual-downtown';
+import { waterfallSites } from './visual-water';
 
 // Extra art and physical scenery must not intersect the authored shop infills.
 const INFILL_SCENERY_KINDS = new Set<PropKind>([
@@ -40,7 +41,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     const y = options.y ?? base + size.y / 2 + (options.lift ?? 0) * scale;
     const body: PropDescriptor['body'] = options.mass === undefined
       ? { type: 'static' } : { type: 'dynamic', mass: options.mass };
-    const nonInteractive = kind === 'fern' || kind === 'lily-pads';
+    const nonInteractive = kind === 'fern' || kind === 'lily-pads' || kind === 'cascade';
     const prop: PropDescriptor = {
       id: 'detail-' + (poiId ?? 'island') + '-' + kind + '-' + serial++,
       kind, ...(poiId ? { poiId } : {}),
@@ -690,6 +691,120 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       width / scale, forest, { yaw: fernRng.range(0, Math.PI * 2) });
     otherProps.push(fern);
     fernCount++;
+  }
+
+  // MG-5: Use exactly the sites chosen by the old water renderer. Feed it
+  // the complete dressing snapshot: the HF-10 visibility search has always
+  // excluded finished props, rather than just the initial island layout.
+  // This happens after all RNG-driven placements to preserve their sequence.
+  for (const site of waterfallSites({ ...island, props: [...island.props, ...result] })) {
+    const dx = site.bottom.x - site.top.x;
+    const dz = site.bottom.z - site.top.z;
+    const run = Math.hypot(dx, dz);
+    const width = Math.max(site.width * 1.6, 5 * scale);
+    const depth = Math.max(4 * scale, Math.min(12 * scale, run + 2 * scale));
+    const base = gridSample(island, site.bottom.x, site.bottom.z) - 0.2 * scale;
+    const height = site.top.y - base + 0.4 * scale;
+    const x = (site.top.x + site.bottom.x) / 2;
+    const z = (site.top.z + site.bottom.z) / 2;
+    const nearby = island.pois.reduce<{ id: PoiId; distance: number; radius: number } | undefined>(
+      (best, poi) => {
+        const distance = Math.hypot(x - poi.center.x, z - poi.center.z);
+        return !best || distance < best.distance ?
+          { id: poi.id, distance, radius: poi.radius } : best;
+      }, undefined);
+    const prop = place('cascade', x, z, width / scale, height / scale, depth / scale,
+      nearby && nearby.distance <= nearby.radius * 1.8 ? nearby.id : undefined,
+      { yaw: Math.atan2(dx, dz), y: base + height / 2 });
+    prop.id = 'waterfall-cascade-' + site.id;
+  }
+
+  // WP-4: Search a true six-metre terrain drop, not authored river water
+  // levels. The bridge is a river waypoint; distance is measured upstream
+  // along the polyline and interpolated across segment boundaries.
+  // All clearances are footprint tests against *every* collidable descriptor.
+  if (gladeBridge && crossingIndex > 0) {
+    interface RiverSample { x: number; z: number; width: number }
+    const upstreamAt = (distance: number): RiverSample | undefined => {
+      let remaining = distance;
+      for (let i = crossingIndex; i > 0; i--) {
+        const from = island.river[i]!, to = island.river[i - 1]!;
+        const run = Math.hypot(to.x - from.x, to.z - from.z);
+        if (run < 1e-6) continue;
+        if (remaining <= run) {
+          const t = remaining / run;
+          return {
+            x: from.x + (to.x - from.x) * t,
+            z: from.z + (to.z - from.z) * t,
+            width: from.width + (to.width - from.width) * t,
+          };
+        }
+        remaining -= run;
+      }
+      return undefined;
+    };
+    const bridgeFootprint: Footprint = {
+      x: gladeBridge.transform.position.x, z: gladeBridge.transform.position.z,
+      sx: gladeBridge.size.x + 16, sz: gladeBridge.size.z + 16,
+      yaw: gladeBridge.transform.rotationY,
+    };
+    const occupied = [...island.props, ...result].filter(p => p.collidable);
+    const free = (f: Footprint): boolean =>
+      !footprintOverlaps(f, bridgeFootprint) &&
+      !occupied.some(prop => footprintOverlaps(f, {
+        x: prop.transform.position.x, z: prop.transform.position.z,
+        sx: prop.size.x, sz: prop.size.z, yaw: prop.transform.rotationY,
+      }));
+    const rockW = 3.5 * scale, rockD = 3 * scale;
+    type GladeSite = { x: number; z: number; yaw: number; width: number;
+      drop: number; base: number; rocks: Array<{ x: number; z: number }> };
+    let best: GladeSite | undefined;
+    // Step at 0.5 m: pick the largest *fitting* drop in the first 60 m.
+    for (let fromBridge = 8; fromBridge + 6 <= 60; fromBridge += 0.5) {
+      const bottom = upstreamAt(fromBridge);
+      const top = upstreamAt(fromBridge + 6);
+      if (!bottom || !top) break;
+      const dx = bottom.x - top.x, dz = bottom.z - top.z;
+      const run = Math.hypot(dx, dz);
+      if (run < 1e-6) continue;
+      const drop = gridSample(island, top.x, top.z) -
+        gridSample(island, bottom.x, bottom.z);
+      if (drop <= 0 || (best && drop <= best.drop)) continue;
+      const yaw = Math.atan2(dx, dz);
+      const forwardX = dx / run, forwardZ = dz / run;
+      const acrossX = forwardZ, acrossZ = -forwardX;
+      const width = (top.width + bottom.width) * 0.65;
+      const depth = 4.5 * scale;
+      const x = (top.x + bottom.x) / 2, z = (top.z + bottom.z) / 2;
+      const falls: Footprint = { x, z, sx: width, sz: depth, yaw };
+      if (!free(falls)) continue;
+      const lipX = x - forwardX * (depth / 2 - 0.25 * scale);
+      const lipZ = z - forwardZ * (depth / 2 - 0.25 * scale);
+      const sideOffset = (width + rockW) / 2 - 0.08 * scale;
+      const rocks = [-1, 1].map(side => ({
+        x: lipX + acrossX * side * sideOffset,
+        z: lipZ + acrossZ * side * sideOffset,
+      }));
+      if (!rocks.every(r => free({ x: r.x, z: r.z,
+        sx: rockW, sz: rockD, yaw }))) continue;
+      best = {
+        x, z, yaw, width, drop,
+        base: gridSample(island, bottom.x, bottom.z) - 0.2 * scale,
+        rocks,
+      };
+    }
+    if (best) {
+      const height = Math.max(best.drop, 3.2 * scale);
+      const fall = place('cascade', best.x, best.z, best.width / scale,
+        height / scale, 4.5, forest,
+        { yaw: best.yaw, y: best.base + height / 2 });
+      fall.id = 'whispering-pines-glade-cascade';
+      for (const [i, rock] of best.rocks.entries()) {
+        const side = place('rock', rock.x, rock.z, 3.5, 2.4, 3, forest,
+          { yaw: best.yaw, shape: 'convex' });
+        side.id = 'whispering-pines-glade-lip-' + (i === 0 ? 'left' : 'right');
+      }
+    }
   }
 
   // generateIsland makes one more grading pass for the dressed farmhouse and
