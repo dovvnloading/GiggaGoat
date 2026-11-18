@@ -145,7 +145,7 @@ function setup() {
     paused: false,
     onFrame: null as null | (() => void),
     onInteract: null as null | (() => boolean),
-    input: { reset: vi.fn(), requestPointerLock: vi.fn() },
+    input: { setActive: vi.fn(), requestPointerLock: vi.fn() },
     hud: { setVisible: vi.fn() },
     renderer: { domElement: new NodeStub(doc) },
     applySettings: vi.fn(),

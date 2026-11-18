@@ -12,9 +12,13 @@ const trigger = (pad: Gamepad, index: number): boolean => (pad.buttons[index]?.v
 /** Browser-only adapter: no keyboard or Gamepad state leaks into the fixed-step rules. */
 export class GameInput {
   private readonly keys = new Set<string>();
+  private active = true;
   private mousePrimary = false;
   private mouseSecondary = false;
-  private unlockedPress: { x: number; y: number; elapsed: number; dragged: boolean } | null = null;
+  private unlockedHover: { x: number; y: number } | null = null;
+  private unlockedPress: {
+    x: number; y: number; startedAt: number; elapsed: number; dragged: boolean;
+  } | null = null;
   private buildToggleQueued = false;
   private buildPlaceQueued = false;
   private selected: PieceType | undefined;
@@ -65,13 +69,21 @@ export class GameInput {
     listen(document, 'visibilitychange', () => {
       if (document.hidden) this.reset();
     });
+    const clearHover = () => { this.unlockedHover = null; };
+    listen(canvas, 'mouseleave', clearHover);
+    listen(document, 'pointerlockchange', clearHover);
+    listen(document, 'pointerlockerror', clearHover);
     listen(canvas, 'mousedown', event => {
+      if (!this.active) return;
+      clearHover();
       if (event.button === 0) {
         if (document.pointerLockElement === canvas) {
           this.mousePrimary = true;
           this.buildPlaceQueued = true;
         } else {
-          this.unlockedPress = { x: event.clientX, y: event.clientY, elapsed: 0, dragged: false };
+          this.unlockedPress = {
+            x: event.clientX, y: event.clientY, startedAt: event.timeStamp, elapsed: 0, dragged: false,
+          };
         }
       }
       if (event.button === 2) this.mouseSecondary = true;
@@ -84,25 +96,34 @@ export class GameInput {
         this.mousePrimary = false;
         if (press && !press.dragged && !charged && event.target === canvas) {
           this.buildPlaceQueued = true;
-          void this.requestPointerLock();
+          // A hold can outlast the sampled charge delay when frames stall.
+          if (event.timeStamp - press.startedAt < CHARGE_HOLD_SECONDS * 1000) {
+            void this.requestPointerLock();
+          }
         }
       }
       if (event.button === 2) this.mouseSecondary = false;
     });
     listen(canvas, 'contextmenu', event => { event.preventDefault(); });
     listen(document, 'mousemove', event => {
+      if (!this.active) return;
       if (document.pointerLockElement === canvas) {
         this.look(event.movementX, event.movementY);
         return;
       }
-      const press = this.unlockedPress;
-      if (!press) return;
-      if (!(event.buttons & 1)) {
+      if (this.unlockedPress && !(event.buttons & 1)) {
         this.unlockedPress = null;
         this.mousePrimary = false;
+      }
+      if (event.buttons === 0 && event.target === canvas) {
+        const previous = this.unlockedHover;
+        this.unlockedHover = { x: event.clientX, y: event.clientY };
+        if (previous) this.look(event.clientX - previous.x, event.clientY - previous.y);
         return;
       }
-      if (this.mousePrimary) return;
+      clearHover();
+      const press = this.unlockedPress;
+      if (!press || this.mousePrimary) return;
       const dx = event.clientX - press.x, dy = event.clientY - press.y;
       if (!press.dragged && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
       press.dragged = true;
@@ -113,18 +134,23 @@ export class GameInput {
   }
 
   async requestPointerLock(): Promise<void> {
-    if (document.pointerLockElement === this.canvas) return;
+    if (!this.active || document.pointerLockElement === this.canvas) return;
     try {
       await this.canvas.requestPointerLock?.();
     } catch {
-      // Embedded or unfocused browsers can reject lock. Drag look is always available.
+      // Unlocked mouse look stays available when the browser rejects lock.
     }
   }
 
+  setActive(active: boolean): void {
+    this.active = active;
+    this.reset();
+  }
+
   private look(dx: number, dy: number): void {
-    this.yaw -= dx * .0026 * this.sensitivity;
+    this.yaw += dx * .0026 * this.sensitivity;
     this.pitch = Math.max(-.22, Math.min(1.15,
-      this.pitch + dy * .0021 * this.sensitivity * (this.invertY ? 1 : -1)));
+      this.pitch + dy * .0021 * this.sensitivity * (this.invertY ? -1 : 1)));
   }
 
   sample(dt: number, buildMode: boolean): PlayerIntent {
@@ -217,6 +243,7 @@ export class GameInput {
     this.keys.clear();
     this.mousePrimary = false;
     this.mouseSecondary = false;
+    this.unlockedHover = null;
     this.unlockedPress = null;
     this.pendingJump = this.pendingBleat = this.pendingFlop = this.pendingFling = false;
     this.pendingGraze = this.pendingInteract = false;
