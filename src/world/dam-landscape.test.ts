@@ -7,6 +7,7 @@ import { gridSample } from './terrain';
 import { damChannelAt, DAM_CHANNEL } from './dam-landscape';
 import { getDamPlacement } from './the-dam';
 import { buildDamVisuals } from './visual-dam';
+import { buildWaterVisuals } from './visual-water';
 import { DAM_BUOY_MODEL, DAM_BUOY_SIZE, buildDamLandscape, instanceDamAsset } from './visual-dam-landscape';
 import { publicAssetUrl } from './public-assets';
 
@@ -160,6 +161,56 @@ describe('The Dam downstream scenery', () => {
       vi.unstubAllGlobals();
       modelGeometry.dispose();
       modelMaterial.dispose();
+    }
+  });
+
+  it('keeps the actual Dam pine trunks off the rendered Pines outflow and on their banks', async () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const file = 'assets/library/custom/pines/pine.glb';
+    const source = Uint8Array.from(readFileSync('public/' + file)).buffer;
+    const gltf = await new GLTFLoader().parseAsync(source, '');
+    const load = vi.spyOn(GLTFLoader.prototype, 'load').mockImplementation((url, onLoad) => {
+      if (url === publicAssetUrl(file)) onLoad(gltf);
+    });
+    vi.stubGlobal('document', { createElement: () => ({ getContext: () => null }) });
+    const water = buildWaterVisuals(island);
+    let dam: ReturnType<typeof buildDamVisuals> | undefined;
+    try {
+      dam = buildDamVisuals(island);
+      dam.group.updateMatrixWorld(true);
+      water.inland.updateMatrixWorld(true);
+      const river = water.inland.getObjectByName('rippling-river')!;
+      const ray = new THREE.Raycaster();
+      const down = new THREE.Vector3(0, -1, 0);
+      const matrix = new THREE.Matrix4();
+      const position = new THREE.Vector3();
+      const size = new THREE.Vector3();
+      for (const [name, count] of [['dam-quaternius-pines', 38],
+        ['dam-full-canopy-kenney-pines', 44]] as const) {
+        const row = dam.group.getObjectByName(name)!;
+        const mesh = row.children[0] as THREE.InstancedMesh;
+        expect(mesh.count).toBe(count);
+        for (let i = 0; i < mesh.count; i++) {
+          mesh.getMatrixAt(i, matrix);
+          position.setFromMatrixPosition(matrix).applyMatrix4(mesh.matrixWorld);
+          size.setFromMatrixScale(matrix);
+          const radius = Math.min(.9, size.x * .2);
+          const label = name + ':' + i;
+          expect(position.y, label).toBeCloseTo(heightAt(island, position.x, position.z) -
+            (name === 'dam-quaternius-pines' ? .3 : .2), 4);
+          for (let sample = 0; sample <= 8; sample++) {
+            const angle = sample * Math.PI / 4;
+            const distance = sample === 8 ? 0 : radius;
+            ray.set(new THREE.Vector3(position.x + Math.cos(angle) * distance,
+              position.y + 30, position.z + Math.sin(angle) * distance), down);
+            expect(ray.intersectObject(river), label).toHaveLength(0);
+          }
+        }
+      }
+    } finally {
+      dam?.dispose();
+      load.mockRestore();
+      vi.unstubAllGlobals();
     }
   });
 

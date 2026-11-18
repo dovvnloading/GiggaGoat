@@ -3,9 +3,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData } from './types';
 import { SeededRandom } from './random';
-import { gridSample } from './terrain';
+import { gridSample, segmentProjection } from './terrain';
 import { damChannelAt, DAM_CHANNEL } from './dam-landscape';
 import { getDamPlacement } from './the-dam';
+import { cascadePoolCentre, makeForestOutflowClearance } from './visual-water';
 import { publicAssetUrl } from './public-assets';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 
@@ -448,6 +449,56 @@ function signLabel(group: THREE.Group, x: number, y: number, z: number, yaw: num
   group.add(board);
 }
 
+function movePinesToDryBanks(island: IslandData, pines: Placement[], origin: THREE.Vector3, scale: number,
+  height: (x: number, z: number) => number): ReadonlySet<Placement> {
+  const clearsOutflow = makeForestOutflowClearance(island);
+  const cascade = island.props.find(prop => prop.id === 'whispering-pines-glade-cascade');
+  const pool = cascade && cascadePoolCentre(cascade, scale);
+  const occupied = island.props.filter(prop => prop.collidable &&
+    Math.hypot(prop.transform.position.x - origin.x, prop.transform.position.z - origin.z) < 135 * scale);
+  const roadSegments = island.roads.flatMap(road => road.points.slice(1)
+    .map((b, i) => ({ a: road.points[i]!, b, radius: road.width / 2 })));
+  const discarded = new Set<Placement>();
+
+  for (const pine of pines) {
+    const radius = (Math.min(.9, pine.width * .2) + .5) * scale;
+    const clearWater = (x: number, z: number): boolean =>
+      clearsOutflow(x, z, radius) &&
+      (!cascade || !pool || Math.hypot(x - pool.x, z - pool.z) >= cascade.size.x / 2 + radius);
+    const worldX = origin.x + pine.x * scale, worldZ = origin.z + pine.z * scale;
+    if (clearWater(worldX, worldZ)) continue;
+    const drySpot = (x: number, z: number): boolean => {
+      const point = { x: origin.x + x * scale, z: origin.z + z * scale };
+      if (!clearWater(point.x, point.z)) return false;
+      const channel = damChannelAt(z);
+      if (Math.abs(x - channel.x) < channel.halfWidth + radius / scale) return false;
+      if (gridSample(island, point.x, point.z) <= island.seaLevel + .5 * scale) return false;
+      if (roadSegments.some(({ a, b, radius: shoulder }) =>
+        segmentProjection(point, a, b).distance < shoulder + radius)) return false;
+      if (occupied.some(({ size, transform }) => Math.hypot(
+        point.x - transform.position.x, point.z - transform.position.z,
+      ) < Math.min(Math.hypot(size.x, size.z) / 2, 6 * scale) + radius)) return false;
+      return !pines.some(other => other !== pine && !discarded.has(other) &&
+        Math.hypot(x - other.x, z - other.z) < 2);
+    };
+    let planted = false;
+    for (let distance = .75; distance <= 16 && !planted; distance += .75) {
+      for (let direction = 0; direction < 16; direction++) {
+        const angle = direction * Math.PI / 8;
+        const x = pine.x + Math.cos(angle) * distance, z = pine.z + Math.sin(angle) * distance;
+        if (!drySpot(x, z)) continue;
+        pine.y += height(x, z) - height(pine.x, pine.z);
+        pine.x = x;
+        pine.z = z;
+        planted = true;
+        break;
+      }
+    }
+    if (!planted) discarded.add(pine);
+  }
+  return discarded;
+}
+
 /** Scenic assets are optional at runtime; headless tests retain all geometry. */
 export function buildDamLandscape(
   island: IslandData, changed: () => void, light = new THREE.Vector3(1, 1, 1),
@@ -535,6 +586,8 @@ export function buildDamLandscape(
     pine.width = pine.height * 0.35;
     pine.depth = pine.width;
   }
+  // These scenic Dam models also reach the separate Pines outflow mesh.
+  const wetPines = movePinesToDryBanks(island, [...pines, ...fullPines], origin, scale, height);
   for (let i = 0; i < 25; i++) {
     const z = rng.range(13, 102);
     const section = damChannelAt(z);
@@ -589,10 +642,10 @@ export function buildDamLandscape(
       placements: riverRocks, stone: true },
     { name: 'dam-quaternius-pines',
       path: 'custom/pines/pine.glb',
-      placements: pines },
+      placements: pines.filter(pine => !wetPines.has(pine)) },
     { name: 'dam-full-canopy-kenney-pines',
       path: 'custom/pines/pine.glb',
-      placements: fullPines },
+      placements: fullPines.filter(pine => !wetPines.has(pine)) },
     { name: 'dam-grassy-bank-shrubs',
       path: 'kenney/nature-kit/plant_bushDetailed.glb',
       placements: shrubs, tint: 0x72ad55 },
