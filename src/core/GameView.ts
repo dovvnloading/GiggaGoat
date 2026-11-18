@@ -120,6 +120,8 @@ export class GameView {
     this.scene.fog = new THREE.FogExp2(SKY_HORIZON_COLOR, .0016);
     this.world = createWorldScene(game.island, { chunkSegments: 24, cullingDistance: 340 });
     this.scene.add(this.world.group);
+    if (this.scene.fog) this.scene.fog.color.copy(this.world.fogColor);
+    this.renderer.setClearColor(this.world.fogColor);
     this.world.sun.castShadow = true;
     this.world.sun.shadow.mapSize.set(1024, 1024);
     this.world.sun.shadow.camera.left = -42;
@@ -671,6 +673,8 @@ export class GameView {
     this.world.update(this.game.physics.time);
     const dayPhase = .5 + Math.sin(this.game.physics.time / 150) * .035;
     this.world.setDayNight(dayPhase);
+    if (this.scene.fog) this.scene.fog.color.copy(this.world.fogColor);
+    this.renderer.setClearColor(this.world.fogColor);
     this.updateCamera(alpha, dt);
     // Sampling ragdoll projections and reading DOM bounds at 60 Hz forced layout.
     // Resolving HUD and the safe-camera view offset at 20 Hz avoids that churn.

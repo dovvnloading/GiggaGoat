@@ -30,7 +30,8 @@ export type LightingPreset = 'day' | 'golden-hour' | 'night';
 
 export interface SkyVisuals {
   group: THREE.Group;
-  update(phase: number): { daylight: number; altitude: number; direction: THREE.Vector3 };
+  update(phase: number): { daylight: number; altitude: number;
+    direction: THREE.Vector3; golden: number; horizon: THREE.Color };
 }
 
 /** Gradient dome with an actual sun disc, cloud banks and softly glowing night stars. */
@@ -167,7 +168,20 @@ export function buildSkyVisuals(): SkyVisuals {
   stars.name = 'night-stars';
   group.add(stars);
 
-  function update(phase: number): { daylight: number; altitude: number; direction: THREE.Vector3 } {
+  // Evaluate the exact dome gradient at dir.y = 0, without the directional sun glow.
+  const horizonFactor = THREE.MathUtils.smoothstep(0, -0.15, 0.90);
+  const sunnyHorizon = SKY_HORIZON_COLOR.clone()
+    .lerp(new THREE.Color(0.08, 0.48, 0.94), horizonFactor);
+  const sunsetHorizon = GOLDEN_HOUR_SKY.horizon.clone()
+    .lerp(GOLDEN_HOUR_SKY.mid, THREE.MathUtils.smoothstep(horizonFactor, 0, 0.5))
+    .lerp(GOLDEN_HOUR_SKY.zenith, THREE.MathUtils.smoothstep(horizonFactor, 0.5, 1));
+  const nightHorizon = new THREE.Color(0.18, 0.22, 0.38)
+    .lerp(new THREE.Color(0.018, 0.045, 0.14), horizonFactor);
+  const dayHorizon = new THREE.Color();
+  const horizon = new THREE.Color();
+
+  function update(phase: number): { daylight: number; altitude: number;
+    direction: THREE.Vector3; golden: number; horizon: THREE.Color } {
     const angle = phase * Math.PI * 2 - Math.PI / 2;
     const altitude = Math.sin(angle);
     const daylight = THREE.MathUtils.clamp(altitude * 1.8 + 0.3, 0.025, 1);
@@ -175,6 +189,8 @@ export function buildSkyVisuals(): SkyVisuals {
     // Noon stays byte-for-byte on the original daytime shader path (golden=0).
     const golden = Math.min(1,
       Math.pow(1 - Math.min(1, Math.abs(altitude) * 1.9), 1.7) * daylight * 4.2);
+    dayHorizon.copy(sunnyHorizon).lerp(sunsetHorizon, golden);
+    horizon.copy(nightHorizon).lerp(dayHorizon, Math.max(daylight, golden));
     // Diagonal warm key, not a nearly vertical noon light that erases facade relief.
     const direction = new THREE.Vector3(Math.cos(angle) * 0.7 + 0.48 * daylight,
       altitude * 0.87, -0.63).normalize();
@@ -189,7 +205,7 @@ export function buildSkyVisuals(): SkyVisuals {
     cloudMaterial.color.setHex(golden > 0.32 ? 0xffcdb6 : 0xffffff);
     starMaterial.opacity = (1 - daylight) * 0.94;
     stars.visible = daylight < 0.7;
-    return { daylight, altitude, direction };
+    return { daylight, altitude, direction, golden, horizon };
   }
   update(0.5);
   return { group, update };

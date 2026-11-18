@@ -624,3 +624,70 @@ describe('Hoofington backdrop waterfall (HF-10)', () => {
     }
   });
 });
+
+describe('IS-22 shared water and foam lighting', () => {
+  it('tints every unlit water surface and foam fleck without accumulating colour changes', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const visuals = buildWaterVisuals(island);
+    const sky = buildSkyVisuals();
+    try {
+      const seaMaterial = visuals.sea.material as THREE.ShaderMaterial;
+      const uLight = seaMaterial.uniforms['uLight']!;
+      expect(uLight.value).toBeInstanceOf(THREE.Vector3);
+      expect((uLight.value as THREE.Vector3).toArray()).toEqual([1, 1, 1]);
+      const shaders = new Set<THREE.ShaderMaterial>();
+      const foam = new Map<THREE.MeshBasicMaterial, THREE.Color>();
+      for (const root of [visuals.sea, visuals.inland]) {
+        root.traverse(object => {
+          if (!(object instanceof THREE.Mesh)) return;
+          if (object.material instanceof THREE.ShaderMaterial) {
+            shaders.add(object.material);
+            expect(object.material.uniforms['uLight'], object.name).toBe(uLight);
+            expect(object.material.fragmentShader, object.name).toContain('* uLight');
+          } else if (object.material instanceof THREE.MeshBasicMaterial) {
+            foam.set(object.material, object.material.color.clone());
+          } else {
+            // The submerged seabed uses built-in Lambert lighting, not an unlit material.
+            expect(object.name).toBe('seabed-skirt');
+            expect(object.material).toBeInstanceOf(THREE.MeshLambertMaterial);
+          }
+        });
+      }
+      expect(shaders.size).toBe(3); // Sea, joined river/stream, and reservoir.
+      expect(foam.size).toBe(2); // Dam ring and batched waterfall foam.
+      for (const phase of [0.5, 0.285, 0.025, 0.5]) {
+        const { daylight, golden } = sky.update(phase);
+        visuals.setLighting(daylight, golden);
+        const light = uLight.value as THREE.Vector3;
+        const expected = phase === 0.025 ? [0.16, 0.20, 0.34] :
+          phase === 0.285 ? [1, 0.86, 0.74] : [1, 1, 1];
+        for (const [component, target] of light.toArray()
+          .map((value, index) => [value, expected[index]!] as const)) {
+          expect(Math.abs(component - target)).toBeLessThan(phase === 0.025 ? 0.02 : 1e-6);
+        }
+        for (const [material, base] of foam) {
+          expect(material.color.r).toBeCloseTo(base.r * light.x, 6);
+          expect(material.color.g).toBeCloseTo(base.g * light.y, 6);
+          expect(material.color.b).toBeCloseTo(base.b * light.z, 6);
+          if (phase === 0.025) expect(material.color.r).toBeLessThan(base.r * 0.2);
+        }
+      }
+    } finally {
+      disposeWaterMeshes(visuals);
+    }
+  });
+
+  it.each(['water-night-alt-A', 'water-night-alt-B'])('never throws on seed %s', seed => {
+    const island = generateIsland({ seed, resolution: 65 });
+    const visuals = buildWaterVisuals(island);
+    try {
+      expect(() => {
+        visuals.setLighting(0.025, 0);
+        visuals.update(0, island.seaLevel);
+        visuals.setLighting(1, 0);
+      }).not.toThrow();
+    } finally {
+      disposeWaterMeshes(visuals);
+    }
+  });
+});
