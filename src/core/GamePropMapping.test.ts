@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
-import { PropFactory, BUILD_PIECE_SIZES, DEFAULT_CRATE_SIZE,
-  type WorldLibraryPropKind } from '../props';
+import { PropFactory, BUILD_PIECE_SIZES, DEFAULT_CRATE_SIZE } from '../props';
+import type { WorldLibraryPropKind } from '../props/PropFactory';
 import { generateIsland } from '../world';
 import { PROP_LIBRARY_MODELS } from '../world/library-props';
 import { fitLibraryModel, isAuthoredLibraryAsset } from '../world/library-fit';
@@ -106,7 +106,7 @@ const assetBase = 'https://game.example/GiggaGoat/';
 
 function mockWorldModel(url: string): THREE.Object3D {
   const kind = worldKinds.find(k => url.endsWith(PROP_LIBRARY_MODELS[k]));
-  const dims: [number, number, number] = kind ? native[kind] : [1, 1, 1];
+  const dims: [number, number, number] = kind ? native[kind]! : [1, 1, 1];
   const root = new THREE.Group();
   // Offset and non-cubic native meshes exercise centroid correction, grounding
   // and the aspect-preserving quarter-turn path.
@@ -166,14 +166,14 @@ describe('world props use World Lab art rather than gig/build toys', () => {
       }
       const bounds = new THREE.Box3().setFromObject(root);
       const span = bounds.getSize(new THREE.Vector3());
-      const fit = fitLibraryModel(new THREE.Vector3(...native[kind]),
+      const fit = fitLibraryModel(new THREE.Vector3(...native[kind]!),
         new THREE.Vector3(size.x, size.y, size.z), PROP_LIBRARY_MODELS[kind]);
       const expected = isAuthoredLibraryAsset(PROP_LIBRARY_MODELS[kind])
         ? new THREE.Vector3(size.x, size.y, size.z)
         : new THREE.Vector3(
-          (fit.yaw ? native[kind][2] : native[kind][0]) * fit.scale.x,
-          native[kind][1] * fit.scale.y,
-          (fit.yaw ? native[kind][0] : native[kind][2]) * fit.scale.z);
+          (fit.yaw ? native[kind]![2] : native[kind]![0]) * fit.scale.x,
+          native[kind]![1] * fit.scale.y,
+          (fit.yaw ? native[kind]![0] : native[kind]![2]) * fit.scale.z);
       for (const axis of ['x', 'y', 'z'] as const) {
         expect(Math.abs(span[axis] - expected[axis]), kind + ':' + axis)
           .toBeLessThan(size[axis] * .02);
