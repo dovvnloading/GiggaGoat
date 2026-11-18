@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { gridIndex, segmentProjection } from './terrain';
+import { MOUNTAIN_SPIRAL_BRIDGE_PREFIX } from './roads';
 import type { IslandData, Vec2, Vec3 } from './types';
 import { TOON_RAMP } from './visual-props';
 
@@ -249,6 +250,13 @@ export function buildMountainWayfinding(island: IslandData): THREE.Group {
     if (cut.jump) parts.push(['box', 0, .83, 0, .34, .14, .34, 0xe39740, yaw]);
     add({ id: cut.id, markers: cut.markers, parts });
   }
+  const bridgeDecks = mountainSpiralBridgeGeometry(island);
+  if (bridgeDecks) {
+    features['mountain-spiral-bridge-decks'] = {
+      start: vertices, count: bridgeDecks.getAttribute('position').count,
+    };
+    pieces.push(bridgeDecks);
+  }
   if (pieces.length === 0) return group;
   const geometry = mergeGeometries(pieces);
   pieces.forEach(piece => piece.dispose());
@@ -262,4 +270,46 @@ export function buildMountainWayfinding(island: IslandData): THREE.Group {
   mesh.receiveShadow = true;
   group.add(mesh);
   return group;
+}
+
+function mountainSpiralBridgeGeometry(island: IslandData): THREE.BufferGeometry | undefined {
+  const positions: number[] = [], colors: number[] = [];
+  const timber = new THREE.Color(0x996841), alternate = new THREE.Color(0xa6744c);
+  const seams = new THREE.Color(0x765135);
+  function quad(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3,
+    color: THREE.Color): void {
+    for (const v of [a, b, c, a, c, d]) {
+      positions.push(v.x, v.y, v.z);
+      colors.push(color.r, color.g, color.b);
+    }
+  }
+  for (const deck of island.colliders) {
+    if (deck.shape !== 'convex' || !deck.vertices || !deck.id.startsWith(MOUNTAIN_SPIRAL_BRIDGE_PREFIX)) continue;
+    const origin = new THREE.Vector3().copy(deck.transform.position);
+    // Lift the timber skin slightly over the dirt ribbon that reaches the abutments.
+    origin.y += 0.018;
+    const vertex = (i: number) => new THREE.Vector3().fromArray(deck.vertices!, i * 3).add(origin);
+    const [left, leftBase, right, rightBase] = [vertex(0), vertex(1), vertex(2), vertex(3)];
+    const [farLeft, farLeftBase, farRight, farRightBase] = [vertex(4), vertex(5), vertex(6), vertex(7)];
+    quad(left, farLeft, farLeftBase, leftBase, seams);
+    quad(right, rightBase, farRightBase, farRight, seams);
+    quad(left, leftBase, rightBase, right, seams);
+    quad(farLeft, farRight, farRightBase, farLeftBase, seams);
+    quad(leftBase, farLeftBase, farRightBase, rightBase, seams);
+    const boards = Math.ceil(deck.size.z / .58);
+    for (let i = 0; i < boards; i++) {
+      const a = i / boards, b = (i + .95) / boards, end = (i + 1) / boards;
+      const span = (from: number, to: number, color: THREE.Color) =>
+        quad(left.clone().lerp(farLeft, from), right.clone().lerp(farRight, from),
+          right.clone().lerp(farRight, to), left.clone().lerp(farLeft, to), color);
+      span(a, b, i % 2 ? alternate : timber);
+      span(b, end, seams);
+    }
+  }
+  if (!positions.length) return;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.computeVertexNormals();
+  return geometry;
 }

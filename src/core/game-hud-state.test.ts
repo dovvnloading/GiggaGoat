@@ -1,9 +1,10 @@
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { EventBus, StyleSystem, TUNING } from '../gameplay';
 import type { HudInput } from './GameHudState';
 import { clampHudPercent, deriveHudState, formatHudObjective, projectHudMap } from './GameHudState';
 import { renderHudMinimap } from './HudArtwork';
-import { generateIsland } from '../world';
+import { biomeAt, createWorldScene, generateIsland } from '../world';
 
 const input = (): HudInput => ({
   meter: 0, tier: 'Kid', score: 0,
@@ -15,15 +16,80 @@ const input = (): HudInput => ({
 });
 
 describe('in-game HUD state projection', () => {
-  it('uses terrain crossings for the shore and keeps player art above the scenery', () => {
+  it('traces the actual Hoofington shoreline without painting inland sand tiles', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const origin = island.pois.find(poi => poi.id === 'hoofington')!.center;
+    const map = renderHudMinimap(island, origin);
+    const readPolygons = (feature: string): Array<Array<{ x: number; y: number }>> => {
+      const path = map.match(new RegExp('data-map-' + feature + ' d="([^"]*)"'))?.[1];
+      expect(path).toBeTruthy();
+      return (path ?? '').split('Z').filter(Boolean).map(polygon =>
+        [...polygon.matchAll(/[ML](-?[\d.]+),(-?[\d.]+)/g)].map(([, x, y]) =>
+          ({ x: Number(x), y: Number(y) })));
+    };
+    const includes = (x: number, y: number, polygons: ReturnType<typeof readPolygons>): boolean =>
+      polygons.some(polygon => {
+        let inside = false;
+        for (let i = 0; i < polygon.length; i++) {
+          const a = polygon[i]!, b = polygon[(i + 1) % polygon.length]!;
+          if ((a.y > y) !== (b.y > y) && x < a.x + (b.x - a.x) * (y - a.y) / (b.y - a.y)) {
+            inside = !inside;
+          }
+        }
+        return inside;
+      });
+    const ocean = readPolygons('ocean'), beach = readPolygons('beach');
+    expect(ocean.flat().some(point => point.x % 17.5 > .05 && point.y % 17.5 > .05)).toBe(true);
+    expect(ocean.length + beach.length).toBeLessThan(1_000);
+
+    const real = (x: number, y: number) => ({
+      x: origin.x + (x - 140) / 1.05, z: origin.z + (y - 140) / 1.05,
+    });
+    const world = createWorldScene(island, { chunkSegments: 32 });
+    world.group.updateMatrixWorld(true);
+    const ray = new THREE.Raycaster(), down = new THREE.Vector3(0, -1, 0);
+    let seaSamples = 0, shoreSamples = 0, removedBeige = 0;
+    try {
+      for (let y = 12.8; y < 268; y += 5) for (let x = 12.8; x < 268; x += 5) {
+        if (Math.hypot(x - 140, y - 140) > 127) continue;
+        const p = real(x, y);
+        ray.set(new THREE.Vector3(p.x, 300, p.z), down);
+        const elevation = ray.intersectObjects(world.chunks, false)[0]!.point.y;
+        if (elevation < -.5) {
+          expect(includes(x, y, ocean)).toBe(true);
+          seaSamples++;
+        } else if (elevation > .6 && elevation < 1.9) {
+          expect(includes(x, y, ocean)).toBe(false);
+          expect(includes(x, y, beach)).toBe(true);
+          shoreSamples++;
+        } else if (elevation > 3.35) {
+          const tile = real((Math.floor(x / 17.5) + .5) * 17.5, (Math.floor(y / 17.5) + .5) * 17.5);
+          const biome = biomeAt(island, tile.x, tile.z);
+          if (biome === 'beach' || biome === 'ocean') {
+            expect(includes(x, y, beach)).toBe(false);
+            removedBeige++;
+          }
+        }
+      }
+    } finally {
+      world.dispose();
+    }
+    expect(seaSamples).toBeGreaterThan(100);
+    expect(shoreSamples).toBeGreaterThan(25);
+    expect(removedBeige).toBeGreaterThan(2);
+  });
+
+  it('masks nearby scenery while preserving distinct full-contrast map layers', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
-    const coast = renderHudMinimap(island, { x: 0, z: 230 });
-    const outline = coast.match(/data-map-ocean d="([^"]+)"/)?.[1];
-    expect(outline).toBeDefined();
-    const coordinates = [...(outline ?? '').matchAll(/[ML]([\d.]+),([\d.]+)/g)]
-      .flatMap(match => [Number(match[1]), Number(match[2])]);
-    expect(coordinates.some(value => value % 17.5 !== 0)).toBe(true);
-    expect(coast.indexOf('opacity=".72"')).toBeLessThan(coast.indexOf('data-player'));
+    const map = renderHudMinimap(island, island.pois.find(poi => poi.id === 'hoofington')!.center);
+    const scenery = map.match(/<g data-map-scenery[^>]*>([^]*?)<\/g>/)?.[0];
+    expect(map).toContain('<circle data-map-player-clearance r="43"');
+    expect(map).toContain('stop-color="#373737"');
+    expect(scenery).toContain('mask="url(#gg-hud-map-scenery)"');
+    expect(scenery).toMatch(/data-sprite="icons\/marker_/);
+    expect(scenery).not.toContain('data-player>');
+    expect(scenery).not.toContain('data-map-objectives>');
+    expect(map).toContain('</g><g data-map-objectives></g><g data-player>');
   });
 
   it('shows every growth tier and clamps the live meter without changing simulation state', () => {

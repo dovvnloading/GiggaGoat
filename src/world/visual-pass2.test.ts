@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { createWorldScene, generateIsland, heightAt } from './index';
 import { AUTHORED_HERO_DRESSING_KINDS } from './visual-props';
 import type { IslandData, PropDescriptor, WorldScene } from './index';
-import { makeLocalStreets } from './roads';
+import { makeLocalStreets, MOUNTAIN_SPIRAL_BRIDGE_PREFIX } from './roads';
 import { segmentProjection } from './terrain';
 import { findBookmark } from './viewer/bookmarks';
 import { PINES_GLADE_CASCADE } from './visual-water';
@@ -58,6 +58,7 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
         const replacedFalls = prop.id === PINES_GLADE_CASCADE ||
           prop.id.startsWith('waterfall-cascade-front-terrace-waterfall-');
         if ((prop.poiId === 'old-lighthouse' && replacedLighthouseKinds.has(kind)) ||
+            prop.id.startsWith(MOUNTAIN_SPIRAL_BRIDGE_PREFIX) ||
             (replacedFalls && width === 0)) {
           // A zero-scale matrix is intentional; decompose() cannot recover its
           // scale and rotation. The collider descriptor still has real size.

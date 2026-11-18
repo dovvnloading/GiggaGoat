@@ -193,7 +193,16 @@ export class GoatRagdoll {
     this.parts.clear();
     this.hinges.length = 0;
   }
-  flop(): void { this.balance.flop(); }
+  flop(): void {
+    const planted = !this.isRagdoll && this.pose === 'stand' && this.locomotion.grounded;
+    this.balance.flop();
+    if (!planted) return;
+    // Turning off the motors leaves four braced legs bearing weight on flat
+    // ground. Deliberately fold the joints so a standing flop actually falls.
+    const curl = mul(rotate(this.torso.rotation(), V(1, 0, 0)), 3.7 * this.size ** (5 / 3));
+    for (const leg of this.legs) leg.applyTorqueImpulse(mul(curl, .10 * leg.mass()), true);
+    this.torso.applyTorqueImpulse(mul(curl, -.035 * this.mass), true);
+  }
   dispose(): void {
     if (this.destroyed) return;
     this.destroyed = true;

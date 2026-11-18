@@ -1,5 +1,6 @@
-import { biomeAt, heightAt, type IslandData, type PropDescriptor } from '../world';
+import { biomeAt, type Biome, type IslandData, type PropDescriptor } from '../world';
 import { boardwalkPierDecks } from '../world/boardwalk';
+import { gridIndex } from '../world/terrain';
 import { projectHudMap } from './GameHudState';
 import { HUD_SPRITES, hudSpriteImage, hudSpriteUrl, type HudSpriteName } from './HudSprites';
 
@@ -23,7 +24,7 @@ export function buildArtwork(type: string): string {
   return hudSpriteImage(sprite, 'gg-piece-art');
 }
 
-const biomeColors: Record<string, string> = {
+const biomeColors: Record<Biome, string> = {
   ocean: '#59bcdc', beach: '#eedb93', meadow: '#a5d974', farmland: '#a6d26b',
   town: '#a5d078', industrial: '#bdcda0', 'pine-forest': '#619e68',
   highlands: '#8fbd82', cliff: '#a8a997', freshwater: '#61bed4',
@@ -31,6 +32,7 @@ const biomeColors: Record<string, string> = {
 const MAP_TILES = 16;
 const MAP_TILE = 280 / MAP_TILES;
 const MAP_SCALE = 1.05;
+const MAX_SHORE_TILES = 96;
 
 interface MapHeight {
   x: number;
@@ -38,44 +40,77 @@ interface MapHeight {
   height: number;
 }
 
-function oceanPath(island: IslandData, origin: { x: number; z: number }): string {
-  const halfSize = island.size / 2;
-  const samples = Array.from({ length: MAP_TILES + 1 }, (_, row) =>
-    Array.from({ length: MAP_TILES + 1 }, (_, col): MapHeight => {
-      const x = col * MAP_TILE, y = row * MAP_TILE;
-      const worldX = origin.x + (x - 140) / MAP_SCALE;
-      const worldZ = origin.z + (y - 140) / MAP_SCALE;
-      const height = Math.max(Math.abs(worldX), Math.abs(worldZ)) > halfSize
-        ? -2 : heightAt(island, worldX, worldZ) - island.seaLevel;
-      return { x, y, height };
-    }));
+function shorePaths(island: IslandData, origin: { x: number; z: number }): string {
+  const { resolution, size, heights } = island;
+  const halfSize = size / 2;
+  const cell = size / (resolution - 1);
+  const mapRadius = 140 / MAP_SCALE;
+  // Use the same grid as the world mesh at normal resolutions. Bound the
+  // work for high-resolution worlds or island sizes under the minimap span.
+  const stride = Math.max(1, Math.ceil(2 * mapRadius / cell / MAX_SHORE_TILES));
+  const axis = (center: number) => {
+    const first = Math.floor((center - mapRadius + halfSize) / (cell * stride));
+    const last = Math.ceil((center + mapRadius + halfSize) / (cell * stride));
+    return Array.from({ length: last - first + 1 }, (_, i) => {
+      const index = (first + i) * stride;
+      const pixel = 140 + (index * cell - halfSize - center) * MAP_SCALE;
+      return { index, pixel };
+    });
+  };
+  const columns = axis(origin.x);
+  const samples = axis(origin.z).map(row => columns.map((column): MapHeight => {
+    const ix = column.index, iz = row.index;
+    const height = ix < 0 || iz < 0 || ix >= resolution || iz >= resolution
+      ? -2 : heights[gridIndex(resolution, ix, iz)]! - island.seaLevel;
+    return { x: column.pixel, y: row.pixel, height };
+  }));
+  return '<path data-map-beach d="' + sublevelPath(samples, 2.5 * island.size / 600) +
+    '" fill="' + biomeColors.beach + '"/>' +
+    '<path data-map-ocean d="' + sublevelPath(samples, 0) + '" fill="' + biomeColors.ocean + '"/>';
+}
+
+function sublevelPath(samples: MapHeight[][], level: number): string {
   const path: string[] = [];
   const add = (points: readonly Pick<MapHeight, 'x' | 'y'>[]): void => {
     if (points.length > 2) path.push('M' + points.map(p => n(p.x) + ',' + n(p.y)).join('L') + 'Z');
   };
-  function waterTriangle(triangle: readonly MapHeight[]): void {
-    const wet: Pick<MapHeight, 'x' | 'y'>[] = [];
+  function clipTriangle(triangle: readonly MapHeight[]): void {
+    const under: Pick<MapHeight, 'x' | 'y'>[] = [];
     for (const [index, a] of triangle.entries()) {
       const b = triangle[(index + 1) % triangle.length]!;
-      if (a.height <= 0) wet.push(a);
-      if ((a.height <= 0) !== (b.height <= 0)) {
-        const t = a.height / (a.height - b.height);
-        wet.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+      if (a.height <= level) under.push(a);
+      if ((a.height <= level) !== (b.height <= level)) {
+        const t = (a.height - level) / (a.height - b.height);
+        under.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
       }
     }
-    add(wet);
+    add(under);
   }
-  for (let row = 0; row < MAP_TILES; row++) for (let col = 0; col < MAP_TILES; col++) {
-    const a = samples[row]![col]!, b = samples[row]![col + 1]!;
-    const c = samples[row + 1]![col + 1]!, d = samples[row + 1]![col]!;
-    if (Math.max(a.height, b.height, c.height, d.height) <= 0) add([a, b, c, d]);
-    else if (Math.min(a.height, b.height, c.height, d.height) <= 0) {
-      waterTriangle([a, b, c]);
-      waterTriangle([a, c, d]);
+  const cols = samples[0]!.length - 1;
+  for (let row = 0; row < samples.length - 1; row++) {
+    const top = samples[row]!, bottom = samples[row + 1]!;
+    let run = -1;
+    for (let col = 0; col < cols; col++) {
+      const a = top[col]!, b = top[col + 1]!, c = bottom[col]!, d = bottom[col + 1]!;
+      if (Math.max(a.height, b.height, c.height, d.height) <= level) {
+        if (run < 0) run = col;
+        continue;
+      }
+      // Paint the filled part of each scanline as a single polygon.
+      if (run >= 0) {
+        add([top[run]!, a, c, bottom[run]!]);
+        run = -1;
+      }
+      if (Math.min(a.height, b.height, c.height, d.height) <= level) {
+        clipTriangle([a, b, c]);
+        clipTriangle([b, d, c]);
+      }
     }
+    if (run >= 0) add([top[run]!, top[cols]!, bottom[cols]!, bottom[run]!]);
   }
-  return '<path data-map-ocean d="' + path.join('') + '" fill="' + biomeColors.ocean + '"/>';
+  return path.join('');
 }
+
 /** Sprite markers sit on top of the live biome and road SVG. */
 function mapImage(name: HudSpriteName, x: number, y: number, w: number, h: number): string {
   return '<image data-sprite="' + name + '" href="' + hudSpriteUrl(name) +
@@ -101,7 +136,8 @@ export function renderHudMinimap(island: IslandData, origin: { x: number; z: num
     const worldX = origin.x + (mapX - 140) / MAP_SCALE;
     const worldZ = origin.z + (mapY - 140) / MAP_SCALE;
     const biome = biomeAt(island, worldX, worldZ);
-    const color = biome === 'ocean' ? biomeColors.beach : biomeColors[biome] ?? '#9ace69';
+    // Reserve the shoreline colors for the finer elevation contours.
+    const color = biome === 'ocean' || biome === 'beach' ? biomeColors.meadow : biomeColors[biome];
     terrain.push('<rect x="' + n(col * MAP_TILE) + '" y="' + n(row * MAP_TILE) +
       '" width="' + n(MAP_TILE + .2) + '" height="' + n(MAP_TILE + .2) + '" fill="' + color + '"/>');
   }
@@ -149,10 +185,16 @@ export function renderHudMinimap(island: IslandData, origin: { x: number; z: num
     if (point.x < 0 || point.x > 280 || point.y < 0 || point.y > 280) return '';
     return mapImage(HUD_SPRITES.mapPin, point.x, point.y - 2, 16, 20);
   }).join('');
-  return '<defs><clipPath id="gg-hud-map-clip"><circle cx="140" cy="140" r="132"/></clipPath></defs>' +
-    '<g clip-path="url(#gg-hud-map-clip)">' + terrain.join('') + oceanPath(island, origin) +
-    roads.join('') + decking + '<g opacity=".72">' + trees.join('') + structures.join('') +
-    '</g>' + boards +
+  return '<defs><clipPath id="gg-hud-map-clip"><circle cx="140" cy="140" r="132"/></clipPath>' +
+    '<radialGradient id="gg-hud-map-clearance"><stop offset=".35" stop-color="#373737"/>' +
+    '<stop offset="1" stop-color="white"/></radialGradient>' +
+    '<mask id="gg-hud-map-scenery" maskUnits="userSpaceOnUse" x="0" y="0" width="280" height="280">' +
+    '<rect width="280" height="280" fill="white"/>' +
+    '<circle data-map-player-clearance r="43" fill="url(#gg-hud-map-clearance)"/></mask></defs>' +
+    '<g clip-path="url(#gg-hud-map-clip)">' + terrain.join('') + shorePaths(island, origin) +
+    roads.join('') + decking + '<g data-map-scenery mask="url(#gg-hud-map-scenery)" opacity=".63">' +
+    trees.join('') + structures.join('') + boards + '</g>' +
+    '<g data-map-objectives></g>' +
     '<g data-player><path d="M0 -17 L12 14 L0 8 L-12 14Z" fill="#fff7df" stroke="#88411d" stroke-width="6" stroke-linejoin="round"/>' +
     '<path d="M0 -17 L12 14 L0 8 L-12 14Z" fill="#ff8e28" stroke="#ffe883" stroke-width="2"/></g></g>' +
     '<circle cx="140" cy="140" r="132" fill="none" stroke="#f6d78d" stroke-width="6"/>';

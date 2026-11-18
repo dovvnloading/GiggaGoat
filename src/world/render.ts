@@ -20,6 +20,7 @@ import { buildLighthouseVisuals, makeCapeLighting } from './visual-lighthouse';
 import { buildHoofingtonVisuals } from './visual-hoofington';
 import { buildDowntownVisuals } from './visual-downtown';
 import { buildMountainWayfinding } from './visual-mountain';
+import { MOUNTAIN_SPIRAL_BRIDGE_PREFIX } from './roads';
 import { buildSkyVisuals, type LightingPreset } from './visual-sky';
 
 export { isDowntownRoadOverlay, isHoofingtonTrailOverlay } from './road-ribbons';
@@ -420,8 +421,11 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     : island;
   const sky = buildSkyVisuals();
   const waterVisuals = buildWaterVisuals(island, sky.atmosphere);
-  const props = buildPropVisuals(scenery.props, options.propChunkSize ?? 96, scenery,
-    waterVisuals.replacedCascadeIds);
+  const replacedProps = new Set(waterVisuals.replacedCascadeIds);
+  for (const deck of island.colliders) {
+    if (deck.shape === 'convex' && deck.id.startsWith(MOUNTAIN_SPIRAL_BRIDGE_PREFIX)) replacedProps.add(deck.id);
+  }
+  const props = buildPropVisuals(scenery.props, options.propChunkSize ?? 96, scenery, replacedProps);
   group.add(props.group);
   const hoofington = buildHoofingtonVisuals(scenery, props.group);
   group.add(hoofington.group);

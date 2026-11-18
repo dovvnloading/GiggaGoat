@@ -7,7 +7,7 @@ import {
   assignBiomes, carveWater, clearTerrainUnderBridge, gridCoordinate, gridIndex, gridSample, makeTerrain,
   preserveLighthouseChannel, sculptLighthouseSeaCave, sculptMountainCaveLanding, stampPlot,
 } from './terrain';
-import { makeRoads, makeBridgeDecks } from './roads';
+import { makeRoads, makeBridgeDecks, MOUNTAIN_SPIRAL_TRAIL } from './roads';
 import { makeRoadsideProps } from './roadside-stops';
 import { populateProps } from './layouts';
 import { dressIsland } from './dressing';
@@ -170,6 +170,19 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   gradeBuildingFootprints(island, dressed);
   gradeDowntownMarket(island);
   island.props.push(...dressed, ...makeBridgeDecks(island));
+  const spiral = island.roads.find(road => road.id === MOUNTAIN_SPIRAL_TRAIL);
+  if (spiral) {
+    const northwest = spiral.points.findIndex(point => point.bridge && point.x < 0 &&
+      point.z > -82 * scale && point.z < -60 * scale);
+    if (northwest >= 0) {
+      let last = northwest;
+      while (spiral.points[last + 1]?.bridge) last++;
+      // Only the uphill handoff intersects the cliff. Start the fit at its
+      // approach panel so the lower span keeps the adjacent planted terrace.
+      clearTerrainUnderBridge(island, { ...spiral, points: spiral.points.slice(Math.max(last - 1, 0), last + 3) },
+        spiral.width + 1);
+    }
+  }
   // Restore the full water gap after footings have feathered toward the bridge.
   preserveLighthouseChannel(island, lighthouse.center);
   const lighthouseRoad = island.roads.find(road => road.to === 'old-lighthouse' || road.from === 'old-lighthouse');

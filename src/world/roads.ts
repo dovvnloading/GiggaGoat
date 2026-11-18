@@ -305,37 +305,40 @@ export function makeBridgeDecks(island: IslandData): import('./types').PropDescr
   return decks;
 }
 
-/** Sloped convex pieces meet at the same cross section, eliminating the stair risers
- * created by overlapping horizontal planks on the steep lighthouse approach. */
-export function makeLighthouseBridgeColliders(island: IslandData): Map<string, PropColliderDescriptor> {
-  const road = island.roads.find(r => r.to === 'old-lighthouse' || r.from === 'old-lighthouse');
-  const colliders = new Map<string, PropColliderDescriptor>();
-  if (!road) return colliders;
+export const MOUNTAIN_SPIRAL_TRAIL = 'downtown-bleatsville--mt-gigga';
+export const MOUNTAIN_SPIRAL_BRIDGE_PREFIX = 'bridge-' + MOUNTAIN_SPIRAL_TRAIL + '-';
 
+/** Sloped decks on the coastal and mountain grades share a cross section at each seam. */
+export function makeGradedBridgeColliders(island: IslandData): Map<string, PropColliderDescriptor> {
+  const roads = island.roads.filter(road => road.id === MOUNTAIN_SPIRAL_TRAIL ||
+    road.to === 'old-lighthouse' || road.from === 'old-lighthouse');
+  const colliders = new Map<string, PropColliderDescriptor>();
   const thickness = 0.7 * island.size / 600;
-  const width = road.width + 1;
-  const sides = road.points.map((_, i) => roadSideOffset(road, i, width / 2));
-  for (let i = 0; i < road.points.length - 1; i++) {
-    const a = road.points[i]!, b = road.points[i + 1]!;
-    const length = Math.hypot(b.x - a.x, b.z - a.z);
-    if ((!a.bridge && !b.bridge) || length < 0.05) continue;
-    const position = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 };
-    const vertices: number[] = [];
-    for (const end of [i, i + 1]) {
-      const point = road.points[end]!, side = sides[end]!;
-      const top = point.y + 0.19 - position.y; // Match the graded trail surface.
-      for (const sign of [-1, 1]) {
-        const x = point.x + sign * side.x - position.x;
-        const z = point.z + sign * side.z - position.z;
-        vertices.push(x, top, z, x, top - thickness, z);
+  for (const road of roads) {
+    const width = road.width + 1;
+    const sides = road.points.map((_, i) => roadSideOffset(road, i, width / 2));
+    for (let i = 0; i < road.points.length - 1; i++) {
+      const a = road.points[i]!, b = road.points[i + 1]!;
+      const length = Math.hypot(b.x - a.x, b.z - a.z);
+      if ((!a.bridge && !b.bridge) || length < 0.05) continue;
+      const position = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 };
+      const vertices: number[] = [];
+      for (const end of [i, i + 1]) {
+        const point = road.points[end]!, side = sides[end]!;
+        const top = point.y + 0.19 - position.y; // Match the graded trail surface.
+        for (const sign of [-1, 1]) {
+          const x = point.x + sign * side.x - position.x;
+          const z = point.z + sign * side.z - position.z;
+          vertices.push(x, top, z, x, top - thickness, z);
+        }
       }
+      const id = 'bridge-' + road.id + '-' + i;
+      colliders.set(id, {
+        id, shape: 'convex', body: { type: 'static' }, transform: { position, rotationY: 0 },
+        size: { x: width, y: thickness + Math.abs(b.y - a.y), z: length },
+        vertices: new Float32Array(vertices),
+      });
     }
-    const id = 'bridge-' + road.id + '-' + i;
-    colliders.set(id, {
-      id, shape: 'convex', body: { type: 'static' }, transform: { position, rotationY: 0 },
-      size: { x: width, y: thickness + Math.abs(b.y - a.y), z: length },
-      vertices: new Float32Array(vertices),
-    });
   }
   return colliders;
 }
