@@ -36,7 +36,9 @@ export function buildMeadowScatter(island: IslandData): THREE.Group {
   const limit = Math.min(3500, Math.round(1900 * scale));
   const sites = island.pois.filter(p => p.id !== 'mt-gigga' && p.id !== 'the-dam');
   const architecture = island.props.filter(p =>
-    ['house', 'barn', 'shop', 'booth', 'cottage', 'control-house', 'windmill'].includes(p.kind));
+    ['house', 'barn', 'shop', 'booth', 'kiosk-icecream', 'kiosk-popcorn',
+      'kiosk-games', 'kiosk-prizes', 'kiosk-candy',
+      'cottage', 'control-house', 'windmill'].includes(p.kind));
   const downtown = island.pois.find(p => p.id === 'downtown-bleatsville')?.center;
   const craneYard = island.pois.find(p => p.id === 'crane-yard')?.center;
   const roadSamples = [...island.roads, ...makeLocalStreets(island)].flatMap(road =>

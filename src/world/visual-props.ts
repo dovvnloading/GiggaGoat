@@ -56,6 +56,9 @@ const COLORS: Partial<Record<PropKind, number>> = {
   windmill: 0xf3ead6, lighthouse: 0xf9e5cc, 'ferris-wheel': 0xf5a0c1,
   crane: 0xffc94c, scaffold: 0xd4a667, beam: 0xffc44e, pier: 0xaf845b,
   'pier-rail': 0xffffff, deck: 0xb68a66, bumper: 0xdf8bdc, booth: 0xf7a07e,
+  'kiosk-icecream': 0xf0757c, 'kiosk-popcorn': 0xffc567,
+  'kiosk-games': 0x65c8cc, 'kiosk-prizes': 0xd78abf,
+  'kiosk-candy': 0xff9469,
   'satellite-dish': 0xdce5e8, 'dam-wall': 0xa4b1bc, fence: 0xe5c587,
   'hay-bale': 0xf2c14f, crate: 0xc4915f, barrel: 0xe67d5d,
   rock: 0x8c919e, log: 0x9a6d48, lamp: 0xffe5b7, ramp: 0xe5b974,
@@ -78,6 +81,10 @@ const COLORS: Partial<Record<PropKind, number>> = {
   fern: 0x548e57, 'lily-pads': 0x5d9a65, cascade: 0x65bfdf,
   'cascade-tall': 0x65bfdf,
 };
+const authoredKioskKinds = new Set<PropKind>([
+  'kiosk-icecream', 'kiosk-popcorn', 'kiosk-games',
+  'kiosk-prizes', 'kiosk-candy',
+]);
 const authoredKioskSignKinds = new Set<PropKind>([
   'kiosk-sign-icecream', 'kiosk-sign-popcorn', 'kiosk-sign-games',
   'kiosk-sign-prizes', 'kiosk-sign-candy',
@@ -580,8 +587,8 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
   } else if (kind === 'ac-unit') {
     box(0, 0, 0, 0.92, 0.83, 0.94, 0xc8d4d5);
     cyl(0, 0.44, 0, 0.65, 0.09, 0.65, 0x72878c, 10);
-  } else if (authoredKioskSignKinds.has(kind)) {
-    // Coloured, descriptor-sized box if a named sign GLB fails to load.
+  } else if (authoredKioskKinds.has(kind) || authoredKioskSignKinds.has(kind)) {
+    // Own-colour, descriptor-sized box if a kiosk or named sign GLB fails to load.
     box(0, 0, 0, 1, 1, 1, COLORS[kind]);
   } else if (kind === 'sign' || kind === 'signboard') {
     if (kind === 'sign') box(0, -0.21, 0, 0.08, 0.58, 0.10, 0x98704e);
@@ -655,13 +662,13 @@ const SHADOW_KINDS = new Set<PropKind>([
 /** Blender-authored Baa-ardwalk pieces are low-poly with painted materials. */
 const authoredBaaardwalkKinds = new Set<PropKind>([
   'pier', 'pier-rail', 'scaffold', 'booth', 'awning', 'signboard',
-  ...authoredKioskSignKinds,
+  ...authoredKioskKinds, ...authoredKioskSignKinds,
   'ferris-wheel', 'trampoline', 'bumper',
 ]);
-/** Kiosks alone have white walls for full-strength descriptor tint. */
+/** New themed kiosks retain their own paint; only the legacy booth is tinted. */
 const authoredBaaardwalkPaintedKinds = new Set<PropKind>([
   'pier', 'pier-rail', 'scaffold', 'awning', 'signboard',
-  ...authoredKioskSignKinds,
+  ...authoredKioskKinds, ...authoredKioskSignKinds,
   'ferris-wheel', 'trampoline', 'bumper',
 ]);
 /** Low-poly Blender town/farm models retain their native paint at every LOD. */
@@ -769,7 +776,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       dummy.scale.set(prop.size.x, prop.size.y, prop.size.z);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
-      mesh.setColorAt(i, new THREE.Color(foliage.has(kind) || authoredKioskSignKinds.has(kind)
+      mesh.setColorAt(i, new THREE.Color(foliage.has(kind) || authoredKioskKinds.has(kind) ||
+        authoredKioskSignKinds.has(kind)
         ? 0xffffff : (prop.color ?? COLORS[kind] ?? 0xc6c0a5)));
     }
     mesh.instanceMatrix.needsUpdate = true;
@@ -826,7 +834,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     const priorityKinds: readonly PropKind[] = [
       'tree-oak', 'tree-pine', 'planter', 'bush', 'flower', 'grass-tuft',
       'lamp', 'bench', 'fence', 'shop', 'house', 'cottage', 'crate', 'barrel',
-      'sign', 'container', 'crane', 'ferris-wheel',
+      'sign', 'container', 'crane', 'ferris-wheel', ...authoredKioskKinds,
     ];
     // Populate the art camera first while other district models stream in.
     jobs.sort((a, b) => {
@@ -879,8 +887,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
             });
           }
           job.mesh.geometry = libraryGeometry;
-          // Preserve authored Crane Yard / Baa-ardwalk paint. White kiosks
-          // and Crane Yard containers take their descriptor colour at full strength.
+          // Preserve the new themed kiosks and other authored boardwalk paint.
+          // Only legacy white booths and Crane Yard containers take descriptor tint.
           for (let i = 0; i < job.entries.length; i++) {
             const color = job.entries[i]!.color;
             job.mesh.setColorAt(i,
