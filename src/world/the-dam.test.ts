@@ -71,7 +71,7 @@ describe('The Dam hero POI', () => {
     const prepared = prepareDamModel(root, island);
     const meshes = prepared.group.children.filter((child): child is THREE.Mesh =>
       child instanceof THREE.Mesh);
-    expect(meshes.length).toBe(4); // two masonry batches + waterfall + reservoir
+    expect(meshes.length).toBe(3); // two masonry batches and the flowing spillways
     expect(meshes.filter(mesh => mesh.castShadow)).toHaveLength(1);
     expect(meshes.filter(mesh => mesh.name.startsWith('Water_Fall_'))).toHaveLength(1);
     expect(prepared.waterfallMaps).toHaveLength(1);

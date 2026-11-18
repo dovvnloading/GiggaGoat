@@ -12,7 +12,7 @@ import { populateProps } from './layouts';
 import { dressIsland } from './dressing';
 import { makeRelics, makeSpawns } from './collectibles';
 import { makeColliderDescriptors } from './colliders';
-import { sculptDamOutflow } from './dam-landscape';
+import { sculptDamHeadwater, sculptDamOutflow } from './dam-landscape';
 
 interface SiteDefinition {
   id: PoiId; name: string; x: number; z: number; radius: number;
@@ -177,6 +177,7 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
     position.y += ground - capeGround;
     return true;
   });
+  sculptDamHeadwater(island);
   assignBiomes(island);
   island.spawns = makeSpawns(island);
   island.relics = makeRelics(island, rng);

@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData, PropDescriptor, RiverPoint, Vec2, Vec3 } from './types';
 import { gridSample } from './terrain';
 import { skyColorGLSL, skyUniforms } from './visual-sky';
+import { damHeadwaterSurface, getDamHeadwater } from './dam-landscape';
 import { findBookmark } from './viewer/bookmarks';
 
 /**
@@ -635,10 +636,58 @@ export function waterfallSites(island: IslandData): WaterfallSite[] {
   return sites;
 }
 
+function buildDamReservoir(island: IslandData, light: LightUniform, time: { value: number }): THREE.Mesh {
+  const { positions, depths } = damHeadwaterSurface(island);
+  const { scale } = getDamHeadwater(island);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('depth', new THREE.Float32BufferAttribute(depths, 1));
+  const material = new THREE.ShaderMaterial({
+    uniforms: { uTime: time, uLight: light, uScale: { value: scale } },
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    vertexShader: [
+      'attribute float depth;',
+      'varying float vDepth;',
+      'varying vec2 vGround;',
+      'void main() {',
+      '  vDepth = depth;',
+      '  vGround = position.xz;',
+      '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+      '}',
+    ].join('\n'),
+    fragmentShader: [
+      'uniform float uTime, uScale;',
+      'uniform vec3 uLight;',
+      'varying float vDepth;',
+      'varying vec2 vGround;',
+      'float wave(float phase) {',
+      '  return sin(phase) * (1.0 - smoothstep(0.45, 1.5, fwidth(phase)));',
+      '}',
+      'void main() {',
+      '  float depth = vDepth / uScale;',
+      '  vec2 xz = vGround / uScale;',
+      '  float ripple = 0.58 * wave(dot(xz, vec2(0.48, 0.32)) - uTime * 1.12)',
+      '    + 0.42 * wave(dot(xz, vec2(-0.34, 0.52)) + uTime * 0.84);',
+      '  float deep = smoothstep(0.0, 2.9, depth);',
+      '  vec3 color = mix(vec3(0.30, 0.73, 0.69), vec3(0.13, 0.46, 0.63), deep);',
+      '  color += vec3(0.023, 0.055, 0.063) * ripple;',
+      '  float wash = smoothstep(0.04, 0.17, depth) * (1.0 - smoothstep(0.17, 0.46, depth));',
+      '  color = mix(color, vec3(0.69, 0.88, 0.76), wash * (0.12 + 0.09 * ripple));',
+      '  float cover = smoothstep(0.0, 0.19, depth);',
+      '  gl_FragColor = sRGBTransferEOTF(vec4(color * uLight, 0.92 * cover));',
+      '  #include <colorspace_fragment>',
+      '}',
+    ].join('\n'),
+  });
+  const surface = new THREE.Mesh(geometry, material);
+  surface.name = 'dam-reservoir';
+  return surface;
+}
+
 /** Reusable animated sea, river, reservoir and waterfall visual effects. */
 export function buildWaterVisuals(island: IslandData,
   atmosphere = skyUniforms()): WaterVisuals {
-  // One shared tint reaches every unlit water shader, including the reservoir clone.
+  // The sea, rivers and reservoir share the same daylight tint.
   const uLight: LightUniform = { value: new THREE.Vector3(1, 1, 1) };
   const nightLight = new THREE.Vector3(0.16, 0.20, 0.34);
   const dayLight = new THREE.Vector3(1, 1, 1);
@@ -688,50 +737,10 @@ export function buildWaterVisuals(island: IslandData,
   } else {
     inland.add(upstream, forestOutflow);
   }
-  const lake = island.reservoir;
   const scale = island.size / 600;
-  const reservoirHeight = lake.level - 1.5 * scale; // Visual only; gameplay lake.level stays fixed.
-  const reservoirGeometry = new THREE.CircleGeometry(1, 64);
-  const positions = reservoirGeometry.getAttribute('position');
-  const colours: number[] = [];
-  const deep = new THREE.Color(0x2a8fc0), shore = new THREE.Color(0x48c9c9);
-  const paint = new THREE.Color();
-  for (let i = 0; i < positions.count; i++) {
-    paint.copy(deep).lerp(shore, Math.min(1,
-      Math.hypot(positions.getX(i), positions.getY(i))));
-    colours.push(paint.r, paint.g, paint.b);
-  }
-  reservoirGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3));
-  // Only the reservoir shader reads the radial paint. Rivers and waterfalls
-  // keep their existing animated water material, and both share the uTime clock.
-  const reservoirMaterial = stream.material.clone();
-  reservoirMaterial.uniforms['uTime'] = stream.material.uniforms['uTime']!;
-  reservoirMaterial.uniforms['uLight'] = stream.material.uniforms['uLight']!;
-  reservoirMaterial.vertexShader = stream.material.vertexShader
-    .replace('varying vec2 vUv; varying vec3 vWorld;',
-      'attribute vec3 color; varying vec3 vReservoirColor; varying vec2 vUv; varying vec3 vWorld;')
-    .replace('  vUv = uv;', '  vUv = uv; vReservoirColor = color;');
-  reservoirMaterial.fragmentShader = stream.material.fragmentShader
-    .replace('uniform float uTime; uniform vec3 uLight; varying vec2 vUv; varying vec3 vWorld;',
-      'uniform float uTime; uniform vec3 uLight; varying vec3 vReservoirColor; varying vec2 vUv; varying vec3 vWorld;')
-    .replace('  gl_FragColor = vec4(col * uLight, 0.91);',
-      '  gl_FragColor = vec4(mix(vReservoirColor, col, 0.18) * uLight, 0.91);');
-  const reservoir = new THREE.Mesh(reservoirGeometry, reservoirMaterial);
-  reservoir.name = 'dam-reservoir';
-  reservoir.rotation.x = -Math.PI / 2;
-  reservoir.position.set(lake.center.x, reservoirHeight, lake.center.z);
-  reservoir.scale.set(lake.radiusX, lake.radiusZ, 1);
-
-  const foam = new THREE.Mesh(new THREE.RingGeometry(0.96, 1.02, 64),
-    new THREE.MeshBasicMaterial({
-      color: 0xf2fbff, opacity: 0.7, transparent: true,
-      depthWrite: false, side: THREE.DoubleSide,
-    }));
-  foam.name = 'dam-reservoir-foam';
-  foam.rotation.x = -Math.PI / 2;
-  foam.position.set(lake.center.x, reservoirHeight + 0.05 * scale, lake.center.z);
-  foam.scale.set(lake.radiusX, lake.radiusZ, 1);
-  inland.add(reservoir, foam);
+  const reservoir = buildDamReservoir(island, uLight, stream.time);
+  const headwaterLevel = getDamHeadwater(island).level;
+  inland.add(reservoir);
   // The authored cascade GLB owns all waterfall silhouettes and plunge pools.
   // Keep the named mesh-free markers and the single instanced foam draw.
   for (const prop of island.props) {
@@ -770,7 +779,8 @@ export function buildWaterVisuals(island: IslandData,
       stream.time.value = time;
       sea.position.y = tide;
       skirt.position.z = -tide; // Keep the skirt fixed under the rising sea.
-      inland.visible = tide < lake.level + 2 * scale;
+      reservoir.visible = tide < headwaterLevel;
+      inland.visible = tide < island.reservoir.level + 2 * scale;
     },
   };
 }

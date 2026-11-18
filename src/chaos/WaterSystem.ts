@@ -8,6 +8,7 @@ export interface WaterVolume {
   readonly center: Vec3;
   readonly halfExtents: Vec3;
   readonly flow: Vec3;
+  readonly containsXZ?: (x: number, z: number) => boolean;
 }
 export interface WaterOptions {
   seaLevel?: number;
@@ -40,7 +41,7 @@ interface TrackedBody {
 interface Immersion { displaced: number; fraction: number; flow: Vec3; volumeId: string }
 
 /**
- * Fixed-tick water with a mutable infinite sea and finite axis-aligned water boxes.
+ * Fixed-tick water with a mutable infinite sea and bounded local water volumes.
  * Track dynamic bodies explicitly: this costs O(tracked colliders + local volumes) per tick.
  * Water volumes are math regions, not solid colliders, so they do not impede the goat.
  */
@@ -93,7 +94,8 @@ export class WaterSystem {
     for (const n of Object.values(halfExtents)) finitePositive(n, 'water halfExtent');
     const id = input.id ?? 'water-' + this.nextId++;
     if (id === 'sea' || this.volumes.has(id)) throw new Error('duplicate or reserved water volume id: ' + id);
-    this.volumes.set(id, { id, center: { ...center }, halfExtents: { ...halfExtents }, flow: { ...flow } });
+    this.volumes.set(id, { id, center: { ...center }, halfExtents: { ...halfExtents }, flow: { ...flow },
+      ...(input.containsXZ ? { containsXZ: input.containsXZ } : {}) });
     return id;
   }
   removeVolume(id: string): boolean { return this.volumes.delete(id); }
@@ -137,12 +139,24 @@ export class WaterSystem {
       let flow = V(), volumeId = 'sea';
       for (const local of this.volumes.values()) {
         const a = local.halfExtents, o = local.center;
-        const overlapX = Math.max(0, Math.min(p.x + h.x, o.x + a.x) - Math.max(p.x - h.x, o.x - a.x));
-        const overlapZ = Math.max(0, Math.min(p.z + h.z, o.z + a.z) - Math.max(p.z - h.z, o.z - a.z));
+        const overlapY = Math.min(top, o.y + a.y) - Math.max(bottom, o.y - a.y);
+        if (overlapY <= 0) continue;
+        const left = Math.max(p.x - h.x, o.x - a.x), right = Math.min(p.x + h.x, o.x + a.x);
+        const rear = Math.max(p.z - h.z, o.z - a.z), front = Math.min(p.z + h.z, o.z + a.z);
+        const overlapX = right - left, overlapZ = front - rear;
+        if (overlapX <= 0 || overlapZ <= 0) continue;
         const footprint = clamp01(overlapX / Math.max(2 * h.x, 1e-6)) *
           clamp01(overlapZ / Math.max(2 * h.z, 1e-6));
-        const overlapY = Math.max(0, Math.min(top, o.y + a.y) - Math.max(bottom, o.y - a.y));
-        const localFraction = footprint * clamp01(overlapY / height);
+        let wetShare = 1;
+        if (local.containsXZ) {
+          // Sample the overlap at cell centres so a hull can straddle the bank.
+          let wet = 0;
+          for (const x of [1 / 6, .5, 5 / 6]) for (const z of [1 / 6, .5, 5 / 6]) {
+            if (local.containsXZ(left + x * overlapX, rear + z * overlapZ)) wet++;
+          }
+          wetShare = wet / 9;
+        }
+        const localFraction = wetShare * footprint * clamp01(overlapY / height);
         // Local currents win an equal-depth tie with the ambient sea.
         if (localFraction >= fraction && localFraction > 0) {
           fraction = localFraction; flow = local.flow; volumeId = local.id;

@@ -152,14 +152,14 @@ describe.skipIf(!process.env['CI'])('world viewer real-Chrome frame profiling', 
       }
 
       // Run a render pass to apply the async Dam model switch, then ensure
-      // the procedural reservoir is hidden instead of overlapping the GLB.
+      // the terrain-bound reservoir stays visible when the Dam GLB arrives.
       await send('Runtime.evaluate', {
         expression: 'window.__worldProfile.measure(2)', returnByValue: true,
       });
       const latest = await send('Runtime.evaluate', {
         expression: 'window.__worldProfile.damHeroState()', returnByValue: true,
       });
-      expect(latest.result?.value?.reservoirHidden).toBe(true);
+      expect(latest.result?.value?.reservoirHidden).toBe(false);
 
       // Asset arrivals are asynchronous; profile the actual village GLBs,
       // not the temporary procedural placeholders displayed during fetch.

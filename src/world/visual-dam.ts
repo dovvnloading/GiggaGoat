@@ -109,13 +109,17 @@ export function prepareDamModel(root: THREE.Object3D, island: IslandData): DamMe
 
   root.traverse(object => {
     if (!(object instanceof THREE.Mesh)) return;
+    if (namedPart(object, /^Water_Reservoir$/i)) {
+      oldGeometries.add(object.geometry);
+      return;
+    }
     if (namedPart(object, /^RailFront_(?:Bar|Post)_/i)) {
       oldGeometries.add(object.geometry);
       if (!Array.isArray(object.material)) frontRailMaterial ??= object.material;
       return;
     }
     const isFall = namedPart(object, /^Water_Fall_/i);
-    const isWater = isFall || namedPart(object, /^Water_(?:Foam_|Reservoir$)/i);
+    const isWater = isFall || namedPart(object, /^Water_Foam_/i);
     const isRock = namedPart(object, /^Abutment_Rock_/i);
     const shadow = namedPart(object, /^(?:Wall_|Dam_Wall|ControlHouse_)/i);
     if (isRock && !needsAbutmentRock(object, island)) return;
@@ -282,8 +286,6 @@ export function buildDamVisuals(island: IslandData,
   let shadowChange = false;
   let disposed = false;
   let tide = island.seaLevel;
-  // Scenery uses non-shadow-casting instances, so its asynchronous arrival
-  // must NOT hide the procedural reservoir before the hero GLB is ready.
   const landscape = buildDamLandscape(island, () => {}, light);
   group.add(landscape.group);
 

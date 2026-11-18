@@ -470,19 +470,10 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     if (hoofington.updateCulling(pos, frustum)) shadowCastersChanged = true;
     if (downtown.updateCulling(pos, frustum)) shadowCastersChanged = true;
     if (environmentLod.updateCulling(camera, pos, frustum)) shadowCastersChanged = true;
-    // The GLB supplies its own reservoir surface. Hide the procedural one
-    // on success, but retain it in the graph for disposal; it remains visible
-    // if the model fails and the procedural fallback is needed.
     if (props.consumeShadowChange()) shadowCastersChanged = true;
     if (hoofington.consumeShadowChange()) shadowCastersChanged = true;
     if (downtown.consumeShadowChange()) shadowCastersChanged = true;
-    if (dam.consumeShadowChange()) {
-      for (const name of ['dam-reservoir', 'dam-reservoir-foam']) {
-        const surface = waterVisuals.inland.getObjectByName(name);
-        if (surface) surface.visible = false;
-      }
-      shadowCastersChanged = true;
-    }
+    if (dam.consumeShadowChange()) shadowCastersChanged = true;
     return shadowCastersChanged;
   }
   function dispose(): void {
