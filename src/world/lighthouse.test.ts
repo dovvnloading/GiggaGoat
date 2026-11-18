@@ -141,6 +141,7 @@ describe('Old Lighthouse painting rebuild', () => {
       expect(halo.material.depthTest).toBe(true);
       expect(halo.material.blending).toBe(THREE.AdditiveBlending);
       const { data, width, height } = (halo.material.map as THREE.DataTexture).image;
+      if (!data) throw new Error('Missing Lighthouse halo pixels');
       const alphaAt = (x: number, y: number) => data[(y * width + x) * 4 + 3];
       expect(alphaAt(0, 0)).toBe(0);
       expect(alphaAt(width - 1, height - 1)).toBe(0);
