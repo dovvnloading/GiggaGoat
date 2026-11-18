@@ -2,9 +2,11 @@ import type { Game } from './Game';
 import type { GameView } from './GameView';
 import type { GameAudio } from './GameAudio';
 import { saveGame, type GameSettings } from './Persistence';
+import { formatHudObjective } from './GameHudState';
 import { MODE_DEFAULTS, TICKS_PER_SECOND, type ModeId, type Difficulty as BotDifficulty } from '../modes';
 import type { PoiId } from '../world';
 import { HUD_SPRITES, hudSpriteImage } from './HudSprites';
+import { gigBoardGoal, gigBoardIcon } from './GigBoardPresentation';
 import { MENU_SPRITES, menuSkin, menuSpriteUrl, type MenuSpriteName } from './MenuSprites';
 
 type Screen = 'title' | 'playing' | 'pause' | 'party' | 'settings' |
@@ -63,9 +65,26 @@ const CSS = `
 .gg-shell input.gg-slider::-moz-range-thumb{width:42px;height:42px;border:0;
   background:var(--gg-sprite) 56.6% center/380px 42px no-repeat}
 .gg-shell output{min-width:52px;text-align:right;color:#ffe153;font-size:15px;font-variant-numeric:tabular-nums}
-.gg-shell .gg-offer{border:2px solid #b794a466;padding:10px;border-radius:14px;margin:9px 0;background:#151b38a6}
-.gg-shell .gg-offer strong{color:#ffdb40;font-size:19px}
-.gg-shell .gg-offer p{margin:4px 0 10px}
+.gg-shell .gg-board-offers{display:grid;gap:7px;margin:0 0 10px}
+.gg-shell .gg-board-choice{
+  position:relative;display:grid;grid-template-columns:39px minmax(0,1fr);align-items:center;gap:9px;
+  width:100%;min-height:58px;padding:5px 8px;border:10px solid transparent;
+  border-image:var(--gg-sprite) 48 fill / 10px / 0 stretch;
+  border-radius:11px;background:transparent;color:#fff1d7;text-align:left
+}
+.gg-shell .gg-board-choice:hover{background:#63507c50}
+.gg-shell .gg-board-choice[aria-pressed="true"]::after{
+  content:"";position:absolute;inset:-3px;border:2px solid #ffd16e;border-radius:9px;pointer-events:none
+}
+.gg-shell .gg-board-choice strong{display:block;color:#ffe092;font-size:clamp(14px,2.4vw,18px);line-height:1.08}
+.gg-shell .gg-board-icon{width:34px;height:34px;object-fit:contain;justify-self:center}
+.gg-shell .gg-board-grass{display:grid;place-items:center;font:700 31px/1 "Segoe UI Symbol",system-ui,sans-serif;color:#c0f38b}
+.gg-shell .gg-board-meta{display:flex;flex-wrap:wrap;gap:1px 10px;margin-top:4px;line-height:1.2;font-size:clamp(10px,1.4vw,12px)}
+.gg-shell .gg-board-difficulty{color:#c8e4fb}
+.gg-shell .gg-board-coins{color:#ffedaf}
+.gg-shell .gg-board-note{margin:0 0 8px;padding:4px 8px;border-left:2px solid #ffc962;font-size:12px}
+.gg-shell .gg-board-refresh{margin:7px 0 0;font-size:11px;color:#e6d6ec}
+.gg-shell .gg-board-actions{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}
 .gg-shell .gg-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin:18px 0}
 .gg-shell .gg-stat{display:flex;flex-direction:column;justify-content:center;align-items:center;
   min-width:0;min-height:90px;padding:3px 5px;border:14px solid transparent;
@@ -74,6 +93,10 @@ const CSS = `
 .gg-shell .gg-stat-line{display:flex;gap:3px;align-items:center;justify-content:center}
 .gg-shell .gg-stat strong{display:block;color:#ffe147;font-size:clamp(17px,2.1vw,24px);line-height:1.1}
 .gg-shell .gg-stat-coin{width:26px;height:26px;object-fit:contain}
+.gg-shell .gg-gig-progress strong{
+  font-size:clamp(13px,2.1vw,24px);overflow-wrap:anywhere
+}
+.gg-shell .gg-gig-result-return{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .gg-shell .gg-results{list-style:none;margin:8px 0 20px;padding:0;max-height:34vh;overflow:auto}
 .gg-shell .gg-results li{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:3px 10px;
   padding:7px 10px;margin:4px 0;border-radius:8px;background:#ffffff19;font-size:clamp(11px,1.45vw,14px)}
@@ -139,7 +162,7 @@ const CSS = `
  .gg-shell .gg-party-grid{gap:7px 10px;margin:7px 0 9px}
  .gg-shell .gg-party-brief{padding:5px 7px}
  .gg-shell .gg-party-actions{grid-template-columns:1fr 1fr}
- .gg-shell .gg-party-actions .gg-art-button{min-height:47px;padding:2px 8px;border-width:13px;border-image-width:13px}
+ .gg-shell :is(.gg-party-actions,.gg-board-actions) .gg-art-button{min-height:47px;padding:2px 8px;border-width:13px;border-image-width:13px}
 }
 @media(max-width:510px){
  .gg-shell{padding:6px}
@@ -258,6 +281,11 @@ export class GameMenu {
         this.save();
         this.render();
         this.root.querySelector<HTMLButtonElement>('[data-setting-toggle]')?.focus();
+        return;
+      }
+      const offer = target.closest<HTMLButtonElement>('[data-board-offer]');
+      if (offer) {
+        this.selectBoardOffer(offer);
         return;
       }
       if (target.closest('[data-fullscreen]')) {
@@ -400,6 +428,13 @@ export class GameMenu {
       try {
         this.game.gigs.accept(key.slice(6));
         this.save();
+        this.resume();
+      } catch (error) { this.error(error); }
+    } else if (key === 'retry-gig' && this.screen === 'gig-results') {
+      try {
+        this.game.gigs.retryFailed();
+        // The new attempt replaces the failed one. Leaving results saves the
+        // running attempt through the same acknowledgement path as Free Roam.
         this.resume();
       } catch (error) { this.error(error); }
     } else if (key === 'leave-party') {
@@ -724,39 +759,73 @@ export class GameMenu {
       ` aria-labelledby="gg-tab-${this.settingsTab}">${content}</div>` +
       `<p class="gg-settings-note">Changes apply immediately and save with your game.</p>`;
   }
+  private selectBoardOffer(choice: HTMLButtonElement): void {
+    const offerId = choice.dataset.boardOffer;
+    const accept = this.root.querySelector<HTMLButtonElement>('[data-action^="offer:"]');
+    const note = this.root.querySelector('[data-board-note]');
+    if (!offerId || !accept || !note) return;
+    for (const candidate of this.root.querySelectorAll('[data-board-offer]')) {
+      candidate.setAttribute('aria-pressed', String(candidate === choice));
+    }
+    note.textContent = choice.dataset.boardInstruction ?? '';
+    accept.setAttribute('data-action', 'offer:' + offerId);
+    this.audio?.queueCue({ sound: 'ui-click' });
+  }
+
   private boardBody(): string {
     const poi = this.boardPoi;
     const board = poi ? this.game.gigs.director.board(poi) : null;
-    const buttons = board?.offers.map(offer => {
-      const info = this.game.gigs.catalog.info(offer.gigId);
-      return `<div class="gg-offer"><strong>${esc(info.title)} · ${nice(offer.difficulty)}</strong>
-        <p>${esc(info.instruction)}</p>
-        ${menuButton('offer:'+esc(offer.id), 'ACCEPT · '+info.baseCoins+'+ COINS', true)}</div>`;
-    }).join('') ?? '';
-    return `<div class="gg-shell-eyebrow">GIG BOARD · ${esc(poi ?? '')}</div><h2>MAKE CUD COINS</h2>
-      <p>Pick a contract. Skill and speed turn bronze into gold — and unlock new gear.</p>
-      ${buttons || '<p>Board is refreshing.</p>'}
-      <p>New offers in ${Math.ceil((board?.refreshInTicks ?? 0)/60)} seconds</p>
-      ${menuButton('back','← NOT NOW')}`;
+    const offers = board?.offers.map(offer => this.game.gigs.catalog.build(offer)) ?? [];
+    const first = offers[0];
+    const titleCase = (value: string): string =>
+      value.toLowerCase().replace(/(^|[ \-])[a-z]/g, part => part.toUpperCase());
+    const choices = offers.map(({ offer, info, config }, index) =>
+      `<button type="button" class="gg-board-choice" aria-pressed="${index === 0}"
+        data-board-offer="${esc(offer.id)}" data-board-instruction="${esc(info.instruction)}"
+        ${menuSkin(MENU_SPRITES.stat)}>
+        ${gigBoardIcon(config.kind)}
+        <span><strong>${esc(titleCase(info.title))}</strong><span class="gg-board-meta">
+          <span class="gg-board-difficulty">${esc(titleCase(offer.difficulty))}</span>
+          <span>${esc(gigBoardGoal(config))}</span>
+          <span class="gg-board-coins">${info.baseCoins} base coins</span>
+        </span></span>
+      </button>`).join('');
+    return `<div class="gg-shell-eyebrow">GIG BOARD · ${esc(nice(poi ?? ''))}</div><h2>MAKE CUD COINS</h2>
+      ${first ? `<div class="gg-board-offers" role="group" aria-label="Available contracts">${choices}</div>
+      <p class="gg-board-note" data-board-note aria-live="polite">${esc(first.info.instruction)}</p>` : '<p>Board is refreshing.</p>'}
+      <div class="gg-options gg-board-actions">
+        ${first ? menuButton('offer:' + esc(first.offer.id), '▶ ACCEPT CONTRACT', true) : ''}
+        ${menuButton('back','← NOT NOW')}
+      </div>
+      ${board ? `<p class="gg-board-refresh">Offers rotate after ${Math.ceil(board.refreshInTicks / 60)}s of play</p>` : ''}`;
   }
   private gigResultsBody(): string {
-    const run = this.game.gigs.active;
+    const run = this.game.pendingGigResult;
     if (!run) return '';
     const best = this.game.gigs.director.personalBests.find(b =>
       b.gigId === run.setup.offer.gigId && b.difficulty === run.setup.offer.difficulty);
     const success = run.status === 'completed';
-    return `<div class="gg-shell-eyebrow">${success?'GIG CLEARED':'GIG ENDED'}</div>
+    const status = success ? 'GIG CLEARED' + (run.rating ? ' · ' + nice(run.rating) : '') : 'GIG ENDED';
+    const canRetry = this.game.gigs.retryableOffer !== null;
+    const objective = run.objective;
+    const progress = objective.kind === 'deliver' ? {
+      measure: objective.done + ' / ' + objective.required, label: 'BALES DELIVERED',
+    } : { measure: formatHudObjective(objective), label: 'OBJECTIVE PROGRESS' };
+    return `<div class="gg-shell-eyebrow">${status}</div>
       <h2>${esc(run.setup.info.title)}</h2>
       <p>${esc(success?'That was a solid run. Now go cause more trouble.':
         run.failReason ?? 'Try a different route and go again.')}</p>
       <div class="gg-stats">
-        <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}><strong>${esc(nice(run.rating ?? 'no medal'))}</strong>RATING</div>
+        <div class="gg-stat gg-gig-progress" ${menuSkin(MENU_SPRITES.stat)}>
+          <strong>${esc(progress.measure)}</strong><span>${progress.label}</span></div>
         <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}><strong>+${run.payout ?? 0}</strong>CUD COINS</div>
         <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}><strong>${(run.elapsedTicks/60).toFixed(1)}s</strong>TIME</div>
       </div>
       <p>${best ? 'PERSONAL BEST: '+nice(best.rating)+' · '+(best.ticks/60).toFixed(1)+'s' : 'PERSONAL BEST: not yet'}</p>
-      <div class="gg-options">${menuButton('play','▶ BACK TO FREE ROAM',true)}
-      ${menuButton('title','⌂ TITLE')}</div>`;
+      <div class="gg-options">${canRetry ? menuButton('retry-gig','↻ RETRY CONTRACT',true) :
+        menuButton('play','▶ BACK TO FREE ROAM',true)}
+      ${canRetry ? `<div class="gg-gig-result-return">${menuButton('play','▶ FREE ROAM')}${menuButton('title','⌂ TITLE')}</div>` :
+        menuButton('title','⌂ TITLE')}</div>`;
   }
   private partyResultsBody(): string {
     const match = this.game.party.match;

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData, PropDescriptor, PropKind } from './types';
-import { gridSample } from './terrain';
+import { gridIndex, gridSample } from './terrain';
 import { publicAssetUrl } from './public-assets';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import { buildArchitecture } from './visual-architecture';
@@ -11,7 +11,7 @@ import { TOON_RAMP, BUILDING_RAMP } from './visual-props';
 export interface LighthouseVisuals {
   group: THREE.Group;
   isFallbackHidden(mesh: THREE.InstancedMesh): boolean;
-  update(seconds: number): void;
+  setLighting(daylight: number, golden: number): void;
   dispose(): void;
 }
 
@@ -22,10 +22,126 @@ interface Placement {
 }
 
 const STONE = 0xa7a8af;
+const CLIFF_STONE = 0x8c919e; // The terrain shader's exposed rock swatch.
 const WOOD = 0x97603d;
 const DARK_WOOD = 0x63432e;
 const CREAM = 0xf6e6c5;
 const GOLD = 0xffcf56;
+
+type ToonShader = Parameters<THREE.Material['onBeforeCompile']>[0];
+
+/** A local material grade shared by the cape's terrain and its cliff boulders. */
+export function makeCapeLighting(island: IslandData) {
+  const centre = island.pois.find(poi => poi.id === 'old-lighthouse')!.center;
+  const uniforms = {
+    uCapeCentre: { value: new THREE.Vector2(centre.x, centre.z) },
+    uCapeScale: { value: island.size / 600 },
+    uCapeGolden: { value: 0 },
+    uCapeSun: { value: new THREE.Vector3(1, 0, 0) },
+  };
+  return {
+    setSun(golden: number, direction: THREE.Vector3): void {
+      uniforms.uCapeGolden.value = golden;
+      uniforms.uCapeSun.value.set(direction.x, 0.15, direction.z).normalize();
+    },
+    paint(shader: ToonShader): void {
+      Object.assign(shader.uniforms, uniforms);
+      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+uniform vec2 uCapeCentre;
+uniform float uCapeScale, uCapeGolden;
+uniform vec3 uCapeSun;`).replace('#include <normal_fragment_begin>', `
+if (uCapeGolden > 0.001) {
+  vec3 capeFace = cross(dFdx(vWorld), dFdy(vWorld));
+  float capeRadius = length(vWorld.xz - uCapeCentre) / uCapeScale;
+  float capeFade = uCapeGolden * (1.0 - smoothstep(32.0, 41.0, capeRadius));
+  if (capeFade > 0.001) {
+    vec3 face = normalize(capeFace) * (gl_FrontFacing ? 1.0 : -1.0);
+    float sunFacing = smoothstep(-0.18, 0.62, dot(face, uCapeSun));
+    float skylitRim = smoothstep(7.0, 17.0, vWorld.y / uCapeScale) *
+      smoothstep(0.24, 0.58, face.y) * (1.0 - smoothstep(0.74, 0.98, face.y));
+    float key = max(sunFacing, 0.68 * skylitRim);
+    vec3 coolStone = diffuseColor.rgb * vec3(0.81, 0.90, 1.14);
+    vec3 warmEdge = diffuseColor.rgb * vec3(1.18, 1.06, 0.87) + vec3(0.046, 0.015, 0.002);
+    float steep = 1.0 - smoothstep(0.6, 0.95, face.y);
+    diffuseColor.rgb = mix(diffuseColor.rgb, mix(coolStone, warmEdge, key),
+      capeFade * (0.28 + 0.72 * steep));
+  }
+}
+#include <normal_fragment_begin>`);
+    },
+  };
+}
+
+function makeBeacon(tower: PropDescriptor, scale: number) {
+  const p = tower.transform.position;
+  // Match the twelve open glass faces in the shipped source model and the
+  // shared baker's 98% envelope. The iron frame keeps its original geometry.
+  const pane = new THREE.CylinderGeometry(1.95, 1.95, 3.2, 12, 1, true);
+  const yScale = 0.98 * tower.size.y / 29;
+  pane.scale(0.98 * tower.size.x / 9, yScale, 0.98 * tower.size.z / 9);
+  const glow = { value: 0 };
+  const material = new THREE.ShaderMaterial({
+    uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), uGlow: glow },
+    fog: true,
+    vertexShader: `
+varying vec2 vPane;
+#include <fog_pars_vertex>
+void main() {
+  vPane = uv;
+  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * mvPosition;
+  #include <fog_vertex>
+}`,
+    fragmentShader: `
+uniform float uGlow;
+varying vec2 vPane;
+#include <fog_pars_fragment>
+void main() {
+  float lens = 1.0 - smoothstep(0.13, 0.49, abs(vPane.y - 0.52));
+  float ridges = 0.5 + 0.5 * cos(vPane.y * 42.0);
+  vec3 glass = mix(vec3(0.52, 0.31, 0.14), vec3(0.96, 0.76, 0.45), 0.32 + 0.48 * lens);
+  vec3 fire = mix(vec3(1.0, 0.53, 0.13), vec3(1.0, 0.99, 0.83),
+    lens * (0.92 + 0.08 * ridges));
+  gl_FragColor = sRGBTransferEOTF(vec4(mix(glass, fire, uGlow), 1.0));
+  #include <colorspace_fragment>
+  #include <fog_fragment>
+}`,
+  });
+  const glass = new THREE.Mesh(pane, material);
+  glass.name = 'lighthouse-glowing-lantern-room';
+  glass.position.set(p.x, p.y + 7.7 * yScale, p.z);
+  glass.rotation.y = tower.transform.rotationY;
+
+  const pixels = 32;
+  const rgba = new Uint8Array(pixels * pixels * 4);
+  for (let row = 0; row < pixels; row++) for (let column = 0; column < pixels; column++) {
+    const radius = Math.hypot((column + 0.5) * 2 / pixels - 1, (row + 0.5) * 2 / pixels - 1);
+    const i = (row * pixels + column) * 4;
+    rgba.fill(255, i, i + 3);
+    rgba[i + 3] = Math.round(220 * (1 - THREE.MathUtils.smoothstep(0.07, 0.96, radius)) ** 2);
+  }
+  const falloff = new THREE.DataTexture(rgba, pixels, pixels);
+  falloff.magFilter = THREE.LinearFilter;
+  falloff.minFilter = THREE.LinearFilter;
+  falloff.needsUpdate = true;
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    color: 0xffb74a, map: falloff, blending: THREE.AdditiveBlending,
+    depthWrite: false, depthTest: true, opacity: 0, transparent: true,
+  }));
+  halo.name = 'lighthouse-lantern-halo';
+  halo.position.copy(glass.position);
+  halo.scale.set(13.5 * scale, 8.4 * scale, 1);
+  halo.visible = false;
+  return {
+    glass, halo,
+    setLighting(daylight: number, golden: number): void {
+      glow.value = Math.max(golden * 0.96, 1 - THREE.MathUtils.smoothstep(daylight, 0.05, 0.7));
+      halo.visible = glow.value > 0.02;
+      halo.material.opacity = 0.53 * glow.value;
+    },
+    dispose(): void { falloff.dispose(); halo.material.dispose(); },
+  };
+}
 
 /**
  * MeshToonMaterial does not declare flatShading in Three.js's r187 TS types,
@@ -291,7 +407,7 @@ function makeSeaCave(island: IslandData, cave: PropDescriptor): THREE.Group {
   group.position.set(p.x, floor, p.z);
   group.rotation.y = cave.transform.rotationY;
   const stone = makePainter();
-  const wall = STONE, roof = 0x92949c, interior = 0x48505d;
+  const wall = STONE, roof = 0x92949c, interior = 0x39485b;
   // Local +Z is the open sea-facing entrance, local -Z the Rapier back wall.
   // The two deeply extending jambs and a roof make an actual recess rather
   // than a painted black slab closing the mouth.
@@ -427,22 +543,114 @@ export function instantiateLibraryModel(root: THREE.Object3D, placements: readon
   return group;
 }
 
-function makeFallbackRocks(placements: readonly Placement[]): THREE.InstancedMesh {
+/** Match the native terrain triangles where the cliff props meet the slope. */
+function capeSurface(island: IslandData, x: number, z: number): number {
+  const { resolution, size, heights } = island;
+  const gx = THREE.MathUtils.clamp((x / size + 0.5) * (resolution - 1), 0, resolution - 1);
+  const gz = THREE.MathUtils.clamp((z / size + 0.5) * (resolution - 1), 0, resolution - 1);
+  const ix = Math.min(Math.floor(gx), resolution - 2);
+  const iz = Math.min(Math.floor(gz), resolution - 2);
+  const tx = gx - ix, tz = gz - iz;
+  const a = heights[gridIndex(resolution, ix, iz)]!;
+  const b = heights[gridIndex(resolution, ix + 1, iz)]!;
+  const c = heights[gridIndex(resolution, ix, iz + 1)]!;
+  const d = heights[gridIndex(resolution, ix + 1, iz + 1)]!;
+  return tx + tz <= 1 ? a + (b - a) * tx + (c - a) * tz
+    : d + (c - d) * (1 - tx) + (b - d) * (1 - tz);
+}
+
+function makeCliffRocks(island: IslandData, placements: readonly Placement[],
+  lighting: ReturnType<typeof makeCapeLighting>): THREE.InstancedMesh {
   const geometry = new THREE.DodecahedronGeometry(1, 0);
   geometry.computeVertexNormals();
-  const mesh = new THREE.InstancedMesh(geometry, rockToonMaterial(0xadb0b4), placements.length);
-  mesh.name = 'lighthouse-fallback-grey-rocks';
+  geometry.computeBoundingBox();
+  const geometrySize = geometry.boundingBox!.getSize(new THREE.Vector3());
+  geometry.scale(1 / geometrySize.x, 1 / geometrySize.y, 1 / geometrySize.z);
+  const positions = geometry.getAttribute('position');
+  const footVertices = new Map<string, THREE.Vector3>();
+  const painted = new Float32Array(positions.count * 3);
+  for (let i = 0; i < positions.count; i++) {
+    const point = new THREE.Vector3().fromBufferAttribute(positions, i);
+    if (point.y < 0) footVertices.set(point.toArray().join(','), point);
+    const shade = 0.72 + 0.28 * THREE.MathUtils.smoothstep(point.y, -0.45, 0.40);
+    painted.fill(shade, i * 3, i * 3 + 3);
+  }
+  geometry.setAttribute('color', new THREE.BufferAttribute(painted, 3));
+  const material = rockToonMaterial(CLIFF_STONE);
+  material.gradientMap = TOON_RAMP;
+  material.vertexColors = true;
+  material.onBeforeCompile = shader => {
+    shader.vertexShader = shader.vertexShader.replace('#include <common>',
+      '#include <common>\nvarying vec3 vWorld;').replace('#include <begin_vertex>', `
+#include <begin_vertex>
+vWorld = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;`);
+    lighting.paint(shader);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>',
+      '#include <common>\nvarying vec3 vWorld;');
+  };
+  const mesh = new THREE.InstancedMesh(geometry, material, placements.length);
+  mesh.name = 'lighthouse-cliff-boulders';
+  mesh.receiveShadow = true;
   const dummy = new THREE.Object3D();
+  const sample = new THREE.Vector3();
+  const sink = 0.24 * island.size / 600;
+  const feet = [...footVertices.values()];
   placements.forEach((p, i) => {
-    dummy.position.set(p.x, p.y + p.height * 0.5, p.z);
-    dummy.rotation.set(p.pitch ?? 0, p.yaw ?? 0, p.roll ?? 0);
-    dummy.scale.set(p.width * 0.52, p.height * 0.52, p.depth * 0.52);
+    dummy.position.set(p.x, p.y + p.height * 0.15, p.z);
+    dummy.rotation.set(p.pitch ?? 0, p.yaw ?? 0, p.roll ?? 0, 'YXZ');
+    dummy.scale.set(p.width, p.height, p.depth);
+    dummy.updateMatrix();
+    // Seat the inward half of the base where it actually overlaps the slope.
+    // Centre-only height sampling leaves the downhill vertices in midair.
+    const clearance = feet.map(foot => {
+      sample.copy(foot).applyMatrix4(dummy.matrix);
+      return sample.y - capeSurface(island, sample.x, sample.z);
+    }).sort((a, b) => a - b);
+    const contact = clearance[Math.floor((clearance.length - 1) / 2)]!;
+    dummy.position.y -= Math.max(0, contact + sink);
     dummy.updateMatrix();
     mesh.setMatrixAt(i, dummy.matrix);
   });
   mesh.instanceMatrix.needsUpdate = true;
   mesh.computeBoundingSphere();
   return mesh;
+}
+
+/** The west lookout cantilevers into the cape instead of standing over the sea. */
+function makeLookoutBraces(island: IslandData, deck: PropDescriptor): THREE.Group {
+  const scale = island.size / 600;
+  const { x, y, z } = deck.transform.position;
+  const { x: width, y: height, z: depth } = deck.size;
+  const yaw = deck.transform.rotationY;
+  const cos = Math.cos(yaw), sin = Math.sin(yaw);
+  const at = (across: number, along: number, elevation: number): THREE.Vector3 =>
+    new THREE.Vector3(x + across * cos + along * sin, elevation,
+      z - across * sin + along * cos);
+  const underside = y - height / 2, deckTop = y + height / 2;
+  const east = at(width / 2, 0, 0), west = at(-width / 2, 0, 0);
+  const inland = capeSurface(island, east.x, east.z) >= capeSurface(island, west.x, west.z) ? 1 : -1;
+  const timber = makePainter();
+  const tieHeight = underside - 0.17 * scale;
+  const outerX = -inland * width * 0.43;
+  for (const side of [-1, 1]) {
+    const along = side * depth * 0.36;
+    const bracket = at(outerX, along, tieHeight);
+    const heel = at(inland * width * 0.39, along, 0);
+    heel.y = Math.min(underside - 2.8 * scale,
+      capeSurface(island, heel.x, heel.z) - 0.55 * scale);
+    timber.beam(DARK_WOOD, bracket, heel, 0.21 * scale);
+    timber.beam(WOOD, bracket, at(inland * width * 0.43, along, tieHeight), 0.19 * scale);
+  }
+  timber.beam(DARK_WOOD, at(outerX, -depth * 0.43, tieHeight),
+    at(outerX, depth * 0.43, tieHeight), 0.19 * scale);
+  // A narrow chevron on the planks identifies the landing below the path.
+  // It sits inside the existing deck so the cliff approach stays usable.
+  for (const side of [-1, 1]) {
+    const markY = deckTop + 0.018 * scale;
+    timber.beam(GOLD, at(inland * width * 0.18, side * depth * 0.17, markY),
+      at(-inland * width * 0.07, 0, markY), 0.034 * scale);
+  }
+  return timber.finish('lighthouse-lookout-cliff-braces-and-landing');
 }
 
 function makeFlowers(island: IslandData, center: { x: number; z: number }): THREE.Group {
@@ -533,7 +741,7 @@ function suppressOldArt(island: IslandData, oldProps: THREE.Group,
   // The tower itself is NOT replaced: the generic 'lighthouse' prop is the
   // striped custom/lighthouse model (QA LH-1), and only the glow is added here.
   const replacedKinds: readonly PropKind[] = [
-    'cottage', 'shipwreck', 'dock', 'cave-mouth',
+    'cottage', 'shipwreck', 'dock', 'cave-mouth', 'deck-stilts',
   ];
   const zero = new THREE.Matrix4().makeScale(0, 0, 0);
   for (const kind of replacedKinds) {
@@ -557,7 +765,7 @@ function suppressOldArt(island: IslandData, oldProps: THREE.Group,
 }
 
 export function buildLighthouseVisuals(island: IslandData,
-  oldProps: THREE.Group): LighthouseVisuals {
+  oldProps: THREE.Group, lighting: ReturnType<typeof makeCapeLighting>): LighthouseVisuals {
   const group = new THREE.Group();
   group.name = 'old-lighthouse-hero';
   const fullyHidden = new Set<PropKind>();
@@ -569,23 +777,14 @@ export function buildLighthouseVisuals(island: IslandData,
     island.props.find(prop => prop.poiId === 'old-lighthouse' && prop.kind === kind);
 
   group.add(makeWindingFootpath(island, center));
+  const lookout = get('platform');
+  if (lookout) group.add(makeLookoutBraces(island, lookout));
   const cottage = get('cottage');
   if (cottage) group.add(makeCottage(cottage));
   group.add(makeFlowers(island, center));
 
   const lighthouse = get('lighthouse');
-  if (lighthouse) {
-    const base = lighthouse.transform.position.y - lighthouse.size.y / 2;
-    const y = base + lighthouse.size.y * 0.765;
-    const glass = new THREE.Mesh(new THREE.CylinderGeometry(
-      1.7 * scale, 1.7 * scale, 3.6 * scale, 16),
-    new THREE.MeshBasicMaterial({
-      color: 0xffd776, transparent: true, opacity: 0.88, depthWrite: false,
-    }));
-    glass.name = 'lighthouse-glowing-lantern-room';
-    glass.position.set(lighthouse.transform.position.x, y, lighthouse.transform.position.z);
-    group.add(glass);
-  }
+  const beacon = lighthouse ? makeBeacon(lighthouse, scale) : undefined;
 
   const cave = get('cave-mouth');
   if (cave) {
@@ -721,15 +920,8 @@ export function buildLighthouseVisuals(island: IslandData,
   const wreckFallbackGroup = wreckFallback.finish('lighthouse-leaning-shipwreck-fallback');
   group.add(wreckFallbackGroup);
 
-  const rocksFromProps = island.props.filter(p =>
-    p.poiId === 'old-lighthouse' && p.kind === 'rock');
-  const rocks: Placement[] = rocksFromProps.map(p => ({
-    x: p.transform.position.x,
-    y: p.transform.position.y - p.size.y / 2,
-    z: p.transform.position.z,
-    width: p.size.x * 1.18, height: p.size.y,
-    depth: p.size.z * 1.18, yaw: p.transform.rotationY,
-  }));
+  // The ordinary rock batch already draws the collidable cape rocks.
+  const rocks: Placement[] = [];
   // Shore boulders below the grass line, excluding the accessible cave floor.
   for (let i = 0; i < 16; i += 2) {
     const angle = i * 2.399963 + 0.65;
@@ -747,8 +939,7 @@ export function buildLighthouseVisuals(island: IslandData,
     });
   }
   // Faceted blocks embedded along the steep shoulder break up the former
-  // smooth, mesa-like cliff wall. Shared Kenney GLBs and the grey fallback
-  // are instanced over this same array: no additional draw calls per stone.
+  // smooth cliff wall. The single-piece stones share one lit instance batch.
   for (let i = 0; i < 88; i += 2) {
     const angle = i * 2.399963 + 0.8;
     const radius = (19.0 + (i % 9) * 1.05) * scale;
@@ -766,11 +957,8 @@ export function buildLighthouseVisuals(island: IslandData,
       roll: Math.sin(i * 1.9) * 0.29,
     });
   }
-  // All three sources store the base Y of the rock's visual box. Embed
-  // both the GLB instances and their fallback in the terrain by 35%.
-  for (const rock of rocks) rock.y -= 0.35 * rock.height;
-  const rockFallback = makeFallbackRocks(rocks);
-  group.add(rockFallback);
+  const cliffRocks = makeCliffRocks(island, rocks, lighting);
+  group.add(cliffRocks);
 
   const fallbackSections = [pierFallbackGroup, boatFallbackGroup, wreckFallbackGroup];
   const isModelFallback = (mesh: THREE.Mesh): boolean => {
@@ -782,9 +970,8 @@ export function buildLighthouseVisuals(island: IslandData,
   const fallbackPaint = batchHeroMeshes(group,
     'lighthouse-shared-ship-dock-rowboat-fallback', isModelFallback);
   batchHeroMeshes(group, 'lighthouse-static-painted-landmarks',
-    mesh => mesh !== rockFallback &&
-      mesh.name !== 'lighthouse-glowing-lantern-room' &&
-      mesh !== fallbackPaint && !isModelFallback(mesh));
+    mesh => mesh !== cliffRocks && mesh !== fallbackPaint && !isModelFallback(mesh));
+  if (beacon) group.add(beacon.glass, beacon.halo);
   // Add after the hero batch so this stays one named Mesh and one draw call.
   const bridgeRopes = makeRopeBridgeRopes(island);
   if (bridgeRopes) group.add(bridgeRopes);
@@ -798,14 +985,14 @@ export function buildLighthouseVisuals(island: IslandData,
   let heroSectionsLoaded = 0;
   const importedTextures = new Set<THREE.Texture>();
   function load(path: string, placements: readonly Placement[], name: string,
-    hide?: THREE.Object3D, isRock = false): void {
+    hide?: THREE.Object3D): void {
     if (typeof document === 'undefined' || placements.length === 0) return;
     const url = publicAssetUrl('assets/library/' + path);
     try {
       new GLTFLoader().load(url, gltf => {
         if (disposed) return;
         try {
-          const model = instantiateLibraryModel(gltf.scene, placements, name, isRock,
+          const model = instantiateLibraryModel(gltf.scene, placements, name, false,
             'assets/library/' + path);
           if (model.children.length === 0) throw new Error('Empty GLB');
           model.traverse(object => {
@@ -834,7 +1021,7 @@ export function buildLighthouseVisuals(island: IslandData,
   }
 
   // Use the packs named in the library README. Instancing prevents a draw call
-  // for each rock, pier segment, pile or lantern across the hero composition.
+  // for each pier segment, pile or lantern across the hero composition.
   load('kenney/pirate-kit/ship-wreck.glb', wreckPlacement,
     'lighthouse-pirate-kit-shipwreck', wreckFallbackGroup);
   load('kenney/pirate-kit/mast-ropes.glb', mastPlacement,
@@ -845,35 +1032,6 @@ export function buildLighthouseVisuals(island: IslandData,
     'lighthouse-watercraft-kit-rowboat', boatFallbackGroup);
   load('kenney/fantasy-town-kit/lantern.glb', lanterns,
     'lighthouse-library-lanterns');
-  const even = rocks.filter((_, i) => i % 2 === 0);
-  const odd = rocks.filter((_, i) => i % 2 !== 0);
-  let rocksLoaded = 0;
-  // Keep the grey procedural rocks if either source model is unavailable.
-  function loadRock(path: string, positions: Placement[], name: string): void {
-    if (typeof document === 'undefined') return;
-    const url = publicAssetUrl('assets/library/' + path);
-    try {
-      new GLTFLoader().load(url, gltf => {
-        if (disposed) return;
-        try {
-          const model = instantiateLibraryModel(gltf.scene, positions, name, true,
-            'assets/library/' + path);
-          if (!model.children.length) throw new Error('Empty rock GLB');
-          group.add(model);
-          if (++rocksLoaded === 2) rockFallback.visible = false;
-        } catch (error) {
-          console.warn('Rock GLB could not be prepared: ' + url, error);
-        }
-      }, undefined, error => {
-        if (!disposed) console.warn('Rock GLB unavailable: ' + url, error);
-      });
-    } catch (error) {
-      console.warn('Rock GLB unavailable: ' + url, error);
-    }
-  }
-  loadRock('kenney/pirate-kit/rocks-a.glb', even, 'lighthouse-pirate-kit-grey-rocks-a');
-  loadRock('kenney/nature-kit/rock_largeA.glb', odd, 'lighthouse-nature-kit-grey-rocks-b');
-
   suppressOldArt(island, oldProps, fullyHidden);
   return {
     group,
@@ -881,11 +1039,12 @@ export function buildLighthouseVisuals(island: IslandData,
       const kind = mesh.name.replace(/^(?:props-|architecture-details-|outline-)/, '');
       return fullyHidden.has(kind as PropKind);
     },
-    update(_seconds: number): void {
-      // The emissive lantern is static and adds no new animated shadow pass.
+    setLighting(daylight: number, golden: number): void {
+      beacon?.setLighting(daylight, golden);
     },
     dispose(): void {
       disposed = true;
+      beacon?.dispose();
       importedTextures.forEach(texture => texture.dispose());
       // All geometry/materials are released by WorldScene.dispose's traversal.
     },

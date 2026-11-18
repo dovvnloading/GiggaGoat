@@ -101,7 +101,8 @@ it('keeps all Hoofington buildings and garden art grounded, separate and off the
   }
 
   const buildings = placed.filter(p => BUILDINGS.has(p.kind));
-  const garden = placed.filter(p => GARDEN.has(p.kind) || p.kind.startsWith('tree-'));
+  const garden = placed.filter(p => GARDEN.has(p.kind) || p.kind.startsWith('tree-') ||
+    p.id.startsWith('hoofington-verge-'));
   expect(buildings.length).toBeGreaterThan(5);
   expect(garden.length).toBeGreaterThan(20);
   const failures: string[] = [];
@@ -144,5 +145,58 @@ it('keeps all Hoofington buildings and garden art grounded, separate and off the
   if (failures.length) {
     throw new Error('Hoofington geometry QA found ' + failures.length +
       ' placement issue(s):\n' + failures.join('\n'));
+  }
+});
+
+it('preserves the fence IDs across distinct yard openings and stages usable props on both verges', () => {
+  for (const seed of ['billy-isle', 'hoofington-geometry', 'full-loop-core-test']) {
+    const island = generateIsland({ seed });
+    const farm = island.pois.find(p => p.id === 'hoofington')!.center;
+    const yard = island.props.filter(p => p.poiId === 'hoofington');
+    const asPlaced = (prop: typeof yard[number]): Placed => ({
+      id: prop.id, kind: prop.kind, position: prop.transform.position,
+      size: prop.size, yaw: prop.transform.rotationY,
+    });
+    const fences = yard.filter(p => p.kind === 'fence');
+    const front = fences.filter(p => p.id.startsWith('hoofington-fence-'));
+    expect(front.map(p => p.id)).toEqual(
+      Array.from({ length: 14 }, (_, index) => 'hoofington-fence-' + (index + 6)),
+    );
+    expect(front.filter(p => p.size.x < 6.5)).toHaveLength(12);
+    expect(front.filter(p => p.transform.rotationY === 0)).toHaveLength(4);
+    expect(fences).toHaveLength(30);
+    const corridor = (x: number, z: number, length: number, width: number): Placed => ({
+      id: 'yard-opening', kind: 'gate', position: { x: farm.x + x, y: farm.y, z: farm.z + z },
+      size: { x: length, y: 1, z: width }, yaw: 0,
+    });
+    // A goat can turn into the north farmhouse, the central play yard and
+    // both south yards through openings wider than a KID goat.
+    for (const [x, z] of [[-12, -20], [12, -27.7], [12, 2], [-12, 23.5], [12, 24]] as const) {
+      const passage = corridor(x, z, 8, 2.4);
+      expect(front.filter(p => overlaps(passage, asPlaced(p))).map(p => p.id),
+        seed + ' opening at ' + x + ',' + z).toEqual([]);
+    }
+    // The gate between the third and fourth paddock rails also accommodates
+    // the round Hay Haul bale that spawns at this crossing.
+    const pasture = corridor(-35, -11.6, 8, 2.6);
+    expect(fences.filter(p => overlaps(pasture, asPlaced(p))).map(p => p.id), seed).toEqual([]);
+
+    const plan = makeHoofingtonPlacements(island);
+    for (const approach of ['north', 'south'] as const) {
+      const prefix = 'hoofington-verge-' + approach + '-';
+      const stop = yard.filter(p => p.id.startsWith(prefix));
+      expect(stop.map(p => p.kind)).toEqual(['crate', 'barrel', 'bench']);
+      expect(stop.slice(0, 2).every(p => p.body.type === 'dynamic' &&
+        p.breakable && p.lickable && p.collidable)).toBe(true);
+      expect(plan.some(p => p.model === 'bench' && p.source?.id === prefix + 'bench')).toBe(true);
+      for (const prop of stop) {
+        const position = prop.transform.position;
+        expect(Math.abs(position.x - farm.x)).toBeLessThan(10);
+        expect(Math.abs(position.z - farm.z)).toBeGreaterThan(29);
+        const neighbours = yard.filter(p => p !== prop && p.collidable &&
+          p.kind !== 'grass-tuft' && overlaps(asPlaced(prop), asPlaced(p)));
+        expect(neighbours.map(p => p.id), prop.id + ' on ' + seed).toEqual([]);
+      }
+    }
   }
 });

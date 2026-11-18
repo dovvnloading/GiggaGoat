@@ -12,7 +12,7 @@ import { buildStreetDetails } from './visual-streets';
 import { buildMeadowScatter } from './visual-meadow';
 import { buildWaterVisuals } from './visual-water';
 import { buildDamVisuals } from './visual-dam';
-import { buildLighthouseVisuals } from './visual-lighthouse';
+import { buildLighthouseVisuals, makeCapeLighting } from './visual-lighthouse';
 import { buildHoofingtonVisuals } from './visual-hoofington';
 import { buildDowntownVisuals } from './visual-downtown';
 import { buildSkyVisuals, type LightingPreset } from './visual-sky';
@@ -226,7 +226,8 @@ function terrainGeometry(
   geometry.computeBoundingSphere();
   return geometry;
 }
-function buildTerrain(island: IslandData, segments: number): Chunk[] {
+function buildTerrain(island: IslandData, segments: number,
+  capeLighting: ReturnType<typeof makeCapeLighting>): Chunk[] {
   const n = island.resolution;
   const material = new THREE.MeshToonMaterial({
     vertexColors: true, gradientMap: TOON_RAMP, side: THREE.FrontSide,
@@ -274,6 +275,7 @@ uStone *= 0.96 + 0.04 * sin(elevation * 0.52 + 2.0 * exposure);
 float rock = smoothstep(0.19, 0.48, exposure + 0.04 * smoothstep(16.0, 85.0, elevation));
 diffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);`,
     );
+    capeLighting.paint(shader);
   };
   const lookup = roadGrid(island, 22);
   const chunks: Chunk[] = [];
@@ -364,7 +366,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const group = new THREE.Group();
   group.name = 'Billy Isle';
   const segments = Math.max(4, Math.floor(options.chunkSegments ?? 32));
-  const chunks = buildTerrain(island, segments);
+  const capeLighting = makeCapeLighting(island);
+  const chunks = buildTerrain(island, segments, capeLighting);
   for (const chunk of chunks) group.add(chunk.mesh);
   group.add(buildRoads(island));
   group.add(buildStreetDetails(island));
@@ -386,7 +389,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(waterVisuals.inland, waterVisuals.sea);
   const dam = buildDamVisuals(island, waterVisuals.light);
   group.add(dam.group);
-  const lighthouse = buildLighthouseVisuals(scenery, props.group);
+  const lighthouse = buildLighthouseVisuals(scenery, props.group, capeLighting);
   group.add(lighthouse.group);
   const fogColor = new THREE.Color();
   group.add(sky.group);
@@ -425,6 +428,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     const state = sky.update(((phase % 1) + 1) % 1);
     waterVisuals.setLighting(state.daylight, state.golden);
     dam.refreshWaterLight();
+    capeLighting.setSun(state.golden, state.direction);
+    lighthouse.setLighting(state.daylight, state.golden);
     fogColor.copy(state.horizon);
     sun.position.copy(state.direction).multiplyScalar(560);
     sun.intensity = 0.07 + state.daylight * 1.55;
@@ -448,7 +453,6 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     waterVisuals.update(elapsed, tide);
     props.update(elapsed);
     dam.update(elapsed);
-    lighthouse.update(elapsed);
   }
   function updateCulling(camera: THREE.Camera): boolean {
     camera.updateMatrixWorld();

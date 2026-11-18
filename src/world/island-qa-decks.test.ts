@@ -80,8 +80,11 @@ describe('island QA pass 2: structural decks and removed farm clutter', () => {
   it('removes Hoofington lawn deck, seven garden crates and hay-field ramp', () => {
     const island = generateIsland({ seed: 'billy-isle' });
     const unwanted = island.props.filter(p => p.poiId === 'hoofington' &&
-      (p.kind === 'platform' || p.kind === 'crate' || p.kind === 'ramp'));
+      (p.kind === 'platform' || p.kind === 'ramp' ||
+        (p.kind === 'crate' && !p.id.startsWith('hoofington-verge-'))));
     expect(unwanted).toEqual([]);
+    expect(island.props.filter(p => p.kind === 'crate' &&
+      p.id.startsWith('hoofington-verge-'))).toHaveLength(2);
     expect(island.props.filter(p => p.poiId === 'hoofington' &&
       p.kind === 'hay-bale').length).toBeGreaterThan(0);
   });
