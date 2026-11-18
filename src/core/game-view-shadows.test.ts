@@ -85,3 +85,36 @@ describe('GameView shadow caster selection', () => {
     ]);
   });
 });
+
+describe('GameView World Lab streamed batch suppression', () => {
+  it('hides late near/far library draws but keeps unrelated world kinds', () => {
+    const group = new THREE.Group();
+    const view = Object.create(GameView.prototype) as GameView;
+    Object.assign(view, {
+      world: { group },
+      suppressedWorldLabKinds: new Set<string>(),
+    });
+    const hide = () =>
+      (view as unknown as { hideWorldLabLoadedProps(): void }).hideWorldLabLoadedProps();
+    // GameView initially binds only props-<kind> while these copies do not exist.
+    hide();
+    const make = (name: string): THREE.InstancedMesh => {
+      const mesh = new THREE.InstancedMesh(
+        new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial(), 1);
+      mesh.name = name;
+      group.add(mesh);
+      return mesh;
+    };
+    const near = make('render-near-fence');
+    const far = make('render-far-fence');
+    const other = make('render-near-tree-oak');
+    hide();
+    const cameraLayers = new THREE.Layers();
+    cameraLayers.set(0);
+    expect(near.layers.test(cameraLayers)).toBe(false);
+    expect(far.layers.test(cameraLayers)).toBe(false);
+    expect(other.layers.test(cameraLayers)).toBe(true);
+    hide();
+    expect(near.layers.test(cameraLayers)).toBe(false);
+  });
+});
