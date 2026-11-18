@@ -3,7 +3,7 @@ import type { GigPropSpawn } from '../gigs';
 import type { PropDescriptor } from '../world';
 import {
   PropFactory, BUILD_PIECE_SIZES, DEFAULT_CRATE_SIZE, SURFACE_HALF_EXTENTS,
-  type BuildPieceType, type Size3,
+  type BuildPieceType, type Size3, type WorldLibraryPropKind,
 } from '../props';
 import type { SurfaceMarker } from './Game';
 
@@ -17,9 +17,9 @@ function fitRoot(root: THREE.Group, size: Size3, nominal: Size3): THREE.Group {
   return root;
 }
 
-/** World instances are centred on their original prop transform, including yaw. */
-export function createWorldLibraryProp(factory: PropFactory,
-  prop: Pick<PropDescriptor, 'kind' | 'size'>): THREE.Group | null {
+/** Legacy PropFactory toy art is a failure fallback only, never the normal world view. */
+function legacyWorldProp(factory: PropFactory,
+  prop: Pick<PropDescriptor, 'kind' | 'size'>): THREE.Group {
   switch (prop.kind) {
     case 'crate':
       return fitRoot(factory.createCrate(), prop.size, DEFAULT_CRATE_SIZE);
@@ -34,14 +34,21 @@ export function createWorldLibraryProp(factory: PropFactory,
     case 'ramp':
       return fitRoot(factory.createBuildPiece('ramp'), prop.size, BUILD_PIECE_SIZES.ramp);
     case 'trampoline':
-      // The surface root's offsets are relative to the centre of its collider.
       return fitRoot(factory.createTrampoline(), prop.size, {
         x: SURFACE_HALF_EXTENTS.x * 2, y: SURFACE_HALF_EXTENTS.y * 2,
         z: SURFACE_HALF_EXTENTS.z * 2,
       });
     default:
-      return null;
+      return fitRoot(factory.createCrate(), prop.size, DEFAULT_CRATE_SIZE);
   }
+}
+
+/** World instances use the World Lab GLB, centred on their collider and yaw. */
+export function createWorldLibraryProp(factory: PropFactory,
+  prop: Pick<PropDescriptor, 'kind' | 'size' | 'color'>): THREE.Group | null {
+  if (!WORLD_LIBRARY_KINDS.has(prop.kind)) return null;
+  return factory.createWorldProp(prop.kind as WorldLibraryPropKind, prop.size, prop.color,
+    () => legacyWorldProp(factory, prop));
 }
 
 export function createBoardLibraryProp(factory: PropFactory): THREE.Group {
