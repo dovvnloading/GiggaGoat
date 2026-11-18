@@ -25,7 +25,7 @@ describe('library prop catalog', () => {
   it('covers every PropKind and every path exists locally with the right licence', () => {
     // The satisfies Record<PropKind, string> declaration enforces exhaustive
     // coverage at typecheck time, including any newly added descriptor kind.
-    expect(mapped).toHaveLength(88);
+    expect(mapped).toHaveLength(89);
     expect(new Set(mapped.map(([kind]) => kind)).size).toBe(mapped.length);
     for (const [kind, path] of mapped) {
       const entry = byPath.get(path);
@@ -74,28 +74,33 @@ describe('library prop catalog', () => {
     box.dispose();
   });
 
-  it('registers the authored cascade GLB and retains a box fallback', () => {
-    const path = 'assets/library/custom/props/cascade.glb';
-    expect(PROP_LIBRARY_MODELS.cascade).toBe(path);
-    expect(byPath.get(path)?.license).toBe('CC0');
-    expect(existsSync(new URL('../../public/' + path, import.meta.url))).toBe(true);
-    expect(AUTHORED_HERO_DRESSING_KINDS.has('cascade')).toBe(true);
-    const prop: PropDescriptor = {
-      id: 'cascade-fallback', kind: 'cascade',
-      transform: { position: { x: 0, y: 7, z: 0 }, rotationY: 1 },
-      size: { x: 8, y: 14, z: 7 }, body: { type: 'static' },
-      shape: 'cuboid', collidable: false,
-      breakable: false, lickable: false, climbable: false,
-    };
-    const visuals = buildPropVisuals([prop]);
-    try {
-      const mesh = visuals.group.getObjectByName('props-cascade') as THREE.InstancedMesh;
-      expect(mesh).toBeInstanceOf(THREE.InstancedMesh);
-      expect(mesh.count).toBe(1);
-      expect(mesh.geometry.getAttribute('position').count).toBe(36);
-      expect(mesh.geometry.getAttribute('color')).toBeDefined();
-    } finally {
-      visuals.dispose();
+  it('registers both authored cascade GLBs with separate inert box fallbacks', () => {
+    for (const [kind, file, height] of [
+      ['cascade', 'cascade.glb', 10.5],
+      ['cascade-tall', 'cascade-tall.glb', 14],
+    ] as const) {
+      const path = 'assets/library/custom/props/' + file;
+      expect(PROP_LIBRARY_MODELS[kind]).toBe(path);
+      expect(byPath.get(path)?.license).toBe('CC0');
+      expect(existsSync(new URL('../../public/' + path, import.meta.url))).toBe(true);
+      expect(AUTHORED_HERO_DRESSING_KINDS.has(kind)).toBe(true);
+      const prop: PropDescriptor = {
+        id: kind + '-fallback', kind,
+        transform: { position: { x: 0, y: height / 2, z: 0 }, rotationY: 1 },
+        size: { x: 6.6, y: height, z: kind === 'cascade' ? 9.2 : 4 },
+        body: { type: 'static' }, shape: 'cuboid', collidable: false,
+        breakable: false, lickable: false, climbable: false,
+      };
+      const visuals = buildPropVisuals([prop]);
+      try {
+        const mesh = visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
+        expect(mesh).toBeInstanceOf(THREE.InstancedMesh);
+        expect(mesh.count).toBe(1);
+        expect(mesh.geometry.getAttribute('position').count).toBe(36);
+        expect(mesh.geometry.getAttribute('color')).toBeDefined();
+      } finally {
+        visuals.dispose();
+      }
     }
   });
 

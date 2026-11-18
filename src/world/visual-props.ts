@@ -11,7 +11,7 @@ import { WORLD_LOD, completelyOccluded, isSmallWorldModel,
 
 export interface PropBatch {
   sphere: THREE.Sphere;
-  meshes: THREE.InstancedMesh[];
+  meshes: THREE.Mesh[];
   nearOnly: boolean;
 }
 export interface PropVisuals {
@@ -76,6 +76,7 @@ const COLORS: Partial<Record<PropKind, number>> = {
   'palm-tree': 0x6d9b56, floodlight: 0xdfe4df, 'life-ring': 0xf5e1d4,
   'cable-spool': 0x9c7655, 'pallet-stack': 0xba8f62, 'log-bridge': 0x906742,
   fern: 0x548e57, 'lily-pads': 0x5d9a65, cascade: 0x65bfdf,
+  'cascade-tall': 0x65bfdf,
 };
 const authoredKioskSignKinds = new Set<PropKind>([
   'kiosk-sign-icecream', 'kiosk-sign-popcorn', 'kiosk-sign-games',
@@ -84,7 +85,7 @@ const authoredKioskSignKinds = new Set<PropKind>([
 /** Authored painted hero dressing keeps its GLB vertex colours and full far LOD. */
 export const AUTHORED_HERO_DRESSING_KINDS: ReadonlySet<PropKind> = new Set([
   'palm-tree', 'floodlight', 'life-ring', 'cable-spool',
-  'pallet-stack', 'log-bridge', 'lily-pads', 'cascade',
+  'pallet-stack', 'log-bridge', 'lily-pads', 'cascade', 'cascade-tall',
 ]);
 const authoredCraneYardKinds = new Set<PropKind>([
   'crane', 'crane-jib', 'crane-cab', 'crane-cable', 'red-girder',
@@ -719,6 +720,9 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     occluded: boolean[];
   }
   const jobs: Job[] = [];
+  // One BatchedMesh can draw the two different cascade GLBs in a single
+  // material pass. The remaining waterfall foam is already one draw.
+  let cascadeBatch: { mesh: THREE.BatchedMesh; ids: Map<Job, number[]> } | undefined;
   const dummy = new THREE.Object3D();
   for (const [kind, entries] of buckets) {
     const architecture = isArchitecturalKind(kind) ? buildArchitecture(kind) : null;
@@ -944,7 +948,45 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     // starving the landmark model loaders of network/decoding capacity.
     void Promise.all(Array.from({ length: Math.min(4, jobs.length) }, () => worker()))
       .then(() => {
-        if (!disposed) group.userData['libraryReady'] = true;
+        if (disposed) return;
+        const falls = jobs.filter(job => job.kind === 'cascade' ||
+          job.kind === 'cascade-tall');
+        if (falls.length === 2 && falls.every(job => job.near && job.near === job.far)) {
+          // The painted models have the same position/normal/color attributes,
+          // but different silhouettes. BatchedMesh keeps each geometry intact
+          // while drawing both with one toon material and one draw call.
+          const count = falls.reduce((total, job) => total + job.entries.length, 0);
+          const vertices = falls.reduce((total, job) =>
+            total + job.mesh.geometry.getAttribute('position').count, 0);
+          const indices = falls.reduce((total, job) =>
+            total + (job.mesh.geometry.index?.count ?? 0), 0);
+          const batch = new THREE.BatchedMesh(count, vertices, indices,
+            falls[0]!.mesh.material as THREE.MeshToonMaterial);
+          batch.name = 'render-cascade-batch';
+          batch.frustumCulled = false; // Explicit per-pool culling below.
+          batch.perObjectFrustumCulled = false;
+          const ids = new Map<Job, number[]>();
+          const matrix = new THREE.Matrix4();
+          for (const job of falls) {
+            const geometryId = batch.addGeometry(job.mesh.geometry);
+            const ownIds: number[] = [];
+            for (let i = 0; i < job.entries.length; i++) {
+              const instanceId = batch.addInstance(geometryId);
+              job.mesh.getMatrixAt(i, matrix);
+              batch.setMatrixAt(instanceId, matrix);
+              batch.setColorAt(instanceId, new THREE.Color(0xffffff));
+              ownIds.push(instanceId);
+            }
+            ids.set(job, ownIds);
+            group.remove(job.near!);
+            // Preserve the stable props-<kind> physics mesh and descriptor order.
+            job.batch.meshes.length = 0;
+          }
+          falls[0]!.batch.meshes.push(batch);
+          group.add(batch);
+          cascadeBatch = { mesh: batch, ids };
+        }
+        group.userData['libraryReady'] = true;
       });
   }
   return {
@@ -960,6 +1002,25 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
         a.length === b.length && a.every((value, i) => value === b[i]);
       for (const job of jobs) {
         const suppressed = hidden(job.mesh);
+        const fallIds = cascadeBatch?.ids.get(job);
+        if (fallIds && cascadeBatch) {
+          for (let i = 0; i < job.entries.length; i++) {
+            job.mesh.getMatrixAt(i, matrix);
+            const el = matrix.elements;
+            centre.set(el[12]!, el[13]!, el[14]!);
+            const size = job.entries[i]!.size;
+            const radius = Math.hypot(size.x, size.y, size.z) * 0.52;
+            test.center.copy(centre);
+            test.radius = radius;
+            const visible = !suppressed && !job.occluded[i] &&
+              !(el[0] === 0 && el[5] === 0 && el[10] === 0) &&
+              position.distanceTo(centre) - radius <= maxDistance &&
+              frustum.intersectsSphere(test);
+            cascadeBatch.mesh.setMatrixAt(fallIds[i]!, matrix);
+            cascadeBatch.mesh.setVisibleAt(fallIds[i]!, visible);
+          }
+          continue;
+        }
         if (!job.near || !job.far) {
           const distance = job.batch.sphere.center.distanceTo(position);
           const visible = !suppressed && distance < maxDistance +

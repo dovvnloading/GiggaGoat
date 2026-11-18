@@ -43,9 +43,10 @@ const ground = (island: IslandData, p: { x: number; z: number }): number =>
 
 describe('authored painting-dressing GLB mapping and fallback', () => {
   it('preserves seven CC0 authored GLB paths and colours at both distances', () => {
-    // The original seven remain registered; MG-5 adds one painted cascade.
-    expect(AUTHORED_HERO_DRESSING_KINDS.size).toBe(HERO_KINDS.length + 1);
+    // The original seven plus both painted cascade shapes retain full detail.
+    expect(AUTHORED_HERO_DRESSING_KINDS.size).toBe(HERO_KINDS.length + 2);
     expect(AUTHORED_HERO_DRESSING_KINDS.has('cascade')).toBe(true);
+    expect(AUTHORED_HERO_DRESSING_KINDS.has('cascade-tall')).toBe(true);
     for (const kind of HERO_KINDS) {
       expect(AUTHORED_HERO_DRESSING_KINDS.has(kind)).toBe(true);
       expect(PROP_LIBRARY_MODELS[kind]).toMatch(/^assets\/library\/custom\//);

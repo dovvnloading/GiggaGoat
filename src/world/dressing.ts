@@ -4,7 +4,7 @@ import { gridSample, riverAt, segmentProjection, stampPlot } from './terrain';
 import { getDamPlacement } from './the-dam';
 import { damChannelAt } from './dam-landscape';
 import { isInsideDowntownInfillFootprint } from './visual-downtown';
-import { waterfallSites } from './visual-water';
+import { CASCADE_NATIVE_SIZE, cascadePoolCentre, cascadeWaterLine, waterfallSites } from './visual-water';
 
 // Extra art and physical scenery must not intersect the authored shop infills.
 const INFILL_SCENERY_KINDS = new Set<PropKind>([
@@ -41,7 +41,8 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     const y = options.y ?? base + size.y / 2 + (options.lift ?? 0) * scale;
     const body: PropDescriptor['body'] = options.mass === undefined
       ? { type: 'static' } : { type: 'dynamic', mass: options.mass };
-    const nonInteractive = kind === 'fern' || kind === 'lily-pads' || kind === 'cascade';
+    const nonInteractive = kind === 'fern' || kind === 'lily-pads' ||
+      kind === 'cascade' || kind === 'cascade-tall';
     const prop: PropDescriptor = {
       id: 'detail-' + (poiId ?? 'island') + '-' + kind + '-' + serial++,
       kind, ...(poiId ? { poiId } : {}),
@@ -693,30 +694,68 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     fernCount++;
   }
 
-  // MG-5: Use exactly the sites chosen by the old water renderer. Feed it
-  // the complete dressing snapshot: the HF-10 visibility search has always
-  // excluded finished props, rather than just the initial island layout.
-  // This happens after all RNG-driven placements to preserve their sequence.
+  // MG-12: Profile the *chosen* model rather than forcing a long, flat
+  // stepped mesh into a convex cliff. Reject buried water or a trail-side pool.
+  // Site selection retains the complete pre-waterfall dressing snapshot.
+  const trailPoints = island.roads.filter(road => road.type === 'trail')
+    .flatMap(road => road.points);
+  type CascadePlacement = Pick<PropDescriptor, 'size' | 'transform'>;
+  const poolOffTrail = (placement: CascadePlacement): boolean => {
+    const pool = cascadePoolCentre(placement, scale);
+    return trailPoints.every(point => Math.hypot(pool.x - point.x, pool.z - point.z) >=
+      placement.size.x / 2 + 1 * scale);
+  };
+  const exposedWater = (placement: CascadePlacement): boolean =>
+    cascadeWaterLine(placement, scale).every(point =>
+      gridSample(island, point.x, point.z) <= point.y + 0.2 * scale + 1e-6);
+
   for (const site of waterfallSites({ ...island, props: [...island.props, ...result] })) {
     const dx = site.bottom.x - site.top.x;
     const dz = site.bottom.z - site.top.z;
     const run = Math.hypot(dx, dz);
-    const width = Math.max(site.width * 1.6, 5 * scale);
-    const depth = Math.max(4 * scale, Math.min(12 * scale, run + 2 * scale));
-    const base = gridSample(island, site.bottom.x, site.bottom.z) - 0.2 * scale;
-    const height = site.top.y - base + 0.4 * scale;
-    const x = (site.top.x + site.bottom.x) / 2;
-    const z = (site.top.z + site.bottom.z) / 2;
-    const nearby = island.pois.reduce<{ id: PoiId; distance: number; radius: number } | undefined>(
-      (best, poi) => {
-        const distance = Math.hypot(x - poi.center.x, z - poi.center.z);
-        return !best || distance < best.distance ?
-          { id: poi.id, distance, radius: poi.radius } : best;
-      }, undefined);
-    const prop = place('cascade', x, z, width / scale, height / scale, depth / scale,
-      nearby && nearby.distance <= nearby.radius * 1.8 ? nearby.id : undefined,
-      { yaw: Math.atan2(dx, dz), y: base + height / 2 });
-    prop.id = 'waterfall-cascade-' + site.id;
+    if (run < 1e-6) continue;
+    const drop = site.top.y - gridSample(island, site.bottom.x, site.bottom.z);
+    const kind = drop / run > 1.2 ? 'cascade-tall' : 'cascade';
+    const native = CASCADE_NATIVE_SIZE[kind];
+    const clamp = (wanted: number, axis: 'x' | 'y' | 'z', minimum = 0.77): number =>
+      Math.max(native[axis] * scale * minimum,
+        Math.min(native[axis] * scale * 1.3, wanted));
+    const size = {
+      x: clamp(site.width * 1.6, 'x'),
+      y: clamp(drop + 0.4 * scale, 'y', kind === 'cascade' ? 0.5 : 0.77),
+      z: clamp(run + (kind === 'cascade-tall' ? 4 : 2) * scale, 'z'),
+    };
+    const yaw = Math.atan2(dx, dz);
+    const forwardX = dx / run, forwardZ = dz / run;
+    const initialX = (site.top.x + site.bottom.x) / 2;
+    const initialZ = (site.top.z + site.bottom.z) / 2;
+    for (let step = 0; step <= 8; step++) {
+      const x = initialX + forwardX * step * 0.5 * scale;
+      const z = initialZ + forwardZ * step * 0.5 * scale;
+      // Place the base at the actual *model pool*, not the site's old
+      // bottom or the centre of the descriptor box.
+      const horizontal: CascadePlacement = {
+        size, transform: { position: { x, y: 0, z }, rotationY: yaw },
+      };
+      const pool = cascadePoolCentre(horizontal, scale);
+      const base = gridSample(island, pool.x, pool.z) - 0.2 * scale;
+      horizontal.transform.position.y = base + size.y / 2;
+      if (!exposedWater(horizontal)) continue;
+      if (!poolOffTrail(horizontal)) break;
+      const nearby = island.pois.reduce<{ id: PoiId; distance: number; radius: number } | undefined>(
+        (best, poi) => {
+          const distance = Math.hypot(x - poi.center.x, z - poi.center.z);
+          return !best || distance < best.distance ?
+            { id: poi.id, distance, radius: poi.radius } : best;
+        }, undefined);
+      const prop = place(kind, x, z, size.x / scale, size.y / scale, size.z / scale,
+        nearby && nearby.distance <= nearby.radius * 1.8 ? nearby.id : undefined,
+        { yaw, y: base + size.y / 2 });
+      prop.id = 'waterfall-cascade-' + site.id;
+      break;
+    }
+    // If no shift (up to 4 m scaled) clears all six points, do not create
+    // either a buried cascade or stray foam on the trail.
   }
 
   // WP-4: Search a true six-metre terrain drop, not authored river water
@@ -755,11 +794,19 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
         x: prop.transform.position.x, z: prop.transform.position.z,
         sx: prop.size.x, sz: prop.size.z, yaw: prop.transform.rotationY,
       }));
-    const rockW = 3.5 * scale, rockD = 3 * scale;
-    type GladeSite = { x: number; z: number; yaw: number; width: number;
-      drop: number; base: number; rocks: Array<{ x: number; z: number }> };
+    const size = {
+      x: CASCADE_NATIVE_SIZE.cascade.x * scale,
+      y: CASCADE_NATIVE_SIZE.cascade.y * scale,
+      z: CASCADE_NATIVE_SIZE.cascade.z * scale,
+    };
+    type GladeRock = { id: string; x: number; z: number;
+      sx: number; sy: number; sz: number; yaw: number };
+    type GladeSite = { placement: CascadePlacement; drop: number;
+      rocks: GladeRock[] };
     let best: GladeSite | undefined;
-    // Step at 0.5 m: pick the largest *fitting* drop in the first 60 m.
+    // Search the same first 60 m and six-metre river reach as WP-4, but
+    // anchor the *native* pool at the found downstream point. Its lip is
+    // then approximately six metres upstream, over the built rock step.
     for (let fromBridge = 8; fromBridge + 6 <= 60; fromBridge += 0.5) {
       const bottom = upstreamAt(fromBridge);
       const top = upstreamAt(fromBridge + 6);
@@ -773,36 +820,52 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       const yaw = Math.atan2(dx, dz);
       const forwardX = dx / run, forwardZ = dz / run;
       const acrossX = forwardZ, acrossZ = -forwardX;
-      const width = (top.width + bottom.width) * 0.65;
-      const depth = 4.5 * scale;
-      const x = (top.x + bottom.x) / 2, z = (top.z + bottom.z) / 2;
-      const falls: Footprint = { x, z, sx: width, sz: depth, yaw };
+      const x = bottom.x - forwardX * size.z * 0.25;
+      const z = bottom.z - forwardZ * size.z * 0.25;
+      const falls: Footprint = { x, z, sx: size.x, sz: size.z, yaw };
       if (!free(falls)) continue;
-      const lipX = x - forwardX * (depth / 2 - 0.25 * scale);
-      const lipZ = z - forwardZ * (depth / 2 - 0.25 * scale);
-      const sideOffset = (width + rockW) / 2 - 0.08 * scale;
-      const rocks = [-1, 1].map(side => ({
-        x: lipX + acrossX * side * sideOffset,
-        z: lipZ + acrossZ * side * sideOffset,
-      }));
-      if (!rocks.every(r => free({ x: r.x, z: r.z,
-        sx: rockW, sz: rockD, yaw }))) continue;
-      best = {
-        x, z, yaw, width, drop,
-        base: gridSample(island, bottom.x, bottom.z) - 0.2 * scale,
-        rocks,
+      const base = gridSample(island, bottom.x, bottom.z) - 0.2 * scale;
+      const placement: CascadePlacement = {
+        size, transform: { position: { x, y: base + size.y / 2, z }, rotationY: yaw },
       };
+      if (!poolOffTrail(placement) || !exposedWater(placement)) continue;
+
+      const rockSpecs = [
+        { id: 'back', lx: 0, lz: -size.z / 2 - 1.5 * scale,
+          sx: 6 * scale, sy: 7 * scale, sz: 5 * scale },
+        { id: 'left', lx: -(size.x / 2 + 1.5 * scale), lz: -size.z / 4,
+          sx: 5 * scale, sy: 6 * scale, sz: 5 * scale },
+        { id: 'right', lx: size.x / 2 + 1.5 * scale, lz: -size.z / 4,
+          sx: 5 * scale, sy: 6 * scale, sz: 4 * scale },
+      ] as const;
+      const rocks: GladeRock[] = [];
+      for (const rock of rockSpecs) {
+        const rx = x + acrossX * rock.lx + forwardX * rock.lz;
+        const rz = z + acrossZ * rock.lx + forwardZ * rock.lz;
+        const footprint: Footprint = {
+          x: rx, z: rz, sx: rock.sx, sz: rock.sz, yaw,
+        };
+        // Existing colliders, the bridge/lookout, and earlier accepted rocks
+        // always take precedence over this optional sculpted riser.
+        if (!free(footprint) || rocks.some(other => footprintOverlaps(footprint, {
+          x: other.x, z: other.z, sx: other.sx, sz: other.sz, yaw,
+        }))) continue;
+        rocks.push({ id: rock.id, x: rx, z: rz,
+          sx: rock.sx, sy: rock.sy, sz: rock.sz, yaw });
+      }
+      best = { placement, drop, rocks };
     }
     if (best) {
-      const height = Math.max(best.drop, 3.2 * scale);
-      const fall = place('cascade', best.x, best.z, best.width / scale,
-        height / scale, 4.5, forest,
-        { yaw: best.yaw, y: best.base + height / 2 });
+      const { position, rotationY } = best.placement.transform;
+      const fall = place('cascade', position.x, position.z,
+        size.x / scale, size.y / scale, size.z / scale, forest,
+        { yaw: rotationY, y: position.y });
       fall.id = 'whispering-pines-glade-cascade';
-      for (const [i, rock] of best.rocks.entries()) {
-        const side = place('rock', rock.x, rock.z, 3.5, 2.4, 3, forest,
-          { yaw: best.yaw, shape: 'convex' });
-        side.id = 'whispering-pines-glade-lip-' + (i === 0 ? 'left' : 'right');
+      for (const rock of best.rocks) {
+        const step = place('rock', rock.x, rock.z,
+          rock.sx / scale, rock.sy / scale, rock.sz / scale, forest,
+          { yaw: rock.yaw, shape: 'convex' });
+        step.id = 'whispering-pines-glade-lip-' + rock.id;
       }
     }
   }

@@ -176,47 +176,64 @@ describe('library prop draw-call compaction', () => {
   });
 });
 
-describe('cascade instancing draw budget (MG-5 / WP-4)', () => {
-  it('renders all authored cascades in one draw at mixed distances, plus one foam batch', async () => {
-    const load = vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockImplementation(async () => {
+describe('cascade model and foam draw budget (MG-12 / WP-14)', () => {
+  it('batches both painted silhouettes into one draw plus one foam batch', async () => {
+    const load = vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockImplementation(async url => {
+      const tall = url.includes('cascade-tall');
       const scene = new THREE.Group();
-      scene.add(new THREE.Mesh(new THREE.BoxGeometry(6, 10, 6).translate(0, 5, 0),
+      scene.add(new THREE.Mesh(new THREE.BoxGeometry(6.6, tall ? 14 : 10.5,
+        tall ? 4 : 9.2).translate(0, tall ? 7 : 5.25, 0),
         new THREE.MeshStandardMaterial({ color: 0x3b9dbb })));
       return { scene } as Awaited<ReturnType<GLTFLoader['loadAsync']>>;
     });
     vi.stubGlobal('document', {});
     const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
-    const cascades = island.props.filter(prop => prop.kind === 'cascade');
-    expect(cascades.length).toBeGreaterThan(1);
-    expect(AUTHORED_HERO_DRESSING_KINDS.has('cascade')).toBe(true);
+    const placed = island.props.filter(prop => prop.kind === 'cascade' ||
+      prop.kind === 'cascade-tall');
+    const fallback: PropDescriptor = placed[0] ?? {
+      id: 'test-cascade', kind: 'cascade',
+      size: { x: 6.6, y: 10.5, z: 9.2 },
+      transform: { position: { x: 0, y: 5.25, z: 0 }, rotationY: 0 },
+      body: { type: 'static' }, shape: 'cuboid',
+      collidable: false, breakable: false, lickable: false, climbable: false,
+    };
+    const normal = placed.find(p => p.kind === 'cascade') ??
+      { ...fallback, id: 'test-normal-cascade', kind: 'cascade' as const,
+        size: { x: 6.6, y: 10.5, z: 9.2 } };
+    const tall = placed.find(p => p.kind === 'cascade-tall') ??
+      { ...fallback, id: 'test-tall-cascade', kind: 'cascade-tall' as const,
+        size: { x: 6.6, y: 14, z: 4 } };
+    const cascades = [normal, tall,
+      ...placed.filter(p => p !== normal && p !== tall)];
     const visuals = buildPropVisuals(cascades);
     const water = buildWaterVisuals(island);
     try {
       await vi.waitFor(() => expect(visuals.group.userData['libraryReady']).toBe(true),
         { timeout: 15000 });
       expect(visuals.group.userData['libraryFailed']).toBe(0);
-      expect(load).toHaveBeenCalledTimes(1);
-      const source = visuals.group.getObjectByName('props-cascade') as THREE.InstancedMesh;
-      const near = visuals.group.getObjectByName('render-near-cascade') as THREE.InstancedMesh;
-      expect(near).toBeInstanceOf(THREE.InstancedMesh);
-      expect(visuals.group.getObjectByName('render-far-cascade')).toBe(near);
-      expect(visuals.batches).toHaveLength(1);
-      expect(visuals.batches[0]!.meshes).toEqual([near]);
-      expect(near.geometry).toBe(source.geometry);
-      const colour = new THREE.Color();
-      for (let i = 0; i < source.count; i++) {
-        source.getColorAt(i, colour);
-        expect(colour.getHex()).toBe(0xffffff);
+      expect(load).toHaveBeenCalledTimes(2);
+      expect(AUTHORED_HERO_DRESSING_KINDS.has('cascade')).toBe(true);
+      expect(AUTHORED_HERO_DRESSING_KINDS.has('cascade-tall')).toBe(true);
+      for (const kind of ['cascade', 'cascade-tall'] as const) {
+        const source = visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
+        expect(source).toBeInstanceOf(THREE.InstancedMesh);
+        const colour = new THREE.Color();
+        for (let i = 0; i < source.count; i++) {
+          source.getColorAt(i, colour);
+          expect(colour.getHex()).toBe(0xffffff);
+        }
       }
       const frustum = { intersectsSphere: () => true } as unknown as THREE.Frustum;
       visuals.updateCulling(new THREE.Vector3(0, 15, 0), frustum, 2000, () => false);
-      expect(near.count).toBe(cascades.length);
+      const batch = visuals.group.getObjectByName('render-cascade-batch');
+      expect(batch).toBeInstanceOf(THREE.BatchedMesh);
       const drawn = visuals.group.children.filter(object =>
-        object instanceof THREE.InstancedMesh && object.visible &&
-        object.name.startsWith('render-') && object.count > 0);
+        (object instanceof THREE.InstancedMesh || object instanceof THREE.BatchedMesh) &&
+        object.visible && object.name.startsWith('render-'));
+      expect(drawn).toEqual([batch]);
       const foam = water.inland.getObjectByName('waterfall-foam-batch');
       expect(foam).toBeInstanceOf(THREE.InstancedMesh);
-      expect(drawn.length + (foam ? 1 : 0)).toBeLessThanOrEqual(2);
+      expect(drawn.length + Number(Boolean(foam))).toBeLessThanOrEqual(2);
     } finally {
       visuals.dispose();
     }
