@@ -20,8 +20,10 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
   it('keeps every prop instance finite, with only replaced lighthouse art hidden', () => {
     // The striped tower (QA LH-1) is the generic 'lighthouse' prop: not hidden.
     const replacedLighthouseKinds = new Set([
-      'cottage', 'shipwreck', 'dock', 'cave-mouth',
+      'cottage', 'shipwreck', 'dock', 'cave-mouth', 'deck-stilts',
     ]);
+    expect(view.group.getObjectByName('lighthouse-lookout-cliff-braces-and-landing'))
+      .toBeInstanceOf(THREE.Group);
     const grouped = new Map<string, PropDescriptor[]>();
     for (const prop of island.props) {
       // The Dam Bomb's data-only platform is replaced visually by the GLB.

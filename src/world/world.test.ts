@@ -116,9 +116,10 @@ describe('Billy Isle deterministic world generation', () => {
       expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(3.5);
     }
     expect(island.props.filter(p => p.kind === 'shop').length).toBeGreaterThanOrEqual(7);
-    // The Dam uses modeled rungs; the four Downtown roof-access ramps remain.
-    // The removed Hoofington hay-field ramp must not be counted here.
-    expect(island.props.filter(p => p.kind === 'ramp').length).toBe(4);
+    const ramps = island.props.filter(p => p.kind === 'ramp');
+    expect(ramps.filter(p => p.poiId === 'downtown-bleatsville')).toHaveLength(4);
+    expect(ramps.filter(p => p.poiId === 'crane-yard')).toHaveLength(4);
+    expect(ramps).toHaveLength(8);
     expect(island.colliders.some(p => p.shape === 'convex')).toBe(true);
     expect(island.props.filter(p => p.kind.startsWith('tree-')).length).toBeGreaterThan(70);
   });
