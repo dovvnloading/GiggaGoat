@@ -217,22 +217,20 @@ export function buildMountainWayfinding(island: IslandData): THREE.Group {
   const group = new THREE.Group();
   group.name = 'mt-gigga-wayfinding';
   const scale = island.size / 600, clear = mountainClearance(island);
-  const material = new THREE.MeshToonMaterial({ color: 0xffffff, vertexColors: true,
-    gradientMap: TOON_RAMP });
+  const pieces: THREE.BufferGeometry[] = [];
+  const features: Record<string, { start: number; count: number }> = {};
+  let vertices = 0;
   function add({ id, markers, parts }: SetPiece): void {
-    const geometryParts = markers.flatMap(({ x, z }) => parts.map(part => {
+    const start = vertices;
+    for (const { x, z } of markers) for (const part of parts) {
       const place = { x: x + part[1] * scale, z: z + part[3] * scale };
       // Root each object in its local terrain. Tall parts of the same object share XZ.
-      return colourGeometry(part, scale, { x,
+      const geometry = colourGeometry(part, scale, { x,
         y: terrainTop(island, place.x, place.z) - .18 * scale, z });
-    }));
-    const geometry = mergeGeometries(geometryParts);
-    geometryParts.forEach(part => part.dispose());
-    if (!geometry) return;
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = 'mountain-' + id;
-    mesh.receiveShadow = true;
-    group.add(mesh);
+      pieces.push(geometry);
+      vertices += geometry.getAttribute('position').count;
+    }
+    features[id] = { start, count: vertices - start };
   }
 
   for (const tier of TIERS) {
@@ -251,6 +249,17 @@ export function buildMountainWayfinding(island: IslandData): THREE.Group {
     if (cut.jump) parts.push(['box', 0, .83, 0, .34, .14, .34, 0xe39740, yaw]);
     add({ id: cut.id, markers: cut.markers, parts });
   }
-  if (group.children.length === 0) material.dispose();
+  if (pieces.length === 0) return group;
+  const geometry = mergeGeometries(pieces);
+  pieces.forEach(piece => piece.dispose());
+  if (!geometry) return group;
+  // Retain inspection ranges without geometry groups or additional draw calls.
+  geometry.userData['features'] = features;
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshToonMaterial({
+    color: 0xffffff, vertexColors: true, gradientMap: TOON_RAMP,
+  }));
+  mesh.name = 'mountain-wayfinding-batched';
+  mesh.receiveShadow = true;
+  group.add(mesh);
   return group;
 }

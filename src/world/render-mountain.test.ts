@@ -78,28 +78,43 @@ it('renders distinguishable, grounded tier landmarks off existing trails and cas
   try {
     const wayfinding = world.group.getObjectByName('mt-gigga-wayfinding')!;
     const tierNames = ['split-stones', 'pine-shelf', 'lantern-bend', 'cloud-cairn', 'survey-shelf'];
+    expect(wayfinding.children).toHaveLength(1);
+    const mesh = wayfinding.children[0] as THREE.Mesh;
+    expect(mesh).toBeInstanceOf(THREE.Mesh);
+    expect(mesh.castShadow).toBe(false);
+    expect(mesh.receiveShadow).toBe(true);
+    const geometry = mesh.geometry;
+    expect(geometry.groups).toHaveLength(0);
+    const positions = geometry.getAttribute('position');
+    const paint = geometry.getAttribute('color');
+    const features = geometry.userData['features'] as
+      Record<string, { start: number; count: number }>;
+    expect(Object.keys(features)).toEqual([...tierNames, 'northwest-cut', 'summit-cut']);
+    let cursor = 0;
+    for (const { start, count } of Object.values(features)) {
+      expect(start).toBe(cursor);
+      expect(count).toBeGreaterThan(0);
+      expect(count % 3).toBe(0);
+      cursor += count;
+    }
+    expect(cursor).toBe(positions.count);
     let lastElevation = 0;
     const trails = island.roads.flatMap(road => road.points.slice(1).map((point, i) =>
       ({ ahead: point, behind: road.points[i]!, half: road.width / 2 })));
     const water = world.group.getObjectByName('mountain-terrace-water') as THREE.Mesh;
     const wet = water.geometry.getAttribute('position');
     for (const name of tierNames) {
-      const mesh = wayfinding.getObjectByName('mountain-' + name) as THREE.Mesh;
-      expect(mesh, name).toBeInstanceOf(THREE.Mesh);
-      const geometry = mesh.geometry;
-      geometry.computeBoundingBox();
-      const box = geometry.boundingBox!;
-      expect(box.min.y - lastElevation, name).toBeGreaterThan(8);
-      expect(box.max.y - box.min.y, name).toBeGreaterThan(2);
-      lastElevation = box.min.y;
-      const positions = geometry.getAttribute('position');
+      const { start, count } = features[name]!;
+      let lowest = Infinity, highest = -Infinity;
       const palette = new Set<number>();
-      const paint = geometry.getAttribute('color');
       let trailMargin = Infinity, waterMargin = Infinity, lowestGroundContact = Infinity;
-      for (let i = 0; i < positions.count; i++) {
+      for (let i = start; i < start + count; i++) {
         const point = { x: positions.getX(i), z: positions.getZ(i) };
+        const y = positions.getY(i);
+        lowest = Math.min(lowest, y);
+        highest = Math.max(highest, y);
         lowestGroundContact = Math.min(lowestGroundContact,
-          positions.getY(i) - gridSample(island, point.x, point.z));
+          y - gridSample(island, point.x, point.z));
         palette.add(paint.getX(i));
         for (const { ahead, behind, half } of trails) {
           trailMargin = Math.min(trailMargin, segmentProjection(point, behind, ahead).distance - half);
@@ -108,6 +123,9 @@ it('renders distinguishable, grounded tier landmarks off existing trails and cas
           waterMargin = Math.min(waterMargin, Math.hypot(point.x - wet.getX(j), point.z - wet.getZ(j)));
         }
       }
+      expect(lowest - lastElevation, name).toBeGreaterThan(8);
+      expect(highest - lowest, name).toBeGreaterThan(2);
+      lastElevation = lowest;
       expect(palette.size, name).toBeGreaterThanOrEqual(3);
       expect(lowestGroundContact, name).toBeLessThan(0);
       expect(trailMargin, name).toBeGreaterThan(.35);
