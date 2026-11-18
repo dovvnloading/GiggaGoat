@@ -26,7 +26,7 @@ describe('Hoofington sourced village model integration', () => {
       const surfaced = bakeHoofingtonGeometry([placement], models)!;
       // The control selects the same authored fit and bypasses the house-only paint.
       const baseline = bakeHoofingtonGeometry([placement], models, undefined,
-        { [placement.model]: 'assets/library/custom/control/cream-house.glb' })!;
+        { [placement.model]: 'assets/library/custom/' })!;
       rootAndBakes.push(surfaced, baseline);
       const positions = surfaced.getAttribute('position');
       expect(positions.array).toEqual(baseline.getAttribute('position').array);
