@@ -9,6 +9,7 @@ import { AdaptiveResolution } from './AdaptiveResolution';
 import { GRAPHICS_PRESETS, type GraphicsQuality } from './GraphicsQuality';
 import type { GameAudio } from './GameAudio';
 import { PropFactory, InstancedPropRenderer } from '../props';
+import { HEIST_BALE_SIZE } from '../props/PropFactory';
 import { Game } from './Game';
 import { GameCharacters } from './GameCharacters';
 import { GameVfx } from './GameVfx';
@@ -475,6 +476,40 @@ export class GameView {
       transparent: true, opacity: .87, depthWrite: false }));
   }
 
+  private heistGoalSign(teamId: string, color: number): THREE.Group {
+    const sign = new THREE.Group();
+    sign.name = 'hay-heist-goal-' + teamId;
+    const canvas = document.createElement('canvas');
+    canvas.width = 256; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = teamId === 'red' ? '#86213c' : '#144e78';
+      ctx.fillRect(0, 0, 256, 64);
+      ctx.strokeStyle = '#' + color.toString(16);
+      ctx.lineWidth = 5;
+      ctx.strokeRect(3, 3, 250, 58);
+      ctx.fillStyle = '#fff5db';
+      ctx.font = '900 30px system-ui';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(teamId.toUpperCase() + ' GOAL', 128, 33);
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const lettering = new THREE.MeshBasicMaterial({ map: texture });
+    const frame = new THREE.MeshToonMaterial({ color: 0x514750 });
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(2.18, .52, .13),
+      [frame, frame, frame, frame, lettering, lettering]);
+    panel.geometry.addEventListener('dispose', () => texture.dispose());
+    panel.position.y = .48;
+    sign.add(panel);
+    for (const x of [-.79, .79]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(.13, .45, .30), frame);
+      leg.position.set(x, .21, 0);
+      sign.add(leg);
+    }
+    return sign;
+  }
+
   private updatePartyVisuals(alpha: number): void {
     const roster = this.game.party.bots;
     const match = this.game.party.match;
@@ -492,12 +527,25 @@ export class GameView {
         zone.add(this.partyGroundRing(summit, 1.05 * this.game.island.size / 600, 0xffedaa));
         this.partyMarkers.add(zone);
       } else if (match?.mode === 'hay-heist') {
-        for (const barn of match.view().arena.barns) {
+        const barns = match.view().arena.barns;
+        for (const barn of barns) {
           const zone = new THREE.Group();
           zone.position.copy(vec(barn.position));
           const color = barn.teamId === 'red' ? 0xff7890 : 0x68cdff;
           zone.add(this.partyGroundRing(barn.position, barn.radius, color));
-          zone.add(this.textSprite(barn.teamId.toUpperCase() + ' GOAL', 4.7, 1.1, 3.6));
+          const rival = barns.find(other => other !== barn)!;
+          const inbound = new THREE.Vector2(rival.position.x - barn.position.x,
+            rival.position.z - barn.position.z).normalize();
+          // Both signs sit outside the haul lane, across from the player's start.
+          const side = barn.teamId === 'red' ? -.54 : .54;
+          const sideX = barn.radius * (-.80 * inbound.x + side * inbound.y);
+          const sideZ = barn.radius * (-.80 * inbound.y - side * inbound.x);
+          const y = heightAt(this.game.island, barn.position.x + sideX, barn.position.z + sideZ);
+          const sign = this.heistGoalSign(barn.teamId, color);
+          sign.position.set(sideX, y - barn.position.y, sideZ);
+          sign.rotation.y = Math.atan2(inbound.x, inbound.y);
+          sign.scale.setScalar(this.game.island.size / 600);
+          zone.add(sign);
           this.partyMarkers.add(zone);
         }
       }
@@ -514,15 +562,17 @@ export class GameView {
       for (const bale of match.bales) {
         let root = this.heistBales.get(bale.id);
         if (!root) {
-          root = createHeistHayLibraryProp(this.propFactory);
+          root = createHeistHayLibraryProp(this.propFactory, bale.homeTeam);
           this.instancedProps.add(root);
           this.heistBales.set(bale.id, root);
         }
         const carrier = bale.carrierId === 'player' ? this.game.goat :
           roster.get(bale.carrierId ?? '')?.goat;
-        const point = carrier ? carrier.torso.translation() : bale.position;
-        root.position.set(point.x, point.y + (carrier ? 1 : .25), point.z);
-        root.rotation.y += .009;
+        const point = carrier
+          ? this.game.physics.getInterpolatedTransform(carrier.torso, alpha).translation : bale.position;
+        const y = carrier ? point.y + 1 : heightAt(this.game.island, point.x, point.z) + HEIST_BALE_SIZE.y / 2;
+        root.position.set(point.x, y, point.z);
+        root.rotation.y = carrier ? -carrier.locomotion.heading : 0;
       }
     }
   }

@@ -50,13 +50,42 @@ describe('HAY HEIST — barn scoring and cargo physics contracts', () => {
     expect(match.bales.find(b => b.id === 'blue-hay-1')!.carrierId).toBeNull();
   });
 
-  it('never scores a team its own hay and allows recovery from theft', () => {
+  it('recovers stolen friendly hay without repeatedly picking it up at home', () => {
     const match = heist();
-    match.step({ ...frame(red(-9.1), blue(20)), intents: { a: { tongue: true } } });
-    const recovered = match.step({ ...frame(red(-10), blue(20)), intents: { a: { tongue: true } } });
-    expect(recovered.some(e => e.type === 'hay.scored')).toBe(false);
+    const redHay = () => match.bales.find(b => b.id === 'red-hay-1')!;
+    const holdTongue = { a: { tongue: true } };
+    expect(match.step({ ...frame(red(-9.1), blue(20)), intents: holdTongue })
+      .some(event => event.type === 'hay.picked')).toBe(false);
+
+    match.step({ ...frame(red(-5.5), blue(-9.1)), intents: { b: { tongue: true } } });
+    expect(redHay().carrierId).toBe('b');
+    const intercepted = match.step({ ...frame(red(-5.5), blue(-5.5)), intents: {
+      a: { tongue: true, chargeHeadbutt: true }, b: { tongue: true },
+    } });
+    expect(intercepted).toContainEqual(expect.objectContaining({
+      type: 'hay.dropped', playerId: 'b', reason: 'shoved',
+    }));
+    expect(intercepted).toContainEqual(expect.objectContaining({
+      type: 'hay.picked', playerId: 'a', baleId: 'red-hay-1',
+    }));
+
+    for (let tick = 0; tick < 60; tick++) {
+      const events = match.step({ ...frame(red(-9), blue(20)), intents: holdTongue });
+      expect(events.some(event => event.type === 'hay.picked' || event.type === 'hay.scored')).toBe(false);
+      expect(redHay()).toMatchObject({ carrierId: 'a', position: { x: -9 } });
+    }
+
+    expect(match.step(frame(red(-9), blue(20)))).toContainEqual(expect.objectContaining({
+      type: 'hay.dropped', playerId: 'a', baleId: 'red-hay-1', reason: 'released',
+    }));
+    expect(redHay()).toMatchObject({ carrierId: null, lastTouchedTeam: null, position: { x: -10 } });
+    for (let tick = 0; tick < 60; tick++) {
+      const events = match.step({ ...frame(red(-9), blue(20)), intents: holdTongue });
+      expect(events.some(event => event.type === 'hay.picked' || event.type === 'hay.scored')).toBe(false);
+    }
     expect(match.view().teamScores).toEqual({ blue: 0, red: 0 });
-    expect(match.bales.find(b => b.id === 'red-hay-1')!.carrierId).toBeNull();
+    expect(match.step({ ...frame(red(-9), blue(-10)), intents: { ...holdTongue, b: { tongue: true } } }))
+      .toContainEqual(expect.objectContaining({ type: 'hay.picked', playerId: 'b', baleId: 'red-hay-1' }));
   });
 
   it('drops cargo when tongue releases, and can punt enemy hay across a goal line', () => {

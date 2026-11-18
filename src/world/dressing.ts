@@ -1,7 +1,7 @@
 import type { IslandData, PoiId, PropDescriptor, PropKind, Vec2 } from './types';
 import { SeededRandom } from './random';
 import { downtownPublicSpaceAt, downtownPublicSpaces } from './downtown-public-space';
-import { gridSample, riverAt, segmentProjection, stampPlot } from './terrain';
+import { gridSample, MOUNTAIN_CAVE_ANCHOR, riverAt, segmentProjection, stampPlot } from './terrain';
 import { getDamPlacement } from './the-dam';
 import { HOOFINGTON_FIELD_ENTRANCES, HOOFINGTON_FIELD_RAILS,
   HOOFINGTON_HAUL_LANE, HOOFINGTON_YARD_ENTRANCES } from './hoofington-entrances';
@@ -517,7 +517,9 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       at(peak, 'ledge', x, z, 6.5, 1.3, 6.5, { yaw: a, color: 0x77b754 });
     }
   }
-  at(peak, 'cave-mouth', 57, 2, 11, 8, 6, { color: 0x555b6a });
+  // The fitted cave mesh spans 98% of its box. Align its floor with the landing.
+  at(peak, 'cave-mouth', MOUNTAIN_CAVE_ANCHOR.x, MOUNTAIN_CAVE_ANCHOR.z,
+    11, 8, 6, { lift: -.06, color: 0x555b6a });
   for (let i = 0; i < 20; i++) {
     const a = turn(), r = rand(42, 97);
     at(peak, 'rock', Math.cos(a) * r, Math.sin(a) * r, rand(2, 5), rand(2, 4.5), rand(2, 5),

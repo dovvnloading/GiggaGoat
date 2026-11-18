@@ -120,6 +120,24 @@ export function sculptLighthouseSeaCave(
   });
 }
 
+export const MOUNTAIN_CAVE_ANCHOR = { x: 57, z: 2 } as const;
+
+/** A continuous landing below the Mt. Gigga rock arch and through its mouth. */
+export function sculptMountainCaveLanding(
+  island: Pick<IslandData, 'heights' | 'resolution' | 'size'>,
+): void {
+  const scale = island.size / 600;
+  const caveX = MOUNTAIN_CAVE_ANCHOR.x * scale, caveZ = MOUNTAIN_CAVE_ANCHOR.z * scale;
+  const floor = gridSample(island, caveX, caveZ);
+  visitDisc(island, caveX, caveZ, 12 * scale, (height, x, z) => {
+    const dx = Math.abs(x - caveX) / scale;
+    const dz = (z - caveZ) / scale;
+    const across = 1 - smoothstep(5.4, 9.8, dx);
+    const along = (1 - smoothstep(5.4, 11.5, dz)) * smoothstep(-8, -4.1, dz);
+    return lerp(height, floor, across * along);
+  });
+}
+
 /**
  * Building footprint feathering reaches the ring of water on the cape's
  * east flank. Reopen this narrow sea channel *after* all pad grading while

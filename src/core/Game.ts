@@ -1,7 +1,7 @@
 import type { RigidBody, ColliderDesc } from '@dimforge/rapier3d-compat';
 import {
   PhysicsWorld, GoatRagdoll, RAPIER, V, forward, add, sub, mul, rotate, collisionGroups,
-  type Vec3, type Quat, type GoatSize, type PhysicsEvent,
+  type Vec3, type Quat, type GoatSize, type PhysicsEvent, type RayHit,
 } from '../physics';
 import {
   generateIsland, buildRapierColliders, heightAt, zoneAt,
@@ -21,6 +21,7 @@ import { boardwalkPierDecks } from '../world/boardwalk';
 import { HOOFINGTON_HAUL_BALE_PREFIX } from '../world/hoofington-entrances';
 import { getDamHeadwater, isDamHeadwater } from '../world/dam-landscape';
 import { DAM_FRONT_GUARD } from '../world/the-dam';
+import { HAY_HAUL_TAG_RADIUS } from '../gigs';
 import { GigSession } from './GigSession';
 import { PartySession } from './PartySession';
 import type { GameProgress } from './Persistence';
@@ -597,13 +598,17 @@ export class Game {
       -Math.cos(cameraYaw) * mz + Math.sin(cameraYaw) * mx);
     const steep = Math.hypot(wish.x, wish.z) > .1 && this.isFacingWall(wish, goat);
     const head = goat.head.translation();
-    const courierAim = player && goat.size > 1 && input.tongue && !goat.interactions.isTongueAttached
+    const seekingTongueTarget = player && input.tongue && !goat.interactions.isTongueAttached;
+    const courierAim = seekingTongueTarget && goat.size > 1
       ? this.rooftopParcelAim(goat) : undefined;
     // PartyMatch owns Hay Heist pickup/drop from the original tongue input.
     // The generic tongue ray would also tether the goat to nearby terrain.
-    const hit = hayHeist ? null : this.physics.raycast(courierAim ? goat.interactions.tongueOrigin : head,
+    const directHit = hayHeist ? null : this.physics.raycast(courierAim ? goat.interactions.tongueOrigin : head,
       courierAim ?? add(forward(goat.locomotion.heading), V(0, -.10, 0)),
       9 * goat.size, { predicate: collider => !goat.ownsBody(collider.parent()) });
+    const hayAim = seekingTongueTarget && !match
+      ? this.hayHaulBaleAim(goat, wish, directHit?.body?.handle) : undefined;
+    const hit = hayAim?.hit ?? directHit;
     const prop = hit ? [...this.colliders.props].find(([, c]) => c.handle === hit.collider.handle) : undefined;
     const lickable = !!hit && (!prop || this.island.props.find(p => p.id === prop[0])?.lickable !== false);
     const facts: GoatPhysicsFacts = {
@@ -635,7 +640,7 @@ export class Game {
       acceptForwardSupport: parcelHeld ? this.gigs.isCourierRamp : undefined,
     });
     this.water.setPaddle(goat.torso, wish);
-    this.executeCommands(commands, goat, player, courierAim);
+    this.executeCommands(commands, goat, player, hayAim?.direction ?? courierAim);
     if (player && input.graze && this.canGraze() &&
         this.gigs.active?.setup.config.kind === 'mow-down') {
       this.gigs.noteAbility({ type: 'eat' });
@@ -656,6 +661,43 @@ export class Game {
     const facing = forward(goat.locomotion.heading);
     if (facing.x * offset.x + facing.z * offset.z < Math.hypot(offset.x, offset.z) * .7) return;
     return sub(target, goat.interactions.tongueOrigin);
+  }
+
+  /** Give small aiming errors near marked bales the same first-hit check as a normal lick. */
+  private hayHaulBaleAim(goat: GoatRagdoll, wish: Vec3, directBodyHandle: number | undefined):
+    { direction: Vec3; hit: RayHit } | undefined {
+    const run = this.gigs.active;
+    if (run?.status !== 'running' || run.setup.config.kind !== 'hay-haul') return;
+    const bales = run.setup.config.bales.filter(({ id }) => !run.finishedIds.includes(id));
+    const tongue = goat.interactions;
+    const origin = tongue.tongueOrigin;
+    const facing = forward(goat.locomotion.heading);
+    if (directBodyHandle !== undefined && bales.some(({ id }) =>
+      this.colliders.bodies.get(id)?.handle === directBodyHandle)) {
+      const direct = tongue.raycastTongue();
+      if (direct?.body?.handle === directBodyHandle) return;
+    }
+
+    const torso = goat.torso.translation();
+    const movement = Math.hypot(wish.x, wish.z);
+    const aim = movement > .08 ? mul(wish, 1 / movement) : facing;
+    let bestDistance = Math.min(4, HAY_HAUL_TAG_RADIUS * goat.size);
+    let best: { direction: Vec3; hit: RayHit } | undefined;
+    for (const { id } of bales) {
+      const body = this.colliders.bodies.get(id);
+      if (!body?.isValid() || !body.isEnabled()) continue;
+      const target = body.translation();
+      const offset = sub(target, torso);
+      const distance = Math.hypot(offset.x, offset.y, offset.z);
+      const alignment = aim.x * offset.x + aim.z * offset.z;
+      if (distance > bestDistance || alignment < Math.hypot(offset.x, offset.z) * .7) continue;
+      const direction = sub(target, origin);
+      const hit = tongue.raycastTongue(direction);
+      if (hit?.body?.handle !== body.handle) continue;
+      bestDistance = distance;
+      best = { direction, hit };
+    }
+    return best;
   }
 
   /** Test terrain proximity (not an overlapping prop's zero-normal ray).

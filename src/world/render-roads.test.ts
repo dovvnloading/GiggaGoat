@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { createWorldScene, generateIsland } from './index';
 import { roadRibbonRuns } from './road-ribbons';
+import { getDamPlacement } from './the-dam';
 import type { IslandData, RoadPoint } from './types';
 import { TOON_RAMP } from './visual-props';
 
@@ -33,6 +34,7 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
   expect(indices.count / 3).toBe(6 * segments);
   expect(positions.count).toBe(6 * runs.reduce((sum, run) => sum + run.points.length, 0));
   const lift = type === 'road' ? 0.2 : 0.19;
+  const damTrailEnd = island.roads.find(road => road.id === 'mt-gigga--the-dam')?.points.at(-1);
   let vertex = 0, index = 0;
 
   for (const run of runs) {
@@ -46,11 +48,14 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
       const mitre = Math.hypot(lx - point.x, lz - point.z) / ((run.widths?.[pointIndex] ?? run.width) / 2);
       expect(mitre).toBeGreaterThanOrEqual(0.999);
       expect(mitre).toBeLessThanOrEqual(2.001);
-      for (const side of [0, 1, 2, 3]) {
-        expect(positions.getY(vertex + side)).toBeCloseTo(point.y + lift, 4);
-      }
-      for (const side of [4, 5]) {
-        expect(positions.getY(vertex + side)).toBeCloseTo(point.y - 0.15, 4);
+      const damTerminal = type === 'trail' && run.points.at(-1) === damTrailEnd &&
+        pointIndex >= run.points.length - 2;
+      for (const side of [0, 1]) {
+        const top = positions.getY(vertex + side);
+        if (damTerminal) expect(top).toBeLessThanOrEqual(point.y + lift + .0001);
+        else expect(top).toBeCloseTo(point.y + lift, 4);
+        expect(positions.getY(vertex + side + 2)).toBe(top);
+        expect(positions.getY(vertex + side + 4)).toBeCloseTo(top - lift - .15, 4);
       }
       // Skirt top coordinates coincide with the asphalt edge, but have
       // independent normals so no side-facing normal leaks into the top.
@@ -99,7 +104,6 @@ function isCrossingDash(island: IslandData, a: RoadPoint, b: RoadPoint): boolean
 }
 
 describe('IS-6 joined road/trail visual ribbons', () => {
-
   it('shows world-space asphalt wear and a narrow shoulder on the original strip', () => {
     const island = generateIsland();
     const view = createWorldScene(island);
@@ -132,6 +136,39 @@ describe('IS-6 joined road/trail visual ribbons', () => {
       view.dispose();
     }
   });
+
+  it('fills the shared Dam road joint and keeps the terminal trail under the pavement', () => {
+    const island = generateIsland();
+    const east = island.roads.find(road => road.id === 'downtown-bleatsville--the-dam')!;
+    const west = island.roads.find(road => road.id === 'the-dam--whispering-pines')!;
+    const joined = roadRibbonRuns(island, 'road').find(run =>
+      run.points.includes(east.points.at(-2)!) && run.points.includes(west.points[1]!))!;
+    const junction = joined.points.indexOf(east.points.at(-1)!);
+    expect(joined.points[junction + 1]).toBe(west.points[1]);
+
+    const view = createWorldScene(island);
+    try {
+      const road = view.group.getObjectByName('paths-road')!;
+      const trail = view.group.getObjectByName('paths-trail')!;
+      const { position } = getDamPlacement(island);
+      const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
+      for (const [x, z] of [[14.43, -4.35], [15.26, -6.99], [14.84, -5.42], [15.16, -6.53]]) {
+        ray.ray.origin.set(position.x + x!, position.y + 35, position.z + z!);
+        const asphalt = ray.intersectObject(road)[0];
+        const dirt = ray.intersectObject(trail)[0];
+        expect(asphalt).toBeDefined();
+        expect(dirt).toBeDefined();
+        expect(asphalt!.point.y - dirt!.point.y).toBeGreaterThan(.02);
+      }
+      const approach = island.roads.find(road => road.id === 'mt-gigga--the-dam')!.points.at(-4)!;
+      ray.ray.origin.set(approach.x, approach.y + 10, approach.z);
+      expect(ray.intersectObject(road)).toHaveLength(0);
+      expect(ray.intersectObject(trail)[0]?.point.y).toBeCloseTo(approach.y + .19, 4);
+    } finally {
+      view.dispose();
+    }
+  });
+
   it('merges kept runs per type with six triangles per segment and shared mitred joints', () => {
     for (const [seed, size] of [
       ['billy-isle', 600], ['ribbon-curves', 400], ['ribbon-alt', 900],

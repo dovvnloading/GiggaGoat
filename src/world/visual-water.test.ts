@@ -7,7 +7,7 @@ import {
 } from './visual-water';
 import { buildSkyVisuals, skyColorGLSL } from './visual-sky';
 import { getDamHeadwater, isDamHeadwater } from './dam-landscape';
-import { gridSample, segmentProjection } from './terrain';
+import { gridCoordinate, gridIndex, gridSample, segmentProjection } from './terrain';
 import { findBookmark } from './viewer/bookmarks';
 
 describe('island sea, shoreline and horizon', () => {
@@ -514,6 +514,21 @@ describe('modelled Mt. Gigga cascades (MG-12, DM-1)', () => {
   });
 });
 
+type RibbonRow = { start: number; end: number };
+
+function forestRows(mesh: THREE.Mesh): RibbonRow[] {
+  const uv = mesh.geometry.getAttribute('uv');
+  const style = mesh.geometry.getAttribute('streamStyle');
+  const rows: RibbonRow[] = [];
+  let start = 0;
+  for (let i = 0; i < uv.count; i++) {
+    if (style.getX(i) !== 1) continue;
+    if (uv.getX(i) === 0) start = i;
+    if (uv.getX(i) === 1) rows.push({ start, end: i });
+  }
+  return rows;
+}
+
 type RibbonQuad = { start: THREE.Vector3; end: THREE.Vector3 };
 
 function renderedRibbonQuads(inland: THREE.Group): RibbonQuad[] {
@@ -531,6 +546,7 @@ function renderedRibbonQuads(inland: THREE.Group): RibbonQuad[] {
       (positions.getY(left) + positions.getY(right)) / 2,
       (positions.getZ(left) + positions.getZ(right)) / 2,
     );
+  const rows = new Map(forestRows(river).map(row => [row.start, row.end]));
   const quads: RibbonQuad[] = [];
   for (let i = 0; i < index.count; i += 6) {
     const a = index.getX(i), b = index.getX(i + 1);
@@ -538,7 +554,12 @@ function renderedRibbonQuads(inland: THREE.Group): RibbonQuad[] {
     const c = index.getX(i + 2), d = index.getX(i + 4);
     expect(index.getX(i + 3)).toBe(b);
     expect(index.getX(i + 5)).toBe(c);
-    quads.push({ start: centre(a, b), end: centre(c, d) });
+    if (style.getX(a) === 0) {
+      quads.push({ start: centre(a, b), end: centre(c, d) });
+    } else if (rows.has(a)) {
+      const before = (a + rows.get(a)!) / 2, after = (c + rows.get(c)!) / 2;
+      quads.push({ start: centre(before, before), end: centre(after, after) });
+    }
   }
   return quads;
 }
@@ -586,67 +607,118 @@ describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
   it.each([
     { seed: 'billy-isle', size: 600, resolution: 193 },
     { seed: 'dam-ribbon-alt', size: 900, resolution: 97 },
-  ])('keeps the mountain banks draped and the forest banks inside the dry-tree clearance on $seed',
+  ])('keeps the mountain banks draped and rounds both Pines banks on $seed',
     ({ seed, size, resolution }) => {
       const island = generateIsland({ seed, size, resolution });
-      const riverBefore = island.river.map(p => ({ ...p }));
+      const before = structuredClone({ heights: island.heights, river: island.river,
+        roads: island.roads, colliders: island.colliders });
       const visuals = buildWaterVisuals(island);
       try {
         const river = visuals.inland.getObjectByName('rippling-river') as THREE.Mesh;
         expect(river).toBeInstanceOf(THREE.Mesh);
-        expect(visuals.inland.getObjectByName('forest-river-after-dam'))
-          .toBeUndefined(); // Both reaches still share one mesh and material.
+        expect(visuals.inland.getObjectByName('forest-river-after-dam')).toBeUndefined();
         const position = river.geometry.getAttribute('position');
         const uv = river.geometry.getAttribute('uv');
         const style = river.geometry.getAttribute('streamStyle');
         const scale = size / 600;
-        const reaches = [island.river.slice(0, 5), island.river.slice(11)];
-        const expectedStations = reaches.map(points => 1 + points.slice(1).reduce(
-          (sum, point, i) => sum + Math.max(1, Math.ceil(
-            Math.hypot(point.x - points[i]!.x, point.z - points[i]!.z) /
-              (2 * scale))), 0));
-        const ribbonCount = 2 * expectedStations.reduce((a, b) => a + b, 0);
-        const hasGlade = visuals.replacedCascadeIds.has(PINES_GLADE_CASCADE);
-        expect(position.count).toBe(ribbonCount + (hasGlade ? 75 : 0));
+        const upstreamCount = 2 * (1 + island.river.slice(1, 5).reduce((sum, point, i) =>
+          sum + Math.max(1, Math.ceil(Math.hypot(point.x - island.river[i]!.x,
+            point.z - island.river[i]!.z) / (2 * scale))), 0));
+        const rows = forestRows(river);
+        expect(rows[0]?.start).toBe(upstreamCount);
         expect(uv.count).toBe(position.count);
         expect(style.count).toBe(position.count);
+        for (let v = 0; v < upstreamCount; v++) {
+          expect(style.getX(v)).toBe(0);
+          expect(uv.getX(v)).toBe(v % 2);
+          expect(position.getY(v)).toBeCloseTo(gridSample(island, position.getX(v), position.getZ(v)) +
+            0.15 * scale, 4);
+        }
         const outsideForest = makeForestOutflowClearance(island);
-        for (let v = 0; v < ribbonCount; v++) {
-          const x = position.getX(v), y = position.getY(v), z = position.getZ(v);
-          const terrain = gridSample(island, x, z);
-          expect(Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)).toBe(true);
-          const forest = v >= 2 * expectedStations[0]!;
-          expect(style.getX(v)).toBe(forest ? 1 : 0);
-          if (forest) {
-            expect(y - terrain, 'no floating forest bank ' + v).toBeLessThan(0.20 * scale);
-            expect(outsideForest(x, z, 0.05 * scale), 'unchanged bank clearance ' + v).toBe(false);
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i]!;
+          const prev = rows[i - 1], next = rows[i + 1];
+          const progress = uv.getY(row.start);
+          if (prev) {
+            const step = progress - uv.getY(prev.start);
+            expect(step).toBeGreaterThan(0);
+            expect(step).toBeLessThanOrEqual(0.09 * scale);
+          }
+          for (const side of ['start', 'end'] as const) {
+            const v = row[side];
+            const x = position.getX(v), z = position.getZ(v);
+            expect(outsideForest(x, z, 0.05 * scale), 'dry-tree clearance at row ' + i).toBe(false);
+            if (prev && next) {
+              const approach = new THREE.Vector2(x - position.getX(prev[side]),
+                z - position.getZ(prev[side]));
+              const departure = new THREE.Vector2(position.getX(next[side]) - x,
+                position.getZ(next[side]) - z);
+              expect(approach.angleTo(departure), side + ' bank turn at row ' + i).toBeLessThan(0.09);
+            }
+          }
+          for (let v = row.start; v <= row.end; v++) {
             expect(style.getY(v)).toBeGreaterThanOrEqual(0);
             expect(style.getY(v)).toBeLessThanOrEqual(1);
-          } else {
-            expect(y, 'unchanged mountain bank ' + v).toBeCloseTo(terrain + 0.15 * scale, 4);
+            expect(uv.getY(v)).toBe(progress);
           }
-          expect(uv.getX(v)).toBe(v % 2);
-          expect(Number.isFinite(uv.getY(v))).toBe(true);
         }
-        let offset = 0;
-        for (const count of expectedStations) {
-          expect(uv.getY(offset * 2)).toBeCloseTo(0, 6);
-          for (let row = offset + 1; row < offset + count; row++) {
-            const centre = (k: number): { x: number; z: number } => ({
-              x: (position.getX(2 * k) + position.getX(2 * k + 1)) / 2,
-              z: (position.getZ(2 * k) + position.getZ(2 * k + 1)) / 2,
-            });
-            const a = centre(row - 1), b = centre(row);
-            const run = Math.hypot(b.x - a.x, b.z - a.z);
-            expect(run).toBeGreaterThan(0);
-            const uvStep = uv.getY(2 * row) - uv.getY(2 * (row - 1));
-            expect(uvStep).toBeGreaterThan(0);
-            expect(uvStep).toBeLessThanOrEqual(0.2 * scale + 0.0001);
-            if (!offset) expect(uvStep).toBeCloseTo(run / 10, 4);
+        expect(island.heights).toEqual(before.heights);
+        expect(island.river).toEqual(before.river);
+        expect(island.roads).toEqual(before.roads);
+        expect(island.colliders).toEqual(before.colliders);
+      } finally {
+        disposeWaterMeshes(visuals);
+      }
+    });
+
+  it.each([
+    { seed: 'billy-isle', size: 600, resolution: 193 },
+    { seed: 'pines-alt', size: 900, resolution: 97 },
+    { seed: 'forest-low-1', size: 400, resolution: 65 },
+  ])('keeps the visible Pines water above the terrain triangle edges on $seed',
+    ({ seed, size, resolution }) => {
+      const island = generateIsland({ seed, size, resolution });
+      const visuals = buildWaterVisuals(island);
+      try {
+        const river = visuals.inland.getObjectByName('rippling-river') as THREE.Mesh;
+        const position = river.geometry.getAttribute('position');
+        const uv = river.geometry.getAttribute('uv');
+        const style = river.geometry.getAttribute('streamStyle');
+        const indices = river.geometry.getIndex()!;
+        const scale = size / 600;
+        const ray = new THREE.Ray(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
+        const hit = new THREE.Vector3();
+        const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+        const terrain = (target: THREE.Vector3, i: number, j: number): THREE.Vector3 =>
+          target.set(gridCoordinate(size, resolution, i), island.heights[gridIndex(resolution, i, j)]!,
+            gridCoordinate(size, resolution, j));
+        let clearance = Infinity;
+        let samples = 0;
+        for (let i = 0; i < indices.count; i += 3) {
+          const p = indices.getX(i), q = indices.getX(i + 1), r = indices.getX(i + 2);
+          if (style.getX(p) !== 1) continue;
+          for (const [u, v] of [[0.1, 0.45], [0.45, 0.1], [0.45, 0.45], [1 / 3, 1 / 3]] as const) {
+            const w = 1 - u - v;
+            const across = uv.getX(p) * u + uv.getX(q) * v + uv.getX(r) * w;
+            if (Math.abs(across * 2 - 1) > 0.95) continue;
+            const y = position.getY(p) * u + position.getY(q) * v + position.getY(r) * w;
+            if (y < island.seaLevel) continue;
+            const x = position.getX(p) * u + position.getX(q) * v + position.getX(r) * w;
+            const z = position.getZ(p) * u + position.getZ(q) * v + position.getZ(r) * w;
+            const gx = Math.floor((x / size + 0.5) * (resolution - 1));
+            const gz = Math.floor((z / size + 0.5) * (resolution - 1));
+            ray.origin.set(x, y + 20, z);
+            const ground = ray.intersectTriangle(terrain(a, gx, gz), terrain(b, gx, gz + 1),
+              terrain(c, gx + 1, gz), true, hit)
+              ?? ray.intersectTriangle(terrain(a, gx + 1, gz), terrain(b, gx, gz + 1),
+                terrain(c, gx + 1, gz + 1), true, hit);
+            if (!ground) throw new Error('Missing terrain tile for Pines water at ' + x + ', ' + z);
+            clearance = Math.min(clearance, y - ground.y);
+            samples++;
           }
-          offset += count;
         }
-        expect(island.river).toEqual(riverBefore);
+        expect(samples).toBeGreaterThan(6000);
+        expect(clearance).toBeGreaterThan(0.004 * scale);
       } finally {
         disposeWaterMeshes(visuals);
       }
@@ -688,7 +760,7 @@ describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
               const dx = next.x - p.x, dz = next.z - p.z;
               const t = ((v.x - p.x) * dx + (v.z - p.z) * dz) /
                 (dx * dx + dz * dz);
-              const tolerance = start === 0 ? 0.001 : 1.5 * island.size / 600;
+              const tolerance = start === 0 ? 0.001 : 2.2 * island.size / 600;
               return t >= -0.02 && t <= 1.02 &&
                 Math.hypot(v.x - p.x - t * dx, v.z - p.z - t * dz) < tolerance;
             });
@@ -714,16 +786,13 @@ describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
       const uv = river.geometry.getAttribute('uv');
       const style = river.geometry.getAttribute('streamStyle');
       const heights: number[] = [];
-      const forestWidth: number[] = [];
+      const forestWidth = forestRows(river).map(({ start, end }) => Math.hypot(
+        position.getX(start) - position.getX(end), position.getZ(start) - position.getZ(end)));
       const builtVertices: number[] = [];
       for (let i = 0; i < position.count; i++) {
         if (style.getX(i) === 2) {
           heights.push(position.getY(i));
           builtVertices.push(i);
-        }
-        if (style.getX(i) === 1 && uv.getX(i) === 0) {
-          forestWidth.push(Math.hypot(position.getX(i) - position.getX(i + 1),
-            position.getZ(i) - position.getZ(i + 1)));
         }
       }
       expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(2.14);
@@ -740,6 +809,15 @@ describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
       const streamHit = ray.intersectObject(river).find(hit => style.getX(hit.face!.a) === 1);
       expect(streamHit).toBeDefined();
       expect(y - streamHit!.point.y).toBeCloseTo(0.06, 4);
+      const ends = builtVertices.filter(i => uv.getY(i) === 0 || uv.getY(i) === 1);
+      expect(ends).toHaveLength(10);
+      expect(ends.every(i => style.getY(i) === 0 && style.getZ(i) === 0)).toBe(true);
+      const poolEdge = ends.find(i => uv.getX(i) === 0 && uv.getY(i) === 1)!;
+      const downstream = (i: number): number => {
+        const yaw = source.transform.rotationY;
+        return position.getX(i) * Math.sin(yaw) + position.getZ(i) * Math.cos(yaw);
+      };
+      expect(downstream(localCentre) - downstream(poolEdge)).toBeGreaterThan(0.25);
 
       const bed = view.group.getObjectByName('whispering-pines-rock-step') as THREE.Mesh;
       const stone = bed.geometry.getAttribute('position');
@@ -753,6 +831,7 @@ describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
       expect(river.material.fragmentShader).toContain('fwidth(phase)');
       expect(river.material.fragmentShader).toContain('vStreamStyle.y * (1.0 - bank)');
       expect(river.material.fragmentShader).toContain('0.94 * cover');
+      expect(river.material.fragmentShader).toContain('1.0 - smoothstep(0.78, 1.0, vUv.y)');
       const legacy = view.group.getObjectByName('props-cascade') as THREE.InstancedMesh;
       const index = island.props.filter(prop => prop.kind === 'cascade').indexOf(source);
       const transform = new THREE.Matrix4();

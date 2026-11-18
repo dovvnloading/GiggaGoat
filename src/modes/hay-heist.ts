@@ -1,5 +1,5 @@
 import type {
-  Bale, GoatObservation, HeistState, MatchSnapshot, ModeArena, ModeInputIntent, PlayerState,
+  Bale, Barn, GoatObservation, HeistState, MatchSnapshot, ModeArena, ModeInputIntent, PlayerState,
 } from './types';
 import type { Emit, RuleOutcome } from './internal';
 import { direction, distanceSquared, TICKS_PER_SECOND, compareIds } from './internal';
@@ -38,6 +38,10 @@ function setBaleAtBarn(bale: Bale, arena: ModeArena): void {
   bale.position = { x: barn.position.x, y: barn.position.y + 0.7, z: barn.position.z };
   bale.carrierId = null;
   bale.lastTouchedTeam = null;
+}
+
+function isBaleInsideBarn(bale: Bale, barn: Barn): boolean {
+  return distanceSquared(bale.position, barn.position) <= barn.radius ** 2;
 }
 
 function drop(bale: Bale, player: PlayerState, reason: 'released' | 'exhausted' | 'shoved',
@@ -115,15 +119,16 @@ export function updateHayHeist(
     }
   }
 
-  // Holding tongue near a bale is the pickup gesture. Own hay may be rescued,
-  // but only ENEMY hay can score at your team's barn.
+  // Friendly bales can be rescued anywhere outside their home ring.
   for (const player of players) {
     const intent = intents[player.id] ?? {};
     if (!intent.tongue || intent.dropHay || player.stamina < 5 ||
       state.tick < (heist.pickupBlockedUntil[player.id] ?? 0) ||
       heist.bales.some(b => b.carrierId === player.id)) continue;
     const pos = observations.get(player.id)!.position;
+    const home = arena.barns.find(b => b.teamId === player.teamId);
     const bale = heist.bales.filter(b => b.carrierId === null &&
+      (!home || b.homeTeam !== home.teamId || !isBaleInsideBarn(b, home)) &&
       distanceSquared(pos, b.position) <= state.config.hayPickupRadius ** 2)
       .sort((a, b) => distanceSquared(pos, a.position) - distanceSquared(pos, b.position) ||
         compareIds(a.id, b.id))[0];
@@ -135,10 +140,10 @@ export function updateHayHeist(
 
   for (const bale of heist.bales) {
     const barn = arena.barns.find(b => b.teamId === bale.lastTouchedTeam);
-    if (!barn || distanceSquared(bale.position, barn.position) > barn.radius ** 2) continue;
+    if (!barn || !isBaleInsideBarn(bale, barn)) continue;
     if (bale.homeTeam === barn.teamId) {
-      // Recover stolen supplies without granting an enemy point.
-      setBaleAtBarn(bale, arena);
+      // Leave rescued hay on the tongue until it is deposited in its home ring.
+      if (bale.carrierId === null) setBaleAtBarn(bale, arena);
       continue;
     }
     const scoringPlayer = bale.carrierId;

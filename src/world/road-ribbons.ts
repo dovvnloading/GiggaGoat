@@ -101,11 +101,22 @@ export function roadRibbonRuns(island: IslandData, type: RoadDescriptor['type'])
   const runs: RoadRibbonRun[] = [];
   const throughStreet = type === 'road' ? hoofingtonThroughStreet(allRoads, island.size / 600) : null;
   if (throughStreet) runs.push(throughStreet.run);
+  // The two raised causeway approaches meet at the same Dam junction.
+  // A shared mitre covers the little wedge left by their separate end caps.
+  const damEast = type === 'road' ? allRoads.find(road => road.id === 'downtown-bleatsville--the-dam') : undefined;
+  const damWest = type === 'road' ? allRoads.find(road => road.id === 'the-dam--whispering-pines') : undefined;
+  const damEntry = damEast?.points.at(-1), damExit = damWest?.points[0];
+  const joinedDamRoad = damEast && damWest && damEast.width === damWest.width && damEntry && damExit &&
+    damEntry.x === damExit.x && damEntry.y === damExit.y && damEntry.z === damExit.z &&
+    !damEntry.bridge && !damExit.bridge
+    ? [...damEast.points, ...damWest.points.slice(1)] : null;
   for (const road of allRoads) {
     if (road.type !== type || throughStreet?.replaced.has(road.id)) continue;
+    if (joinedDamRoad && road === damWest) continue;
+    const points = joinedDamRoad && road === damEast ? joinedDamRoad : road.points;
     let kept: RoadPoint[] = [];
-    for (let i = 1; i < road.points.length; i++) {
-      const a = road.points[i - 1]!, b = road.points[i]!;
+    for (let i = 1; i < points.length; i++) {
+      const a = points[i - 1]!, b = points[i]!;
       const hidden = isDowntownRoadOverlay(island, road.id, a, b) ||
         (type === 'trail' && isHoofingtonTrailOverlay(island, road.width, a, b));
       if (hidden) {
@@ -119,6 +130,24 @@ export function roadRibbonRuns(island: IslandData, type: RoadDescriptor['type'])
     if (kept.length > 1) runs.push({ points: kept, width: road.width });
   }
   return runs;
+}
+
+/** Read the top of the shared road mesh without using a renderer or road skirts. */
+function pavementAt(positions: readonly number[], faces: readonly number[], x: number, z: number): number {
+  let height = -Infinity;
+  for (let i = 0; i < faces.length; i += 3) {
+    const a = faces[i]! * 3, b = faces[i + 1]! * 3, c = faces[i + 2]! * 3;
+    const x0 = positions[a]! - positions[c]!, z0 = positions[a + 2]! - positions[c + 2]!;
+    const x1 = positions[b]! - positions[c]!, z1 = positions[b + 2]! - positions[c + 2]!;
+    const dx = x - positions[c]!, dz = z - positions[c + 2]!;
+    const area = x0 * z1 - x1 * z0;
+    if (Math.abs(area) < 1e-8) continue;
+    const u = (dx * z1 - x1 * dz) / area, v = (x0 * dz - dx * z0) / area;
+    const w = 1 - u - v;
+    if (Math.min(u, v, w) < -1e-7) continue;
+    height = Math.max(height, positions[a + 1]! * u + positions[b + 1]! * v + positions[c + 1]! * w);
+  }
+  return height;
 }
 
 /**
@@ -137,6 +166,9 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'])
   const supportIndices: number[] = [];
   const segments: RibbonSegment[] = [];
   const crossSections: number[] = [];
+  const damTrailEnd = type === 'trail'
+    ? island.roads.find(road => road.id === 'mt-gigga--the-dam')?.points.at(-1) : undefined;
+  const pavement = damTrailEnd ? roadRibbonData(island, 'road') : undefined;
 
   for (const { points, width, widths } of runs) {
     const firstVertex = positions.length / 3;
@@ -168,13 +200,24 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'])
       const x = perp.x * halfWidth * mitre;
       const z = perp.y * halfWidth * mitre;
       const top = point.y + topOffset, bottom = point.y - 0.15;
+      let leftTop = top, rightTop = top;
+      // The flat trail cross section overlaps a sloping road here. Match the
+      // terminal corners that land on asphalt and keep the outer trail grade.
+      if (pavement && points.at(-1) === damTrailEnd && i >= points.length - 2) {
+        leftTop = Math.min(top, pavementAt(pavement.positions, pavement.supportIndices,
+          point.x + x, point.z + z) - .02);
+        rightTop = Math.min(top, pavementAt(pavement.positions, pavement.supportIndices,
+          point.x - x, point.z - z) - .02);
+        if (!Number.isFinite(leftTop)) leftTop = top;
+        if (!Number.isFinite(rightTop)) rightTop = top;
+      }
       positions.push(
-        point.x + x, top, point.z + z,   // top left
-        point.x - x, top, point.z - z,   // top right
-        point.x + x, top, point.z + z,   // independent left skirt normal
-        point.x - x, top, point.z - z,   // independent right skirt normal
-        point.x + x, bottom, point.z + z,
-        point.x - x, bottom, point.z - z,
+        point.x + x, leftTop, point.z + z,   // top left
+        point.x - x, rightTop, point.z - z,  // top right
+        point.x + x, leftTop, point.z + z,   // independent left skirt normal
+        point.x - x, rightTop, point.z - z,  // independent right skirt normal
+        point.x + x, bottom + (leftTop - top), point.z + z,
+        point.x - x, bottom + (rightTop - top), point.z - z,
       );
       // Signed width coordinates are shared by the asphalt top and its skirts.
       if (type === 'road') crossSections.push(-1, halfWidth, 1, halfWidth,

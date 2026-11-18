@@ -1,13 +1,13 @@
-import { clamp, GradientNoise, hashString } from './random';
+import { clamp, GradientNoise, hashString, smoothstep } from './random';
 import { gridCoordinate, gridIndex } from './terrain';
 import type { IslandData } from './types';
 
-/** Filter slope coverage in world space, separately from the lighting normals. */
-export function terrainRockMask(island: IslandData): Uint8Array {
+/** Red is exposed rock and green is soil accumulation at a concave cliff foot. */
+export function terrainRockAtlas(island: IslandData): Uint8Array {
   const { heights, resolution, size } = island;
   const cell = size / (resolution - 1);
   const scale = size / 600;
-  const sampleRadius = Math.max(1, Math.round(3 * scale / cell));
+  const radius = Math.max(1, Math.round(5 * scale / cell));
   const index = (x: number, z: number): number => gridIndex(resolution,
     clamp(x, 0, resolution - 1), clamp(z, 0, resolution - 1));
   const heightAt = (x: number, z: number): number => heights[index(x, z)]!;
@@ -21,20 +21,32 @@ export function terrainRockMask(island: IslandData): Uint8Array {
       exposure[index(x, z)] = 1 - 1 / Math.hypot(dx, 1, dz);
     }
   }
-
   const noise = new GradientNoise(hashString(String(island.seed) + ':rock-weathering'));
-  const mask = new Uint8Array(heights.length);
+  const atlas = new Uint8Array(heights.length * 2);
   for (let z = 0; z < resolution; z++) {
     const worldZ = gridCoordinate(size, resolution, z);
     for (let x = 0; x < resolution; x++) {
       const at = index(x, z);
-      const filtered = (4 * exposure[at]! +
-        exposure[index(x - sampleRadius, z)]! + exposure[index(x + sampleRadius, z)]! +
-        exposure[index(x, z - sampleRadius)]! + exposure[index(x, z + sampleRadius)]!) / 8;
+      const west = index(x - radius, z), east = index(x + radius, z);
+      const north = index(x, z - radius), south = index(x, z + radius);
+      const axes = exposure[west]! + exposure[east]! + exposure[north]! + exposure[south]!;
+      const corners = exposure[index(x - radius, z - radius)]! +
+        exposure[index(x + radius, z - radius)]! + exposure[index(x - radius, z + radius)]! +
+        exposure[index(x + radius, z + radius)]!;
+      // Wider diagonal coverage reduces the influence of individual ramp triangles.
+      const filtered = (8 * exposure[at]! + axes * 2 + corners) / 20;
       const weathering = noise.sample(gridCoordinate(size, resolution, x) / (19 * scale),
-        worldZ / (24 * scale)) * 0.07;
-      mask[at] = Math.round(clamp(filtered + weathering, 0, 1) * 255);
+        worldZ / (24 * scale)) * 0.045;
+      atlas[at * 2] = Math.round(clamp(filtered + weathering, 0, 1) * 255);
+
+      // Positive curvature is the bowl where a wall meets a landing. Restrict
+      // the cue to near exposed stone and normalize for world/grid scale.
+      const bowl = (heights[west]! + heights[east]! + heights[north]! + heights[south]!) * 0.25 -
+        heights[at]!;
+      const relief = bowl / (radius * cell);
+      const foot = smoothstep(0.09, 0.34, relief) * smoothstep(0.14, 0.36, filtered);
+      atlas[at * 2 + 1] = Math.round(foot * 255);
     }
   }
-  return mask;
+  return atlas;
 }
