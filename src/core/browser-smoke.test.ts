@@ -303,12 +303,29 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         const look = document.querySelector<HTMLElement>(selectors.look)!;
         const board = document.querySelector<HTMLElement>(selectors.board)!;
         const name = document.querySelector<HTMLElement>('[data-place]')!;
-        const original = { look: look.hidden, board: board.hidden, name: name.textContent };
+        const stamina = document.querySelector<HTMLElement>(selectors.stamina)!;
+        const portrait = innerHeight > innerWidth;
+        const paper = document.querySelector<HTMLElement>('.gg-gig-paper')!;
+        const portraitCopy = [...document.querySelectorAll<HTMLElement>(
+          '[data-gig-title], [data-gig-task], [data-gig-detail], [data-wallet], [data-mode]',
+        )];
+        const original = { look: look.hidden, board: board.hidden, name: name.textContent,
+          copy: portraitCopy.map(node => node.textContent), low: stamina.dataset.low,
+          fontSize: portraitCopy.slice(0, 3).map(node => node.style.fontSize) };
         const inside = (a: DOMRect, b: DOMRect) => a.left >= b.left - 1 &&
           a.top >= b.top - 1 && a.right <= b.right + 1 && a.bottom <= b.bottom + 1;
         try {
           look.hidden = board.hidden = false;
           name.textContent = 'DOWNTOWN BLEATSVILLE';
+          if (portrait) {
+            const sample = ['KING OF THE PEAK', 'YOUR SCORE 89 · GOAL 90',
+              'PEAK HELD BY NOODLE · CLIMB TO CAPTURE · 135s LEFT',
+              '123,456 CUD COINS', 'KING OF THE PEAK'];
+            portraitCopy.forEach((node, index) => { node.textContent = sample[index]!; });
+            // Simulate sizes retained in the first portrait frame from landscape's compact card.
+            portraitCopy.slice(0, 3).forEach(node => { node.style.fontSize = '8px'; });
+            stamina.dataset.low = 'true';
+          }
           const boxes = Object.entries(selectors).map(([id, selector]) =>
             [id, document.querySelector(selector)!.getBoundingClientRect()] as const);
           const issues: string[] = [];
@@ -343,10 +360,45 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
               if (!inside(text.getBoundingClientRect(), bounds)) issues.push('Supplies text clipped');
             }
           }
-          // The cream portion of the card illustration ends at 88% of its height.
           const card = document.querySelector(selectors.gig)!.getBoundingClientRect();
-          text.selectNodeContents(document.querySelector('.gg-gig-footer')!);
-          if (text.getBoundingClientRect().bottom > card.top + card.height * .88) {
+          const footer = document.querySelector('.gg-gig-footer')!;
+          text.selectNodeContents(footer);
+          if (portrait) {
+            const footerInk = text.getBoundingClientRect();
+            const paperBounds = paper.getBoundingClientRect();
+            if (getComputedStyle(paper).position !== 'static' ||
+                paperBounds.bottom >= footerInk.top ||
+                !inside(footerInk, card) || footerInk.bottom > card.bottom - 3) {
+              issues.push('portrait gig footer lacks its own inset row');
+            }
+
+            let previousBottom = paperBounds.top;
+            for (const node of portraitCopy.slice(0, 3)) {
+              text.selectNodeContents(node);
+              const ink = text.getBoundingClientRect();
+              const font = Number.parseFloat(getComputedStyle(node).fontSize);
+              if (!inside(ink, paperBounds) || ink.top < previousBottom - 1 || font < 10) {
+                issues.push('portrait objective ' + node.className + ' ' + JSON.stringify({
+                  font, withinPaper: inside(ink, paperBounds), rowGap: ink.top - previousBottom,
+                }));
+              }
+              previousBottom = ink.bottom;
+            }
+
+            text.selectNodeContents(document.querySelector('[data-meter]')!);
+            const meterTrack = document.querySelector('.gg-meter-track')!.getBoundingClientRect();
+            if (!text.getBoundingClientRect().height || !inside(text.getBoundingClientRect(), meterTrack)) {
+              issues.push('growth value absent from portrait meter');
+            }
+            const staminaLabel = stamina.querySelector('.gg-stamina-label')!;
+            const staminaValue = stamina.querySelector('[data-stamina-number]')!;
+            if (!getComputedStyle(staminaLabel, '::after').content.includes('LOW') ||
+                staminaLabel.getBoundingClientRect().right > staminaValue.getBoundingClientRect().left ||
+                !inside(staminaValue.getBoundingClientRect(), stamina.getBoundingClientRect())) {
+              issues.push('portrait stamina value or low-state cue clipped');
+            }
+          } else if (text.getBoundingClientRect().bottom > card.top + card.height * .88) {
+            // The cream portion of the illustration stops above the bottom rim.
             issues.push('gig footer touches frame art');
           }
           return issues;
@@ -354,22 +406,28 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
           look.hidden = original.look;
           board.hidden = original.board;
           name.textContent = original.name;
+          if (portrait) {
+            portraitCopy.forEach((node, index) => { node.textContent = original.copy[index] ?? ''; });
+            portraitCopy.slice(0, 3).forEach((node, index) => { node.style.fontSize = original.fontSize[index]!; });
+            if (original.low === undefined) delete stamina.dataset.low;
+            else stamina.dataset.low = original.low;
+          }
         }
       };
       try {
-        for (const [width, height] of [[1024, 576], [540, 360]] as const) {
+        for (const [width, height] of [[1024, 576], [540, 360], [390, 844]] as const) {
           await page.send('Emulation.setDeviceMetricsOverride',
             { width, height, deviceScaleFactor: 1, mobile: false });
           await page.waitFor(`innerWidth === ${width} && innerHeight === ${height}`,
             `${width}×${height} viewport`);
-          expect(await page.evaluate<string[]>('(' + compactHudIssues.toString() + ')()'),
-            `${width}×${height}`).toEqual([]);
+          const issues = await page.evaluate<string[]>('(' + compactHudIssues.toString() + ')()');
+          if (issues.length) throw Error(`${width}×${height}: ${issues.join(', ')}`);
           await page.tap('KeyB');
           await page.waitFor(`document.querySelector('.gg-hotbar')?.dataset.active === 'true' &&
             document.querySelector('[data-build-status]')?.textContent?.includes('LMB PLACE')`,
             'build controls to become visible');
-          expect(await page.evaluate<string[]>('(' + compactHudIssues.toString() + ')()'),
-            `build mode at ${width}×${height}`).toEqual([]);
+          const buildIssues = await page.evaluate<string[]>('(' + compactHudIssues.toString() + ')()');
+          if (buildIssues.length) throw Error(`Build mode at ${width}×${height}: ${buildIssues.join(', ')}`);
           await page.tap('KeyB');
           await page.waitFor(`document.querySelector('.gg-hotbar')?.dataset.active === 'false'`,
             'build controls to collapse');
