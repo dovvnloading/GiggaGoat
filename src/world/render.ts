@@ -29,6 +29,8 @@ export interface WorldScene {
   chunks: THREE.Mesh[];
   water: THREE.Mesh;
   sun: THREE.DirectionalLight;
+  /** Actual sky-dome horizon colour, kept in sync on each lighting update. */
+  fogColor: THREE.Color;
   /** Phase 0..1, midpoint is noon; backward-compatible with the original lane. */
   setDayNight(phase: number): void;
   /** Day, painterly golden hour and starry night bookmarks. */
@@ -509,6 +511,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const lighthouse = buildLighthouseVisuals(island, props.group);
   group.add(lighthouse.group);
   const sky = buildSkyVisuals();
+  const fogColor = new THREE.Color();
   group.add(sky.group);
   const sun = new THREE.DirectionalLight(0xffe9c5, 1.65);
   sun.name = 'warm-soft-key';
@@ -543,6 +546,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
 
   function setDayNight(phase: number): void {
     const state = sky.update(((phase % 1) + 1) % 1);
+    waterVisuals.setLighting(state.daylight, state.golden);
+    fogColor.copy(state.horizon);
     sun.position.copy(state.direction).multiplyScalar(560);
     sun.intensity = 0.07 + state.daylight * 1.55;
     fill.intensity = 0.19 + state.daylight * 0.98;
@@ -624,6 +629,6 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   waterVisuals.update(elapsed, tide);
   return {
     group, chunks: chunks.map(c => c.mesh), water: waterVisuals.sea,
-    sun, setDayNight, setLightingPreset, setTideLevel, update, updateCulling, dispose,
+    sun, fogColor, setDayNight, setLightingPreset, setTideLevel, update, updateCulling, dispose,
   };
 }

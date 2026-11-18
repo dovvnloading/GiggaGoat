@@ -128,6 +128,14 @@ scene.add(streetGoat);
 
 let island: IslandData;
 let worldView: WorldScene;
+function syncFogColor(): void {
+  scene.fog?.color.copy(worldView.fogColor);
+  renderer.setClearColor(worldView.fogColor);
+}
+function applyDayNight(phase: number): void {
+  worldView.setDayNight(phase);
+  syncFogColor();
+}
 // Share the invalidation path with the live viewer and the bookmark exporter.
 function renderWorldFrame(): void {
   if (worldView.updateCulling(camera)) shadowCache.invalidate();
@@ -235,7 +243,7 @@ function regenerate(): void {
   tideInput.max = String(Math.ceil(island.tideLevels[island.tideLevels.length - 1]!));
   tideInput.value = '0';
   worldView.setTideLevel(0);
-  worldView.setDayNight(Number(dayInput.value));
+  applyDayNight(Number(dayInput.value));
   showDebug();
   updateStats();
   applyBookmark(bookmarkInput.value);
@@ -261,7 +269,7 @@ function applyBookmark(id: string): void {
   cameraInput.value = 'orbit';
   applyBookmarkCamera(camera, orbit, mark);
   dayInput.value = String(mark.day);
-  worldView.setDayNight(mark.day);
+  applyDayNight(mark.day);
   shadowCache.invalidate();
   const hour = Math.floor(mark.day * 24);
   dayLabel.value = String(hour).padStart(2, '0') + ':00';
@@ -365,7 +373,7 @@ async function captureAllBookmarks(): Promise<void> {
     presetInput.value = saved.preset;
     compareToggle.checked = saved.compare;
     reference.hidden = !saved.compare;
-    worldView.setDayNight(Number(saved.day));
+    applyDayNight(Number(saved.day));
     shadowCache.invalidate();
     worldView.setTideLevel(Number(saved.tide));
     const hour = Math.floor(Number(saved.day) * 24);
@@ -401,6 +409,7 @@ compareToggle.addEventListener('change', () => {
 presetInput.addEventListener('change', () => {
   const preset = presetInput.value as 'day' | 'golden-hour' | 'night';
   worldView.setLightingPreset(preset);
+  syncFogColor();
   shadowCache.invalidate();
   const phase = preset === 'day' ? 0.5 : preset === 'golden-hour' ? 0.285 : 0.025;
   dayInput.value = String(phase);
@@ -412,7 +421,7 @@ tideInput.addEventListener('input', () => {
 });
 dayInput.addEventListener('input', () => {
   const phase = Number(dayInput.value);
-  worldView.setDayNight(phase);
+  applyDayNight(phase);
   shadowCache.invalidate();
   const hour = Math.floor(phase * 24);
   dayLabel.value = String(hour).padStart(2, '0') + ':00';

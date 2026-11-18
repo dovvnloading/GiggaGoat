@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
+import { createWorldScene, generateIsland } from './index';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CLOUD_LIBRARY_MODELS } from './library-props';
 import { ART_BOOKMARKS } from './viewer/bookmarks';
@@ -245,4 +246,77 @@ describe('storybook sky clouds (Hoofington E2)', () => {
     expect(shader.fragmentShader).toContain('vec3 night = mix(vec3(0.18, 0.22, 0.38),');
   });
 
+});
+
+describe('IS-23 fog follows the true sky-dome horizon', () => {
+  it('matches the dome gradient at y=0 through night, golden hour and noon', () => {
+    const sky = buildSkyVisuals();
+    const dome = sky.group.getObjectByName('gradient-sky') as THREE.Mesh;
+    const shader = dome.material as THREE.ShaderMaterial;
+    const h = THREE.MathUtils.smoothstep(0, -0.15, 0.90);
+    for (const phase of [0.025, 0.285, 0.5]) {
+      const state = sky.update(phase);
+      const sunny = (shader.uniforms['uHorizon']!.value as THREE.Color).clone()
+        .lerp(new THREE.Color(0.08, 0.48, 0.94), h);
+      const sunset = GOLDEN_HOUR_SKY.horizon.clone()
+        .lerp(GOLDEN_HOUR_SKY.mid, THREE.MathUtils.smoothstep(h, 0, 0.5))
+        .lerp(GOLDEN_HOUR_SKY.zenith, THREE.MathUtils.smoothstep(h, 0.5, 1));
+      const night = new THREE.Color(0.18, 0.22, 0.38)
+        .lerp(new THREE.Color(0.018, 0.045, 0.14), h);
+      const expected = night.lerp(sunny.lerp(sunset, state.golden),
+        Math.max(state.daylight, state.golden));
+      for (const component of ['r', 'g', 'b'] as const) {
+        expect(Math.abs(state.horizon[component] - expected[component]),
+          'sky horizon ' + component + ' at phase ' + phase).toBeLessThan(0.01);
+      }
+    }
+    const night = sky.update(0.025).horizon.clone();
+    const luminance = night.r * 0.2126 + night.g * 0.7152 + night.b * 0.0722;
+    expect(luminance).toBeLessThan(0.25);
+    const golden = sky.update(0.285).horizon.clone();
+    expect(golden.r).toBeGreaterThan(golden.b + 0.2);
+    // The existing dome uses a nonzero smoothstep at y=0. In display sRGB,
+    // the unchanged noon gradient differs from the old fog RGB by <0.02.
+    const day = sky.update(0.5).horizon.clone().convertLinearToSRGB();
+    const oldDay = SKY_HORIZON_COLOR.clone().convertLinearToSRGB();
+    for (const component of ['r', 'g', 'b'] as const) {
+      expect(Math.abs(day[component] - oldDay[component])).toBeLessThan(0.02);
+    }
+  });
+
+  it('copies sky horizon to WorldScene fogColor for each phase and preset', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 65 });
+    const world = createWorldScene(island, { chunkSegments: 16 });
+    const sky = buildSkyVisuals();
+    try {
+      const fog = world.fogColor;
+      expect(fog).toBeInstanceOf(THREE.Color);
+      for (const [phase, preset] of [
+        [0.025, 'night'], [0.285, 'golden-hour'], [0.5, 'day'],
+      ] as const) {
+        world.setDayNight(phase);
+        const expected = sky.update(phase).horizon;
+        for (const component of ['r', 'g', 'b'] as const) {
+          expect(Math.abs(world.fogColor[component] - expected[component]),
+            'world fog ' + component + ' at phase ' + phase).toBeLessThan(0.01);
+        }
+        world.setLightingPreset(preset);
+        expect(world.fogColor).toBe(fog);
+        expect(world.fogColor.equals(expected)).toBe(true);
+      }
+    } finally {
+      world.dispose();
+    }
+  });
+
+  it('synchronizes both scene fogs and renderer clear colours at every change', () => {
+    const viewer = readFileSync(new URL('./viewer/viewer.ts', import.meta.url), 'utf8');
+    expect(viewer).toContain('scene.fog?.color.copy(worldView.fogColor)');
+    expect(viewer).toContain('renderer.setClearColor(worldView.fogColor)');
+    expect(viewer).toMatch(/worldView\.setDayNight\(phase\);\s*syncFogColor\(\)/);
+    expect(viewer).toMatch(/worldView\.setLightingPreset\(preset\);\s*syncFogColor\(\)/);
+    const game = readFileSync(new URL('../core/GameView.ts', import.meta.url), 'utf8');
+    expect(game).toContain('this.scene.fog.color.copy(this.world.fogColor)');
+    expect(game).toContain('this.renderer.setClearColor(this.world.fogColor)');
+  });
 });

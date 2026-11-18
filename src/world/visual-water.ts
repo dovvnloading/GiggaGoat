@@ -110,14 +110,16 @@ interface AnimatedUniforms {
   uTime: { value: number };
   uLevel: { value: number };
 }
+type LightUniform = { value: THREE.Vector3 };
 export interface WaterVisuals {
   sea: THREE.Mesh;
   inland: THREE.Group;
   update(time: number, tide: number): void;
+  setLighting(daylight: number, golden: number): void;
 }
 
 /** Float height atlas lets the sea shade by actual terrain depth, including rising tide. */
-function seaMaterial(island: IslandData): { material: THREE.ShaderMaterial;
+function seaMaterial(island: IslandData, uLight: LightUniform): { material: THREE.ShaderMaterial;
   uniforms: AnimatedUniforms } {
   const atlas = new THREE.DataTexture(
     island.heights.slice(), island.resolution, island.resolution,
@@ -130,6 +132,7 @@ function seaMaterial(island: IslandData): { material: THREE.ShaderMaterial;
   const uniforms = {
     uTime: { value: 0 },
     uLevel: { value: island.seaLevel },
+    uLight,
   };
   const material = new THREE.ShaderMaterial({
     uniforms: {
@@ -160,7 +163,7 @@ function seaMaterial(island: IslandData): { material: THREE.ShaderMaterial;
     fragmentShader: [
       'uniform sampler2D uTerrain;',
       'uniform float uSize, uLevel, uTime;',
-      'uniform vec3 uShallow, uDeep;',
+      'uniform vec3 uShallow, uDeep, uLight;',
       'varying vec3 vWorld;',
       '#include <fog_pars_fragment>',
       'void main() {',
@@ -179,7 +182,7 @@ function seaMaterial(island: IslandData): { material: THREE.ShaderMaterial;
       '  float foam = smoothstep(0.68, 0.97, wave);',
       '  color = mix(color, vec3(0.88, 0.96, 0.92), coast * foam * 0.66);',
       '  float cover = smoothstep(-0.24, 0.48, uLevel - ground);',
-      '  gl_FragColor = vec4(color, 0.88 * cover);',
+      '  gl_FragColor = vec4(color * uLight, 0.88 * cover);',
       '  #include <fog_fragment>',
       '}',
     ].join('\n'),
@@ -189,10 +192,10 @@ function seaMaterial(island: IslandData): { material: THREE.ShaderMaterial;
   material.dispose = (): void => { atlas.dispose(); originalDispose(); };
   return { material, uniforms };
 }
-function inlandMaterial(): { material: THREE.ShaderMaterial; time: { value: number } } {
+function inlandMaterial(uLight: LightUniform): { material: THREE.ShaderMaterial; time: { value: number } } {
   const time = { value: 0 };
   const material = new THREE.ShaderMaterial({
-    uniforms: { uTime: time },
+    uniforms: { uTime: time, uLight },
     transparent: true, depthWrite: false, side: THREE.DoubleSide,
     vertexShader: [
       'varying vec2 vUv; varying vec3 vWorld;',
@@ -203,7 +206,7 @@ function inlandMaterial(): { material: THREE.ShaderMaterial; time: { value: numb
       '}',
     ].join('\n'),
     fragmentShader: [
-      'uniform float uTime; varying vec2 vUv; varying vec3 vWorld;',
+      'uniform float uTime; uniform vec3 uLight; varying vec2 vUv; varying vec3 vWorld;',
       'void main() {',
       '  float stream = sin(vUv.y * 45.0 - uTime * 5.0 +',
       '    sin(vWorld.x * 0.16) * 2.0);',
@@ -213,7 +216,7 @@ function inlandMaterial(): { material: THREE.ShaderMaterial; time: { value: numb
       '    0.48 + 0.2 * stream);',
       '  vec3 col = mix(blue, vec3(0.92, 0.98, 0.92),',
       '    edge * (0.46 + streak * 0.42) + streak * 0.12);',
-      '  gl_FragColor = vec4(col, 0.91);',
+      '  gl_FragColor = vec4(col * uLight, 0.91);',
       '}',
     ].join('\n'),
   });
@@ -536,7 +539,11 @@ export function waterfallSites(island: IslandData): WaterfallSite[] {
 
 /** Reusable animated sea, river, reservoir and waterfall visual effects. */
 export function buildWaterVisuals(island: IslandData): WaterVisuals {
-  const seaMat = seaMaterial(island);
+  // One shared tint reaches every unlit water shader, including the reservoir clone.
+  const uLight: LightUniform = { value: new THREE.Vector3(1, 1, 1) };
+  const nightLight = new THREE.Vector3(0.16, 0.20, 0.34);
+  const dayLight = new THREE.Vector3(1, 1, 1);
+  const seaMat = seaMaterial(island, uLight);
   const sea = new THREE.Mesh(
     circularSeaGeometry(island.size),
     seaMat.material,
@@ -559,7 +566,7 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
   sea.add(skirt);
   const inland = new THREE.Group();
   inland.name = 'rivers-reservoir-and-falls';
-  const stream = inlandMaterial();
+  const stream = inlandMaterial(uLight);
   const damPlot = island.plots.find(plot => plot.poiId === 'the-dam');
   // The bespoke Dam plunge-pool surface occupies the middle reaches. Do
   // not draw the old thin river ribbon over it: its extra side vertices
@@ -600,15 +607,16 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
   // keep their existing animated water material, and both share the uTime clock.
   const reservoirMaterial = stream.material.clone();
   reservoirMaterial.uniforms['uTime'] = stream.material.uniforms['uTime']!;
+  reservoirMaterial.uniforms['uLight'] = stream.material.uniforms['uLight']!;
   reservoirMaterial.vertexShader = stream.material.vertexShader
     .replace('varying vec2 vUv; varying vec3 vWorld;',
       'attribute vec3 color; varying vec3 vReservoirColor; varying vec2 vUv; varying vec3 vWorld;')
     .replace('  vUv = uv;', '  vUv = uv; vReservoirColor = color;');
   reservoirMaterial.fragmentShader = stream.material.fragmentShader
-    .replace('uniform float uTime; varying vec2 vUv; varying vec3 vWorld;',
-      'uniform float uTime; varying vec3 vReservoirColor; varying vec2 vUv; varying vec3 vWorld;')
-    .replace('  gl_FragColor = vec4(col, 0.91);',
-      '  gl_FragColor = vec4(mix(vReservoirColor, col, 0.18), 0.91);');
+    .replace('uniform float uTime; uniform vec3 uLight; varying vec2 vUv; varying vec3 vWorld;',
+      'uniform float uTime; uniform vec3 uLight; varying vec3 vReservoirColor; varying vec2 vUv; varying vec3 vWorld;')
+    .replace('  gl_FragColor = vec4(col * uLight, 0.91);',
+      '  gl_FragColor = vec4(mix(vReservoirColor, col, 0.18) * uLight, 0.91);');
   const reservoir = new THREE.Mesh(reservoirGeometry, reservoirMaterial);
   reservoir.name = 'dam-reservoir';
   reservoir.rotation.x = -Math.PI / 2;
@@ -629,10 +637,28 @@ export function buildWaterVisuals(island: IslandData): WaterVisuals {
   // Keep the named mesh-free markers and the single instanced foam draw.
   for (const site of waterfallSites(island)) makeWaterfallFoam(inland, site, scale);
   batchWaterfallFoam(inland);
+  // MeshBasicMaterial ignores light uniforms; retain each foam/fleck base colour
+  // so changing phase never compounds its tint or alters the daytime palette.
+  const foamBaseColors = new Map<THREE.MeshBasicMaterial, THREE.Color>();
+  inland.traverse(object => {
+    if (object instanceof THREE.Mesh && object.material instanceof THREE.MeshBasicMaterial) {
+      foamBaseColors.set(object.material, object.material.color.clone());
+    }
+  });
   // The four spillway sheets and their foam now come from the custom Dam GLB.
   // Keep the mountain and river cascades, but do not draw duplicate dam falls.
   return {
     sea, inland,
+    setLighting(daylight: number, golden: number): void {
+      const warmth = THREE.MathUtils.clamp(golden, 0, 1);
+      dayLight.set(1, 1 - 0.14 * warmth, 1 - 0.26 * warmth);
+      uLight.value.copy(nightLight).lerp(dayLight,
+        THREE.MathUtils.smoothstep(daylight, 0.025, 0.6));
+      for (const [material, base] of foamBaseColors) {
+        material.color.setRGB(base.r * uLight.value.x,
+          base.g * uLight.value.y, base.b * uLight.value.z);
+      }
+    },
     update(time: number, tide: number): void {
       seaMat.uniforms.uTime.value = time;
       seaMat.uniforms.uLevel.value = tide;
