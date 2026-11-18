@@ -384,6 +384,54 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
     } finally { game.dispose(); }
   });
 
+  it('keeps the Hoofington street clear and launches a goat from the adjacent lawn', async () => {
+    const game = await Game.create();
+    try {
+      const farm = game.island.pois.find(p => p.id === 'hoofington')!.center;
+      const pad = game.surfaceMarkers.find(surface => surface.kind === 'launch')!;
+      expect(pad.position.x - pad.halfExtents.x).toBeGreaterThan(farm.x + 6.7);
+      const ground = game.colliders.terrain.castRay(
+        new RAPIER.Ray(V(pad.position.x, pad.position.y + 2, pad.position.z), V(0, -1, 0)), 4, false);
+      expect(ground).toBeCloseTo(2 + pad.halfExtents.y, 3);
+      const launched: number[] = [];
+      const torsoLaunches: number[] = [];
+      game.surfaces.events.on(event => {
+        if (event.type === 'launch' && event.surfaceId === pad.id &&
+            game.goat.ownsBody(game.physics.raw.getRigidBody(event.bodyHandle))) {
+          launched.push(event.speed);
+          if (event.bodyHandle === game.goat.torso.handle) torsoLaunches.push(event.speed);
+        }
+      });
+
+      const lane = farm.x + 2.5;
+      standAt(game, lane, farm.z - 14);
+      walkTo(game, { x: lane, z: farm.z - 4 });
+      expect(launched).toHaveLength(0);
+
+      // Cross the sidewalk into the lawn and approach the pad along its arrow.
+      const southEdge = pad.position.z + pad.halfExtents.z + 1;
+      walkTo(game, { x: lane, z: southEdge });
+      walkTo(game, { x: pad.position.x, z: southEdge });
+      game.step({ moveZ: 1, cameraYaw: 0, jump: true });
+      for (let i = 0; i < 105 && torsoLaunches.length === 0; i++)
+        game.step({ moveZ: 1, cameraYaw: 0 });
+      expect(torsoLaunches).toContain(15);
+      let highest = -Infinity;
+      for (let i = 0; i < 300; i++) {
+        game.step();
+        highest = Math.max(highest, game.goat.torso.translation().y);
+      }
+      expect(highest).toBeGreaterThan(pad.position.y + 3);
+      const landed = game.goat.torso.translation();
+      const landingGround = heightAt(game.island, landed.x, landed.z);
+      expect(landed.x).toBeGreaterThan(farm.x + 5);
+      expect(landed.z).toBeLessThan(pad.position.z - pad.halfExtents.z - .4);
+      expect(landingGround).toBeGreaterThan(game.water.seaLevel);
+      expect(landed.y).toBeLessThan(landingGround + 1.4);
+      expect(game.goat.locomotion.grounded).toBe(true);
+    } finally { game.dispose(); }
+  });
+
   it('installs water volumes, breakable props, trampoline and launch pads as real colliders', async () => {
     const game = await create();
     try {

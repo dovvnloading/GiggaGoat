@@ -55,10 +55,10 @@ export function createBoardLibraryProp(factory: PropFactory): THREE.Group {
 }
 
 export function createSurfaceLibraryProp(factory: PropFactory,
-  marker: Pick<SurfaceMarker, 'kind' | 'halfExtents'>): THREE.Group {
+  marker: Pick<SurfaceMarker, 'kind' | 'halfExtents' | 'artAtGround'>): THREE.Group {
   return marker.kind === 'trampoline'
     ? factory.createTrampoline(marker.halfExtents)
-    : factory.createLaunchPad(marker.halfExtents);
+    : factory.createLaunchPad(marker.halfExtents, marker.artAtGround);
 }
 
 /** All four spawn roles share a sized library crate until dedicated role art exists. */
