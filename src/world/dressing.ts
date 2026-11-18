@@ -296,7 +296,8 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   const lookoutDx = requested.find(clearOfRiver) ?? additional.find(clearOfRiver) ?? 70;
   const lookout = at(forest, 'lookout', lookoutDx, -19, 9, 24, 9,
     { color: 0x8c6648 });
-  // Top of the 1.1 m deck is 17.5 m above the local ground.
+  // The 24 m authored lookout GLB already has four supporting legs, X braces
+  // and a ladder under its 17.5 m deck. Do not overlap them with deck-stilts.
   at(forest, 'platform', lookoutDx, -19, 11, 1.1, 11,
     { lift: 16.4, color: 0xad835d });
 

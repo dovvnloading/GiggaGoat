@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PropDescriptor, PropKind } from './types';
-import { bakeLibraryPropGeometry, loadLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
+import { bakeLibraryCloudGeometry, bakeLibraryPropGeometry, CLOUD_LIBRARY_MODELS,
+  loadLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
 import { bakeLibraryGeometry, HOOFINGTON_MODELS } from './visual-hoofington';
 import { DOWNTOWN_MODELS } from './visual-downtown';
 import { buildPropVisuals, AUTHORED_HERO_DRESSING_KINDS } from './visual-props';
@@ -24,7 +25,7 @@ describe('library prop catalog', () => {
   it('covers every PropKind and every path exists locally with the right licence', () => {
     // The satisfies Record<PropKind, string> declaration enforces exhaustive
     // coverage at typecheck time, including any newly added descriptor kind.
-    expect(mapped).toHaveLength(86);
+    expect(mapped).toHaveLength(87);
     expect(new Set(mapped.map(([kind]) => kind)).size).toBe(mapped.length);
     for (const [kind, path] of mapped) {
       const entry = byPath.get(path);
@@ -37,6 +38,40 @@ describe('library prop catalog', () => {
       expect(publicAssetUrl(path, '/GiggaGoat/src/world/viewer/index.html', './'),
         kind + ': bad GitHub Pages URL').toBe('/GiggaGoat/' + path);
     }
+  });
+
+  it('registers the visual-only deck support and all three painted cloud GLBs', () => {
+    const stilts = 'assets/library/custom/pines/deck-stilts.glb';
+    expect(PROP_LIBRARY_MODELS['deck-stilts']).toBe(stilts);
+    expect(CLOUD_LIBRARY_MODELS).toEqual([
+      'assets/library/custom/sky/cloud-a.glb',
+      'assets/library/custom/sky/cloud-b.glb',
+      'assets/library/custom/sky/cloud-c.glb',
+    ]);
+    for (const path of [stilts, ...CLOUD_LIBRARY_MODELS]) {
+      expect(byPath.get(path)?.license).toBe('CC0');
+      expect(existsSync(new URL('../../public/' + path, import.meta.url))).toBe(true);
+      expect(publicAssetUrl(path, '/GiggaGoat/src/world/viewer/index.html', './'))
+        .toBe('/GiggaGoat/' + path);
+    }
+  });
+
+  it('bakes flat-based cloud geometry in native metres with its own colours', () => {
+    const root = new THREE.Group();
+    const box = new THREE.BoxGeometry(60, 22, 34);
+    box.translate(0, 11, 0);
+    root.add(new THREE.Mesh(box, new THREE.MeshStandardMaterial({ color: 0xd8d4ec })));
+    const geometry = bakeLibraryCloudGeometry(root);
+    expect(geometry).not.toBeNull();
+    const bounds = geometry!.boundingBox!;
+    expect(bounds.min.y).toBeCloseTo(0);
+    expect(bounds.max.y).toBeCloseTo(22);
+    expect(bounds.getSize(new THREE.Vector3()).toArray()).toEqual([60, 22, 34]);
+    const paint = geometry!.getAttribute('color') as THREE.BufferAttribute;
+    expect(paint).toBeDefined();
+    expect(paint.getY(0)).toBeGreaterThan(0);
+    geometry!.dispose();
+    box.dispose();
   });
 
   it('registers native-proportioned Pines ferns and lily pads as CC0 assets', () => {

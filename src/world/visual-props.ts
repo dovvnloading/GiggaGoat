@@ -60,7 +60,7 @@ const COLORS: Partial<Record<PropKind, number>> = {
   'hay-bale': 0xf2c14f, crate: 0xc4915f, barrel: 0xe67d5d,
   rock: 0x8c919e, log: 0x9a6d48, lamp: 0xffe5b7, ramp: 0xe5b974,
   ledge: 0x77b754, bridge: 0xb28f6a, bench: 0x8c714e, sign: 0xf6e3c2,
-  flag: 0xf66e95, buoy: 0xf79a4e, platform: 0xc9b08c, silo: 0xe3ddc8,
+  flag: 0xf66e95, buoy: 0xf79a4e, platform: 0xc9b08c, 'deck-stilts': 0xffffff, silo: 0xe3ddc8,
   mailbox: 0xd84f3d, gnome: 0xf77c4f, trampoline: 0x7960d9,
   bunting: 0xffd833, 'site-banner': 0xf07f2c,
   container: 0x5da4bd, cone: 0xff891e,
@@ -91,7 +91,7 @@ const authoredCraneYardKinds = new Set<PropKind>([
   'concrete-slab', 'concrete-column', 'yard-scaffold', 'safety-rail',
   'chain-fence', 'pipe-stack', 'site-barrier', 'site-banner', 'bunting',
   'satellite-dish', 'ledge', 'cave-mouth', 'flag', 'lookout',
-  'platform', 'sign', 'rope-rail', 'bridge',
+  'platform', 'deck-stilts', 'sign', 'rope-rail', 'bridge',
   // Painted custom landmark (QA LH-1): keeps its own red/white bands.
   'lighthouse',
 ]);
@@ -152,7 +152,13 @@ function geometryFor(kind: PropKind): THREE.BufferGeometry {
     box((x0 + x1) / 2, (y0 + y1) / 2, z, length, thickness, thickness,
       color, Math.atan2(y1 - y0, x1 - x0));
   };
-  if (kind === 'silo') {
+  if (kind === 'deck-stilts') {
+    // Open-legged placeholder rather than a tall opaque cuboid during GLB loading.
+    for (const x of [-0.42, 0.42]) for (const z of [-0.42, 0.42])
+      box(x, 0, z, 0.08, 0.98, 0.08, 0x947453);
+    for (const z of [-0.42, 0.42])
+      box(0, 0, z, 0.08, 0.92, 0.08, 0xa98562, Math.PI / 4);
+  } else if (kind === 'silo') {
     cyl(0, -0.1, 0, 0.85, 0.8, 0.85, 0xdedcd0, 12);
     cone(0, 0.4, 0, 0.96, 0.26, 0.96, 0xb8c5ca, 12);
     for (let i = 0; i < 4; i++) cyl(0, -0.3 + i * 0.19, 0,
