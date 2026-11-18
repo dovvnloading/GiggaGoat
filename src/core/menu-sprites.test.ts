@@ -335,7 +335,7 @@ describe('sprite-backed menu DOM', () => {
 
       select.value = 'hay-heist';
       root.dispatch('change', select);
-      expect(venue.textContent).toBe('Hoofington and Crane Yard');
+      expect(venue.textContent).toBe('Crane Yard · haul lane');
       expect(objective.textContent).toContain(MODE_DEFAULTS.hayTargetScore + ' deliveries');
       expect(objective.textContent).not.toContain('tide');
       expect(doc.activeElement).toBe(select);

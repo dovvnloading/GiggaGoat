@@ -489,6 +489,7 @@ export class GameView {
         const zone = new THREE.Group();
         zone.position.copy(vec(summit));
         zone.add(this.partyGroundRing(summit, radius, 0xffd833));
+        zone.add(this.partyGroundRing(summit, 1.05 * this.game.island.size / 600, 0xffedaa));
         this.partyMarkers.add(zone);
       } else if (match?.mode === 'hay-heist') {
         for (const barn of match.view().arena.barns) {

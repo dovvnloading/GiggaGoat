@@ -207,10 +207,10 @@ const PARTY_ROUNDS: Record<ModeId, { name: string; venue: string; objective: str
   },
   'king-of-the-peak': {
     name: 'King of the Peak', venue: 'Mt. Gigga summit',
-    objective: `Hold the summit zone alone to score. First to ${MODE_DEFAULTS.peakTargetScore} points wins.`,
+    objective: `Hold the center of the summit. First to ${MODE_DEFAULTS.peakTargetScore} points wins.`,
   },
   'hay-heist': {
-    name: 'Hay Heist', venue: 'Hoofington and Crane Yard',
+    name: 'Hay Heist', venue: 'Crane Yard · haul lane',
     objective: `Steal rival hay and bring it to your barn. First team to ${MODE_DEFAULTS.hayTargetScore} deliveries wins.`,
   },
 };

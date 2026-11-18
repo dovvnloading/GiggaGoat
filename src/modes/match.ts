@@ -42,6 +42,10 @@ function normaliseConfig(options: Partial<RulesConfig> = {}): RulesConfig {
     'hayCarryDrainPerSecond'] as const) {
     if (finite(config[key], key) <= 0) throw new RangeError(`${key} must be positive`);
   }
+  if (config.peakLeadDistance !== undefined &&
+      (finite(config.peakLeadDistance, 'peakLeadDistance') <= 0 || config.peakLeadDistance >= config.peakRadius)) {
+    throw new RangeError('peak lead distance must fit inside the capture radius');
+  }
   if (config.tideWarningTicks >= config.tideRiseEveryTicks) {
     throw new RangeError('tide warning must precede the rise');
   }

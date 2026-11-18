@@ -57,7 +57,8 @@ export function derivePartyHudState(
       { label: 'YOUR POINTS', value: String(you?.score ?? 0) },
       { label: 'WIN TARGET', value: String(config.peakTargetScore) },
     ];
-    goal = phase === 'overtime' ? 'Break the lead tie' : 'Hold the summit to score';
+    goal = phase === 'overtime' ? 'Break the lead tie' :
+      config.peakLeadDistance ? 'Hold the center to score' : 'Hold the summit to score';
     const owner = players.find(player => player.id === peak.ownerId);
     status = peak.contested ? 'SUMMIT CONTESTED' : peak.ownerId === playerId ? 'YOU HOLD THE SUMMIT' :
       owner ? owner.name.toUpperCase() + ' HOLDS SUMMIT' : 'SUMMIT OPEN';

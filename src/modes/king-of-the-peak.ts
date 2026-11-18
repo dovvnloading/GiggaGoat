@@ -7,8 +7,8 @@ export function topScoreTied(state: MatchSnapshot): boolean {
   return scores.length > 1 && scores[0] === scores[1];
 }
 
-/** One goat on the summit earns points every full second. Two or more freeze
- * capture progress; leaving the zone resets the one-second meter. */
+/** Hold the summit for a full second to score. Courses with a center lead
+ * give the nearest goat control when it has a clear positional advantage. */
 export function updateKingOfThePeak(
   state: MatchSnapshot,
   arena: ModeArena,
@@ -16,16 +16,21 @@ export function updateKingOfThePeak(
   emit: Emit,
 ): RuleOutcome {
   const peak = state.peak!;
-  const occupants = state.players.filter(player => {
-    const o = observations.get(player.id)!;
-    return o.position.y >= arena.summit.y - 6 &&
-      distanceSquared(o.position, arena.summit) <= state.config.peakRadius ** 2;
-  }).map(p => p.id).sort();
-
-  const contested = occupants.length > 1;
-  if (contested && !peak.contested) emit({ type: 'peak.contested', players: occupants });
+  const occupants = state.players.flatMap(player => {
+    const { position } = observations.get(player.id)!;
+    const distance = distanceSquared(position, arena.summit);
+    return position.y >= arena.summit.y - 6 && distance <= state.config.peakRadius ** 2
+      ? [{ id: player.id, distance }] : [];
+  }).sort((a, b) => a.distance - b.distance);
+  const [nearest, next] = occupants;
+  const lead = state.config.peakLeadDistance;
+  const contested = !!nearest && !!next &&
+    (lead === undefined || Math.sqrt(next.distance) - Math.sqrt(nearest.distance) < lead);
+  if (contested && !peak.contested) {
+    emit({ type: 'peak.contested', players: occupants.map(player => player.id).sort() });
+  }
   peak.contested = contested;
-  const owner = occupants.length === 1 ? occupants[0]! : null;
+  const owner = contested ? null : nearest?.id ?? null;
   if (peak.ownerId !== owner) {
     peak.ownerId = owner;
     peak.captureTicks = 0;

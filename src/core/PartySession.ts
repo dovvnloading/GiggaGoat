@@ -49,8 +49,22 @@ export class PartySession {
     // Game.teleport accepts foot-ground coordinates, not the torso centre.
     this.returnPosition = { x: before.x,
       y: before.y - .92 * this.game.goat.size, z: before.z };
-    const arena = arenaFromBillyIsle(this.game.island, { heightAt, landAreaAtTideLevel });
-    const match = new PartyMatch({ mode, seed: 217, config }, arena);
+    const island = this.game.island;
+    const arena = arenaFromBillyIsle(island, { heightAt, landAreaAtTideLevel });
+    const scale = island.size / 600;
+    if (mode === 'hay-heist') {
+      // Place both goals in the same paved haul lane so a good run fits one
+      // stamina bar. This lane passes between the switchbacks and crane feet.
+      const yard = island.pois.find(poi => poi.id === 'crane-yard')!.center;
+      arena.barns = arena.barns.map(barn => {
+        const x = yard.x + 14.5 * scale;
+        const z = yard.z + (barn.teamId === 'red' ? 14 : -20) * scale;
+        return { ...barn, position: { x, y: heightAt(island, x, z), z }, radius: 5.4 * scale };
+      });
+    }
+    const roundConfig = mode === 'king-of-the-peak'
+      ? { peakRadius: 7.4 * scale, peakLeadDistance: .42 * scale, ...config } : config;
+    const match = new PartyMatch({ mode, seed: 217, config: roundConfig }, arena);
     match.join({ id: 'player', name: 'YOU', teamId: mode === 'hay-heist' ? 'red' : undefined });
     const center = mode === 'king-of-the-peak' ? arena.summit :
       mode === 'hay-heist' ? arena.barns[0]!.position :
@@ -58,17 +72,24 @@ export class PartySession {
     const land = (x: number, z: number): Vec3 => ({
       x, y: heightAt(this.game.island, x, z) + 1.25, z,
     });
-    this.game.teleport(land(center.x - 4, center.z + 4));
+    if (mode === 'hay-heist') {
+      this.game.teleport(land(center.x - 1.8 * scale, center.z + 4 * scale), 0);
+    } else {
+      this.game.teleport(land(center.x - 4, center.z + 4));
+    }
     for (let i = 0; i < count; i++) {
       const id = 'bot-' + (i + 1);
       const teamId = mode === 'hay-heist' ? (i % 2 === 0 ? 'blue' : 'red') : undefined;
       const base = mode === 'hay-heist' ?
         arena.barns.find(b => b.teamId === teamId)!.position : center;
       const angle = i * 2.39996;
-      const position = land(base.x + Math.cos(angle) * (6 + i % 3 * 2),
-        base.z + Math.sin(angle) * (6 + i % 3 * 2));
+      const position = mode === 'hay-heist'
+        ? land(base.x + ((Math.floor(i / 2) % 3) - 1) * 2.2 * scale,
+          base.z + (teamId === 'red' ? 1 : -1) * (3.6 + Math.floor(i / 6) * 2) * scale)
+        : land(base.x + Math.cos(angle) * (6 + i % 3 * 2),
+          base.z + Math.sin(angle) * (6 + i % 3 * 2));
       const goat = new GoatRagdoll(this.game.physics, {
-        id, position, yaw: angle, size: .6,
+        id, position, yaw: mode === 'hay-heist' ? teamId === 'red' ? 0 : Math.PI : angle, size: .6,
       });
       this.game.water.track(goat.torso, { buoyancyScale: .7, paddleSpeed: 2.6 });
       this.bots.set(id, { goat, brain: new BotBrain(id, difficulty, 217 + i),
