@@ -5,7 +5,7 @@ import { BIOMES, POI_IDS } from './types';
 import { hashString, SeededRandom } from './random';
 import {
   assignBiomes, carveWater, clearTerrainUnderBridge, gridCoordinate, gridIndex, gridSample, makeTerrain,
-  preserveLighthouseChannel, sculptLighthouseSeaCave, stampPlot,
+  preserveLighthouseChannel, sculptLighthouseSeaCave, sculptMountainCaveLanding, stampPlot,
 } from './terrain';
 import { makeRoads, makeBridgeDecks } from './roads';
 import { makeRoadsideProps } from './roadside-stops';
@@ -161,6 +161,7 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
     z: lighthouse.center.z + 23 * scale,
   });
   island.roads = makeRoads(island, rng);
+  sculptMountainCaveLanding(island);
   island.props = populateProps(island, rng);
   // Grade authored foundations first so nearby street furniture is placed
   // on the final terrain, not hovering at pre-grade elevations.
