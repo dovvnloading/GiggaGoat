@@ -1,11 +1,17 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { IslandData } from './types';
 import { BIOMES } from './types';
-import { SeededRandom } from './random';
+import { hashString, SeededRandom } from './random';
 import { gridIndex, gridSample } from './terrain';
 import { makeLocalStreets } from './roads';
+import { CRANE_YARD_PLAN } from './crane-yard';
+import { bakeLibraryCloudGeometry } from './library-props';
+import { publicAssetUrl } from './public-assets';
 import { TOON_RAMP } from './visual-props';
+
+const GRASS_CLUMP_PATH = 'assets/library/custom/hoofington-props/grass-clump.glb';
 
 interface Sprig {
   x: number;
@@ -31,9 +37,11 @@ export function buildMeadowScatter(island: IslandData): THREE.Group {
   const sites = island.pois.filter(p => p.id !== 'mt-gigga' && p.id !== 'the-dam');
   const architecture = island.props.filter(p =>
     ['house', 'barn', 'shop', 'booth', 'cottage', 'control-house', 'windmill'].includes(p.kind));
+  const downtown = island.pois.find(p => p.id === 'downtown-bleatsville')?.center;
+  const craneYard = island.pois.find(p => p.id === 'crane-yard')?.center;
   const roadSamples = [...island.roads, ...makeLocalStreets(island)].flatMap(road =>
     road.points.map(point => ({
-      x: point.x, z: point.z, margin: road.width * 0.5 + 1.1 * scale,
+      x: point.x, z: point.z, margin: road.width * 0.5 + 3.4 * scale,
     })));
 
   function outsideObstacles(x: number, z: number): boolean {
@@ -41,6 +49,13 @@ export function buildMeadowScatter(island: IslandData): THREE.Group {
       const dx = x - road.x, dz = z - road.z;
       if (dx * dx + dz * dz < road.margin * road.margin) return false;
     }
+    if (downtown) {
+      const dx = x - downtown.x, dz = z - downtown.z;
+      if (dx * dx + dz * dz < (38 * scale) ** 2) return false;
+    }
+    if (craneYard &&
+        Math.abs(x - craneYard.x) < CRANE_YARD_PLAN.halfWidth * scale &&
+        Math.abs(z - craneYard.z) < CRANE_YARD_PLAN.halfDepth * scale) return false;
     for (const building of architecture) {
       const p = building.transform.position;
       const dx = x - p.x, dz = z - p.z;
@@ -91,9 +106,8 @@ export function buildMeadowScatter(island: IslandData): THREE.Group {
     }
   }
 
-  // Two low rounded octahedra (16 triangles total) share one tuft
-  // geometry and every existing instance transform/tint. The flower kit
-  // below remains unchanged.
+  // Preserve the original two-octahedron tuft, its RNG transforms and tints
+  // while the painted grass-clump GLB loads. Flowers remain unchanged.
   const leafParts: THREE.BufferGeometry[] = [
     new THREE.OctahedronGeometry(0.2, 0),
     new THREE.OctahedronGeometry(0.15, 0),
@@ -139,7 +153,7 @@ export function buildMeadowScatter(island: IslandData): THREE.Group {
   const rotation = new THREE.Quaternion(), scaling = new THREE.Vector3();
   const axis = new THREE.Vector3(0, 1, 0);
   function instances(geometry: THREE.BufferGeometry, samples: Sprig[],
-    name: string, material: THREE.MeshToonMaterial, instanceTint: boolean): void {
+    name: string, material: THREE.MeshToonMaterial, instanceTint: boolean): THREE.InstancedMesh {
     const mesh = new THREE.InstancedMesh(geometry, material, samples.length);
     mesh.name = name;
     mesh.castShadow = false;
@@ -157,10 +171,59 @@ export function buildMeadowScatter(island: IslandData): THREE.Group {
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingSphere();
     group.add(mesh);
+    return mesh;
   }
-  instances(tuft, grasses, 'meadow-grass-sprigs',
+  const grassMesh = instances(tuft, grasses, 'meadow-grass-sprigs',
     new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: TOON_RAMP }), true);
   instances(blossom, flowers, 'meadow-daisy-flowers',
     new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_RAMP }), false);
+
+  // Use the library's native-metre colour baker (also used for clouds), not
+  // the prop baker's normalized 0.98-m envelope. The GLB already has nine
+  // painted closed blades and must remain one draw with no per-instance tint.
+  if (typeof document !== 'undefined') {
+    const loader = new GLTFLoader();
+    void loader.loadAsync(publicAssetUrl(GRASS_CLUMP_PATH)).then(gltf => {
+      let clump: THREE.BufferGeometry | null = null;
+      try {
+        clump = bakeLibraryCloudGeometry(gltf.scene);
+      } finally {
+        // The baked geometry owns its vertices/paint, not the transient GLTF.
+        gltf.scene.traverse(object => {
+          if (!(object instanceof THREE.Mesh)) return;
+          object.geometry.dispose();
+          const materials = Array.isArray(object.material) ? object.material : [object.material];
+          materials.forEach(material => material.dispose());
+        });
+      }
+      if (!clump) return; // Invalid model: retain the visible procedural tufts.
+
+      const matrix = new THREE.Matrix4(), point = new THREE.Vector3();
+      const turn = new THREE.Quaternion(), uniform = new THREE.Vector3();
+      const up = new THREE.Vector3(0, 1, 0);
+      for (let i = 0; i < grasses.length; i++) {
+        const sprig = grasses[i]!;
+        const key = sprig.x.toFixed(4) + ':' + sprig.z.toFixed(4);
+        // Two independent position hashes; never advance the placement RNG.
+        const size = 0.8 + 0.5 * (hashString(key + ':size') / 4294967296);
+        const yaw = Math.PI * 2 * (hashString(key + ':yaw') / 4294967296);
+        point.set(sprig.x, sprig.y, sprig.z);
+        turn.setFromAxisAngle(up, yaw);
+        uniform.setScalar(size);
+        matrix.compose(point, turn, uniform);
+        grassMesh.setMatrixAt(i, matrix);
+      }
+      grassMesh.geometry = clump;
+      grassMesh.instanceColor = null;
+      const material = grassMesh.material as THREE.MeshToonMaterial;
+      material.vertexColors = true;
+      material.needsUpdate = true;
+      grassMesh.instanceMatrix.needsUpdate = true;
+      grassMesh.computeBoundingSphere();
+      tuft.dispose();
+    }).catch(() => {
+      // A missing/corrupt GLB must never break the scene or hide its fallback.
+    });
+  }
   return group;
 }
