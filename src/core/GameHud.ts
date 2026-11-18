@@ -49,8 +49,6 @@ const CSS = `
    live copy and makes the tiny footer glyphs look blurred. */
 .gg-gig-card::before{content:"";position:absolute;inset:0;background:var(--gg-gigCard) center/100% 100% no-repeat;filter:drop-shadow(0 5px 2px #281b4890);pointer-events:none}
 .gg-gig-header{position:absolute;top:9%;left:27%;right:9%;height:19%;display:grid;place-items:center;color:#ffcc43;font-size:clamp(15px,1.4vw,23px);white-space:nowrap;letter-spacing:.3px;-webkit-text-stroke:.6px #623645;text-shadow:2px 3px #583147}
-.gg-gig-clipboard{position:absolute;left:-17%;top:-33%;width:clamp(45px,4vw,67px);height:clamp(48px,4.5vw,72px)}
-.gg-gig-clipboard img{width:100%;height:100%}
 /* The checkbox is painted into gig_card.png. Copy an adjacent, empty part of
    that same cream sprite over it; only draw a live box for a running gig. */
 .gg-gig-checkbox-mask{position:absolute;left:8.3%;top:50.2%;width:10.7%;height:24%;background:var(--gg-gigCard) 27% 67%/935% 417% no-repeat;pointer-events:none}
@@ -113,7 +111,6 @@ const CSS = `
  .gg-map-location{font-size:9px}
  .gg-gig-card{top:clamp(172px,39vw,265px);right:6px;width:min(235px,39vw);height:clamp(115px,24vw,146px)}
  .gg-gig-header{font-size:clamp(10px,2.2vw,14px)}
- .gg-gig-clipboard{width:29px;height:34px}
  .gg-gig-task{font-size:clamp(9px,2vw,12px)}
  .gg-gig-title,.gg-gig-detail{font-size:7px}
  .gg-gig-footer{font-size:7px}
@@ -175,10 +172,13 @@ const CSS = `
  }
  .gg-gig-card{
   right:10px;top:calc(26px + var(--gg-compact-map-width) * 337 / 311);
-  width:clamp(204px,23vw,253px);height:clamp(115px,13vw,143px);
+  width:clamp(204px,23vw,253px);height:clamp(120px,14vw,154px);
  }
- .gg-gig-clipboard{left:-10%;top:-8px;width:clamp(30px,3.7vw,42px);height:clamp(34px,4.2vw,47px)}
- .gg-gig-header{font-size:clamp(12px,1.25vw,15px)}
+ .gg-gig-header{top:15%;height:22%;font-size:clamp(12px,1.25vw,15px)}
+ .gg-gig-paper{top:45%;bottom:22%}
+ .gg-gig-checkbox[hidden] + .gg-gig-paper{left:10%}
+ .gg-gig-footer{left:10%;right:10%;bottom:14%;height:8%}
+ .gg-coin{width:12px;height:12px}
 
  .gg-stamina{left:12px;bottom:10px;width:clamp(95px,11.5vw,122px)}
  .gg-stamina-label{font-size:clamp(10px,1.13vw,13px)}
@@ -219,7 +219,6 @@ const CSS = `
    right:6px;width:var(--gg-landscape-gig-width);height:clamp(96px,34vh,132px)
  }
  .gg-gig-header{top:15%;height:22%;font-size:clamp(9px,2vw,13px)}
- .gg-gig-clipboard{width:24px;height:27px}
  .gg-gig-paper{top:43%;right:9%;bottom:21%;gap:1px}
  .gg-gig-checkbox[hidden] + .gg-gig-paper{left:9%}
  .gg-gig-title,.gg-gig-detail{font-size:8px}
@@ -345,9 +344,7 @@ export class GameHud {
       '<div class="gg-map-location"><strong data-place>HOOFINGTON</strong></div></section>' +
       '<section class="gg-gig-card" data-sprite="' + HUD_SPRITES.gigCard +
       '" data-gig-card aria-label="Current gig">' +
-      '<div class="gg-gig-header"><span class="gg-gig-clipboard">' +
-      hudSpriteImage(HUD_SPRITES.gigClipboard, 'gg-clipboard-art') +
-      '</span>CURRENT GIG</div>' +
+      '<div class="gg-gig-header">CURRENT GIG</div>' +
       '<span class="gg-gig-checkbox-mask" aria-hidden="true"></span>' +
       '<span class="gg-gig-checkbox" data-gig-checkbox aria-hidden="true" hidden></span>' +
       '<div class="gg-gig-paper"><h2 class="gg-gig-title" data-gig-title>YOUR NEXT GIG</h2>' +
