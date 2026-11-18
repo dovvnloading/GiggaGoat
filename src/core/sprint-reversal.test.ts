@@ -42,7 +42,9 @@ async function measureResponse(action: Response, withReversalBraking: boolean, s
       });
       const position = goat.torso.translation();
       const velocity = goat.torso.linvel();
-      expect(goat.locomotion.grounded).toBe(action !== 'airborne reversal');
+      expect(goat.locomotion.grounded,
+        `${action} tick ${tick} at z=${position.z.toFixed(3)}, vertical speed=${velocity.y.toFixed(3)}, ground=${goat.locomotion.groundHit?.distance.toFixed(3)}`)
+        .toBe(action !== 'airborne reversal');
       frames.push({ tick, forwardTravel: position.z - start.z, vx: velocity.x, vz: velocity.z });
     }
     expect(game.respawns).toBe(0);

@@ -116,12 +116,14 @@ describe('Hoofington art / building slicing regressions', () => {
     const crossings = view.group.getObjectByName('hoofington-and-city-crosswalks') as THREE.InstancedMesh;
     expect(walks.count).toBe(44);
     expect(crossings.count).toBe(21);
-    for (const name of ['hoofington-sidewalks', 'hoofington-curbs', 'hoofington-edge-lines']) {
-      const strip = view.group.getObjectByName(name) as THREE.Mesh;
-      expect(strip, name).toBeInstanceOf(THREE.Mesh);
-      expect(strip, name).not.toBeInstanceOf(THREE.InstancedMesh);
-      expect(strip.geometry.index?.count, name).toBeGreaterThanOrEqual((farm.points.length - 1) * 12);
-    }
+    const verge = view.group.getObjectByName('hoofington-street-verge') as THREE.Mesh;
+    expect(verge).toBeInstanceOf(THREE.Mesh);
+    expect(verge).not.toBeInstanceOf(THREE.InstancedMesh);
+    expect(verge.geometry.index?.count).toBe((farm.points.length - 1) * 60);
+    const paint = verge.geometry.getAttribute('color');
+    const colours = Array.from({ length: paint.count }, (_, i) =>
+      [paint.getX(i), paint.getY(i), paint.getZ(i)].join(','));
+    expect(new Set(colours).size).toBe(3);
     expect(view.group.getObjectByName('hoofington-zebra-crossing'))
       .toBeInstanceOf(THREE.Mesh);
     view.dispose();

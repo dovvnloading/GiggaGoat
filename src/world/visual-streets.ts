@@ -71,16 +71,17 @@ function buildHoofingtonVerge(
 ): void {
   const edge = road.width / 2;
   const profiles = [
-    { name: 'hoofington-sidewalks', from: edge + .36 * scale, to: edge + 2.34 * scale,
+    { from: edge + .36 * scale, to: edge + 2.34 * scale,
       color: 0xdcd4ba, y: (x: number, z: number) => gridSample(island, x, z) + .04 * scale },
-    { name: 'hoofington-curbs', from: edge + .022 * scale, to: edge + .36 * scale,
+    { from: edge + .022 * scale, to: edge + .36 * scale,
       color: 0xf2e6ce, skirt: true,
       y: (_x: number, _z: number, roadY: number) => roadY + .20 + .08 * scale },
-    { name: 'hoofington-edge-lines', from: edge - .39 * scale, to: edge - .30 * scale,
+    { from: edge - .39 * scale, to: edge - .30 * scale,
       color: 0xf2e9cf, y: (_x: number, _z: number, roadY: number) => roadY + .214 },
   ];
+  const positions: number[] = [], indices: number[] = [], colors: number[] = [];
   for (const profile of profiles) {
-    const positions: number[] = [], indices: number[] = [];
+    const startVertex = positions.length / 3;
     for (const side of [-1, 1]) {
       const first = positions.length / 3;
       const left = side < 0 ? -profile.to : profile.from;
@@ -109,18 +110,21 @@ function buildHoofingtonVerge(
         }
       }
     }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setIndex(indices);
-    geometry.computeVertexNormals();
-    geometry.computeBoundingSphere();
-    const mesh = new THREE.Mesh(geometry, new THREE.MeshToonMaterial({
-      color: profile.color, gradientMap: TOON_RAMP,
-    }));
-    mesh.name = profile.name;
-    mesh.receiveShadow = true;
-    group.add(mesh);
+    const color = new THREE.Color(profile.color);
+    for (let i = startVertex; i < positions.length / 3; i++) colors.push(color.r, color.g, color.b);
   }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshToonMaterial({
+    vertexColors: true, gradientMap: TOON_RAMP,
+  }));
+  mesh.name = 'hoofington-street-verge';
+  mesh.receiveShadow = true;
+  group.add(mesh);
 }
 
 /**

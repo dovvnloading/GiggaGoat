@@ -84,9 +84,10 @@ describe('free-roam HUD sprite atlas', () => {
         expect(manifest[name], 'unregistered HUD element sprite ' + name).toBeDefined();
       }
       for (const name of ['goat_kid', 'goat_billy', 'goat_big', 'goat_gigga',
-        'hay_floor', 'fence_wall', 'hay_ramp', 'launch_pad', 'supplies_crate']) {
+        'hay_floor', 'fence_wall', 'hay_ramp', 'launch_pad']) {
         expect(html).toContain('data-sprite="icons/' + name + '"');
       }
+      for (const stock of ['hay', 'wood', 'scrap']) expect(html).toContain('data-supply-' + stock);
       // Stretchable controls are real nine-slice images, never CSS-painted frames.
       expect(css).toContain('border-image:var(--gg-hotbarSlot)');
       expect(css).toContain('border-image:var(--gg-promptPill)');
