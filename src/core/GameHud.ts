@@ -143,6 +143,25 @@ const CSS = `
 .gg-gig-footer [data-mode]{flex-shrink:0;text-align:right}
 .gg-coin{width:18px;height:18px;flex-shrink:0;object-fit:contain;image-rendering:auto;opacity:1;filter:none;transform:none}
 @media(min-width:1101px){
+ /* Dock the card to the map and leave room for the map shadow. Cap the
+    map's height when a wide, short window cannot fit the full stack. */
+ .gg-ui{
+  --gg-desktop-panel-gap:12px;
+  --gg-desktop-map-top:clamp(6px,.7vw,12px);
+  --gg-desktop-gig-height:clamp(150px,12.4vw,208px);
+  --gg-desktop-map-height:min(
+   calc(clamp(190px,17vw,290px) * 337 / 311),
+   max(110px,calc(100vh - var(--gg-desktop-map-top) - var(--gg-desktop-gig-height) - 2 * var(--gg-desktop-panel-gap)))
+  );
+ }
+ .gg-map-panel{
+  top:var(--gg-desktop-map-top);height:var(--gg-desktop-map-height);
+  width:calc(var(--gg-desktop-map-height) * 311 / 337)
+ }
+ .gg-gig-card{
+  top:calc(var(--gg-desktop-map-top) + var(--gg-desktop-map-height) + var(--gg-desktop-panel-gap));
+  height:var(--gg-desktop-gig-height)
+ }
  .gg-gig-paper{bottom:24.5%}
  .gg-gig-footer{
   --gg-coin-size:clamp(12px,.86vw,16px);
@@ -242,7 +261,7 @@ const CSS = `
  .gg-debug{top:280px;left:5px;font-size:9px}
 }
 @media(max-height:680px) and (min-width:761px){
- .gg-combo{height:155px}.gg-gig-card{top:207px}.gg-stamina{width:130px}
+ .gg-combo{height:155px}.gg-stamina{width:130px}
  .gg-prompts{top:calc(clamp(4px,.7vw,12px) + 165px)}
  .gg-hotbar{height:125px}
 }
