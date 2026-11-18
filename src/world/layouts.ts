@@ -180,9 +180,13 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
       { x: 4 * scale, y: 3 * scale, z: 3.5 * scale }, { shape: 'convex' });
   }
 
-  // WHISPERING PINES: thick woodland, log hop obstacles and a visible river corridor.
+  // WHISPERING PINES: keep the legacy RNG sequence, but clear the road
+  // shoulders and group six small fallen pieces beside the water and trail.
   const forest: PoiId = 'whispering-pines';
   const woods = byId.get(forest)!.center;
+  const nearRoad = (x: number, z: number, clearance: number): boolean =>
+    island.roads.some(road => road.points.some(point =>
+      Math.hypot(x - point.x, z - point.z) <= road.width / 2 + clearance));
   let trees = 0;
   for (let attempt = 0; attempt < 220 && trees < 95; attempt++) {
     const angle = rng.range(0, Math.PI * 2);
@@ -195,16 +199,98 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
     const h = rng.range(8, 17) * scale;
     const kind: PropKind = rng.next() < 0.83 ? 'tree-pine' : 'tree-oak';
     const width = h * (kind === 'tree-pine' ? 0.35 : 0.72);
+    // Count old-eligible attempts even when the road excludes a tree, so the
+    // 95-tree cap consumes exactly the same random draws on every seed.
+    trees++;
+    const trunkRadius = Math.min(0.9, width * 0.2);
+    if (nearRoad(x, z, 2 + trunkRadius)) continue;
     add(forest, kind, x, z, { x: width, y: h, z: width },
       { shape: 'cylinder', lickable: true, climbable: true });
-    trees++;
   }
+
+  // The 17 old scatter attempts each drew x, z and yaw. Discard the first
+  // two draws and reuse the yaw only; later POIs and relics retain their RNG.
+  const looseYaws: number[] = [];
   for (let i = 0; i < 17; i++) {
-    const p = at(forest, rng.range(-43, 43), rng.range(-48, 48));
-    add(forest, i % 3 === 0 ? 'rock' : 'log', p.x, p.z,
-      { x: 3.5 * scale, y: 2.2 * scale, z: 7 * scale },
-      { shape: i % 3 === 0 ? 'convex' : 'cylinder',
-        dynamicMass: i % 3 === 0 ? undefined : 30, yaw: rng.range(0, Math.PI * 2) });
+    rng.range(-43, 43);
+    rng.range(-48, 48);
+    looseYaws.push(rng.range(0, Math.PI * 2));
+  }
+  const looseKinds = ['rock', 'log', 'log', 'rock', 'rock', 'rock'] as const;
+  type LooseKind = (typeof looseKinds)[number];
+  interface LooseSpot { x: number; z: number; yaw: number }
+  const chosen: Array<LooseSpot & { kind: LooseKind }> = [];
+  const footprintRadius = (kind: LooseKind): number =>
+    Math.hypot(kind === 'rock' ? 2.2 : 1.0, kind === 'rock' ? 2.5 : 4.5) * scale / 2;
+  function clearFor(kind: LooseKind, x: number, z: number): boolean {
+    if (Math.hypot(x - woods.x, z - woods.z) > 85 * scale ||
+        gridSample(island, x, z) < 0.5 * scale ||
+        nearRoad(x, z, 3.5 + footprintRadius(kind))) return false;
+    return chosen.every(other =>
+      Math.hypot(x - other.x, z - other.z) >
+        footprintRadius(kind) + footprintRadius(other.kind) + 3 * scale);
+  }
+  function bankSpot(kind: LooseKind, slot: number): LooseSpot | undefined {
+    const segments = [12, 13, 11] as const;
+    for (let pass = 0; pass < segments.length; pass++) {
+      const index = segments[(slot + pass) % segments.length]!;
+      const a = island.river[index]!, b = island.river[index + 1]!;
+      const dx = b.x - a.x, dz = b.z - a.z;
+      const length = Math.hypot(dx, dz) || 1;
+      for (let step = 0; step < 18; step++) {
+        const t = (step + 0.5) / 18;
+        const halfWidth = (a.width + (b.width - a.width) * t) / 2;
+        for (const side of (slot % 2 ? [1, -1] : [-1, 1])) {
+          for (const setback of [5.5, 4.5, 3.5, 2.5]) {
+            const offset = side * (halfWidth + setback);
+            const x = a.x + dx * t - dz / length * offset;
+            const z = a.z + dz * t + dx / length * offset;
+            const river = riverAt({ x, z }, island.river);
+            const fromEdge = river.distance - river.width / 2;
+            if (fromEdge < 2 || fromEdge > 6 ||
+                gridSample(island, x, z) < river.level + 0.05 * scale ||
+                !clearFor(kind, x, z)) continue;
+            return { x, z, yaw: Math.atan2(dx, dz) };
+          }
+        }
+      }
+    }
+    return undefined;
+  }
+  function trailSpot(kind: LooseKind, slot: number): LooseSpot | undefined {
+    const trail = island.roads.find(road => road.from === forest &&
+      road.to === 'old-lighthouse');
+    if (!trail) return undefined;
+    for (let i = 3; i < trail.points.length - 3; i += 3) {
+      const p = trail.points[i]!, a = trail.points[i - 1]!, b = trail.points[i + 1]!;
+      const fromWoods = Math.hypot(p.x - woods.x, p.z - woods.z);
+      if (fromWoods < 16 * scale || fromWoods > 70 * scale) continue;
+      const dx = b.x - a.x, dz = b.z - a.z;
+      const length = Math.hypot(dx, dz) || 1;
+      for (const side of (slot % 2 ? [-1, 1] : [1, -1])) {
+        const offset = side * (trail.width / 2 + 3.5 + footprintRadius(kind) + 1.1);
+        const x = p.x - dz / length * offset, z = p.z + dx / length * offset;
+        if (!clearFor(kind, x, z)) continue;
+        return { x, z, yaw: Math.atan2(dx, dz) };
+      }
+    }
+    return undefined;
+  }
+  for (const [slot, kind] of looseKinds.entries()) {
+    const placement = slot < 4
+      ? bankSpot(kind, slot) ?? trailSpot(kind, slot)
+      : trailSpot(kind, slot) ?? bankSpot(kind, slot);
+    if (!placement) continue; // Very small/eroded islands are best-effort.
+    const size = kind === 'log'
+      ? { x: 1.0 * scale, y: 0.9 * scale, z: 4.5 * scale }
+      : { x: 2.2 * scale, y: 1.6 * scale, z: 2.5 * scale };
+    add(forest, kind, placement.x, placement.z, size, {
+      shape: kind === 'rock' ? 'convex' : 'cylinder',
+      dynamicMass: kind === 'log' ? 30 : undefined,
+      yaw: kind === 'log'
+        ? placement.yaw + (looseYaws[slot]! - Math.PI) * 0.04 : looseYaws[slot]!,
+    });
+    chosen.push({ ...placement, kind });
   }
   supportElevatedDeck(site(forest, 'platform', 12, -13, 9, 1.1, 8, { lift: 4.5 }));
   supportElevatedDeck(site(forest, 'platform', 19, -17, 8, 1.1, 7, { lift: 8.5 }));

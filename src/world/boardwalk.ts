@@ -173,11 +173,19 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
   place('bench', 15.5, 67, 3.5, 1.5, 1.2,
     { floor: headY, yaw: Math.PI / 2 });
 
-  // A real sandy forecourt remains in front of the shore entrance.
+  // The sandy forecourt is landward of the shore entrance; skip any
+  // independently sampled piece if this seed's coastline reaches it.
+  function placeDryForecourt(kind: 'bumper' | 'bench', dx: number, dz: number,
+    sx: number, sy: number, sz: number, detail: Detail): void {
+    const x = centre.x + dx * scale;
+    const z = centre.z + (dz + shoreShift) * scale;
+    if (gridSample(island, x, z) < 1.0) return;
+    place(kind, dx, dz, sx, sy, sz, detail);
+  }
   for (const side of [-1, 1]) {
-    place('bumper', side * 29, -28, 2.4, 2.3, 2.4,
+    placeDryForecourt('bumper', side * 10, -42, 2.4, 2.3, 2.4,
       { mass: 10, shape: 'cylinder', color: side < 0 ? 0xffb76a : 0x75c4e0 });
-    place('bench', side * 22, -32, 3.5, 1.5, 1.2,
+    placeDryForecourt('bench', side * 15, -46, 3.5, 1.5, 1.2,
       { yaw: Math.PI / 3, color: 0x9e7653 });
   }
   // Four coastal palms; never plant the model below the actual shifted
