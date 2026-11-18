@@ -48,6 +48,7 @@ export const PROP_LIBRARY_MODELS = {
   'flag': 'assets/library/custom/mt-gigga/pennant-pole.glb',
   'buoy': 'assets/library/custom/props/buoy.glb',
   'platform': 'assets/library/custom/pines/timber-deck.glb',
+  'deck-stilts': 'assets/library/custom/pines/deck-stilts.glb',
   'silo': 'assets/library/custom/hoofington-props/silo.glb',
   'mailbox': 'assets/library/custom/hoofington-props/mailbox.glb',
   'gnome': 'assets/library/custom/town/gnome.glb',
@@ -101,6 +102,14 @@ export const PROP_LIBRARY_MODELS = {
   'lily-pads': 'assets/library/custom/pines/lily-pads.glb',
 } as const satisfies Record<PropKind, string>;
 
+/** Flat-based cumulus; keep native proportions rather than stretching to a prop box. */
+export const CLOUD_LIBRARY_MODELS = [
+  'assets/library/custom/sky/cloud-a.glb',
+  'assets/library/custom/sky/cloud-b.glb',
+  'assets/library/custom/sky/cloud-c.glb',
+] as const;
+export type CloudLibraryModelPath = (typeof CLOUD_LIBRARY_MODELS)[number];
+
 type PixelMap = { data: Uint8ClampedArray; width: number; height: number };
 
 /** Extract an atlas only once per texture; never create per-instance materials. */
@@ -138,12 +147,22 @@ function pixels(texture: THREE.Texture, cache: Map<THREE.Texture, PixelMap | nul
 export function bakeLibraryPropGeometry(
   kind: PropKind, root: THREE.Object3D,
 ): THREE.BufferGeometry | null {
+  const authored = isAuthoredLibraryAsset(PROP_LIBRARY_MODELS[kind]);
+  return bakeLibraryGeometry(root, authored, kind === 'planter' && !authored);
+}
+
+/** Clouds retain their native metres, flat base, and baked source material colours. */
+export function bakeLibraryCloudGeometry(root: THREE.Object3D): THREE.BufferGeometry | null {
+  return bakeLibraryGeometry(root, false, false);
+}
+
+function bakeLibraryGeometry(root: THREE.Object3D, authored: boolean,
+  legacyPlanter: boolean): THREE.BufferGeometry | null {
   root.updateMatrixWorld(true);
   const bounds = new THREE.Box3().setFromObject(root);
   if (bounds.isEmpty()) return null;
   const span = bounds.getSize(new THREE.Vector3());
   const centre = bounds.getCenter(new THREE.Vector3());
-  const authored = isAuthoredLibraryAsset(PROP_LIBRARY_MODELS[kind]);
   const scale = new THREE.Vector3(
     0.98 / Math.max(0.001, span.x),
     0.98 / Math.max(0.001, span.y),
@@ -154,9 +173,6 @@ export function bakeLibraryPropGeometry(
   const colour = new THREE.Color(), texel = new THREE.Color();
   const white = new THREE.Color(0xffffff);
   const imageCache = new Map<THREE.Texture, PixelMap | null>();
-  // Source-painted Blender planters do not need the legacy alpha-atlas ramp.
-  const legacyPlanter = kind === 'planter' && !authored;
-
   root.traverse(object => {
     if (!(object instanceof THREE.Mesh)) return;
     const source = object.geometry;
@@ -276,6 +292,20 @@ export async function loadLibraryPropGeometry(
     }
     const geometry = bakeLibraryPropGeometry(kind, model.scene);
     if (!geometry) throw new Error('Library model has no visible triangles: ' + kind);
+    return geometry;
+  } finally {
+    disposeLoadedModel(model.scene);
+  }
+}
+
+/** Load a painted cloud without a procedural substitute if its GLB is unavailable. */
+export async function loadLibraryCloudGeometry(
+  path: CloudLibraryModelPath, loader: GLTFLoader,
+): Promise<THREE.BufferGeometry> {
+  const model = await loader.loadAsync(publicAssetUrl(path));
+  try {
+    const geometry = bakeLibraryCloudGeometry(model.scene);
+    if (!geometry) throw new Error('Library cloud has no visible triangles: ' + path);
     return geometry;
   } finally {
     disposeLoadedModel(model.scene);

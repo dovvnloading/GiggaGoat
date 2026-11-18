@@ -47,6 +47,20 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
     props.push(prop);
     return prop;
   }
+
+  /** The authored stilts are only visual: deck collision/interaction stays on the plank. */
+  function supportElevatedDeck(deck: PropDescriptor): void {
+    const { x, z, y } = deck.transform.position;
+    const ground = gridSample(island, x, z);
+    const underside = y - deck.size.y / 2;
+    const height = underside - ground;
+    if (height <= 0) return;
+    add(deck.poiId, 'deck-stilts', x, z,
+      { x: deck.size.x, y: height, z: deck.size.z }, {
+        absoluteY: ground + height / 2, yaw: deck.transform.rotationY,
+        collidable: false, breakable: false, lickable: false, climbable: false,
+      });
+  }
   function at(id: PoiId, dx: number, dz: number): Vec2 {
     const p = byId.get(id)!.center;
     return { x: p.x + dx * scale, z: p.z + dz * scale };
@@ -72,7 +86,6 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   site(farm, 'house', 22, 12, 10, 8, 9,
     { yaw: -Math.PI / 2, color: 0xffecdb });
   site(farm, 'windmill', 30, -38, 12.5, 18, 7.9, { shape: 'cuboid' });
-  site(farm, 'platform', 35, 26, 15, 1, 12);
   for (const side of [-1, 1]) for (let i = 0; i < 7; i++) {
     site(farm, 'fence', side * 11.6, -33 + i * 11,
       9.2, 1.85, 0.35, { yaw: Math.PI / 2, breakable: true });
@@ -81,11 +94,9 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
     site(farm, 'hay-bale', rng.range(-42, -31), rng.range(-26, 27), 2.2, 1.5, 2.2,
       { dynamicMass: 12, yaw: rng.range(0, 6.28), shape: 'cylinder', climbable: false });
   }
-  for (let i = 0; i < 7; i++) {
-    site(farm, 'crate', rng.range(30, 40), rng.range(-27, 15), 1.8, 1.8, 1.8,
-      { dynamicMass: 14, yaw: rng.range(0, 6.28) });
-  }
-  site(farm, 'ramp', -35, 6, 6, 2, 11, { yaw: 0.35 });
+  // The seven removed garden crates used three draws each. Preserve all later
+  // Downtown/Pines/Lighthouse placements and relic positions on every seed.
+  for (let i = 0; i < 7 * 3; i++) rng.next();
   site(farm, 'sign', 7.5, 39, 5, 3, 0.5, { breakable: true });
 
   // BAA-ARDWALK: one cohesive shore-connected, walkable pier scene.
@@ -195,8 +206,8 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
       { shape: i % 3 === 0 ? 'convex' : 'cylinder',
         dynamicMass: i % 3 === 0 ? undefined : 30, yaw: rng.range(0, Math.PI * 2) });
   }
-  site(forest, 'platform', 12, -13, 9, 1.1, 8, { lift: 4.5 });
-  site(forest, 'platform', 19, -17, 8, 1.1, 7, { lift: 8.5 });
+  supportElevatedDeck(site(forest, 'platform', 12, -13, 9, 1.1, 8, { lift: 4.5 }));
+  supportElevatedDeck(site(forest, 'platform', 19, -17, 8, 1.1, 7, { lift: 8.5 }));
   site(forest, 'sign', -4, 8, 4, 3, 0.5);
 
   // THE DAM: one non-rendered marker preserves the Dam Bomb gig's walkway
@@ -227,7 +238,9 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   site(cape, 'house', 15, -10, 9, 7, 9, { color: 0xf4e6d4 });
   site(cape, 'cottage', 16, 9, 10, 8, 9,
     { yaw: -0.16, color: 0xf8ebd6 });
-  site(cape, 'platform', -19, -9, 7, 1, 6, { lift: 4 });
+  // Beacon Bleat uses this exact platform as a checkpoint. Retain its collider
+  // and ground its appearance with the visual-only stilts rather than deleting it.
+  supportElevatedDeck(site(cape, 'platform', -19, -9, 7, 1, 6, { lift: 4 }));
   for (let i = 0; i < 20; i++) {
     const a = rng.range(0, 2 * Math.PI), r = rng.range(13, 40);
     const p = at(cape, Math.cos(a) * r, Math.sin(a) * r);

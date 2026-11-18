@@ -238,7 +238,8 @@ describe('hi-fi renderer and art-comparison viewer', () => {
     expect(view.chunks).toHaveLength(16);
     expect(view.chunks[0]!.material).toBeInstanceOf(THREE.MeshToonMaterial);
     expect(view.group.getObjectByName('props-lighthouse')).toBeInstanceOf(THREE.InstancedMesh);
-    expect(view.group.getObjectByName('puffy-cloud-banks')).toBeInstanceOf(THREE.InstancedMesh);
+    // No clouds render under Node until the authored GLBs have loaded in the browser.
+    expect(view.group.getObjectByName('puffy-cloud-banks')).toBeUndefined();
     expect(view.group.getObjectByName('the-dam-hero')).toBeInstanceOf(THREE.Group);
     expect(view.group.getObjectByName('dam-spillway-1')).toBeUndefined();
     expect(view.group.getObjectByName('road-centre-dashes')).toBeInstanceOf(THREE.InstancedMesh);

@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { CLOUD_LIBRARY_MODELS, loadLibraryCloudGeometry } from './library-props';
 
 /** Daytime horizon RGB in the sky shader's linear working space. */
 export const SKY_HORIZON_COLOR = new THREE.Color(0.76, 0.88, 0.98);
@@ -78,42 +80,68 @@ export function buildSkyVisuals(): SkyVisuals {
   dome.frustumCulled = false;
   group.add(dome);
 
-  // One cloud draw call; deterministic ellipsoid clusters rather than flat billboards.
+  // Keep all 24 historical bank positions and all ten RNG draws per bank:
+  // two for the ring, one for height, one for breadth, six for retired puffs.
+  // The three authored, individually painted cumulus GLBs become one draw each.
   const cloudMaterial = new THREE.MeshToonMaterial({
-    color: 0xffffff, gradientMap: CLOUD_RAMP,
+    color: 0xffffff, vertexColors: true, gradientMap: CLOUD_RAMP,
     emissive: 0xffffff, emissiveIntensity: 0.3,
     transparent: true, opacity: 0.94, depthWrite: false, fog: true,
   });
-  const cloudCount = 72;
-  const clouds = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 2),
-    cloudMaterial, cloudCount);
-  clouds.name = 'puffy-cloud-banks';
-  clouds.renderOrder = 3; // Transparent clouds draw after rising-sea (order 2).
-  const matrix = new THREE.Matrix4();
+  const CLOUD_BOTTOM = 300, CLOUD_TOP = 380;
+  interface CloudPlacement { x: number; z: number; heightFraction: number; scale: number }
+  const placements: CloudPlacement[][] = CLOUD_LIBRARY_MODELS.map(() => []);
   let s = 0x49a0b12d;
   const rand = (): number => {
     s = (Math.imul(s ^ (s >>> 13), 1664525) + 1013904223) >>> 0;
     return s / 0x100000000;
   };
-  for (let i = 0; i < cloudCount / 3; i++) {
+  for (let i = 0; i < 24; i++) {
     const a = rand() * Math.PI * 2, r = 330 + rand() * 380;
-    const x = Math.cos(a) * r, z = Math.sin(a) * r;
-    const y = 150 + rand() * 100;
+    const heightFraction = rand();
     const breadth = 28 + rand() * 28;
-    for (let j = 0; j < 3; j++) {
-      matrix.compose(
-        new THREE.Vector3(x + (j - 1) * breadth * 0.63 * 1.25, y + (j === 1 ? 7 : 0),
-          z + (j % 2 ? 9 : -9) * 1.25),
-        new THREE.Quaternion(),
-        new THREE.Vector3(breadth * (j === 1 ? 1.35 : 1), (20 + rand() * 10) * 0.62,
-          24 + rand() * 13),
-      );
-      clouds.setMatrixAt(i * 3 + j, matrix);
+    placements[i % CLOUD_LIBRARY_MODELS.length]!.push({
+      x: Math.cos(a) * r, z: Math.sin(a) * r, heightFraction,
+      scale: 0.8 + (breadth - 28) / 28 * 0.6,
+    });
+    for (let retiredPuff = 0; retiredPuff < 3; retiredPuff++) {
+      rand(); // old puff height
+      rand(); // old puff depth
     }
   }
-  clouds.instanceMatrix.needsUpdate = true;
-  clouds.frustumCulled = false;
-  group.add(clouds);
+  // Unlike prop colliders, the sky has no procedural fallback: until a GLB
+  // finishes loading (or if it fails), its clouds produce zero draw calls.
+  if (typeof document !== 'undefined') {
+    const loader = new GLTFLoader();
+    for (const [index, path] of CLOUD_LIBRARY_MODELS.entries()) {
+      void loadLibraryCloudGeometry(path, loader).then(geometry => {
+        const entries = placements[index]!;
+        const clouds = new THREE.InstancedMesh(geometry, cloudMaterial, entries.length);
+        clouds.name = 'puffy-cloud-banks-' + (index + 1);
+        clouds.renderOrder = 3; // After rising-sea (order 2).
+        clouds.frustumCulled = false;
+        const modelHeight = geometry.boundingBox!.getSize(new THREE.Vector3()).y;
+        const matrix = new THREE.Matrix4();
+        for (const [instance, placement] of entries.entries()) {
+          // GLB geometry is anchored at its flat base. Keep the *entire*
+          // scaled silhouette within the 300–380 m band.
+          const availableHeight = Math.max(0,
+            CLOUD_TOP - CLOUD_BOTTOM - modelHeight * placement.scale);
+          matrix.compose(
+            new THREE.Vector3(placement.x,
+              CLOUD_BOTTOM + placement.heightFraction * availableHeight, placement.z),
+            new THREE.Quaternion(),
+            new THREE.Vector3(placement.scale, placement.scale, placement.scale),
+          );
+          clouds.setMatrixAt(instance, matrix);
+        }
+        clouds.instanceMatrix.needsUpdate = true;
+        group.add(clouds);
+      }).catch(error => {
+        console.warn('Could not load authored sky cloud ' + path, error);
+      });
+    }
+  }
 
   const sun = new THREE.Mesh(new THREE.SphereGeometry(25, 24, 14),
     new THREE.MeshBasicMaterial({ color: 0xffe6a0, fog: false }));

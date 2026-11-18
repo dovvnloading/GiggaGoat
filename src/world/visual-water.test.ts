@@ -53,8 +53,10 @@ describe('island sea, shoreline and horizon', () => {
       }
 
       const sky = buildSkyVisuals();
-      const clouds = sky.group.getObjectByName('puffy-cloud-banks') as THREE.InstancedMesh;
-      expect(clouds.renderOrder).toBeGreaterThan(sea.renderOrder);
+      // In Node the sky must not draw clouds without a loaded authored GLB.
+      // The 3 GLB renderOrder values are checked once loaded by visual-sky.test.
+      expect(sky.group.children.filter(o => o.name.startsWith('puffy-cloud-banks-')))
+        .toHaveLength(0);
       update(4.5, island.seaLevel + 25);
       expect(sea.position.y).toBe(island.seaLevel + 25);
       expect((sea.material as THREE.ShaderMaterial).uniforms['uLevel']!.value)

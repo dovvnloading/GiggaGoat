@@ -22,7 +22,7 @@ export type PropKind =
   | 'bumper' | 'booth' | 'satellite-dish' | 'dam-wall'
   | 'fence' | 'hay-bale' | 'crate' | 'barrel' | 'tree-pine' | 'tree-oak'
   | 'rock' | 'log' | 'lamp' | 'ramp' | 'ledge' | 'bridge'
-  | 'bench' | 'sign' | 'flag' | 'buoy' | 'platform'
+  | 'bench' | 'sign' | 'flag' | 'buoy' | 'platform' | 'deck-stilts'
   | 'silo' | 'mailbox' | 'gnome' | 'trampoline' | 'bunting'
   | 'container' | 'cone' | 'awning' | 'planter' | 'fountain'
   | 'ac-unit' | 'water-tower' | 'mushroom' | 'stump' | 'lookout'

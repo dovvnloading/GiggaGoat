@@ -1,21 +1,51 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { CLOUD_LIBRARY_MODELS } from './library-props';
+import { ART_BOOKMARKS } from './viewer/bookmarks';
 import { TOON_RAMP } from './visual-props';
 import { buildSkyVisuals, GOLDEN_HOUR_SKY, SKY_HORIZON_COLOR } from './visual-sky';
 
-function makeClouds() {
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+async function makeClouds() {
+  // Synthetic flat-based, source-painted GLBs: no network/DOM needed in Vitest.
+  const paths: string[] = [];
+  vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockImplementation(async url => {
+    paths.push(url);
+    const index = CLOUD_LIBRARY_MODELS.findIndex(path => url.endsWith(path));
+    const geometry = new THREE.BoxGeometry(60, 22, 34);
+    geometry.translate(0, 11, 0);
+    const scene = new THREE.Group();
+    scene.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
+      color: [0xffffff, 0xdcd8ee, 0xf6e4ef][index] ?? 0xffffff,
+    })));
+    return { scene } as Awaited<ReturnType<GLTFLoader['loadAsync']>>;
+  });
+  vi.stubGlobal('document', {});
   const sky = buildSkyVisuals();
-  const clouds = sky.group.getObjectByName('puffy-cloud-banks');
-  expect(clouds).toBeInstanceOf(THREE.InstancedMesh);
-  return { sky, clouds: clouds as THREE.InstancedMesh };
+  const meshList = (): THREE.InstancedMesh[] => sky.group.children.filter(
+    child => child.name.startsWith('puffy-cloud-banks-'),
+  ) as THREE.InstancedMesh[];
+  // No ellipsoid fallback, not even while the GLB promises are pending.
+  expect(meshList()).toHaveLength(0);
+  await vi.waitFor(() => expect(meshList()).toHaveLength(3));
+  return { sky, paths, clouds: meshList().sort((a, b) => a.name.localeCompare(b.name)) };
 }
 
 describe('storybook sky clouds (Hoofington E2)', () => {
-  it('uses a cloud-only bright toon ramp, white daytime tint and cool emissive fill', () => {
-    const { sky, clouds } = makeClouds();
-    expect(clouds.material).toBeInstanceOf(THREE.MeshToonMaterial);
-    const material = clouds.material as THREE.MeshToonMaterial;
+  it('uses a cloud-only bright toon ramp, white daytime tint and cool emissive fill', async () => {
+    const { sky, clouds } = await makeClouds();
+    expect(clouds).toHaveLength(3);
+    expect(clouds[0]!.material).toBeInstanceOf(THREE.MeshToonMaterial);
+    const material = clouds[0]!.material as THREE.MeshToonMaterial;
+    expect(material.vertexColors).toBe(true);
+    expect(clouds.every(cloud => cloud.material === material)).toBe(true);
     expect(material.gradientMap).toBeInstanceOf(THREE.DataTexture);
     expect(material.gradientMap).not.toBe(TOON_RAMP);
 
@@ -45,28 +75,39 @@ describe('storybook sky clouds (Hoofington E2)', () => {
     expect(material.color.getHex()).toBe(0xffffff);
   });
 
-  it('keeps 72 smoothed, flattened puffs in a single instanced mesh', () => {
-    const { clouds } = makeClouds();
-    expect(clouds.count).toBe(72);
-    expect(clouds.geometry).toBeInstanceOf(THREE.IcosahedronGeometry);
-    expect((clouds.geometry as THREE.IcosahedronGeometry).parameters.detail).toBe(2);
-
-    const firstBank = Array.from({ length: 3 }, (_, index) => {
-      const matrix = new THREE.Matrix4();
-      const position = new THREE.Vector3();
-      const scale = new THREE.Vector3();
-      clouds.getMatrixAt(index, matrix);
-      matrix.decompose(position, new THREE.Quaternion(), scale);
-      return { position, scale };
+  it('loads exactly three authored cloud models, preserving each model\'s paint in a single draw', async () => {
+    const { sky, clouds, paths } = await makeClouds();
+    expect(paths).toHaveLength(3);
+    expect(paths.map(url => CLOUD_LIBRARY_MODELS.find(path => url.endsWith(path)))).toEqual([
+      'assets/library/custom/sky/cloud-a.glb',
+      'assets/library/custom/sky/cloud-b.glb',
+      'assets/library/custom/sky/cloud-c.glb',
+    ]);
+    expect(clouds).toHaveLength(3);
+    expect(clouds.every(mesh => mesh instanceof THREE.InstancedMesh)).toBe(true);
+    expect(clouds.reduce((sum, mesh) => sum + mesh.count, 0)).toBe(24);
+    expect(clouds.map(mesh => mesh.count)).toEqual([8, 8, 8]);
+    // Model material RGBs survive baking instead of being replaced by a
+    // uniform procedurally tinted ellipsoid (one geometry per model).
+    const reds = clouds.map(mesh => {
+      const paint = mesh.geometry.getAttribute('color') as THREE.BufferAttribute;
+      expect(paint).toBeDefined();
+      return paint.getX(0);
     });
-    for (const puff of firstBank) {
-      expect(puff.scale.y).toBeGreaterThanOrEqual(20 * 0.62 - 0.001);
-      expect(puff.scale.y).toBeLessThanOrEqual(30 * 0.62 + 0.001);
-    }
-    expect(firstBank[2]!.position.x - firstBank[0]!.position.x)
-      .toBeCloseTo(firstBank[0]!.scale.x * 2 * 0.63 * 1.25, 3);
-    expect(firstBank[1]!.position.z - firstBank[0]!.position.z)
-      .toBeCloseTo(18 * 1.25, 3);
+    expect(new Set(reds.map(value => value.toFixed(4))).size).toBeGreaterThan(1);
+    expect(sky.group.children.filter(child => child instanceof THREE.InstancedMesh))
+      .toHaveLength(3);
+  });
+
+  it('does not draw ellipsoid substitutes while cloud models are still loading', () => {
+    vi.stubGlobal('document', {});
+    vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockImplementation(
+      () => new Promise(() => {}),
+    );
+    const sky = buildSkyVisuals();
+    expect(sky.group.children.filter(child => child instanceof THREE.InstancedMesh))
+      .toHaveLength(0);
+    expect(sky.group.getObjectByName('puffy-cloud-banks')).toBeUndefined();
   });
   it('binds the same linear daytime horizon to the unfogged dome and both fog setups', () => {
     const sky = buildSkyVisuals();
@@ -97,44 +138,64 @@ describe('storybook sky clouds (Hoofington E2)', () => {
     expect(game).toContain("settings.graphics === 'medium' ? .0023 : .0016;");
   });
 
-  it('places the same deterministic 24 banks farther out and above the island', () => {
-    const { clouds } = makeClouds();
+  it('keeps the same 24 deterministic bank positions and RNG sequence in the 300–380 m band', async () => {
+    const { clouds } = await makeClouds();
     let seed = 0x49a0b12d;
     const rand = (): number => {
       seed = (Math.imul(seed ^ (seed >>> 13), 1664525) + 1013904223) >>> 0;
       return seed / 0x100000000;
     };
     const matrix = new THREE.Matrix4();
-    const get = (index: number): THREE.Vector3 => {
-      clouds.getMatrixAt(index, matrix);
-      return new THREE.Vector3().setFromMatrixPosition(matrix);
-    };
-    for (let i = 0; i < clouds.count / 3; i++) {
+    for (let bank = 0; bank < 24; bank++) {
       const a = rand() * Math.PI * 2;
       const r = 330 + rand() * 380;
-      const y = 150 + rand() * 100;
-      rand(); // breadth: same fourth random draw as before
-      const left = get(i * 3), middle = get(i * 3 + 1);
-      const centreZ = (left.z + middle.z) / 2;
-      expect(Math.hypot(middle.x, centreZ)).toBeGreaterThanOrEqual(330 - 0.001);
-      expect(Math.hypot(middle.x, centreZ)).toBeLessThanOrEqual(710 + 0.001);
-      expect(left.y).toBeGreaterThanOrEqual(150 - 0.001);
-      expect(left.y).toBeLessThanOrEqual(250 + 0.001);
-      expect(middle.x).toBeCloseTo(Math.cos(a) * r, 3);
-      expect(centreZ).toBeCloseTo(Math.sin(a) * r, 3);
-      expect(left.y).toBeCloseTo(y, 3);
+      const heightFraction = rand();
+      const breadth = 28 + rand() * 28;
+      const expectedScale = 0.8 + (breadth - 28) / 28 * 0.6;
+      const cloud = clouds[bank % 3]!;
+      cloud.getMatrixAt(Math.floor(bank / 3), matrix);
+      const p = new THREE.Vector3(), scale = new THREE.Vector3();
+      matrix.decompose(p, new THREE.Quaternion(), scale);
+      expect(p.x).toBeCloseTo(Math.cos(a) * r, 3);
+      expect(p.z).toBeCloseTo(Math.sin(a) * r, 3);
+      expect(Math.hypot(p.x, p.z)).toBeGreaterThanOrEqual(330 - 0.001);
+      expect(Math.hypot(p.x, p.z)).toBeLessThanOrEqual(710 + 0.001);
+      expect(scale.x).toBeCloseTo(expectedScale, 5);
+      expect(scale.y).toBeCloseTo(scale.x, 5);
+      expect(scale.z).toBeCloseTo(scale.x, 5);
+      expect(scale.x).toBeGreaterThanOrEqual(0.8);
+      expect(scale.x).toBeLessThanOrEqual(1.4);
+      expect(p.y).toBeCloseTo(300 + heightFraction * (80 - 22 * expectedScale), 3);
+      const bounds = cloud.geometry.boundingBox!.clone().applyMatrix4(matrix);
+      expect(bounds.min.y).toBeGreaterThanOrEqual(300 - 0.001);
+      expect(bounds.max.y).toBeLessThanOrEqual(380 + 0.001);
+      for (const bookmark of ART_BOOKMARKS) {
+        expect(bounds.containsPoint(new THREE.Vector3(
+          bookmark.camera.x, bookmark.camera.y, bookmark.camera.z)),
+          'cloud bank ' + bank + ' contains bookmark ' + bookmark.id).toBe(false);
+      }
+      // The six retired per-puff draws must still advance the star seed.
       for (let puff = 0; puff < 3; puff++) {
-        rand(); // puff height
-        rand(); // puff depth
+        rand(); rand();
       }
     }
+    // Star positions continue from the old cloud RNG stream, not a re-seed.
+    const sky = buildSkyVisuals();
+    const star = sky.group.getObjectByName('night-stars') as THREE.Points;
+    const positions = star.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const a = rand() * Math.PI * 2, y = rand() * 0.91 + 0.08;
+    const horizontal = Math.sqrt(1 - y * y);
+    expect(positions.getX(0)).toBeCloseTo(Math.cos(a) * horizontal * 1250, 3);
+    expect(positions.getY(0)).toBeCloseTo(y * 1250, 3);
   });
-
-  it('draws transparent cloud puffs after the sea without disabling fog', () => {
-    const { clouds } = makeClouds();
-    expect(clouds.renderOrder).toBe(3);
-    expect((clouds.material as THREE.MeshToonMaterial).fog).toBe(true);
-    expect((clouds.material as THREE.MeshToonMaterial).depthWrite).toBe(false);
+  it('draws transparent GLB clouds after the sea without disabling fog', async () => {
+    const { clouds } = await makeClouds();
+    expect(clouds.length).toBeLessThanOrEqual(3);
+    for (const cloud of clouds) {
+      expect(cloud.renderOrder).toBe(3);
+      expect((cloud.material as THREE.MeshToonMaterial).fog).toBe(true);
+      expect((cloud.material as THREE.MeshToonMaterial).depthWrite).toBe(false);
+    }
   });
   it('uses saturated three-stop golden-hour colours without changing noon blue', () => {
     const sky = buildSkyVisuals();
