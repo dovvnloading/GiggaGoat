@@ -463,8 +463,11 @@ export function buildProceduralPropGeometry(kind: PropKind): THREE.BufferGeometr
   } else if (kind === 'cave-mouth') {
     box(0, 0.34, 0, 1, 0.32, 0.55, 0x696e79);
     box(-0.43, -0.13, 0, 0.16, 0.80, 0.56, 0x777b85);
-    box(0.43, -0.13, 0, 0.16, 0.80, 0.56, 0x777b85);
-    box(0, -0.15, -0.22, 0.74, 0.71, 0.05, 0x1c2e3c);
+    box(0.43, -0.13, 0, 0.16, 0.80, 0.56, 0x82766b);
+    box(0, -0.15, -0.40, 0.65, 0.72, 0.07, 0x333940);
+    rock(-0.43, -0.20, 0.37, 0.22, 0.59, 0.24, 0x9a948c);
+    rock(0.43, -0.23, 0.35, 0.23, 0.53, 0.29, 0xa89277);
+    box(0.32, 0.10, 0.37, 0.06, 0.09, 0.06, 0xffba68);
     for (let i = 0; i < 4; i++) {
       rock(-0.35 + i * 0.23, 0.44, 0.1, 0.35, 0.24, 0.36, 0x9a9aa0);
     }
@@ -677,9 +680,34 @@ function sways(kind: PropKind): boolean {
   return ['tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft', 'fern', 'bunting', 'flag'].includes(kind);
 }
 
+function summitLandmark(prop: PropDescriptor): boolean {
+  return prop.poiId === 'mt-gigga' && (prop.kind === 'satellite-dish' || prop.kind === 'flag');
+}
+
+/** Grow the silhouette around its footing while leaving the course coordinates alone. */
+function poseSummitLandmark(prop: PropDescriptor, art: THREE.Object3D): void {
+  const { x, y, z } = prop.size;
+  const yaw = prop.transform.rotationY;
+  if (prop.kind === 'satellite-dish') {
+    art.scale.set(x * 1.37, y * 1.44, z * 1.18);
+    art.rotation.y += 0.64;
+    // The fixture was authored with a 1 m pedestal lift. Lower the art's
+    // foot into that gap and leave the actual cylinder at its existing pose.
+    art.position.y -= 0.09 * y;
+  } else {
+    art.scale.set(x * 1.56, y * 1.25, z);
+    art.rotation.y += 0.48;
+    // Baked GLB pole centre is -0.4212 of the normalised total width.
+    const pole = -0.4212;
+    art.position.x += pole * (x * Math.cos(yaw) - art.scale.x * Math.cos(art.rotation.y));
+    art.position.z += pole * (art.scale.x * Math.sin(art.rotation.y) - x * Math.sin(yaw));
+  }
+  art.position.y += (art.scale.y - y) * 0.49;
+}
+
 /** Spatially batched instancing; LOD/culling works without per-object draw calls. */
 export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 96,
-  island?: IslandData): PropVisuals {
+  island?: IslandData, replacedCascadeIds?: ReadonlySet<string>): PropVisuals {
   const group = new THREE.Group();
   group.name = 'handcrafted-props';
   // A full-detail far batch uses the near mesh. Preserve existing far-name
@@ -774,7 +802,10 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       const p = prop.transform.position;
       dummy.position.set(p.x, p.y, p.z);
       dummy.rotation.set(0, prop.transform.rotationY, 0);
-      dummy.scale.set(prop.size.x, prop.size.y, prop.size.z);
+      // A connected cascade is drawn with the river at the reserved site.
+      if (replacedCascadeIds?.has(prop.id)) dummy.scale.setScalar(0);
+      else dummy.scale.set(prop.size.x, prop.size.y, prop.size.z);
+      if (summitLandmark(prop)) poseSummitLandmark(prop, dummy);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
       mesh.setColorAt(i, new THREE.Color(foliage.has(kind) || authoredKioskKinds.has(kind) ||
@@ -1050,8 +1081,11 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
           // zero-scale transform, not by deleting its physics descriptor.
           if (el[0] === 0 && el[5] === 0 && el[10] === 0) continue;
           centre.set(el[12]!, el[13]!, el[14]!);
-          const size = job.entries[i]!.size;
-          const radius = Math.hypot(size.x, size.y, size.z) * 0.52;
+          const prop = job.entries[i]!;
+          const size = prop.size;
+          const radius = (summitLandmark(prop)
+            ? Math.hypot(el[0]!, el[1]!, el[2]!, el[4]!, el[5]!, el[6]!, el[8]!, el[9]!, el[10]!)
+            : Math.hypot(size.x, size.y, size.z)) * 0.52;
           const distance = position.distanceTo(centre);
           if (distance - radius > (isSmallWorldModel(job.kind)
             ? WORLD_LOD.smallPropDistance : maxDistance)) continue;

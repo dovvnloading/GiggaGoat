@@ -1,10 +1,12 @@
 import type { Game } from './Game';
-import { TUNING, type PlacementFailure, type Validation } from '../gameplay';
+import type { PlacementFailure, Validation } from '../gameplay';
 import { HUD_PIECES, deriveHudState, projectHudMap } from './GameHudState';
+import { PAD_BUILD_BINDINGS, type InputDevice } from './GameInput';
 import { buildArtwork, goatArtwork, renderHudMinimap } from './HudArtwork';
 import { fitGigCardText } from './GigCardLayout';
 import { createHayHaulMapMarker, hayHaulMapPoint, type HayHaulGuidance } from './GigPresentation';
 import { HUD_SPRITES, hudSpriteImage, hudSpriteVariables } from './HudSprites';
+import { derivePartyHudState } from './PartyHudState';
 
 const CSS = `
 .gg-ui{position:absolute;inset:0;z-index:4;pointer-events:none;user-select:none;overflow:hidden;color:#fff9df;font-family:"Trebuchet MS","Arial Rounded MT Bold","Arial Black",system-ui,sans-serif;font-weight:900;text-shadow:1px 2px 1px #493049,0 3px 3px #38253b9a;-webkit-font-smoothing:antialiased}
@@ -30,14 +32,87 @@ const CSS = `
 .gg-meter-stage-labels{position:absolute;left:8%;right:6%;top:80%;height:13%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:center}
 .gg-meter-stage-labels span{text-align:center;white-space:nowrap;color:#fff8dd;font-size:clamp(12px,1.1vw,19px);line-height:1;text-shadow:1px 2px 1px #42304f}
 .gg-meter-stage-labels span.is-active{color:#fffbd1;text-shadow:0 0 7px #fff5ac,1px 2px 1px #56264a}
-.gg-meter-caption{position:absolute;top:98%;left:8%;right:8%;display:flex;justify-content:space-between;gap:8px;color:#fff0ae;font-size:clamp(8px,.67vw,11px);letter-spacing:.3px;white-space:nowrap}
-/* The star, rays, purple combo badge and brown score ribbon are one sprite. */
-.gg-combo{position:absolute;left:50%;top:clamp(4px,.7vw,12px);transform:translateX(-50%);width:clamp(377px,32.3vw,545px);height:clamp(155px,12.7vw,217px);background:var(--gg-scoreStarburst) center/100% 100% no-repeat;text-align:center}
+.gg-meter-caption{
+ position:absolute;top:58%;height:14.8%;left:6%;right:5.8%;display:grid;place-items:center;
+ color:#fff9db;font-size:clamp(9px,1.05vw,18px);font-variant-numeric:tabular-nums;
+ line-height:1;text-shadow:none;white-space:nowrap
+}
+.gg-meter-caption [data-meter]{display:block;padding:0 6px;border-radius:6px;background:#301f33ed}
+/* Reserve the combo slot so its artwork can appear without moving surrounding controls. */
+.gg-combo{position:absolute;left:50%;top:clamp(4px,.7vw,12px);transform:translateX(-50%);width:clamp(377px,32.3vw,545px);height:clamp(155px,12.7vw,217px);text-align:center}
+.gg-combo[data-combo-active]{background:var(--gg-scoreStarburst) center/100% 100% no-repeat}
+.gg-combo:not([data-combo-active]) > :is(.gg-combo-title,.gg-combo-count){display:none}
 .gg-combo-title{position:absolute;left:8%;top:19%;width:64%;height:47%;display:flex;align-items:center;justify-content:center;overflow:hidden;overflow-wrap:anywhere;line-height:.93;transform:rotate(-5deg);font-style:italic;letter-spacing:-.7px;color:#ffcd36;font-size:clamp(22px,2.35vw,39px);-webkit-text-stroke:1.2px #802847;text-shadow:2px 3px 0 #682a46,4px 4px 0 #fff2a4,5px 6px 0 #4d2c61}
 .gg-combo-count{position:absolute;left:73%;top:22%;width:22%;height:38%;display:grid;place-items:center;transform:rotate(-7deg);color:#fff8e3;font-size:clamp(10px,1.12vw,17px);line-height:1.12;white-space:pre-line;overflow-wrap:normal;text-shadow:1px 2px #4a2358}
+.gg-current-score{display:contents}
 .gg-score-ribbon{position:absolute;left:11%;right:21%;bottom:6%;height:28%;display:grid;place-items:center}
 .gg-score{font-variant-numeric:tabular-nums;font-size:clamp(27px,2.55vw,44px);letter-spacing:1px;color:#fff8df;text-shadow:2px 3px #3d203c}
 .gg-score-caption{position:absolute;left:32%;right:34%;bottom:1%;font-size:clamp(7px,.58vw,10px);letter-spacing:.4px;color:#fff0ba;white-space:nowrap}
+.gg-combo:not([data-combo-active]) > .gg-current-score{
+ position:absolute;top:0;left:50%;transform:translateX(-50%);
+ display:flex;flex-wrap:wrap;align-items:baseline;justify-content:center;gap:2px 7px;
+ width:max-content;max-width:100%;padding:3px clamp(6px,.7vw,12px);
+ border:1px solid #ac895a;border-radius:12px;background:#302338ed;text-shadow:none;line-height:1.1
+}
+.gg-combo:not([data-combo-active]) .gg-score-caption{
+ position:static;font-size:clamp(9px,.8vw,13px);letter-spacing:.2px;color:#f4ddb0
+}
+.gg-combo:not([data-combo-active]) .gg-score-ribbon{position:static;display:block;width:auto;height:auto;min-width:0}
+.gg-combo:not([data-combo-active]) .gg-score{
+ font-size:clamp(13px,1.18vw,19px);letter-spacing:0;text-shadow:none;overflow-wrap:anywhere
+}
+.gg-combo[data-party-active="true"]{background:none}
+.gg-combo[data-party-active="true"] > :not(.gg-party-scoreboard){display:none}
+.gg-party-scoreboard{
+ position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;
+ gap:clamp(2px,.32vw,6px);padding:clamp(4px,.45vw,9px) clamp(7px,1.1vw,20px);
+ border:2px solid #e8a847;border-radius:clamp(10px,1.5vw,24px);
+ background:linear-gradient(#522b40,#28192f);box-shadow:0 3px 5px #281b4866;
+ color:#fff8e3;line-height:1.05;text-shadow:none
+}
+.gg-party-head{display:flex;justify-content:space-between;align-items:center;gap:5px;text-align:left}
+.gg-party-title{min-width:0;color:#ffdf80;font-size:clamp(13px,1.65vw,29px);text-wrap:balance}
+.gg-party-clock{display:flex;align-items:baseline;gap:4px;color:#ffebad;white-space:nowrap}
+.gg-party-clock-label,.gg-party-metric-label{font-size:clamp(9px,.76vw,13px);letter-spacing:.2px}
+.gg-party-clock-time{font-size:clamp(23px,2.65vw,44px);font-variant-numeric:tabular-nums;color:#fff8e3}
+.gg-party-metrics{display:flex;justify-content:center;padding-block:2px;background:#251928aa;border-radius:6px}
+.gg-party-metric{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px}
+.gg-party-metric + .gg-party-metric{border-left:1px solid #f9d38855}
+.gg-party-metric[data-own="true"] .gg-party-metric-label{color:#ffdf80}
+.gg-party-metric-value{font-size:clamp(17px,2.1vw,37px);font-variant-numeric:tabular-nums;white-space:nowrap}
+.gg-party-goal{font-size:clamp(11px,1.14vw,20px)}
+.gg-party-status{font-size:clamp(9px,.85vw,15px);color:#ffe2ac}
+.gg-party-status[data-urgent="true"]{
+ background:#ffbd65;color:#422216;border-radius:4px;padding:2px 3px
+}
+@media(max-width:1100px),(max-height:680px){
+ .gg-party-metric{flex-direction:row-reverse;justify-content:center;gap:5px}
+}
+@media(max-width:760px){
+ .gg-party-scoreboard{gap:2px;padding:2px 4px;border-width:1px;line-height:1}
+ .gg-party-title{font-size:clamp(9px,1.9vw,14px)}
+ .gg-party-clock{gap:3px}
+ .gg-party-clock-label,.gg-party-metric-label{font-size:clamp(7px,1.6vw,11px);letter-spacing:0}
+ .gg-party-clock-time{font-size:clamp(16px,3.3vw,23px)}
+ .gg-party-metrics{padding-block:1px}
+ .gg-party-metric{gap:3px}
+ .gg-party-metric-value{font-size:clamp(12px,2.5vw,20px)}
+ .gg-party-goal{font-size:clamp(9px,1.8vw,13px)}
+ .gg-party-status{font-size:clamp(8px,1.65vw,12px)}
+ .gg-party-status[data-urgent="true"]{padding:1px 2px}
+}
+@media(max-width:760px) and (orientation:portrait){
+ .gg-combo[data-party-active="true"]{
+  left:8px;top:var(--gg-portrait-second-row,130px);width:calc(100% - 16px);transform:none
+ }
+ .gg-party-scoreboard{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;align-content:center;gap:2px 4px;padding:2px 7px
+ }
+ .gg-party-head,.gg-party-metrics{grid-column:1 / -1}
+ .gg-party-clock-label,.gg-party-metric-label{font-size:9px}
+ .gg-party-goal{text-align:left}
+ .gg-party-status{text-align:right}
+}
 /* Live SVG terrain is clipped inside the transparent PNG ring. */
 .gg-map-panel{position:absolute;right:clamp(8px,1.15vw,22px);top:clamp(6px,.7vw,12px);width:clamp(190px,17vw,290px);aspect-ratio:311/337}
 .gg-map-frame{position:absolute;left:4.5%;top:7.5%;width:91%;height:76%;overflow:hidden;border-radius:50%;background:#8abd75}
@@ -45,7 +120,9 @@ const CSS = `
 .gg-map-skin{position:absolute;inset:0;background:var(--gg-minimapRing) center/100% 100% no-repeat}
 .gg-map-north{position:absolute;top:1%;left:42%;width:16%;height:16%}
 .gg-compass{width:100%;height:100%}
-.gg-map-location{position:absolute;left:12%;right:12%;bottom:5%;height:13%;display:grid;place-items:center;white-space:nowrap;font-size:clamp(11px,1.25vw,19px);color:#fff5d4;letter-spacing:.1px}
+.gg-map-location{position:absolute;left:12%;right:12%;bottom:5%;height:13%;display:grid;place-items:center;
+ text-wrap:balance;text-align:center;line-height:1.02;font-size:clamp(11px,1.25vw,19px);color:#fff5d4;letter-spacing:.1px}
+@media(min-width:1101px){.gg-map-location [data-long-label="true"]{font-size:.82em}}
 .gg-gig-card{position:absolute;right:clamp(10px,1.2vw,23px);top:clamp(234px,19vw,316px);width:clamp(280px,23.5vw,390px);height:clamp(150px,12.4vw,208px)}
 /* Shadow only the illustrated panel: filtering the card itself rasterizes its
    live copy and makes the tiny footer glyphs look blurred. */
@@ -65,13 +142,34 @@ const CSS = `
 .gg-gig-wallet{display:flex;align-items:center;gap:3px;flex-shrink:0;min-width:0}
 .gg-gig-footer [data-mode]{flex-shrink:0;text-align:right}
 .gg-coin{width:18px;height:18px;flex-shrink:0;object-fit:contain;image-rendering:auto;opacity:1;filter:none;transform:none}
+@media(min-width:1101px){
+ .gg-gig-paper{bottom:24.5%}
+ .gg-gig-footer{
+  --gg-coin-size:clamp(12px,.86vw,16px);
+  left:14%;right:11%;bottom:15.5%;height:max(7%,var(--gg-coin-size));gap:6px;
+  font-size:clamp(9px,.72vw,12px);line-height:1.15;font-variant-numeric:tabular-nums
+ }
+ .gg-gig-footer .gg-coin{width:var(--gg-coin-size);height:var(--gg-coin-size)}
+}
 /* Progress is a live masked conic arc painted on top of the illustrated ring. */
 .gg-stamina{position:absolute;left:clamp(11px,1.5vw,29px);bottom:clamp(10px,1.5vw,26px);width:clamp(138px,12.7vw,215px);aspect-ratio:243/252;background:var(--gg-staminaRing) center/100% 100% no-repeat}
-.gg-stamina-progress{position:absolute;inset:8%;border-radius:50%;background:conic-gradient(from -90deg,#9aff33 0 var(--gg-stamina,100%),#3c304c var(--gg-stamina,100%) 100%);-webkit-mask:radial-gradient(farthest-side,transparent 60%,#000 63% 84%,transparent 87%);mask:radial-gradient(farthest-side,transparent 60%,#000 63% 84%,transparent 87%)}
+.gg-stamina-progress{position:absolute;inset:8%;border-radius:50%;background:conic-gradient(from -90deg,var(--gg-stamina-color,#9aff33) 0 var(--gg-stamina,100%),#3c304c var(--gg-stamina,100%) 100%);-webkit-mask:radial-gradient(farthest-side,transparent 60%,#000 63% 84%,transparent 87%);mask:radial-gradient(farthest-side,transparent 60%,#000 63% 84%,transparent 87%)}
 .gg-stamina-inner{position:absolute;inset:23% 17% 17%;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .gg-hoof{width:56%;height:55%;filter:drop-shadow(0 2px 1px #422c3b)}
 .gg-stamina-label{margin-top:2px;color:#ffe8ad;font-size:clamp(13px,1.2vw,20px);line-height:1.1;transform:rotate(6deg);text-shadow:2px 2px #4b2840}
 .gg-stamina-value{font-size:clamp(8px,.72vw,12px);color:#fff7c9;margin-top:2px}
+@media(min-width:761px),(orientation:landscape){
+ .gg-stamina-inner{inset:21% 13% 16%;gap:2px}
+ .gg-hoof{width:50%;height:42%;min-height:0}
+ .gg-stamina-label{transform:none;margin:0;white-space:nowrap}
+ .gg-stamina-value{
+  margin:0;padding:1px 4px;border-radius:6px;background:#302338ed;text-shadow:none;
+  font-size:clamp(10px,1.05vw,18px);line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap
+ }
+ .gg-stamina[data-low="true"] .gg-stamina-progress{--gg-stamina-color:#ff926f}
+ .gg-stamina[data-low="true"] .gg-stamina-label::after{content:" LOW";color:#ffac93}
+ .gg-stamina[data-low="true"] .gg-stamina-value{background:#512c38;color:#ffe4d3}
+}
 .gg-hotbar{position:absolute;left:50%;bottom:clamp(3px,.6vw,10px);transform:translateX(-50%);width:clamp(500px,40vw,665px);height:clamp(126px,10.35vw,186px);isolation:isolate}
 /* Continue the outer rim beneath the clipped button artwork without moving the tray slots. */
 .gg-hotbar[data-active="true"]::before,.gg-hotbar[data-active="true"]::after{content:"";position:absolute;pointer-events:none}
@@ -113,7 +211,6 @@ const CSS = `
  .gg-meter{left:12px;top:13px}
  .gg-map-panel{right:10px}
  .gg-gig-card{right:9px}
- .gg-meter-caption{display:none}
 }
 @media(max-width:760px){
  .gg-meter{left:6px;top:8px;width:min(270px,51vw);height:clamp(105px,21vw,128px)}
@@ -252,7 +349,12 @@ const CSS = `
  }
  .gg-prompt-copy{min-width:0}
  .gg-stamina{left:8px;bottom:5px;width:var(--gg-landscape-stamina-width)}
+ .gg-stamina-inner{gap:1px}
+ .gg-hoof{height:36%}
  .gg-stamina-label{font-size:clamp(8px,1.66vw,10px)}
+ .gg-stamina-value{padding:0 2px;font-size:clamp(8px,1.48vw,10px)}
+ .gg-stamina[data-low="true"] .gg-stamina-label{font-size:0}
+ .gg-stamina[data-low="true"] .gg-stamina-label::after{content:"LOW";font-size:clamp(8px,1.66vw,10px)}
  .gg-hotbar{
    bottom:4px;width:min(calc(100% - 2 * (var(--gg-landscape-stamina-width) + 18px)),460px);
    height:var(--gg-landscape-tray-height)
@@ -276,7 +378,6 @@ const CSS = `
   top:58%;height:14.8%;left:6%;right:5.8%;display:grid;place-items:center;
   color:#fff9db;font-size:clamp(9px,2.65vw,12px);letter-spacing:0;font-variant-numeric:tabular-nums;text-shadow:none
  }
- .gg-meter-caption :is(.gg-meter-tagline,.gg-meter-separator,[data-tier]){display:none}
  .gg-meter-caption [data-meter]{display:block;padding:0 4px;border-radius:6px;background:#301f33db}
  .gg-map-panel{top:8px;right:8px;width:var(--gg-portrait-map-width)}
  .gg-map-location{
@@ -377,7 +478,6 @@ export class GameHud {
   private readonly styles = document.createElement('style');
   private readonly fill: HTMLElement;
   private readonly meterText: HTMLElement;
-  private readonly tier: HTMLElement;
   private readonly needle: HTMLElement;
   private readonly stages: HTMLElement[];
   private readonly stageLabels: HTMLElement[];
@@ -385,6 +485,15 @@ export class GameHud {
   private readonly comboCount: HTMLElement;
   private readonly comboInfo: HTMLElement;
   private readonly score: HTMLElement;
+  private readonly scorePanel: HTMLElement;
+  private readonly partyScoreboard: HTMLElement;
+  private readonly partyTitle: HTMLElement;
+  private readonly partyClock: HTMLElement;
+  private readonly partyClockLabel: HTMLElement;
+  private readonly partyMetrics: HTMLElement;
+  private readonly partyGoal: HTMLElement;
+  private readonly partyStatus: HTMLElement;
+  private partyHudKey: string | null = null;
   private readonly place: HTMLElement;
   private readonly mapCanvas: SVGElement;
   private playerArrow: SVGElement | null = null;
@@ -399,10 +508,14 @@ export class GameHud {
   private readonly buildPlacement: HTMLElement;
   private buildControlsKey = '';
   private readonly slots: HTMLElement[];
+  private readonly buildKeys: HTMLElement[];
   private readonly quantities: Array<HTMLElement | null>;
   private readonly supplies: Record<'hay' | 'wood' | 'scrap', HTMLElement>;
   private readonly stageElements: HTMLElement[];
   private readonly hint: HTMLElement;
+  private readonly hintKey: HTMLElement;
+  private readonly hintCopy: HTMLElement;
+  private inputDevice: InputDevice = 'keyboard-mouse';
   private readonly debug: HTMLElement;
   private readonly wallet: HTMLElement;
   private readonly gigCard: HTMLElement;
@@ -412,6 +525,7 @@ export class GameHud {
   private readonly gigTask: HTMLElement;
   private readonly gigDetail: HTMLElement;
   private readonly board: HTMLElement;
+  private readonly boardKey: HTMLElement;
   private readonly hotbar: HTMLElement;
 
   constructor(host: HTMLElement) {
@@ -431,7 +545,7 @@ export class GameHud {
       '<div class="gg-slot" data-sprite="' + HUD_SPRITES.hotbarSlot +
       '" data-sprite-selected="' + HUD_SPRITES.hotbarSlotSelected +
       '" data-slot="' + piece.type + '" title="' + piece.label + '">' +
-      '<span class="gg-slot-key" data-sprite="' + HUD_SPRITES.keyBadge + '">' +
+      '<span class="gg-slot-key" data-build-key data-sprite="' + HUD_SPRITES.keyBadge + '">' +
       piece.key + '</span>' + buildArtwork(piece.type) +
       '<span class="gg-slot-name">' + piece.label + '</span>' +
       '<span class="gg-slot-count" data-quantity>×0</span></div>').join('');
@@ -443,14 +557,20 @@ export class GameHud {
       '<div class="gg-meter-track"><div class="gg-meter-fill" data-fill></div>' +
       '<div class="gg-meter-ticks"></div><div class="gg-meter-arrow" data-needle></div></div>' +
       '<div class="gg-meter-stage-labels">' + stageLabels + '</div>' +
-      '<div class="gg-meter-caption"><span class="gg-meter-tagline">CHAOS MAKES YOU BIGGER</span>' +
-      '<span><b data-tier>KID</b><span class="gg-meter-separator"> · </span><b data-meter>0 / 100</b></span></div></section>' +
+      '<div class="gg-meter-caption"><b data-meter>0 / 100</b></div></section>' +
       '<section class="gg-combo" data-sprite="' + HUD_SPRITES.scoreStarburst +
-      '" aria-label="Chaos combo and score">' +
-      '<div class="gg-combo-title" data-combo-title>GIGGA-GOAT!</div>' +
-      '<div class="gg-combo-count" data-combo-count>START A COMBO!</div>' +
-      '<div class="gg-score-ribbon"><strong class="gg-score" data-score>0</strong></div>' +
-      '<div class="gg-score-caption" data-combo-info>STYLE SCORE</div></section>' +
+      '" data-score-panel aria-label="Chaos combo and score">' +
+      '<div class="gg-combo-title" data-combo-title></div>' +
+      '<div class="gg-combo-count" data-combo-count></div>' +
+      '<div class="gg-current-score"><span class="gg-score-caption" data-combo-info>STYLE SCORE</span>' +
+      '<div class="gg-score-ribbon"><strong class="gg-score" data-score>0</strong></div></div>' +
+      '<div class="gg-party-scoreboard" data-party-scoreboard hidden>' +
+      '<div class="gg-party-head"><strong class="gg-party-title" data-party-title></strong>' +
+      '<div class="gg-party-clock"><span class="gg-party-clock-label" data-party-clock-label></span>' +
+      '<strong class="gg-party-clock-time" data-party-clock></strong></div></div>' +
+      '<div class="gg-party-metrics" data-party-metrics></div>' +
+      '<strong class="gg-party-goal" data-party-goal></strong>' +
+      '<span class="gg-party-status" data-party-status hidden></span></div></section>' +
       '<section class="gg-map-panel" data-sprite="' + HUD_SPRITES.minimapRing +
       '" aria-label="Island minimap">' +
       '<div class="gg-map-frame"><svg data-map viewBox="0 0 280 280" aria-hidden="true"></svg></div>' +
@@ -475,7 +595,7 @@ export class GameHud {
       '<div class="gg-stamina-inner">' +
       hudSpriteImage(HUD_SPRITES.staminaHooves, 'gg-hoof') +
       '<strong class="gg-stamina-label">STAMINA</strong>' +
-      '<span class="gg-stamina-value" data-stamina-number>100</span></div></section>' +
+      '<span class="gg-stamina-value" data-stamina-number>100 / 100</span></div></section>' +
       '<section class="gg-hotbar" data-sprite="' + HUD_SPRITES.hotbarTray +
       '" data-hotbar data-active="false" aria-label="Hay-Build hotbar">' +
       '<div class="gg-build-controls"><span data-build-status>B · BUILD</span>' +
@@ -488,10 +608,10 @@ export class GameHud {
       '<span>SCRAP</span><b data-supply-scrap>0</b></div></div></div>' +
       '<div class="gg-hotbar-charge"><div data-charge></div></div></section>' +
       '<div class="gg-prompts"><div class="gg-board-hint" data-sprite="' + HUD_SPRITES.promptPill +
-      '" data-board-hint hidden><span class="gg-prompt-key" data-sprite="' +
-      HUD_SPRITES.keyBadge + '">E</span><span class="gg-prompt-copy">GOAT GIGS · GAMEPAD X</span></div>' +
+      '" data-board-hint hidden><span class="gg-prompt-key" data-board-key data-sprite="' +
+      HUD_SPRITES.keyBadge + '">E</span><span class="gg-prompt-copy">GOAT GIGS</span></div>' +
       '<div class="gg-hint" data-sprite="' + HUD_SPRITES.promptPill +
-      '" data-hint><span class="gg-prompt-key gg-prompt-mouse" data-sprite="' +
+      '" data-hint><span class="gg-prompt-key gg-prompt-mouse" data-hint-key data-sprite="' +
       HUD_SPRITES.keyBadge + '" aria-hidden="true">🖱</span>' +
       '<span class="gg-prompt-copy" data-hint-copy>MOUSE / IJKL LOOK · C CAPTURE MOUSE</span></div></div>' +
       '<div class="gg-debug" data-debug hidden></div>';
@@ -501,13 +621,17 @@ export class GameHud {
       if (!element) throw new Error('HUD element missing: ' + name);
       return element;
     };
-    this.fill = get('fill'); this.meterText = get('meter'); this.tier = get('tier');
+    this.fill = get('fill'); this.meterText = get('meter');
     this.needle = get('needle');
     this.stages = Array.from(this.root.querySelectorAll<HTMLElement>('[data-stage]'));
     this.stageLabels = Array.from(this.root.querySelectorAll<HTMLElement>('[data-stage-label]'));
     this.stageElements = this.stages.concat(this.stageLabels);
     this.comboTitle = get('combo-title'); this.comboCount = get('combo-count');
     this.comboInfo = get('combo-info'); this.score = get('score');
+    this.scorePanel = get('score-panel'); this.partyScoreboard = get('party-scoreboard');
+    this.partyTitle = get('party-title'); this.partyClock = get('party-clock');
+    this.partyClockLabel = get('party-clock-label'); this.partyMetrics = get('party-metrics');
+    this.partyGoal = get('party-goal'); this.partyStatus = get('party-status');
     this.place = get('place');
     const map = this.root.querySelector<SVGElement>('[data-map]');
     if (!map) throw new Error('HUD minimap missing');
@@ -516,14 +640,16 @@ export class GameHud {
     this.charge = get('charge'); this.mode = get('mode');
     this.buildStatus = get('build-status'); this.buildPlacement = get('build-placement');
     this.slots = Array.from(this.root.querySelectorAll<HTMLElement>('[data-slot]'));
+    this.buildKeys = Array.from(this.root.querySelectorAll<HTMLElement>('[data-build-key]'));
     this.quantities = this.slots.map(element => element.querySelector<HTMLElement>('[data-quantity]'));
     this.supplies = {
       hay: get('supply-hay'), wood: get('supply-wood'), scrap: get('supply-scrap'),
     };
-    this.hint = get('hint'); this.debug = get('debug'); this.wallet = get('wallet');
+    this.hint = get('hint'); this.hintKey = get('hint-key'); this.hintCopy = get('hint-copy');
+    this.debug = get('debug'); this.wallet = get('wallet');
     this.gigCard = get('gig-card'); this.gigCheckbox = get('gig-checkbox');
     this.gigTitle = get('gig-title'); this.gigTask = get('gig-task');
-    this.gigDetail = get('gig-detail'); this.board = get('board-hint');
+    this.gigDetail = get('gig-detail'); this.board = get('board-hint'); this.boardKey = get('board-key');
     this.hotbar = get('hotbar');
   }
 
@@ -568,55 +694,69 @@ export class GameHud {
       point.y.toFixed(1) + ')');
   }
 
-  private updatePartyCard(game: Game): void {
+  private updatePartyScoreboard(game: Game): void {
     const match = game.party.match;
-    if (!match) return;
-    const view = match.view();
-    const you = view.players.find(p => p.id === 'player');
-    const seconds = Math.max(0, Math.ceil((view.config.durationTicks -
-      match.toJSON().playTicks) / 60));
-    let task = '', detail = '';
-    if (view.mode === 'rising-tide') {
-      const alive = view.players.filter(p => p.eliminatedAt === null).length;
-      task = alive + ' GOATS LEFT · SEA ' + view.tideLevel.toFixed(1) + 'm';
-      const tide = match.toJSON().tide;
-      const until = tide ? Math.ceil((tide.nextRiseTick - tide.modeTicks) / 60) : 0;
-      detail = match.phase === 'countdown' ? 'GET READY!' :
-        'NEXT RISE ' + Math.max(0, until) + 's · ' +
-        (until <= view.config.tideWarningTicks / 60 ? 'TIDE WARNING!' : 'FIND HIGH GROUND');
-    } else if (view.mode === 'king-of-the-peak') {
-      task = 'YOUR SCORE ' + (you?.score ?? 0) + ' · GOAL ' + view.config.peakTargetScore;
-      const peak = match.toJSON().peak;
-      detail = match.phase === 'countdown' ? 'GET READY TO CLIMB!' :
-        peak?.contested ? 'PEAK CONTESTED · PUSH THEM OUT!' :
-        peak?.ownerId === 'player' ? 'YOU CONTROL THE ZONE!' :
-        peak?.ownerId ? 'PEAK HELD BY ' +
-          (view.players.find(p => p.id === peak.ownerId)?.name ?? 'A RIVAL').toUpperCase() :
-          'ZONE EMPTY · CLIMB TO CAPTURE!';
-    } else {
-      task = Object.entries(view.teamScores)
-        .map(([team, score]) => team.toUpperCase() + ' ' + score).join(' · ');
-      detail = 'STEAL ENEMY HAY · ' +
-        (match.getEffects('player').carryingBaleId ? 'CARRYING!' : 'HOLD LICK TO PICK UP');
+    if (!match) {
+      if (this.partyHudKey !== null) {
+        this.partyHudKey = null;
+        delete this.scorePanel.dataset.partyActive;
+        this.scorePanel.setAttribute('aria-label', 'Chaos combo and score');
+        this.partyScoreboard.hidden = true;
+        this.gigCard.hidden = false;
+      }
+      return;
     }
-    this.gigTask.textContent = task;
-    this.gigDetail.textContent = detail + ' · ' + seconds + 's';
+
+    const state = derivePartyHudState(match.toJSON(), game.island.tideLevels, 'player');
+    const title = game.party.title;
+    const key = JSON.stringify([title, state]);
+    if (key === this.partyHudKey) return;
+    if (this.partyHudKey === null || this.partyTitle.textContent !== title) {
+      this.scorePanel.dataset.partyActive = 'true';
+      this.scorePanel.setAttribute('aria-label', title + ' scoreboard');
+      this.partyTitle.textContent = title;
+      this.partyScoreboard.hidden = false;
+      this.gigCard.hidden = true;
+    }
+    this.partyHudKey = key;
+    this.partyClockLabel.textContent = state.clockLabel;
+    this.partyClock.textContent = state.clock;
+    this.partyGoal.textContent = state.goal;
+    this.partyStatus.textContent = state.status;
+    this.partyStatus.hidden = !state.status;
+    this.partyStatus.dataset.urgent = String(state.urgent);
+    this.partyMetrics.replaceChildren(...state.metrics.map(metric => {
+      const item = document.createElement('div');
+      item.className = 'gg-party-metric';
+      if (metric.ownTeam) item.dataset.own = 'true';
+      const label = document.createElement('span');
+      label.className = 'gg-party-metric-label';
+      label.textContent = metric.label;
+      const value = document.createElement('strong');
+      value.className = 'gg-party-metric-value';
+      value.textContent = metric.value;
+      item.append(label, value);
+      return item;
+    }));
   }
 
 
   update(game: Game, fps: number, stepMilliseconds: number, debugVisible: boolean,
-    pointerLocked: boolean, perf?: FramePerformance, hayHaul: HayHaulGuidance | null = null): void {
+    pointerLocked: boolean, perf?: FramePerformance, hayHaul: HayHaulGuidance | null = null,
+    device: InputDevice = 'keyboard-mouse'): void {
     const rules = game.rules;
     const inventory = rules.inventory.all;
     const activeGig = game.gigs.active;
     const run = activeGig?.status === 'running' ? activeGig : game.pendingGigResult;
+    // Enter a little inside the interaction radius to avoid blinking at its edge.
+    const boardInRange = game.gigs.nearBoard(this.board.hidden ? 8.75 : 9) !== null;
     const state = deriveHudState({
       tier: rules.style.tier, meter: rules.style.meter, score: rules.style.score,
       combo: rules.style.combo, stamina: rules.abilities.stamina,
       headbuttCharge: rules.abilities.headbuttCharge,
       inventory, buildMode: game.buildMode,
       buildPiece: game.buildPiece, ragdoll: game.goat.isRagdoll,
-      location: game.location, coins: rules.wallet.coins,
+      location: game.location, coins: rules.wallet.coins, boardInRange,
       partyTitle: game.party.match ? game.party.title : undefined,
       gig: run ? {
         title: run.setup.info.title, status: run.status, objective: run.objective,
@@ -629,22 +769,28 @@ export class GameHud {
     this.fill.style.width = state.meter.toFixed(2) + '%';
     this.needle.style.left = state.meter.toFixed(2) + '%';
     this.meterText.textContent = Math.floor(state.meter) + ' / 100';
-    this.tier.textContent = state.tier.toUpperCase();
     for (const element of this.stageElements) {
       const label = element.getAttribute('data-stage') ?? element.getAttribute('data-stage-label');
       element.classList.toggle('is-active', label === state.tier);
     }
+    const comboActive = state.comboCount > 0;
+    this.scorePanel.toggleAttribute('data-combo-active', comboActive);
     this.comboTitle.textContent = state.comboTitle;
-    this.comboCount.textContent = state.comboCount ? '×' + state.comboCount + '\nCOMBO!' : 'START A COMBO!';
-    this.comboInfo.textContent = state.comboCount ?
+    this.comboCount.textContent = comboActive ? '×' + state.comboCount + '\nCOMBO!' : '';
+    this.comboInfo.textContent = comboActive ?
       '+' + state.comboPoints + ' COMBO POINTS · STYLE SCORE' : 'STYLE SCORE';
     this.score.textContent = state.score;
     this.place.textContent = state.location;
+    this.place.dataset.longLabel = String(state.location.length > 18);
     this.wallet.textContent = state.coins + ' CUD COINS';
     this.updateMap(game, state.location, hayHaul);
 
     this.stamina.style.setProperty('--gg-stamina', state.stamina.toFixed(2) + '%');
-    this.stamina.dataset.low = String(state.stamina < TUNING.stamina.minStart);
+    const staminaLow = String(state.staminaLow);
+    if (staminaLow !== this.stamina.dataset.low) {
+      this.stamina.dataset.low = staminaLow;
+      this.stamina.setAttribute('aria-label', state.staminaLow ? 'Low stamina' : 'Stamina');
+    }
     this.staminaNumber.textContent = Math.floor(state.stamina) + ' / 100';
     this.charge.style.width = state.headbutt.toFixed(2) + '%';
     this.mode.textContent = state.mode;
@@ -655,7 +801,8 @@ export class GameHud {
       element.classList.toggle('is-empty', slot.available === 0);
       const count = this.quantities[i];
       if (count) count.textContent = '×' + slot.available;
-      element.title = slot.label + ' · ' + slot.available + ' can be built now · key ' + slot.key;
+      const binding = device === 'gamepad' ? PAD_BUILD_BINDINGS[slot.type].label : 'key ' + slot.key;
+      element.title = slot.label + ' · ' + slot.available + ' can be built now · ' + binding;
     }
     for (const material of ['hay', 'wood', 'scrap'] as const) {
       this.supplies[material].textContent = String(inventory[material]);
@@ -664,7 +811,7 @@ export class GameHud {
     this.gigTask.textContent = hayHaul?.task ?? state.gig.task;
     this.gigDetail.textContent = state.gig.detail;
     this.gigCheckbox.hidden = run?.status !== 'running' || !!game.party.match;
-    this.updatePartyCard(game);
+    this.updatePartyScoreboard(game);
     // Refit only when copy or dimensions change, not every simulation frame.
     const gigLayoutKey = [this.gigTitle.textContent, this.gigTask.textContent,
       this.gigDetail.textContent, this.wallet.textContent, this.mode.textContent,
@@ -673,9 +820,8 @@ export class GameHud {
       fitGigCardText(this.gigCard);
       this.gigLayoutKey = gigLayoutKey;
     }
-    // Enter a little inside the interaction radius to avoid blinking at its edge.
-    this.board.hidden = !game.gigs.nearBoard(this.board.hidden ? 8.75 : 9);
-    this.setPointerLockHint(pointerLocked);
+    this.board.hidden = !boardInRange;
+    this.setPointerLockHint(pointerLocked, boardInRange, device);
     this.debug.hidden = !debugVisible;
     if (debugVisible) this.debug.textContent = 'F3 · PERFORMANCE\n' +
       'FPS: ' + (perf?.fps ?? fps).toFixed(0) + '\n' +
@@ -690,12 +836,17 @@ export class GameHud {
       'TICK: ' + game.physics.stepCount;
   }
 
-  setBuildPreview(validation: Validation | null, gamepad: boolean): void {
+  setBuildPreview(validation: Validation | null, device: InputDevice): void {
     const state = validation === null ? 'idle' : validation.valid ? 'ready' : validation.reason;
-    const key = state + ':' + gamepad;
+    const key = state + ':' + device;
     if (key === this.buildControlsKey) return;
     this.buildControlsKey = key;
 
+    const gamepad = device === 'gamepad';
+    this.buildKeys.forEach((badge, i) => {
+      const piece = HUD_PIECES[i]!;
+      badge.textContent = gamepad ? PAD_BUILD_BINDINGS[piece.type].key : piece.key;
+    });
     this.hotbar.dataset.active = String(validation !== null);
     this.buildStatus.textContent = validation
       ? (gamepad ? 'D-PAD SELECT · RT PLACE · Y EXIT' : '1–4 SELECT · LMB PLACE · B EXIT')
@@ -713,8 +864,19 @@ export class GameHud {
     this.buildPlacement.textContent = validation.valid ? 'READY' : reasons[validation.reason];
   }
 
-  /** Preserve the CSS flex row when unlocked; hidden hides it under pointer lock. */
-  setPointerLockHint(pointerLocked: boolean): void { this.hint.hidden = pointerLocked; }
+  setPointerLockHint(pointerLocked: boolean, boardInRange = false,
+    device: InputDevice = 'keyboard-mouse'): void {
+    const gamepad = device === 'gamepad';
+    if (device !== this.inputDevice) {
+      this.inputDevice = device;
+      this.hintKey.className = gamepad ? 'gg-prompt-key' : 'gg-prompt-key gg-prompt-mouse';
+      this.hintKey.textContent = gamepad ? 'RS' : '🖱';
+      this.hintCopy.textContent = gamepad ? 'RIGHT STICK TO LOOK' : 'MOUSE / IJKL LOOK · C CAPTURE MOUSE';
+      this.boardKey.textContent = gamepad ? 'X' : 'E';
+    }
+    const hideLookHint = boardInRange || (pointerLocked && !gamepad);
+    if (this.hint.hidden !== hideLookHint) this.hint.hidden = hideLookHint;
+  }
 
   setVisible(visible: boolean): void { this.root.style.display = visible ? 'block' : 'none'; }
   dispose(): void { this.root.remove(); this.styles.remove(); }

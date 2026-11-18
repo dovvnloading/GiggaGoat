@@ -1,3 +1,4 @@
+import { downtownPublicSpaceAt, downtownPublicSpaces } from './downtown-public-space';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -66,6 +67,7 @@ export function buildMeadowScatter(island: IslandData): THREE.Group {
       'kiosk-games', 'kiosk-prizes', 'kiosk-candy',
       'cottage', 'control-house', 'windmill'].includes(p.kind));
   const downtown = island.pois.find(p => p.id === 'downtown-bleatsville')?.center;
+  const downtownPaving = downtown ? downtownPublicSpaces(island) : [];
   const craneYard = island.pois.find(p => p.id === 'crane-yard')?.center;
   const roadSamples = [...island.roads, ...makeLocalStreets(island)].flatMap(road =>
     road.points.map(point => ({
@@ -78,6 +80,7 @@ export function buildMeadowScatter(island: IslandData): THREE.Group {
       if (dx * dx + dz * dz < road.margin * road.margin) return false;
     }
     if (downtown) {
+      if (downtownPublicSpaceAt(downtownPaving, x, z, .45 * scale)) return false;
       const dx = x - downtown.x, dz = z - downtown.z;
       if (dx * dx + dz * dz < (38 * scale) ** 2) return false;
     }

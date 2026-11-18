@@ -12,7 +12,7 @@ import { populateProps } from './layouts';
 import { dressIsland } from './dressing';
 import { makeRelics, makeSpawns } from './collectibles';
 import { makeColliderDescriptors } from './colliders';
-import { sculptDamOutflow } from './dam-landscape';
+import { sculptDamHeadwater, sculptDamOutflow } from './dam-landscape';
 
 interface SiteDefinition {
   id: PoiId; name: string; x: number; z: number; radius: number;
@@ -50,8 +50,8 @@ function gradeBuildingFootprints(island: IslandData, props: readonly PropDescrip
   const scale = island.size / 600;
   for (const prop of props) {
     if (!buildings.has(prop.kind) || prop.body.type !== 'static') continue;
-    // Stalls above the pier must not stamp sand into the deck or drop to ground Y.
-    if (prop.poiId === 'baa-ardwalk' && prop.kind === 'booth') continue;
+    // The pier is elevated and Downtown stalls use their own small foundations.
+    if (prop.kind === 'booth' && (prop.poiId === 'baa-ardwalk' || prop.poiId === 'downtown-bleatsville')) continue;
     // A bounding circle covers every corner even when the facade is rotated.
     const radius = Math.hypot(prop.size.x, prop.size.z) * 0.5 + 5 * scale;
     stampPlot(island, {
@@ -63,10 +63,30 @@ function gradeBuildingFootprints(island: IslandData, props: readonly PropDescrip
   }
   for (const prop of props) {
     if (!buildings.has(prop.kind) || prop.body.type !== 'static') continue;
-    // Stalls above the pier must not stamp sand into the deck or drop to ground Y.
-    if (prop.poiId === 'baa-ardwalk' && prop.kind === 'booth') continue;
+    // The pier is elevated and Downtown stalls use their own small foundations.
+    if (prop.kind === 'booth' && (prop.poiId === 'baa-ardwalk' || prop.poiId === 'downtown-bleatsville')) continue;
     const pos = prop.transform.position;
     pos.y = gridSample(island, pos.x, pos.z) + prop.size.y * 0.5;
+  }
+}
+
+/** Block out two small stall pads without changing existing street grades or seeded dressing. */
+function gradeDowntownMarket(island: IslandData): void {
+  const scale = island.size / 600;
+  const furniture = island.props.filter(prop =>
+    prop.id.startsWith('downtown-market-') || prop.id.startsWith('downtown-square-'));
+  for (const prop of furniture) {
+    if (prop.kind !== 'booth') continue;
+    const { x, z } = prop.transform.position;
+    stampPlot(island, {
+      poiId: 'downtown-bleatsville', center: { x, z },
+      elevation: gridSample(island, x, z),
+      radius: Math.hypot(prop.size.x, prop.size.z) * 0.5 + 5.8 * scale, flat: true,
+    }, 1.7 * scale);
+  }
+  for (const prop of furniture) {
+    const position = prop.transform.position;
+    position.y = gridSample(island, position.x, position.z) + prop.size.y / 2;
   }
 }
 
@@ -146,6 +166,7 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   gradeBuildingFootprints(island, island.props);
   const dressed = dressIsland(island, rng);
   gradeBuildingFootprints(island, dressed);
+  gradeDowntownMarket(island);
   island.props.push(...dressed, ...makeBridgeDecks(island));
   // Restore the full water gap after footings have feathered toward the bridge.
   preserveLighthouseChannel(island, lighthouse.center);
@@ -177,6 +198,7 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
     position.y += ground - capeGround;
     return true;
   });
+  sculptDamHeadwater(island);
   assignBiomes(island);
   island.spawns = makeSpawns(island);
   island.relics = makeRelics(island, rng);

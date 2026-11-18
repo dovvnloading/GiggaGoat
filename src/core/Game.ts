@@ -18,6 +18,7 @@ import {
 } from '../chaos';
 import { addRapierPropCollider } from '../world/colliders';
 import { boardwalkPierDecks } from '../world/boardwalk';
+import { getDamHeadwater, isDamHeadwater } from '../world/dam-landscape';
 import { DAM_FRONT_GUARD } from '../world/the-dam';
 import { GigSession } from './GigSession';
 import { PartySession } from './PartySession';
@@ -383,6 +384,16 @@ export class Game {
 
   private addWaterVolumes(): void {
     const lake = this.island.reservoir;
+    const upper = getDamHeadwater(this.island);
+    const depth = 4 * upper.scale;
+    this.water.addVolume({
+      id: 'dam-upper-reservoir',
+      center: V((upper.left + upper.right) / 2, upper.level - depth / 2, (upper.rear + upper.front) / 2),
+      halfExtents: V((upper.right - upper.left) / 2, depth / 2, (upper.front - upper.rear) / 2),
+      flow: V(),
+      containsXZ: (x, z) => isDamHeadwater(this.island, x, z),
+    });
+    // This established front volume serves the Dam Bomb drop below the deck.
     this.water.addVolume({
       id: 'reservoir',
       center: V(lake.center.x, lake.level - 3.5, lake.center.z),
@@ -394,11 +405,16 @@ export class Game {
       const level = (a.level + b.level) / 2;
       const length = Math.hypot(b.x - a.x, b.z - a.z);
       const speed = Math.min(4, 1.2 + (a.level - b.level) / Math.max(1, length));
+      const widthX = Math.abs(b.x - a.x) / 2 + Math.max(a.width, b.width) * .42;
+      const widthZ = Math.abs(b.z - a.z) / 2 + Math.max(a.width, b.width) * .42;
+      const touchesUpper = mx + widthX > upper.left && mx - widthX < upper.right &&
+        mz + widthZ > upper.rear && mz - widthZ < upper.front;
       this.water.addVolume({
         id: 'river-' + i,
         center: V(mx, level - 1.7, mz),
-        halfExtents: V(Math.abs(b.x - a.x) / 2 + Math.max(a.width, b.width) * .42,
-          1.7, Math.abs(b.z - a.z) / 2 + Math.max(a.width, b.width) * .42),
+        halfExtents: V(widthX, 1.7, widthZ),
+        ...(touchesUpper ? { containsXZ: (x: number, z: number) =>
+          x < upper.left || x > upper.right || z < upper.rear || z >= upper.front } : {}),
         flow: V((b.x - a.x) / Math.max(1, length) * speed, -.15,
           (b.z - a.z) / Math.max(1, length) * speed),
       });

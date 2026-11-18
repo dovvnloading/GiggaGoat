@@ -500,7 +500,7 @@ if (new URLSearchParams(window.location.search).has('profile')) {
           loaded: Boolean(model),
           inFrame: Boolean(clip && clip.z >= -1 && clip.z <= 1 &&
             Math.abs(clip.x) < 1 && Math.abs(clip.y) < 1),
-          reservoirHidden: worldView.group.getObjectByName('dam-reservoir')?.visible === false,
+          reservoirHidden: worldView.group.getObjectByName('dam-reservoir')?.visible !== true,
           camera: camera.position.toArray(),
           target: orbit.target.toArray(),
         };

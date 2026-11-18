@@ -33,6 +33,24 @@ function walkTo(game: Game, target: { x: number; z: number }): void {
 }
 
 describe('Walkable roads and coastal routes', () => {
+  it('lets both Downtown approaches reach the board from a clear street lane', async () => {
+    const game = await Game.create();
+    try {
+      const city = game.island.pois.find(poi => poi.id === 'downtown-bleatsville')!;
+      const board = game.gigs.boards.find(entry => entry.poiId === city.id)!;
+      expect(board.position.x - city.center.x).toBeGreaterThan(7);
+      for (const direction of [-1, 1]) {
+        const x = city.center.x + 2.5;
+        standAt(game, x, board.position.z + direction * 15);
+        expect(game.gigs.nearBoard()).toBeNull();
+        walkTo(game, { x, z: board.position.z + direction * 4 });
+        expect(game.gigs.nearBoard()).toBe(city.id);
+        expect(game.gigs.board(city.id).length).toBeGreaterThan(0);
+      }
+      expect(game.respawns).toBe(0);
+    } finally { game.dispose(); }
+  });
+
   it('supports the goat on the visible Hoofington road immediately and after a rescue', async () => {
     const game = await Game.create();
     const scene = createWorldScene(game.island);
@@ -357,8 +375,10 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
     const game = await create();
     try {
       expect(game.water.seaLevel).toBe(game.island.seaLevel);
-      expect(game.water.listVolumes().map(v => v.id)).toContain('reservoir');
-      expect(game.water.listVolumes().length).toBe(game.island.river.length);
+      expect(game.water.listVolumes().map(v => v.id)).toEqual(expect.arrayContaining([
+        'reservoir', 'dam-upper-reservoir',
+      ]));
+      expect(game.water.listVolumes().length).toBe(game.island.river.length + 1);
       expect(game.breakables.breakableCount).toBeGreaterThan(80);
       expect(game.surfaces.count).toBeGreaterThanOrEqual(3);
       const trampoline = game.surfaceMarkers.find(s => s.kind === 'trampoline')!;

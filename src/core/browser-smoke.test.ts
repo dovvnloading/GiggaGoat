@@ -183,6 +183,7 @@ class ChromePage {
   async key(code: string, type: 'keyDown' | 'keyUp'): Promise<void> {
     const keys: Record<string, [string, number]> = {
       KeyW: ['w', 87], KeyA: ['a', 65], KeyS: ['s', 83], KeyD: ['d', 68],
+      KeyB: ['b', 66], Digit3: ['3', 51],
       KeyI: ['i', 73], KeyK: ['k', 75],
       KeyE: ['e', 69], KeyP: ['p', 80], Space: [' ', 32], Escape: ['Escape', 27],
     };
@@ -291,7 +292,72 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
       await page.click('[data-action="play"]');
       await page.waitFor('document.querySelector(".gg-shell")?.hidden === true',
         'free roam to start');
-      page.phase = 'compact HUD geometry';
+      page.phase = 'HUD geometry';
+      const meterAndFooterIssues = () => {
+        const growth = document.querySelector<HTMLElement>('[data-meter]')!;
+        const track = document.querySelector('.gg-meter-track')!.getBoundingClientRect();
+        const stamina = document.querySelector<HTMLElement>('[data-stamina]')!;
+        const label = stamina.querySelector('.gg-stamina-label')!;
+        const value = stamina.querySelector<HTMLElement>('[data-stamina-number]')!;
+        const progress = stamina.querySelector('.gg-stamina-progress')!;
+        const wallet = document.querySelector<HTMLElement>('[data-wallet]')!;
+        const mode = document.querySelector<HTMLElement>('[data-mode]')!;
+        const original = { growth: growth.textContent, value: value.textContent,
+          low: stamina.dataset.low, wallet: wallet.textContent, mode: mode.textContent };
+        const issues: string[] = [];
+        const range = document.createRange();
+        const ink = (element: Element) => {
+          range.selectNodeContents(element);
+          return range.getBoundingClientRect();
+        };
+        const inside = (rect: DOMRect, bounds: DOMRect) => rect.width > 0 && rect.height > 0 &&
+          rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1 &&
+          rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1;
+        const wide = innerWidth > 1100;
+        try {
+          growth.textContent = '100 / 100';
+          if (!inside(ink(growth), track) ||
+            Number.parseFloat(getComputedStyle(growth).fontSize) < (wide ? 13 : 9)) {
+            issues.push('growth value does not fit its track');
+          }
+          const staminaBounds = stamina.getBoundingClientRect();
+          for (const low of [false, true]) {
+            stamina.dataset.low = String(low);
+            value.textContent = low ? '7 / 100' : '100 / 100';
+            if (!inside(ink(value), staminaBounds) ||
+              Number.parseFloat(getComputedStyle(value).fontSize) < (wide ? 13 : 8)) {
+              issues.push('stamina reading is small or clipped');
+            }
+            const warning = getComputedStyle(label, '::after').content.includes('LOW');
+            const warningColor = getComputedStyle(progress).backgroundImage.includes('255, 146, 111');
+            if (warning !== low || warningColor !== low || !inside(label.getBoundingClientRect(), staminaBounds)) {
+              issues.push('stamina warning is misplaced or does not follow the low state');
+            }
+          }
+          if (wide) {
+            wallet.textContent = '123,456 CUD COINS';
+            mode.textContent = 'KING OF THE PEAK';
+            const card = document.querySelector('[data-gig-card]')!.getBoundingClientRect();
+            const footer = document.querySelector('.gg-gig-footer')!.getBoundingClientRect();
+            const paper = document.querySelector('.gg-gig-paper')!.getBoundingClientRect();
+            const walletInk = ink(wallet.parentElement!);
+            const modeInk = ink(mode);
+            const creamBottom = card.top + card.height * .875;
+            if (paper.bottom >= footer.top || !inside(walletInk, footer) || !inside(modeInk, footer) ||
+              walletInk.right + 4 > modeInk.left || Math.max(walletInk.bottom, modeInk.bottom) > creamBottom - 2) {
+              issues.push('desktop gig footer exceeds its inset or the labels overlap');
+            }
+          }
+          return issues;
+        } finally {
+          growth.textContent = original.growth;
+          value.textContent = original.value;
+          wallet.textContent = original.wallet;
+          mode.textContent = original.mode;
+          if (original.low === undefined) delete stamina.dataset.low;
+          else stamina.dataset.low = original.low;
+        }
+      };
       const compactHudIssues = () => {
         const selectors = {
           meter: '.gg-meter', score: '.gg-combo', map: '.gg-map-panel',
@@ -401,6 +467,26 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
             // The cream portion of the illustration stops above the bottom rim.
             issues.push('gig footer touches frame art');
           }
+          const scorePanel = document.querySelector<HTMLElement>(selectors.score)!;
+          const measurePanels = () => JSON.stringify(Object.values(selectors).map(selector =>
+            document.querySelector(selector)!.getBoundingClientRect().toJSON()));
+          const hadCombo = scorePanel.hasAttribute('data-combo-active');
+          try {
+            scorePanel.removeAttribute('data-combo-active');
+            const idleBounds = measurePanels();
+            const scoreBounds = scorePanel.getBoundingClientRect();
+            const pill = scorePanel.querySelector('.gg-current-score')!.getBoundingClientRect();
+            if (getComputedStyle(scorePanel).backgroundImage !== 'none' ||
+              pill.width <= 0 || pill.height <= 0 || !inside(pill, scoreBounds) ||
+              pill.width >= scoreBounds.width * .75 || pill.height >= scoreBounds.height * .5) {
+              issues.push('idle score does not clear the combo artwork area');
+            }
+            scorePanel.setAttribute('data-combo-active', '');
+            if (getComputedStyle(scorePanel).backgroundImage === 'none') issues.push('combo art missing');
+            if (measurePanels() !== idleBounds) issues.push('combo shifts other HUD controls');
+          } finally {
+            scorePanel.toggleAttribute('data-combo-active', hadCombo);
+          }
           return issues;
         } finally {
           look.hidden = original.look;
@@ -415,6 +501,13 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         }
       };
       try {
+        for (const [width, height] of [[1280, 720], [1863, 883]] as const) {
+          await page.send('Emulation.setDeviceMetricsOverride',
+            { width, height, deviceScaleFactor: 1, mobile: false });
+          await page.waitFor('innerWidth === ' + width + ' && innerHeight === ' + height, 'wide HUD viewport');
+          const issues = await page.evaluate<string[]>('(' + meterAndFooterIssues.toString() + ')()');
+          if (issues.length) throw Error(width + '×' + height + ': ' + issues.join(', '));
+        }
         for (const [width, height] of [[1024, 576], [540, 360], [390, 844]] as const) {
           await page.send('Emulation.setDeviceMetricsOverride',
             { width, height, deviceScaleFactor: 1, mobile: false });
@@ -422,10 +515,15 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
             `${width}×${height} viewport`);
           const issues = await page.evaluate<string[]>('(' + compactHudIssues.toString() + ')()');
           if (issues.length) throw Error(`${width}×${height}: ${issues.join(', ')}`);
+          const meterIssues = await page.evaluate<string[]>('(' + meterAndFooterIssues.toString() + ')()');
+          if (meterIssues.length) throw Error(width + '×' + height + ': ' + meterIssues.join(', '));
           await page.tap('KeyB');
           await page.waitFor(`document.querySelector('.gg-hotbar')?.dataset.active === 'true' &&
             document.querySelector('[data-build-status]')?.textContent?.includes('LMB PLACE')`,
             'build controls to become visible');
+          await page.tap('Digit3');
+          await page.waitFor('!!document.querySelector(\'[data-slot="ramp"].is-selected\')',
+            'keyboard ramp selection');
           const buildIssues = await page.evaluate<string[]>('(' + compactHudIssues.toString() + ')()');
           if (buildIssues.length) throw Error(`Build mode at ${width}×${height}: ${buildIssues.join(', ')}`);
           await page.tap('KeyB');
@@ -483,10 +581,42 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         'resume from pause');
 
       const modes = [
-        ['rising-tide', 'RISING TIDE'], ['king-of-the-peak', 'KING OF THE PEAK'],
-        ['hay-heist', 'HAY HEIST'],
+        ['rising-tide', 'RISING TIDE', 'Last goat standing', ['GOATS LEFT', 'SEA LEVEL']],
+        ['king-of-the-peak', 'KING OF THE PEAK', 'Hold the summit to score', ['YOUR POINTS', 'WIN TARGET']],
+        ['hay-heist', 'HAY HEIST', 'First to ', ['RED · YOU', 'BLUE']],
       ] as const;
-      for (const [index, [mode, title]] of modes.entries()) {
+      const partyHudIssues = (title: string, goal: string, metrics: readonly string[]) => {
+        const issues: string[] = [];
+        const board = document.querySelector<HTMLElement>('[data-party-scoreboard]')!;
+        const text = document.createRange();
+        const panel = board.getBoundingClientRect();
+        const selectors = ['[data-party-title]', '[data-party-clock-label]', '[data-party-clock]',
+          '[data-party-goal]', '[data-party-status]', '.gg-party-metric-label', '.gg-party-metric-value'];
+        for (const row of board.querySelectorAll(selectors.join(','))) {
+          if (row instanceof HTMLElement && row.hidden && row.hasAttribute('data-party-status')) continue;
+          text.selectNodeContents(row);
+          const rect = text.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0 || rect.left < panel.left - 1 ||
+            rect.right > panel.right + 1 || rect.top < panel.top - 1 || rect.bottom > panel.bottom + 1) {
+            issues.push('scoreboard text outside card: ' + row.textContent);
+          }
+        }
+        if (board.hidden || board.querySelector('[data-party-title]')?.textContent !== title ||
+          !board.querySelector('[data-party-goal]')?.textContent?.startsWith(goal)) {
+          issues.push('mode goal or title missing');
+        }
+        const clock = board.querySelector('[data-party-clock]')!;
+        if (!/^\d+:\d{2}$/.test(clock.textContent ?? '') ||
+          Number.parseFloat(getComputedStyle(clock).fontSize) < 16) issues.push('clock not prominent');
+        const labels = Array.from(board.querySelectorAll('.gg-party-metric-label'), row => row.textContent);
+        if (JSON.stringify(labels) !== JSON.stringify(metrics)) issues.push('incorrect mode metrics');
+        if (!document.querySelector<HTMLElement>('[data-gig-card]')?.hidden ||
+          document.querySelector('[data-score]')?.getClientRects().length !== 0) {
+          issues.push('free-roam HUD competes with scoreboard');
+        }
+        return issues;
+      };
+      for (const [index, [mode, title, goal, metrics]] of modes.entries()) {
         page.phase = 'party mode: ' + mode;
         if (index === 0) await page.tap('KeyP');
         else await page.click('[data-action="party"]');
@@ -500,7 +630,26 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         await page.click('[data-action="start-party"]');
         await page.waitFor('document.querySelector(".gg-shell")?.hidden === true',
           mode + ' round to start');
-        await sleep(1700);
+        await page.waitFor('document.querySelector("[data-party-scoreboard]")?.hidden === false && ' +
+          'document.querySelector("[data-party-title]")?.textContent === ' + JSON.stringify(title),
+          mode + ' scoreboard to appear', 20000);
+        // The countdown advances on simulation ticks. Software rendering can
+        // take substantially longer than its three displayed seconds.
+        await page.waitFor('document.querySelector("[data-party-clock-label]")?.textContent === "ROUND"',
+          mode + ' countdown to finish', 45000);
+        try {
+          for (const [width, height] of [[1024, 576], [540, 360], [390, 844]] as const) {
+            await page.send('Emulation.setDeviceMetricsOverride',
+              { width, height, deviceScaleFactor: 1, mobile: false });
+            await page.waitFor('innerWidth === ' + width + ' && innerHeight === ' + height,
+              mode + ' compact viewport');
+            const issues = await page.evaluate<string[]>('(' + partyHudIssues.toString() + ')(...' +
+              JSON.stringify([title, goal, metrics]) + ')');
+            expect(issues.join(', '), mode + ' at ' + width + '×' + height).toBe('');
+          }
+        } finally {
+          await page.send('Emulation.clearDeviceMetricsOverride');
+        }
         await page.tap('Escape');
         await page.waitFor('document.querySelector(".gg-shell h2")?.textContent === "PAUSED"',
           mode + ' pause');

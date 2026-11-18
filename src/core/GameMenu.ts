@@ -8,6 +8,7 @@ import type { PoiId } from '../world';
 import { HUD_SPRITES, hudSpriteImage } from './HudSprites';
 import { gigBoardGoal, gigBoardIcon } from './GigBoardPresentation';
 import { MENU_SPRITES, menuSkin, menuSpriteUrl, type MenuSpriteName } from './MenuSprites';
+import titleArt from '../../docs/art/hifi/07_key_art.png?url';
 
 type Screen = 'title' | 'playing' | 'pause' | 'party' | 'settings' |
   'board' | 'gig-results' | 'party-results';
@@ -90,9 +91,7 @@ const CSS = `
   min-width:0;min-height:90px;padding:3px 5px;border:14px solid transparent;
   border-image:var(--gg-sprite) 48 fill / 14px / 0 stretch;text-align:center;
   color:#fff3db;font-size:clamp(9px,1.05vw,12px)}
-.gg-shell .gg-stat-line{display:flex;gap:3px;align-items:center;justify-content:center}
 .gg-shell .gg-stat strong{display:block;color:#ffe147;font-size:clamp(17px,2.1vw,24px);line-height:1.1}
-.gg-shell .gg-stat-coin{width:26px;height:26px;object-fit:contain}
 .gg-shell .gg-gig-progress strong{
   font-size:clamp(13px,2.1vw,24px);overflow-wrap:anywhere
 }
@@ -111,7 +110,17 @@ const CSS = `
 .gg-shell .gg-party-outcome strong{font-size:clamp(18px,2.8vw,27px);color:#ffe092;line-height:1.1}
 .gg-shell .gg-party-outcome span{font-size:clamp(11px,1.4vw,14px);color:#f0ddeb}
 .gg-shell footer{margin-top:14px;color:#e0cfea;font-size:clamp(10px,1.15vw,12px);line-height:1.5}
-.gg-shell .gg-title-actions{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:12px;align-items:start}
+.gg-shell .gg-title-panel{width:min(1160px,100%)}
+.gg-shell .gg-title-layout{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(238px,1fr);
+  gap:clamp(12px,2.2vw,28px);align-items:center}
+.gg-shell h1.gg-title-art{margin:0;border-radius:12px;overflow:hidden;background:#2e5984}
+.gg-shell .gg-title-art img{width:100%;height:auto;display:block}
+.gg-shell .gg-title-actions{min-width:0}
+.gg-shell .gg-title-actions .gg-art-button{min-height:56px;padding:2px 12px;border-width:14px;border-image-width:14px}
+.gg-shell .gg-title-progress{display:flex;gap:6px;align-items:center;margin:8px 0;
+  color:#f7e8d1;font-size:clamp(11px,1.1vw,14px)}
+.gg-shell .gg-title-progress img{width:19px;height:19px;object-fit:contain}
+.gg-shell .gg-title-actions .gg-quick-start{margin-top:10px}
 .gg-shell .gg-quick-start{min-width:0;padding:8px 10px;border:1px solid #b794a466;border-radius:9px;background:#151b3870}
 .gg-shell .gg-quick-start h2{font-size:clamp(13px,1.45vw,16px);line-height:1.2;margin:0 0 6px;letter-spacing:0}
 .gg-shell .gg-quick-start dl{display:grid;gap:5px;margin:0}
@@ -154,8 +163,6 @@ const CSS = `
 .gg-shell .gg-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;
   clip-path:inset(50%);white-space:nowrap}
 @media(max-height:660px) and (min-width:511px){
- .gg-shell .gg-title-wordmark{font-size:clamp(40px,7vw,57px);line-height:1.02}
- .gg-shell .gg-title-wordmark br{display:none}
  .gg-shell .gg-title-actions .gg-art-button{min-height:54px;padding:2px 9px;border-width:14px;border-image-width:14px}
 }
 @media(max-height:460px) and (min-width:511px){
@@ -172,9 +179,8 @@ const CSS = `
  .gg-shell .gg-grid{grid-template-columns:1fr;gap:7px}
  .gg-shell .gg-stats{gap:2px}
  .gg-shell .gg-stat{min-height:79px;border-width:10px;border-image-width:10px}
- .gg-shell .gg-stat-coin{width:20px;height:20px}
  .gg-shell .gg-art-button{min-height:59px;font-size:13px}
- .gg-shell .gg-title-actions{grid-template-columns:1fr}
+ .gg-shell .gg-title-layout{grid-template-columns:minmax(0,1fr)}
  .gg-shell .gg-quick-start dl{grid-template-columns:repeat(2,minmax(0,1fr))}
  .gg-shell .gg-control-table :is(th,td){padding:4px}
  .gg-shell .gg-tab{min-height:44px;border-width:9px;border-image-width:9px}
@@ -642,28 +648,26 @@ export class GameMenu {
     }
   }
   private titleBody(): string {
-    return `<div class="gg-shell-eyebrow">BILLY ISLE · AN OPEN WORLD OF BAD IDEAS</div>
-      <h1 class="gg-title-wordmark">GIGGA <br>GOAT!</h1>
-      <p>Cause chaos. Grow huge. Pick up paid gigs. Or challenge seven other goats while the tide climbs.</p>
-      <div class="gg-stats">
-        <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}>
-          <div class="gg-stat-line">${hudSpriteImage(HUD_SPRITES.cudCoin, 'gg-stat-coin')}<strong>${this.game.rules.wallet.coins}</strong></div>
-          <span>CUD COINS</span></div>
-        <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}>
-          <strong>${this.game.gigs.director.ownedCosmetics.length}</strong><span>GIG GEAR</span></div>
-        <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}>
-          <strong>3</strong><span>PARTY MODES</span></div>
-      </div>
+    const coins = this.game.rules.wallet.coins;
+    const gear = this.game.gigs.director.ownedCosmetics.length;
+    const progress = [coins > 0 && coins.toLocaleString('en-US') + ' CUD COINS',
+      gear > 0 && gear + (gear === 1 ? ' GEAR REWARD' : ' GEAR REWARDS')].filter(Boolean);
+    return `<div class="gg-title-layout">
+      <h1 class="gg-title-art"><img src="${titleArt}" alt="Gigga-Goat" width="1672" height="941" fetchpriority="high"></h1>
       <div class="gg-title-actions">
+        <div class="gg-shell-eyebrow">BILLY ISLE</div>
+        <p>Explore Billy Isle, wreak havoc, and take on gigs.</p>
         <div class="gg-options">${menuButton('play','▶ PLAY · FREE ROAM',true)}
-        ${menuButton('party','⚡ PARTY MODES')}
-        ${menuButton('settings','⚙ SETTINGS')}</div>
+          ${menuButton('party','⚡ PARTY MODES')}
+          ${menuButton('settings','⚙ SETTINGS')}</div>
+        ${progress.length ? `<p class="gg-title-progress">
+          ${coins > 0 ? hudSpriteImage(HUD_SPRITES.cudCoin, '') : ''}${progress.join(' · ')}</p>` : ''}
         <section class="gg-quick-start" aria-labelledby="gg-quick-start">
           <h2 id="gg-quick-start">QUICK START</h2>
           <dl>${GAMEPLAY_BINDINGS.filter(binding => binding.quick).map(binding =>
           `<div><dt>${binding.action}</dt><dd>${binding.keyboard} · ${binding.gamepad}</dd></div>`).join('')}</dl>
         </section>
-      </div>`;
+      </div></div>`;
   }
   private selectPartyMode(value: string): void {
     if (!Object.hasOwn(PARTY_ROUNDS, value)) return;
@@ -904,7 +908,8 @@ export class GameMenu {
     const scrollHelp = this.screen === 'party-results' ||
       (this.screen === 'settings' && this.settingsTab === 'controls')
       ? ' · PgUp/PgDn or right stick scroll' : '';
-    this.root.innerHTML = `<section class="gg-shell-panel" role="dialog" aria-modal="true" ${menuSkin(MENU_SPRITES.panel)}>${body}
+    const panel = this.screen === 'title' ? 'gg-shell-panel gg-title-panel' : 'gg-shell-panel';
+    this.root.innerHTML = `<section class="${panel}" role="dialog" aria-modal="true" ${menuSkin(MENU_SPRITES.panel)}>${body}
       <footer>Enter / click select · ↑↓ navigate · Gamepad A select, B back · Esc back${scrollHelp}</footer></section>`;
     this.syncFullscreen();
     this.root.querySelector<HTMLElement>('button')?.focus();

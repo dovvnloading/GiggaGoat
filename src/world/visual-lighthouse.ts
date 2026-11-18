@@ -118,7 +118,7 @@ void main() {
     const radius = Math.hypot((column + 0.5) * 2 / pixels - 1, (row + 0.5) * 2 / pixels - 1);
     const i = (row * pixels + column) * 4;
     rgba.fill(255, i, i + 3);
-    rgba[i + 3] = Math.round(220 * (1 - THREE.MathUtils.smoothstep(0.07, 0.96, radius)) ** 2);
+    rgba[i + 3] = Math.round(220 * (1 - THREE.MathUtils.smoothstep(radius, 0.07, 0.96)) ** 2);
   }
   const falloff = new THREE.DataTexture(rgba, pixels, pixels);
   falloff.magFilter = THREE.LinearFilter;

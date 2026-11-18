@@ -4,6 +4,7 @@ import { BIOMES } from './types';
 import { clamp, smoothstep } from './random';
 import { gridCoordinate, gridIndex } from './terrain';
 import { terrainRockMask } from './terrain-paint';
+import { paintDowntownGround } from './downtown-public-space';
 import { roadRibbonData } from './road-ribbons';
 import { buildPropVisuals, TOON_RAMP } from './visual-props';
 import { createEnvironmentLod } from './environment-lod';
@@ -275,6 +276,7 @@ uStone *= 0.96 + 0.04 * sin(elevation * 0.52 + 2.0 * exposure);
 float rock = smoothstep(0.19, 0.48, exposure + 0.04 * smoothstep(16.0, 85.0, elevation));
 diffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);`,
     );
+    paintDowntownGround(shader, island);
     capeLighting.paint(shader);
   };
   const lookup = roadGrid(island, 22);
@@ -378,15 +380,16 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const scenery = external?.size
     ? { ...island, props: island.props.filter(prop => !external.has(prop.kind)) }
     : island;
-  const props = buildPropVisuals(scenery.props, options.propChunkSize ?? 96, scenery);
+  const sky = buildSkyVisuals();
+  const waterVisuals = buildWaterVisuals(island, sky.atmosphere);
+  const props = buildPropVisuals(scenery.props, options.propChunkSize ?? 96, scenery,
+    waterVisuals.replacedCascadeIds);
   group.add(props.group);
   const hoofington = buildHoofingtonVisuals(scenery, props.group);
   group.add(hoofington.group);
   const downtown = buildDowntownVisuals(scenery, props.group);
   group.add(downtown.group);
-  const sky = buildSkyVisuals();
-  const waterVisuals = buildWaterVisuals(island, sky.atmosphere);
-  group.add(waterVisuals.inland, waterVisuals.sea);
+  group.add(waterVisuals.inland, waterVisuals.sea, waterVisuals.mountain);
   const dam = buildDamVisuals(island, waterVisuals.light);
   group.add(dam.group);
   const lighthouse = buildLighthouseVisuals(scenery, props.group, capeLighting);
@@ -474,19 +477,10 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     if (hoofington.updateCulling(pos, frustum)) shadowCastersChanged = true;
     if (downtown.updateCulling(pos, frustum)) shadowCastersChanged = true;
     if (environmentLod.updateCulling(camera, pos, frustum)) shadowCastersChanged = true;
-    // The GLB supplies its own reservoir surface. Hide the procedural one
-    // on success, but retain it in the graph for disposal; it remains visible
-    // if the model fails and the procedural fallback is needed.
     if (props.consumeShadowChange()) shadowCastersChanged = true;
     if (hoofington.consumeShadowChange()) shadowCastersChanged = true;
     if (downtown.consumeShadowChange()) shadowCastersChanged = true;
-    if (dam.consumeShadowChange()) {
-      for (const name of ['dam-reservoir', 'dam-reservoir-foam']) {
-        const surface = waterVisuals.inland.getObjectByName(name);
-        if (surface) surface.visible = false;
-      }
-      shadowCastersChanged = true;
-    }
+    if (dam.consumeShadowChange()) shadowCastersChanged = true;
     return shadowCastersChanged;
   }
   function dispose(): void {

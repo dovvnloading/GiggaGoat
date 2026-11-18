@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { EventBus, StyleSystem, TUNING } from '../gameplay';
 import type { HudInput } from './GameHudState';
 import { clampHudPercent, deriveHudState, formatHudObjective, projectHudMap } from './GameHudState';
+import { renderHudMinimap } from './HudArtwork';
+import { generateIsland } from '../world';
 
 const input = (): HudInput => ({
   meter: 0, tier: 'Kid', score: 0,
@@ -12,6 +15,17 @@ const input = (): HudInput => ({
 });
 
 describe('in-game HUD state projection', () => {
+  it('uses terrain crossings for the shore and keeps player art above the scenery', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    const coast = renderHudMinimap(island, { x: 0, z: 230 });
+    const outline = coast.match(/data-map-ocean d="([^"]+)"/)?.[1];
+    expect(outline).toBeDefined();
+    const coordinates = [...(outline ?? '').matchAll(/[ML]([\d.]+),([\d.]+)/g)]
+      .flatMap(match => [Number(match[1]), Number(match[2])]);
+    expect(coordinates.some(value => value % 17.5 !== 0)).toBe(true);
+    expect(coast.indexOf('opacity=".72"')).toBeLessThan(coast.indexOf('data-player'));
+  });
+
   it('shows every growth tier and clamps the live meter without changing simulation state', () => {
     const state = input();
     for (const tier of ['Kid', 'Billy', 'Big', 'GIGGA'] as const) {
@@ -27,7 +41,7 @@ describe('in-game HUD state projection', () => {
     expect(clampHudPercent(101)).toBe(100);
   });
 
-  it('always renders actual score, combo title, multiplier, and wallet (including an idle combo)', () => {
+  it('preserves the score and wallet between combos and labels active tricks', () => {
     const state = input();
     state.score = 48750;
     state.coins = 1234;
@@ -35,13 +49,26 @@ describe('in-game HUD state projection', () => {
     expect(idle.score).toBe('48,750');
     expect(idle.coins).toBe('1,234');
     expect(idle.comboCount).toBe(0);
-    expect(idle.comboTitle).toBe('GIGGA-GOAT!');
+    expect(idle.comboTitle).toBe('');
     state.combo = { count: 12, points: 2396, title: 'HOOF HURRICANE' };
     const active = deriveHudState(state);
     expect(active.comboTitle).toBe('HOOF HURRICANE');
     expect(active.comboCount).toBe(12);
     expect(active.comboPoints).toBe('2,396');
     expect(state.combo.points).toBe(2396);
+  });
+
+  it('uses live style events and expiry to enter and leave the combo presentation', () => {
+    const style = new StyleSystem(new EventBus());
+    const score = () => deriveHudState({ ...input(), score: style.score, combo: style.combo });
+    expect(score()).toMatchObject({ score: '0', comboTitle: '', comboCount: 0 });
+    style.ingest({ type: 'flip' });
+    expect(score()).toMatchObject({ comboTitle: 'WARM-UP', comboCount: 1 });
+    style.ingest({ type: 'knockback' });
+    const combo = score();
+    expect(combo).toMatchObject({ comboTitle: 'GOAT-ROCKET', comboCount: 2 });
+    style.update(TUNING.style.comboWindow);
+    expect(score()).toMatchObject({ score: combo.score, comboTitle: '', comboCount: 0, comboPoints: '0' });
   });
 
   it('keeps the Hay-Build keys matched to real piece types and computes affordable counts', () => {
@@ -77,11 +104,25 @@ describe('in-game HUD state projection', () => {
     expect(deriveHudState(state).headbutt).toBe(100);
   });
 
+  it('shows low stamina only below the ability start threshold', () => {
+    const state = input();
+    state.stamina = TUNING.stamina.minStart;
+    expect(deriveHudState(state).staminaLow).toBe(false);
+    state.stamina = TUNING.stamina.minStart - .01;
+    expect(deriveHudState(state).staminaLow).toBe(true);
+    state.stamina = 0;
+    expect(deriveHudState(state).staminaLow).toBe(true);
+    state.stamina = TUNING.stamina.max;
+    expect(deriveHudState(state).staminaLow).toBe(false);
+  });
+
   it('shows the next-gig prompt unless a real contract is active', () => {
     const state = input();
     const inactive = deriveHudState(state);
     expect(inactive.gig.active).toBe(false);
-    expect(inactive.gig.task).toMatch(/E · GIGS board/);
+    expect(inactive.gig.task).toBe('Find a gig board');
+    state.boardInRange = true;
+    expect(deriveHudState(state).gig.task).toBe('Contracts available here');
     state.gig = {
       title: 'Mow-down', status: 'running',
       objective: { kind: 'coverage', label: 'Graze the grass', eaten: 4, total: 9, bites: 4 },

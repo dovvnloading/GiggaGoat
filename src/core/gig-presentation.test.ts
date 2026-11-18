@@ -23,8 +23,9 @@ describe('Hay Haul wayfinding', () => {
       expect(hayHaulGuidance(game, run)).toEqual({
         kind: 'pickup',
         position: physicsPosition,
-        task: 'Hold RMB / LT to lick',
+        task: 'Hold RMB to lick',
       });
+      expect(hayHaulGuidance(game, run, 'gamepad')?.task).toBe('Hold LB or LT to lick');
       expect(game.goat.interactions.attachTongue(V(
         target.x - game.goat.head.translation().x,
         target.y - game.goat.head.translation().y,

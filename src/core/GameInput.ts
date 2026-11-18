@@ -3,6 +3,26 @@ import type { PieceType } from '../gameplay';
 import { PLAY_CAMERA_PITCH, clampCameraPitch } from './GoatCamera';
 
 const PIECES: readonly PieceType[] = ['floor', 'wall', 'ramp', 'launch-pad'];
+const BUILD_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4'];
+const KEYBOARD_CONTROLS = new Set([
+  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight',
+  'KeyI', 'KeyJ', 'KeyK', 'KeyL', 'Space', 'ShiftLeft', 'ShiftRight', 'KeyE', 'KeyF',
+  'KeyQ', 'KeyR', 'KeyG', 'KeyB', 'KeyC', 'F3', ...BUILD_KEYS,
+]);
+const STICK_ACTION_DELTA = .2;
+const STICK_REST_MAGNITUDE = .12;
+const MOUSE_LOOK_ACTION_PIXELS = 4;
+
+export type InputDevice = 'keyboard-mouse' | 'gamepad';
+export const PAD_BUILD_BINDINGS: Record<PieceType, { button: number; key: string; label: string }> = {
+  floor: { button: 12, key: '↑', label: 'D-pad up' },
+  wall: { button: 15, key: '→', label: 'D-pad right' },
+  ramp: { button: 13, key: '↓', label: 'D-pad down' },
+  'launch-pad': { button: 14, key: '←', label: 'D-pad left' },
+};
+const PAD_CONTROL_BUTTONS = [0, 1, 2, 3, 4, 5, 9, 10, 11,
+  ...PIECES.map(piece => PAD_BUILD_BINDINGS[piece].button)];
+
 const axis = (value: number): number => Math.abs(value) < .14 ? 0 :
   Math.sign(value) * (Math.abs(value) - .14) / .86;
 const down = (pad: Gamepad, index: number): boolean => pad.buttons[index]?.pressed ?? false;
@@ -30,10 +50,15 @@ export class GameInput {
   private pendingGraze = false;
   private pendingInteract = false;
   private readonly unsubscribers: Array<() => void> = [];
+  private currentDevice: InputDevice = 'keyboard-mouse';
+  private padPromptButtons = 0;
+  private readonly padPromptMove = { x: 0, y: 0 };
+  private readonly padPromptLook = { x: 0, y: 0 };
+  private pointerPromptX = 0;
+  private pointerPromptY = 0;
   yaw: number;
   pitch = PLAY_CAMERA_PITCH;
   debugVisible = false;
-  buildWithGamepad = false;
   sensitivity = 1;
   invertY = false;
 
@@ -51,45 +76,43 @@ export class GameInput {
       const code = event.code;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'F3'].includes(code)) event.preventDefault();
       if (event.repeat) return;
+      if (KEYBOARD_CONTROLS.has(code)) this.recordDevice('keyboard-mouse');
       if (code === 'KeyC') {
         void this.requestPointerLock();
         return;
       }
       this.keys.add(code);
-      if (code === 'KeyB') {
-        this.buildToggleQueued = true;
-        this.buildWithGamepad = false;
-      }
+      if (code === 'KeyB') this.buildToggleQueued = true;
       if (code === 'F3') this.debugVisible = !this.debugVisible;
       if (code === 'Space') this.pendingJump = true;
       if (code === 'KeyE') { this.pendingBleat = true; this.pendingInteract = true; }
       if (code === 'KeyG') this.pendingGraze = true;
       if (code === 'KeyQ') this.pendingFlop = true;
       if (code === 'KeyF') this.pendingFling = true;
-      const index = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(code);
-      if (index >= 0) {
-        this.selected = PIECES[index];
-        this.buildWithGamepad = false;
-      }
+      const index = BUILD_KEYS.indexOf(code);
+      if (index >= 0) this.selected = PIECES[index];
     });
     listen(window, 'keyup', event => { this.keys.delete(event.code); });
     listen(window, 'blur', () => { this.reset(); });
     listen(document, 'visibilitychange', () => {
       if (document.hidden) this.reset();
     });
-    const clearMouseAnchor = () => { this.unlockedMouse = null; };
+    const clearMouseAnchor = () => {
+      this.unlockedMouse = null;
+      this.pointerPromptX = this.pointerPromptY = 0;
+    };
     listen(canvas, 'mouseleave', clearMouseAnchor);
     listen(document, 'pointerlockchange', clearMouseAnchor);
     listen(document, 'pointerlockerror', clearMouseAnchor);
     listen(canvas, 'mousedown', event => {
       if (!this.active) return;
+      if (event.button === 0 || event.button === 2) this.recordDevice('keyboard-mouse');
       if (document.pointerLockElement !== canvas) {
         this.unlockedMouse = { x: event.clientX, y: event.clientY };
       }
       if (event.button === 0) {
         this.mousePrimary = true;
         this.buildPlaceQueued = true;
-        this.buildWithGamepad = false;
       }
       if (event.button === 2) this.mouseSecondary = true;
     });
@@ -117,6 +140,34 @@ export class GameInput {
     });
   }
 
+  get device(): InputDevice { return this.currentDevice; }
+
+  private recordDevice(device: InputDevice): void {
+    this.currentDevice = device;
+    this.pointerPromptX = this.pointerPromptY = 0;
+  }
+
+  /** Pad movement owns the hints after a deliberate gesture. The gameplay
+   * deadzone and aim response remain independent of this presentation filter. */
+  private movedPromptStick(x: number, y: number, last: { x: number; y: number }): boolean {
+    const magnitude = Math.hypot(x, y);
+    if (magnitude < STICK_REST_MAGNITUDE) last.x = last.y = 0;
+    if (!Number.isFinite(magnitude) || magnitude < STICK_ACTION_DELTA ||
+        Math.hypot(x - last.x, y - last.y) < STICK_ACTION_DELTA) return false;
+    last.x = x;
+    last.y = y;
+    return true;
+  }
+
+  private recordGamepadActivity(pad: Gamepad, moveX: number, moveY: number, lookX: number, lookY: number): void {
+    const buttons = PAD_CONTROL_BUTTONS.reduce((mask, index) => down(pad, index) ? mask | (1 << index) : mask, 0) |
+      (trigger(pad, 6) ? 1 << 6 : 0) | (trigger(pad, 7) ? 1 << 7 : 0);
+    const moved = this.movedPromptStick(moveX, moveY, this.padPromptMove);
+    const looked = this.movedPromptStick(lookX, lookY, this.padPromptLook);
+    if ((buttons & ~this.padPromptButtons) !== 0 || moved || looked) this.recordDevice('gamepad');
+    this.padPromptButtons = buttons;
+  }
+
   async requestPointerLock(): Promise<void> {
     if (!this.active || document.pointerLockElement === this.canvas) return;
     try {
@@ -135,6 +186,13 @@ export class GameInput {
     this.yaw += dx * .0026 * this.sensitivity;
     this.pitch = clampCameraPitch(
       this.pitch + dy * .0021 * this.sensitivity * (this.invertY ? -1 : 1));
+    if (this.device === 'gamepad') {
+      this.pointerPromptX += dx;
+      this.pointerPromptY += dy;
+      if (Math.hypot(this.pointerPromptX, this.pointerPromptY) >= MOUSE_LOOK_ACTION_PIXELS) {
+        this.recordDevice('keyboard-mouse');
+      }
+    }
   }
 
   sample(dt: number, buildMode: boolean): PlayerIntent {
@@ -165,12 +223,13 @@ export class GameInput {
     const pad = navigator.getGamepads?.().find(p => p?.connected) ?? null;
     if (pad) {
       const px = axis(pad.axes[0] ?? 0), pz = -axis(pad.axes[1] ?? 0);
+      const rx = axis(pad.axes[2] ?? 0), ry = axis(pad.axes[3] ?? 0);
+      this.recordGamepadActivity(pad, px, pz, rx, ry);
       if (Math.hypot(px, pz) > Math.hypot(moveX, moveZ) * .7) {
         moveX = px; moveZ = pz;
       }
-      this.yaw += axis(pad.axes[2] ?? 0) * dt * 2.8 * this.sensitivity;
-      this.pitch = clampCameraPitch(
-        this.pitch + axis(pad.axes[3] ?? 0) * dt * 1.9 * (this.invertY ? -1 : 1));
+      this.yaw += rx * dt * 2.8 * this.sensitivity;
+      this.pitch = clampCameraPitch(this.pitch + ry * dt * 1.9 * (this.invertY ? -1 : 1));
       sprint ||= down(pad, 5);
       const padJump = down(pad, 0);
       jump ||= padJump;
@@ -190,23 +249,16 @@ export class GameInput {
       this.padFlingWasDown = padFling;
       reelTongue ||= down(pad, 11);
       const padToggle = down(pad, 3);
-      if (padToggle && !this.padToggleWasDown) {
-        toggleBuild = true;
-        this.buildWithGamepad = true;
-      }
+      if (padToggle && !this.padToggleWasDown) toggleBuild = true;
       this.padToggleWasDown = padToggle;
-      const chosen = [12, 15, 13, 14].findIndex(i => down(pad, i));
-      if (chosen >= 0) {
-        buildPiece = PIECES[chosen];
-        this.buildWithGamepad = true;
-      }
-      if (buildMode && chargeHeadbutt && !this.padPlaceWasDown) {
-        placeBuild = true;
-        if (padHeadbutt) this.buildWithGamepad = true;
-      }
+      buildPiece = PIECES.find(piece => down(pad, PAD_BUILD_BINDINGS[piece].button)) ?? buildPiece;
+      if (buildMode && chargeHeadbutt && !this.padPlaceWasDown) placeBuild = true;
       this.padPlaceWasDown = chargeHeadbutt;
     } else {
-      this.buildWithGamepad = false;
+      if (this.device === 'gamepad') this.recordDevice('keyboard-mouse');
+      this.padPromptButtons = 0;
+      this.padPromptMove.x = this.padPromptMove.y = 0;
+      this.padPromptLook.x = this.padPromptLook.y = 0;
       this.padToggleWasDown = false;
       this.padJumpWasDown = false;
       this.padPlaceWasDown = false;
@@ -238,6 +290,7 @@ export class GameInput {
     this.mousePrimary = false;
     this.mouseSecondary = false;
     this.unlockedMouse = null;
+    this.pointerPromptX = this.pointerPromptY = 0;
     this.pendingJump = this.pendingBleat = this.pendingFlop = this.pendingFling = false;
     this.pendingGraze = this.pendingInteract = false;
     this.buildToggleQueued = this.buildPlaceQueued = false;

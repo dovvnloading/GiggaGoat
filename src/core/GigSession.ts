@@ -70,6 +70,10 @@ export class GigSession {
         position.x += 6.4 * scale;
         position.z += 3 * scale;
         position.y = heightAt(island, position.x, position.z);
+      } else if (poi.id === 'downtown-bleatsville') {
+        position.x += 8.1 * scale;
+        position.z += 2.2 * scale;
+        position.y = heightAt(island, position.x, position.z);
       }
       return { poiId: poi.id, position, name: poi.name };
     });

@@ -142,9 +142,9 @@ export function preserveLighthouseChannel(
 export function stampPlot(
   island: Pick<IslandData, 'heights' | 'resolution' | 'size'>,
   plot: PlotDescriptor,
+  feather = 10,
 ): void {
   if (!plot.flat) return;
-  const feather = 10;
   visitDisc(island, plot.center.x, plot.center.z, plot.radius + feather,
     (h, x, z) => {
       const d = Math.hypot(x - plot.center.x, z - plot.center.z);
