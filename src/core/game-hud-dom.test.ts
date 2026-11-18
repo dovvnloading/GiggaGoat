@@ -202,7 +202,7 @@ describe('live free-roam HUD DOM', () => {
     }
   });
 
-  it('hides the click prompt on pointer lock and restores the flex row on unlock', () => {
+  it('gives the board prompt priority and restores the look hint when leaving', () => {
     const head = new ElementStub();
     vi.stubGlobal('document', { head, createElement: () => new ElementStub() });
     const host = new ElementStub();
@@ -211,6 +211,8 @@ describe('live free-roam HUD DOM', () => {
       const hint = host.children[0]!.querySelector<ElementStub>('[data-hint]')!;
       expect(hint.hidden).toBe(false);
       hud.setPointerLockHint(true);
+      expect(hint.hidden).toBe(true);
+      hud.setPointerLockHint(false, true);
       expect(hint.hidden).toBe(true);
       hud.setPointerLockHint(false);
       expect(hint.hidden).toBe(false);

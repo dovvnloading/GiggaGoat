@@ -81,7 +81,9 @@ describe('in-game HUD state projection', () => {
     const state = input();
     const inactive = deriveHudState(state);
     expect(inactive.gig.active).toBe(false);
-    expect(inactive.gig.task).toMatch(/E · GIGS board/);
+    expect(inactive.gig.task).toBe('Find a gig board');
+    state.boardInRange = true;
+    expect(deriveHudState(state).gig.task).toBe('Contracts available here');
     state.gig = {
       title: 'Mow-down', status: 'running',
       objective: { kind: 'coverage', label: 'Graze the grass', eaten: 4, total: 9, bites: 4 },

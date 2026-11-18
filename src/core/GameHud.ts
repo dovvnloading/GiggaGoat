@@ -610,13 +610,15 @@ export class GameHud {
     const inventory = rules.inventory.all;
     const activeGig = game.gigs.active;
     const run = activeGig?.status === 'running' ? activeGig : game.pendingGigResult;
+    // Enter a little inside the interaction radius to avoid blinking at its edge.
+    const boardInRange = game.gigs.nearBoard(this.board.hidden ? 8.75 : 9) !== null;
     const state = deriveHudState({
       tier: rules.style.tier, meter: rules.style.meter, score: rules.style.score,
       combo: rules.style.combo, stamina: rules.abilities.stamina,
       headbuttCharge: rules.abilities.headbuttCharge,
       inventory, buildMode: game.buildMode,
       buildPiece: game.buildPiece, ragdoll: game.goat.isRagdoll,
-      location: game.location, coins: rules.wallet.coins,
+      location: game.location, coins: rules.wallet.coins, boardInRange,
       partyTitle: game.party.match ? game.party.title : undefined,
       gig: run ? {
         title: run.setup.info.title, status: run.status, objective: run.objective,
@@ -673,9 +675,8 @@ export class GameHud {
       fitGigCardText(this.gigCard);
       this.gigLayoutKey = gigLayoutKey;
     }
-    // Enter a little inside the interaction radius to avoid blinking at its edge.
-    this.board.hidden = !game.gigs.nearBoard(this.board.hidden ? 8.75 : 9);
-    this.setPointerLockHint(pointerLocked);
+    this.board.hidden = !boardInRange;
+    this.setPointerLockHint(pointerLocked, boardInRange);
     this.debug.hidden = !debugVisible;
     if (debugVisible) this.debug.textContent = 'F3 · PERFORMANCE\n' +
       'FPS: ' + (perf?.fps ?? fps).toFixed(0) + '\n' +
@@ -714,7 +715,9 @@ export class GameHud {
   }
 
   /** Preserve the CSS flex row when unlocked; hidden hides it under pointer lock. */
-  setPointerLockHint(pointerLocked: boolean): void { this.hint.hidden = pointerLocked; }
+  setPointerLockHint(pointerLocked: boolean, boardInRange = false): void {
+    this.hint.hidden = pointerLocked || boardInRange;
+  }
 
   setVisible(visible: boolean): void { this.root.style.display = visible ? 'block' : 'none'; }
   dispose(): void { this.root.remove(); this.styles.remove(); }

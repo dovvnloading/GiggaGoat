@@ -15,6 +15,7 @@ export interface HudInput {
   location: string;
   coins: number;
   ragdoll: boolean;
+  boardInRange?: boolean;
   partyTitle?: string;
   gig?: {
     title: string;
@@ -96,8 +97,8 @@ export function deriveHudState(input: HudInput): HudState {
   });
   let gig: HudState['gig'] = {
     title: 'YOUR NEXT GIG',
-    task: 'Find a yellow E · GIGS board to choose a challenge!',
-    detail: 'EXPLORE THE ISLAND · PRESS E AT A BOARD',
+    task: input.boardInRange ? 'Contracts available here' : 'Find a gig board',
+    detail: input.boardInRange ? 'CHOOSE A CHALLENGE' : 'GIGS EARN CUD COINS',
     active: false,
   };
   if (input.partyTitle) {
