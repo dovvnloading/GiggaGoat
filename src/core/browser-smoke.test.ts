@@ -414,14 +414,14 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
             { width, height, deviceScaleFactor: 1, mobile: false });
           await page.waitFor(`innerWidth === ${width} && innerHeight === ${height}`,
             `${width}×${height} viewport`);
-          expect(await page.evaluate<string[]>('(' + compactHudIssues.toString() + ')()'),
-            `${width}×${height}`).toEqual([]);
+          const issues = await page.evaluate<string[]>('(' + compactHudIssues.toString() + ')()');
+          if (issues.length) throw Error(`${width}×${height}: ${issues.join(', ')}`);
           await page.tap('KeyB');
           await page.waitFor(`document.querySelector('.gg-hotbar')?.dataset.active === 'true' &&
             document.querySelector('[data-build-status]')?.textContent?.includes('LMB PLACE')`,
             'build controls to become visible');
-          expect(await page.evaluate<string[]>('(' + compactHudIssues.toString() + ')()'),
-            `build mode at ${width}×${height}`).toEqual([]);
+          const buildIssues = await page.evaluate<string[]>('(' + compactHudIssues.toString() + ')()');
+          if (buildIssues.length) throw Error(`Build mode at ${width}×${height}: ${buildIssues.join(', ')}`);
           await page.tap('KeyB');
           await page.waitFor(`document.querySelector('.gg-hotbar')?.dataset.active === 'false'`,
             'build controls to collapse');
