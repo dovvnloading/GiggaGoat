@@ -885,29 +885,64 @@ describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
         THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
       const pos = river.geometry.getAttribute('position');
       const style = river.geometry.getAttribute('streamStyle');
+      const uv = river.geometry.getAttribute('uv');
       const indices = river.geometry.getIndex()!;
+      const pointAt = (index: number) => new THREE.Vector3().fromBufferAttribute(pos, index);
       const pieces: THREE.Vector3[] = [], pool: THREE.Vector3[] = [];
       const terraces = new Set<number>();
+      let impact = 0;
       for (let i = 0; i < pos.count; i++) {
         if (style.getX(i) !== 3) continue;
-        const point = new THREE.Vector3().fromBufferAttribute(pos, i);
+        const point = pointAt(i);
         terraces.add(i);
         if (style.getZ(i) === 0) pool.push(point);
+        if (style.getZ(i) > 0 && style.getZ(i) < 1) impact = Math.max(impact, style.getY(i));
+        if (uv.getY(i) > 0.96) expect(style.getY(i)).toBeLessThan(0.15);
         pieces.push(point);
       }
-      expect(pieces).toHaveLength(125);
       expect(pool.length).toBeGreaterThan(10);
       expect(pool.every(point => point.y === pool[0]!.y)).toBe(true);
       expect(Math.max(...pieces.map(point => point.y)) - pool[0]!.y).toBeGreaterThan(16);
+      expect(impact).toBeGreaterThan(.8);
+      expect(descriptor.collidable).toBe(false);
+      view.group.updateMatrixWorld(true);
+      const down = new THREE.Vector3(0, -1, 0);
+      const ray = new THREE.Raycaster(new THREE.Vector3(), down);
+      const trail = view.group.getObjectByName('paths-trail')!;
+      ray.ray.origin.set(55.06, 60, 66.54);
+      const trailEye = ray.intersectObject(trail)[0]!.point.clone().add(new THREE.Vector3(0, 0.95, 0));
+      const trailViewRay = new THREE.Raycaster();
+      const triangles = Array.from({ length: indices.count / 3 }, (_, i) =>
+        [indices.getX(i * 3), indices.getX(i * 3 + 1), indices.getX(i * 3 + 2)])
+        .filter(triangle => triangle.every(index => terraces.has(index)));
       const open = new Set([terraces.values().next().value!]);
       for (let pass = 0; pass < 25; pass++) {
-        for (let i = 0; i < indices.count; i += 3) {
-          const tri = [indices.getX(i), indices.getX(i + 1), indices.getX(i + 2)];
-          if (!tri.every(index => terraces.has(index)) || !tri.some(index => open.has(index))) continue;
-          tri.forEach(index => open.add(index));
+        for (const triangle of triangles) {
+          if (triangle.some(index => open.has(index))) triangle.forEach(index => open.add(index));
         }
       }
       expect(open.size).toBe(terraces.size);
+      let poolArea = 0, visibleFromTrail = 0;
+      for (const [a, b, c] of triangles.filter(triangle => triangle.every(index => style.getZ(index) === 0))) {
+        const poolTriangle = new THREE.Triangle(pointAt(a!), pointAt(b!), pointAt(c!));
+        const area = poolTriangle.getArea();
+        poolArea += area;
+        const midpoint = poolTriangle.getMidpoint(new THREE.Vector3());
+        ray.ray.origin.set(midpoint.x, midpoint.y + 1, midpoint.z);
+        const rock = ray.intersectObjects(view.chunks)[0];
+        expect(rock).toBeDefined();
+        const depth = midpoint.y - rock!.point.y;
+        expect(depth).toBeGreaterThan(0.02);
+        expect(depth).toBeLessThan(0.36);
+        expect(ray.intersectObject(trail)).toHaveLength(0);
+        const sightline = midpoint.clone().sub(trailEye);
+        trailViewRay.far = sightline.length() - 0.025;
+        trailViewRay.set(trailEye, sightline.normalize());
+        if (trailViewRay.intersectObjects(view.chunks).length === 0) visibleFromTrail += area;
+      }
+      expect(poolArea).toBeGreaterThan(4.5);
+      expect(visibleFromTrail).toBeGreaterThan(4.0);
+      expect(river.material.fragmentShader).toContain('float impact = vStreamStyle.y');
 
       const trailEdges = island.roads.filter(road => road.type === 'trail')
         .flatMap(road => road.points.slice(1).map((point, i) =>
