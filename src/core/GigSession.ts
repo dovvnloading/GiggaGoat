@@ -16,6 +16,7 @@ export interface GigBodySave {
   broken: boolean;
 }
 interface TemporaryProp { descriptor: GigPropSpawn; body: RigidBody; broken: boolean }
+const COURIER_SHRINK_SETTLE_TICKS = 24;
 
 /** Turns completed Rapier ticks into *observations*, never invented gig actions. */
 export class GigSession {
@@ -27,6 +28,7 @@ export class GigSession {
   private readonly impacts = new Map<number, number>();
   private readonly courierSupports = new Set<number>();
   private courierPressure = 0;
+  private courierShrink: { previousSize: number; expiresAt: number } | null = null;
   private readonly abilities: AbilityFact[] = [];
   private readonly style: StyleFact[] = [];
   private readonly off: Array<() => void> = [];
@@ -205,6 +207,13 @@ export class GigSession {
   }
 
   noteAbility(fact: AbilityFact): void { this.abilities.push(fact); }
+  noteCourierShrink(previousSize: number): void {
+    this.courierShrink = {
+      previousSize: Math.max(previousSize, this.courierShrink?.previousSize ?? 0),
+      expiresAt: this.game.physics.stepCount + COURIER_SHRINK_SETTLE_TICKS,
+    };
+  }
+
   private onContact(contact: PhysicsContact): void {
     if (contact.type !== 'impact') return;
     const run = this.active;
@@ -232,6 +241,10 @@ export class GigSession {
   /** Called after each completed physics tick, including catch-up substeps. */
   tick(climbed: number): void {
     const run = this.active;
+    if (this.courierShrink && (this.game.physics.stepCount > this.courierShrink.expiresAt ||
+        !this.game.goat.interactions.isTongueAttached)) {
+      this.courierShrink = null;
+    }
     const p = this.game.goat.torso.translation();
     const abilities = this.abilities.splice(0);
     if (climbed > 0) abilities.push({ type: 'climb', metres: climbed });
@@ -261,7 +274,10 @@ export class GigSession {
           const inCourierCarry = run.setup.config.kind === 'rooftop-express' && held === body.handle &&
             !abilities.some(action => action.type === 'headbutt' || action.type === 'flop');
           const pressure = inCourierCarry ? Math.min(impact, this.courierPressure) : 0;
-          const testedImpact = (impact - pressure) + pressure / (1 + 4 * this.game.goat.size ** 3);
+          // Newly rebuilt hooves can briefly overlap their own parcel on a slope.
+          // Keep the larger size only while those contacts settle.
+          const carrySize = Math.max(this.game.goat.size, this.courierShrink?.previousSize ?? 0);
+          const testedImpact = (impact - pressure) + pressure / (1 + 4 * carrySize ** 3);
           if (testedImpact >= threshold) entry.broken = true;
         }
         props.push({ id, position: { ...position }, velocity: { ...body.linvel() },
@@ -307,6 +323,7 @@ export class GigSession {
     this.restockedHayBales.clear();
     this.impacts.clear();
     this.courierPressure = 0;
+    this.courierShrink = null;
   }
   dispose(): void { this.clear(); for (const off of this.off.splice(0)) off(); }
 }

@@ -562,7 +562,12 @@ export class Game {
       const keepParcel = !!this.intent.tongue && !!held && run?.status === 'running' &&
         courier?.kind === 'rooftop-express' &&
         this.gigs.props.get(courier.parcelId)?.body.handle === held.handle;
+      const previousSize = this.goat.size;
       this.goat.resize(this.pendingSize, keepParcel);
+      if (keepParcel && previousSize > this.goat.size &&
+          this.goat.interactions.tongueBody?.handle === held.handle) {
+        this.gigs.noteCourierShrink(previousSize);
+      }
       this.water.track(this.goat.torso, { buoyancyScale: .7, paddleSpeed: 2.6 });
       this.lastY = this.goat.torso.translation().y;
       this.pendingSize = null;
