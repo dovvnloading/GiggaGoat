@@ -140,6 +140,12 @@ describe('Old Lighthouse painting rebuild', () => {
       expect(halo.material.depthWrite).toBe(false);
       expect(halo.material.depthTest).toBe(true);
       expect(halo.material.blending).toBe(THREE.AdditiveBlending);
+      const { data, width, height } = (halo.material.map as THREE.DataTexture).image;
+      const alphaAt = (x: number, y: number) => data[(y * width + x) * 4 + 3];
+      expect(alphaAt(0, 0)).toBe(0);
+      expect(alphaAt(width - 1, height - 1)).toBe(0);
+      expect(alphaAt(width / 2, height / 2)).toBeGreaterThan(200);
+      expect(alphaAt(width * .75, height / 2)).toBeLessThan(100);
       expect(lens.material.fragmentShader).toContain('mix(glass, fire, uGlow)');
       expect(lens.material.fragmentShader).toContain('#include <fog_fragment>');
       halo.material.map!.addEventListener('dispose', () => { haloDisposed = true; });
