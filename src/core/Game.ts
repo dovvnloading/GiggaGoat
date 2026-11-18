@@ -556,7 +556,13 @@ export class Game {
   private beforeTick(dt: number): void {
     if (this.pendingSize !== null && this.goat.size !== this.pendingSize) {
       this.water.untrack(this.goat.torso);
-      this.goat.resize(this.pendingSize);
+      const run = this.gigs.active;
+      const held = this.goat.interactions.tongueBody;
+      const courier = run?.setup.config;
+      const keepParcel = !!this.intent.tongue && !!held && run?.status === 'running' &&
+        courier?.kind === 'rooftop-express' &&
+        this.gigs.props.get(courier.parcelId)?.body.handle === held.handle;
+      this.goat.resize(this.pendingSize, keepParcel);
       this.water.track(this.goat.torso, { buoyancyScale: .7, paddleSpeed: 2.6 });
       this.lastY = this.goat.torso.translation().y;
       this.pendingSize = null;
@@ -577,7 +583,10 @@ export class Game {
       -Math.cos(cameraYaw) * mz + Math.sin(cameraYaw) * mx);
     const steep = Math.hypot(wish.x, wish.z) > .1 && this.isFacingWall(wish, goat);
     const head = goat.head.translation();
-    const hit = this.physics.raycast(head, add(forward(goat.locomotion.heading), V(0, -.10, 0)),
+    const courierAim = player && goat.size > 1 && input.tongue && !goat.interactions.isTongueAttached
+      ? this.rooftopParcelAim(goat) : undefined;
+    const hit = this.physics.raycast(courierAim ? goat.interactions.tongueOrigin : head,
+      courierAim ?? add(forward(goat.locomotion.heading), V(0, -.10, 0)),
       9 * goat.size, { predicate: collider => !goat.ownsBody(collider.parent()) });
     const prop = hit ? [...this.colliders.props].find(([, c]) => c.handle === hit.collider.handle) : undefined;
     const lickable = !!hit && (!prop || this.island.props.find(p => p.id === prop[0])?.lickable !== false);
@@ -605,11 +614,27 @@ export class Game {
       canSprint: commands.setSprint, canClimb: commands.setClimb,
     });
     this.water.setPaddle(goat.torso, wish);
-    this.executeCommands(commands, goat, player);
+    this.executeCommands(commands, goat, player, courierAim);
     if (player && input.graze && this.canGraze() &&
         this.gigs.active?.setup.config.kind === 'mow-down') {
       this.gigs.noteAbility({ type: 'eat' });
     }
+  }
+
+  /** The courier can lick the parcel below a grown goat's normal shallow aim.
+   * The usual first-hit ray still needs a clear path from the mouth. */
+  private rooftopParcelAim(goat: GoatRagdoll): Vec3 | undefined {
+    const run = this.gigs.active;
+    const course = run?.setup.config;
+    if (run?.status !== 'running' || course?.kind !== 'rooftop-express') return;
+    const parcel = this.gigs.props.get(course.parcelId);
+    if (!parcel || parcel.broken) return;
+    const target = parcel.body.translation();
+    const offset = sub(target, goat.torso.translation());
+    if (Math.hypot(offset.x, offset.y, offset.z) >= 5 * goat.size) return;
+    const facing = forward(goat.locomotion.heading);
+    if (facing.x * offset.x + facing.z * offset.z < Math.hypot(offset.x, offset.z) * .7) return;
+    return sub(target, goat.interactions.tongueOrigin);
   }
 
   /** Test terrain proximity (not an overlapping prop's zero-normal ray).
@@ -655,7 +680,8 @@ export class Game {
     for (const listener of this.visualCueListeners) listener(cue);
   }
 
-  private executeCommands(commands: AbilityCommands, g = this.goat, player = true): void {
+  private executeCommands(commands: AbilityCommands, g = this.goat, player = true,
+    tongueAim?: Vec3): void {
     if (commands.jump) {
       g.locomotion.requestJump();
       if (commands.jump.kind === 'wall-kick') {
@@ -726,7 +752,7 @@ export class Game {
     if (commands.tongue) {
       const cmd = commands.tongue;
       if (cmd.action === 'attach') {
-        if (g.interactions.attachTongue()) {
+        if (g.interactions.attachTongue(tongueAim)) {
           if (player) {
             this.lastTongueTime = this.physics.time;
             const body = g.interactions.tongueBody;

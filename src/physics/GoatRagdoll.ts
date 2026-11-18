@@ -166,10 +166,9 @@ export class GoatRagdoll {
   }
 
   /** Live size progression: rebuild joints/colliders, preserving heading and velocity. */
-  resize(size: GoatSize): void {
+  resize(size: GoatSize, keepDynamicTether = false): void {
     if (!GOAT_SIZES.includes(size)) throw new RangeError('Unsupported goat size');
     if (size === this.size) return;
-    this.interactions.detachTongue('replaced');
     const torso = this.torso;
     const position = torso.translation();
     const velocity = { ...torso.linvel() };
@@ -177,10 +176,17 @@ export class GoatRagdoll {
     const yaw = Math.atan2(2*(rotation.w*rotation.y+rotation.x*rotation.z),
       1-2*(rotation.y*rotation.y+rotation.z*rotation.z));
     const groundOrigin = add(position,V(0,-.92*this.size,0));
-    this.clearBodies();
-    this.size = size;
-    this.createBodies(groundOrigin,yaw);
-    for (const body of this.bodies) body.setLinvel(velocity,true);
+    const rebuild = () => {
+      this.clearBodies();
+      this.size = size;
+      this.createBodies(groundOrigin,yaw);
+      for (const body of this.bodies) body.setLinvel(velocity,true);
+    };
+    if (keepDynamicTether) this.interactions.rebuildHeadWithDynamicTether(rebuild);
+    else {
+      this.interactions.detachTongue('replaced');
+      rebuild();
+    }
   }
   private clearBodies(): void {
     for (const body of this.bodies) this.world.removeBody(body);

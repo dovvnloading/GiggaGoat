@@ -70,6 +70,39 @@ export class GoatInteractions {
   get tongueLength(): number | null { return this.tether?.length ?? null; }
   get tongueBody(): RigidBody | null { return this.tether?.target ?? null; }
   get tongueJoint(): ImpulseJoint | null { return this.tether?.joint ?? null; }
+  get tongueOrigin(): Vec3 {
+    const g = this.goat;
+    return worldPoint(g.head.translation(), g.head.rotation(), V(0, 0, -.2 * g.size));
+  }
+
+  /** Keep the same attachment point when an already-held parcel outlives the head body. */
+  rebuildHeadWithDynamicTether(rebuild: () => void): void {
+    const tether = this.tether;
+    if (!tether || tether.anchorBody || !tether.target.isDynamic()) {
+      this.detachTongue('replaced');
+      rebuild();
+      return;
+    }
+    const g = this.goat;
+    g.world.raw.removeImpulseJoint(tether.joint, true);
+    this.tether = null;
+    rebuild();
+
+    const headLocal = V(0, 0, -.2 * g.size);
+    const maxLength = this.tuning.tongueRange * g.size;
+    const headPoint = worldPoint(g.head.translation(), g.head.rotation(), headLocal);
+    const targetPoint = worldPoint(tether.target.translation(), tether.target.rotation(), tether.targetLocal);
+    const gap = distance(headPoint, targetPoint);
+    if (gap > maxLength) {
+      this.reelDirection = 0;
+      g.events.emit({ type: 'tongueDetach', goatId: g.id, time: g.world.time, reason: 'replaced' });
+      return;
+    }
+    const length = clamp(Math.max(tether.length, gap + .05 * g.size), .3 * g.size, maxLength);
+    const joint = g.world.raw.createImpulseJoint(
+      RAPIER.JointData.rope(length, headLocal, tether.targetLocal), g.head, tether.target, true);
+    this.tether = { ...tether, joint, headLocal, length, maxLength };
+  }
 
   private emitKnock(body: RigidBody, impulse: number): void {
     if (!body.isDynamic() || this.goat.ownsBody(body)) return;
@@ -132,7 +165,7 @@ export class GoatInteractions {
     if (this.tether) this.detachTongue('replaced');
     const s = g.size;
     const rayDirection = direction ?? add(forward(g.locomotion.heading),V(0,-.12,0));
-    const from = worldPoint(g.head.translation(),g.head.rotation(),V(0,0,-.2*s));
+    const from = this.tongueOrigin;
     const hit = g.world.raycast(from,rayDirection,this.tuning.tongueRange*s,{
       predicate:collider=>!g.ownsBody(collider.parent()),
     });

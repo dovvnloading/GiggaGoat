@@ -4,6 +4,7 @@ import { GigCatalog, GigDirector, GigGameplayBridge, type AbilityFact, type GigE
   type PropFact, type StyleFact } from '../gigs';
 import { RAPIER, collisionGroups, type PhysicsContact } from '../physics';
 import { heightAt, type PoiId } from '../world';
+import { ROOFTOP_DECK_PREFIX, ROOFTOP_SPAN_PREFIX, rooftopDecks } from '../world/rooftop-course';
 import type { Game } from './Game';
 import type { RooftopPose } from './Persistence';
 
@@ -24,6 +25,8 @@ export class GigSession {
   private readonly temporary = new Map<string, TemporaryProp>();
   private readonly restockedHayBales = new Map<string, RigidBody>();
   private readonly impacts = new Map<number, number>();
+  private readonly courierSupports = new Set<number>();
+  private courierPressure = 0;
   private readonly abilities: AbilityFact[] = [];
   private readonly style: StyleFact[] = [];
   private readonly off: Array<() => void> = [];
@@ -34,6 +37,18 @@ export class GigSession {
   constructor(game: Game, seed: string | number, snapshot?: GigSnapshot,
     bodies: GigBodySave[] = [], rooftopPose?: RooftopPose) {
     this.game = game;
+    const laneX = rooftopDecks(game.island.props)[0]?.transform.position.x;
+    for (const prop of game.island.props) {
+      if (prop.poiId !== 'downtown-bleatsville') continue;
+      const { position, rotationY } = prop.transform;
+      const alongLane = laneX !== undefined && (prop.kind === 'shop' || prop.kind === 'house') &&
+        Math.abs(position.x - laneX) <=
+        (prop.size.x * Math.abs(Math.cos(rotationY)) + prop.size.z * Math.abs(Math.sin(rotationY))) / 2;
+      if (!alongLane && !prop.id.startsWith(ROOFTOP_DECK_PREFIX) &&
+          !prop.id.startsWith(ROOFTOP_SPAN_PREFIX)) continue;
+      const collider = game.colliders.props.get(prop.id);
+      if (collider) this.courierSupports.add(collider.handle);
+    }
     this.catalog = new GigCatalog(game.island, seed);
     this.director = snapshot ? GigDirector.fromJSON(snapshot, this.catalog) : new GigDirector(this.catalog);
     this.bridge = new GigGameplayBridge(this.director, game.rules.wallet,
@@ -191,7 +206,24 @@ export class GigSession {
 
   noteAbility(fact: AbilityFact): void { this.abilities.push(fact); }
   private onContact(contact: PhysicsContact): void {
-    if (contact.type !== 'impact' || !this.active || this.active.status !== 'running') return;
+    if (contact.type !== 'impact') return;
+    const run = this.active;
+    if (run?.status !== 'running') return;
+    if (run.setup.config.kind === 'rooftop-express') {
+      const parcel = this.temporary.get(run.setup.config.parcelId)?.body.handle;
+      const goat = this.game.goat;
+      if (parcel !== undefined && goat.interactions.tongueBody?.handle === parcel) {
+        const a = contact.bodyA === parcel;
+        if (a || contact.bodyB === parcel) {
+          const otherBody = a ? contact.bodyB : contact.bodyA;
+          const otherCollider = a ? contact.colliderB : contact.colliderA;
+          if (this.courierSupports.has(otherCollider) ||
+              (otherBody !== null && goat.ownsBody(this.game.physics.raw.getRigidBody(otherBody)))) {
+            this.courierPressure += contact.impulse;
+          }
+        }
+      }
+    }
     for (const handle of [contact.bodyA, contact.bodyB]) {
       if (handle === null) continue;
       this.impacts.set(handle, (this.impacts.get(handle) ?? 0) + contact.impulse);
@@ -223,7 +255,14 @@ export class GigSession {
         if (entry?.descriptor.fragile) {
           const threshold = run.setup.config.kind === 'escort-the-gnome' ?
             run.setup.config.breakImpulse : 35;
-          if (impact >= threshold) entry.broken = true;
+          // The larger goat can load the rope and ramp heavily during an ordinary
+          // tow. Discount only that measured pressure, leaving other impacts,
+          // loose parcels and deliberate headbutts at the usual fragility.
+          const inCourierCarry = run.setup.config.kind === 'rooftop-express' && held === body.handle &&
+            !abilities.some(action => action.type === 'headbutt' || action.type === 'flop');
+          const pressure = inCourierCarry ? Math.min(impact, this.courierPressure) : 0;
+          const testedImpact = (impact - pressure) + pressure / (1 + 4 * this.game.goat.size ** 3);
+          if (testedImpact >= threshold) entry.broken = true;
         }
         props.push({ id, position: { ...position }, velocity: { ...body.linvel() },
           tilt: Math.acos(up), impact, heldByTongue: held === body.handle,
@@ -240,6 +279,7 @@ export class GigSession {
     this.latestPayout = awards.reduce((sum, award) => sum + award.coins, 0);
     if (events.some(event => ['gig.completed', 'gig.failed', 'gig.abandoned'].includes(event.type))) this.clear();
     this.impacts.clear();
+    this.courierPressure = 0;
   }
   saveBodies(): GigBodySave[] {
     const save = (id: string, body: RigidBody, broken: boolean): GigBodySave => ({
@@ -266,6 +306,7 @@ export class GigSession {
     for (const [id, body] of this.restockedHayBales) this.game.removeRestockedHayBale(id, body);
     this.restockedHayBales.clear();
     this.impacts.clear();
+    this.courierPressure = 0;
   }
   dispose(): void { this.clear(); for (const off of this.off.splice(0)) off(); }
 }
