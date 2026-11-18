@@ -291,6 +291,63 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
       await page.click('[data-action="play"]');
       await page.waitFor('document.querySelector(".gg-shell")?.hidden === true',
         'free roam to start');
+      page.phase = 'compact HUD geometry';
+      const compactHudIssues = () => {
+        const selectors = {
+          meter: '.gg-meter', score: '.gg-combo', map: '.gg-map-panel',
+          gig: '.gg-gig-card', clipboard: '.gg-gig-clipboard', stamina: '.gg-stamina',
+          tray: '.gg-hotbar', look: '.gg-hint', board: '.gg-board-hint',
+        };
+        const look = document.querySelector<HTMLElement>(selectors.look)!;
+        const board = document.querySelector<HTMLElement>(selectors.board)!;
+        const name = document.querySelector<HTMLElement>('[data-place]')!;
+        const original = { look: look.hidden, board: board.hidden, name: name.textContent };
+        const inside = (a: DOMRect, b: DOMRect) => a.left >= b.left - 1 &&
+          a.top >= b.top - 1 && a.right <= b.right + 1 && a.bottom <= b.bottom + 1;
+        try {
+          look.hidden = board.hidden = false;
+          name.textContent = 'DOWNTOWN BLEATSVILLE';
+          const boxes = Object.entries(selectors).map(([id, selector]) =>
+            [id, document.querySelector(selector)!.getBoundingClientRect()] as const);
+          const issues: string[] = [];
+          const viewport = new DOMRect(0, 0, innerWidth, innerHeight);
+          for (const [i, [id, rect]] of boxes.entries()) {
+            if (!inside(rect, viewport) || rect.width <= 0 || rect.height <= 0) {
+              issues.push(id + ' outside viewport');
+            }
+            for (const [other, b] of boxes.slice(i + 1)) {
+              if (id === 'gig' && other === 'clipboard') continue;
+              if (Math.min(rect.right, b.right) - Math.max(rect.left, b.left) > 1 &&
+                  Math.min(rect.bottom, b.bottom) - Math.max(rect.top, b.top) > 1) {
+                issues.push(id + ' overlaps ' + other);
+              }
+            }
+          }
+          const text = document.createRange();
+          text.selectNodeContents(name);
+          if (!inside(text.getBoundingClientRect(), name.parentElement!.getBoundingClientRect())) {
+            issues.push('district name exceeds minimap plaque');
+          }
+          return issues;
+        } finally {
+          look.hidden = original.look;
+          board.hidden = original.board;
+          name.textContent = original.name;
+        }
+      };
+      try {
+        for (const [width, height] of [[1024, 576], [540, 360]] as const) {
+          await page.send('Emulation.setDeviceMetricsOverride',
+            { width, height, deviceScaleFactor: 1, mobile: false });
+          await page.waitFor(`innerWidth === ${width} && innerHeight === ${height}`,
+            `${width}×${height} viewport`);
+          expect(await page.evaluate<string[]>('(' + compactHudIssues.toString() + ')()'),
+            `${width}×${height}`).toEqual([]);
+        }
+      } finally {
+        await page.send('Emulation.clearDeviceMetricsOverride');
+      }
+      page.phase = 'free roam / gig board';
       const readHudVisibility = '[".gg-hotbar",".gg-hint",".gg-meter",".gg-combo",".gg-map-panel",' +
         '".gg-gig-card",".gg-stamina"].map(s => getComputedStyle(document.querySelector(s)).visibility)';
       await page.evaluate('(() => {' +
