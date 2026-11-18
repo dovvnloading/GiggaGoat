@@ -101,7 +101,7 @@ describe('live free-roam HUD DOM', () => {
       const hotbar = root.querySelector<ElementStub>('[data-hotbar]')!;
       expect(controls.textContent).toBe('B · BUILD');
 
-      hud.setBuildPreview({ valid: false, reason: 'no-support' }, false);
+      hud.setBuildPreview({ valid: false, reason: 'no-support' }, 'keyboard-mouse');
       expect(hotbar.dataset.active).toBe('true');
       expect(controls.textContent).toBe('1–4 SELECT · LMB PLACE · B EXIT');
       expect(placement.hidden).toBe(false);
@@ -110,15 +110,21 @@ describe('live free-roam HUD DOM', () => {
 
       hud.setBuildPreview({ valid: true, snapped: {
         type: 'floor', cell: { x: 0, y: 0, z: 0 }, rotation: 0,
-      } }, true);
+      } }, 'gamepad');
       expect(controls.textContent).toBe('D-PAD SELECT · RT PLACE · Y EXIT');
       expect(placement.textContent).toBe('READY');
       expect(placement.dataset.ready).toBe('true');
+      expect(root.querySelectorAll<ElementStub>('[data-build-key]').map(node => node.textContent))
+        .toEqual(['↑', '→', '↓', '←']);
 
-      hud.setBuildPreview(null, true);
+      hud.setBuildPreview(null, 'gamepad');
       expect(hotbar.dataset.active).toBe('false');
       expect(controls.textContent).toBe('Y · BUILD');
       expect(placement.hidden).toBe(true);
+      hud.setBuildPreview(null, 'keyboard-mouse');
+      expect(controls.textContent).toBe('B · BUILD');
+      expect(root.querySelectorAll<ElementStub>('[data-build-key]').map(node => node.textContent))
+        .toEqual(['1', '2', '3', '4']);
     } finally {
       hud.dispose();
     }
@@ -193,7 +199,7 @@ describe('live free-roam HUD DOM', () => {
       expect(css.match(/\.gg-prompts\{([^}]*)\}/)?.[1]).toContain('flex-direction:column');
 
       for (const [name, message] of [
-        ['gg-board-hint', 'GOAT GIGS · GAMEPAD X'],
+        ['gg-board-hint', 'GOAT GIGS'],
         ['gg-hint', 'MOUSE / IJKL LOOK · C CAPTURE MOUSE'],
       ] as const) {
         expect(root.querySelector('.' + name)).not.toBeNull();
@@ -220,20 +226,33 @@ describe('live free-roam HUD DOM', () => {
     }
   });
 
-  it('gives the board prompt priority and restores the look hint when leaving', () => {
+  it('shows the active device and gives the board prompt priority for either input', () => {
     const head = new ElementStub();
     vi.stubGlobal('document', { head, createElement: () => new ElementStub() });
     const host = new ElementStub();
     const hud = new GameHud(host as unknown as HTMLElement);
     try {
-      const hint = host.children[0]!.querySelector<ElementStub>('[data-hint]')!;
+      const root = host.children[0]!;
+      const hint = root.querySelector<ElementStub>('[data-hint]')!;
+      const copy = root.querySelector<ElementStub>('[data-hint-copy]')!;
+      const boardKey = root.querySelector<ElementStub>('[data-board-key]')!;
       expect(hint.hidden).toBe(false);
       hud.setPointerLockHint(true);
       expect(hint.hidden).toBe(true);
       hud.setPointerLockHint(false, true);
       expect(hint.hidden).toBe(true);
+      expect(boardKey.textContent).toBe('E');
+      hud.setPointerLockHint(false, true, 'gamepad');
+      expect(hint.hidden).toBe(true);
+      expect(boardKey.textContent).toBe('X');
+      hud.setPointerLockHint(true, false, 'gamepad');
+      expect(hint.hidden).toBe(false);
+      expect(copy.textContent).toBe('RIGHT STICK TO LOOK');
+      expect(root.querySelector<ElementStub>('[data-hint-key]')?.textContent).toBe('RS');
       hud.setPointerLockHint(false);
       expect(hint.hidden).toBe(false);
+      expect(boardKey.textContent).toBe('E');
+      expect(copy.textContent).toBe('MOUSE / IJKL LOOK · C CAPTURE MOUSE');
       expect(head.children[0]!.textContent).toContain('.gg-ui [hidden]{display:none!important}');
     } finally {
       hud.dispose();

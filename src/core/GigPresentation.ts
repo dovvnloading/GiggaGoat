@@ -1,5 +1,6 @@
 import { HAY_HAUL_TAG_RADIUS, type GigRun, type Point } from '../gigs';
 import type { Game } from './Game';
+import type { InputDevice } from './GameInput';
 import { projectHudMap } from './GameHudState';
 import { HUD_SPRITES, hudSpriteUrl } from './HudSprites';
 
@@ -10,7 +11,8 @@ export interface HayHaulGuidance {
 }
 
 /** Follow the nearest unfinished live bale until a registered grab switches the goal to the barn. */
-export function hayHaulGuidance(game: Game, run: GigRun | null): HayHaulGuidance | null {
+export function hayHaulGuidance(game: Game, run: GigRun | null,
+  device: InputDevice = 'keyboard-mouse'): HayHaulGuidance | null {
   if (run?.status !== 'running' || run.setup.config.kind !== 'hay-haul' || game.party.match) return null;
 
   const config = run.setup.config;
@@ -44,7 +46,8 @@ export function hayHaulGuidance(game: Game, run: GigRun | null): HayHaulGuidance
   return {
     kind: 'pickup',
     position: nearest,
-    task: inRange ? 'Hold RMB / LT to lick' : 'Find a bale on the map',
+    task: inRange ? (device === 'gamepad' ? 'Hold LB or LT to lick' : 'Hold RMB to lick') :
+      'Find a bale on the map',
   };
 }
 

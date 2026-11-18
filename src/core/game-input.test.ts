@@ -164,6 +164,76 @@ describe('game camera input', () => {
     expect(input.sample(1 / 60, false)).toMatchObject({ interact: true, toggleBuild: false });
   });
 
+  it('keeps the hints on keyboard and mouse for connected pads with idle stick drift', () => {
+    const { input, getGamepads } = setup();
+    getGamepads.mockReturnValue([{ connected: true, axes: [.13, -.13, .21, -.15], buttons: [] }]);
+    input.sample(1 / 60, false);
+    expect(input.yaw).toBeGreaterThan(0);
+    expect(input.device).toBe('keyboard-mouse');
+  });
+
+  it('switches for actual pad stick movement without letting a held stick override new keys', () => {
+    const { input, key, getGamepads } = setup();
+    const axes = [0, 0, .7, 0];
+    getGamepads.mockReturnValue([{ connected: true, axes, buttons: [] }]);
+    input.sample(1 / 60, false);
+    expect(input.device).toBe('gamepad');
+    key('keydown', 'KeyZ');
+    key('keydown', 'KeyW', { repeat: true });
+    key('keydown', 'KeyW', { ctrlKey: true });
+    expect(input.device).toBe('gamepad');
+
+    key('keydown', 'KeyW');
+    expect(input.sample(1 / 60, false).moveZ).toBe(1);
+    expect(input.device).toBe('keyboard-mouse');
+
+    axes[2] = .69;
+    input.sample(1 / 60, false);
+    expect(input.device).toBe('keyboard-mouse');
+    axes[2] = -.8;
+    input.sample(1 / 60, false);
+    expect(input.device).toBe('gamepad');
+    getGamepads.mockReturnValue([]);
+    input.sample(1 / 60, false);
+    expect(input.device).toBe('keyboard-mouse');
+  });
+
+  it('tracks new pad buttons, gameplay mouse buttons and existing build and board bindings', () => {
+    const { input, press, release, getGamepads } = setup();
+    const buttons = Array.from({ length: 16 }, () => ({ pressed: false, touched: false, value: 0 }));
+    getGamepads.mockReturnValue([{ connected: true, axes: [], buttons }]);
+    buttons[3]!.pressed = true;
+    expect(input.sample(1 / 60, false).toggleBuild).toBe(true);
+    expect(input.device).toBe('gamepad');
+    press(2);
+    expect(input.sample(1 / 60, true)).toMatchObject({ tongue: true, toggleBuild: false });
+    expect(input.device).toBe('keyboard-mouse');
+    release(2);
+
+    buttons[13]!.pressed = true;
+    expect(input.sample(1 / 60, true).buildPiece).toBe('ramp');
+    expect(input.device).toBe('gamepad');
+    buttons[3]!.pressed = buttons[13]!.pressed = false;
+    buttons[2]!.pressed = true;
+    expect(input.sample(1 / 60, false)).toMatchObject({ interact: true, graze: true });
+    expect(input.sample(1 / 60, false).interact).toBe(false);
+    expect(input.device).toBe('gamepad');
+  });
+
+  it('switches after cumulative canvas mouse look and keeps tiny reversals on the gamepad', () => {
+    const { input, move, getGamepads } = setup();
+    getGamepads.mockReturnValue([{ connected: true, axes: [.75, 0, 0, 0], buttons: [] }]);
+    input.sample(1 / 60, false);
+    move(100, 50);
+    move(101, 50);
+    move(100, 50);
+    expect(input.device).toBe('gamepad');
+    move(102, 50);
+    move(104, 50);
+    expect(input.device).toBe('keyboard-mouse');
+    expect(input.yaw).toBeCloseTo(.0104);
+  });
+
   it('requests pointer lock on C only during active gameplay and ignores repeat and shortcuts', () => {
     const { requestPointerLock, input, key } = setup();
     input.setActive(false);

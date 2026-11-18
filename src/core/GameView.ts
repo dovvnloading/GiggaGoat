@@ -403,7 +403,7 @@ export class GameView {
         }
       }
     }
-    this.hayHaul = hayHaulGuidance(this.game, run);
+    this.hayHaul = hayHaulGuidance(this.game, run, this.input.device);
     if (this.hayHaulPickup) {
       this.hayHaulPickup.visible = this.hayHaul?.kind === 'pickup';
       if (this.hayHaul?.kind === 'pickup') {
@@ -608,7 +608,7 @@ export class GameView {
     }
     const preview = this.paused ? null : this.game.buildPreview(this.input.yaw);
     this.buildGhost.update(preview);
-    this.hud.setBuildPreview(preview?.validation ?? null, this.input.buildWithGamepad);
+    this.hud.setBuildPreview(preview?.validation ?? null, this.input.device);
   }
 
   private updateDebris(alpha: number): void {
@@ -663,7 +663,8 @@ export class GameView {
 
   private updateHud(): void {
     this.hud.update(this.game, this.fps, this.simMs, this.input.debugVisible,
-      document.pointerLockElement === this.renderer.domElement, this.perfStats, this.hayHaul);
+      document.pointerLockElement === this.renderer.domElement, this.perfStats, this.hayHaul,
+      this.input.device);
   }
 
   private updateCamera(alpha: number, dt: number): void {

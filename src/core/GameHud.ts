@@ -1,6 +1,7 @@
 import type { Game } from './Game';
 import type { PlacementFailure, Validation } from '../gameplay';
 import { HUD_PIECES, deriveHudState, projectHudMap } from './GameHudState';
+import { PAD_BUILD_BINDINGS, type InputDevice } from './GameInput';
 import { buildArtwork, goatArtwork, renderHudMinimap } from './HudArtwork';
 import { fitGigCardText } from './GigCardLayout';
 import { createHayHaulMapMarker, hayHaulMapPoint, type HayHaulGuidance } from './GigPresentation';
@@ -506,10 +507,14 @@ export class GameHud {
   private readonly buildPlacement: HTMLElement;
   private buildControlsKey = '';
   private readonly slots: HTMLElement[];
+  private readonly buildKeys: HTMLElement[];
   private readonly quantities: Array<HTMLElement | null>;
   private readonly supplies: Record<'hay' | 'wood' | 'scrap', HTMLElement>;
   private readonly stageElements: HTMLElement[];
   private readonly hint: HTMLElement;
+  private readonly hintKey: HTMLElement;
+  private readonly hintCopy: HTMLElement;
+  private inputDevice: InputDevice = 'keyboard-mouse';
   private readonly debug: HTMLElement;
   private readonly wallet: HTMLElement;
   private readonly gigCard: HTMLElement;
@@ -519,6 +524,7 @@ export class GameHud {
   private readonly gigTask: HTMLElement;
   private readonly gigDetail: HTMLElement;
   private readonly board: HTMLElement;
+  private readonly boardKey: HTMLElement;
   private readonly hotbar: HTMLElement;
 
   constructor(host: HTMLElement) {
@@ -538,7 +544,7 @@ export class GameHud {
       '<div class="gg-slot" data-sprite="' + HUD_SPRITES.hotbarSlot +
       '" data-sprite-selected="' + HUD_SPRITES.hotbarSlotSelected +
       '" data-slot="' + piece.type + '" title="' + piece.label + '">' +
-      '<span class="gg-slot-key" data-sprite="' + HUD_SPRITES.keyBadge + '">' +
+      '<span class="gg-slot-key" data-build-key data-sprite="' + HUD_SPRITES.keyBadge + '">' +
       piece.key + '</span>' + buildArtwork(piece.type) +
       '<span class="gg-slot-name">' + piece.label + '</span>' +
       '<span class="gg-slot-count" data-quantity>×0</span></div>').join('');
@@ -601,10 +607,10 @@ export class GameHud {
       '<span>SCRAP</span><b data-supply-scrap>0</b></div></div></div>' +
       '<div class="gg-hotbar-charge"><div data-charge></div></div></section>' +
       '<div class="gg-prompts"><div class="gg-board-hint" data-sprite="' + HUD_SPRITES.promptPill +
-      '" data-board-hint hidden><span class="gg-prompt-key" data-sprite="' +
-      HUD_SPRITES.keyBadge + '">E</span><span class="gg-prompt-copy">GOAT GIGS · GAMEPAD X</span></div>' +
+      '" data-board-hint hidden><span class="gg-prompt-key" data-board-key data-sprite="' +
+      HUD_SPRITES.keyBadge + '">E</span><span class="gg-prompt-copy">GOAT GIGS</span></div>' +
       '<div class="gg-hint" data-sprite="' + HUD_SPRITES.promptPill +
-      '" data-hint><span class="gg-prompt-key gg-prompt-mouse" data-sprite="' +
+      '" data-hint><span class="gg-prompt-key gg-prompt-mouse" data-hint-key data-sprite="' +
       HUD_SPRITES.keyBadge + '" aria-hidden="true">🖱</span>' +
       '<span class="gg-prompt-copy" data-hint-copy>MOUSE / IJKL LOOK · C CAPTURE MOUSE</span></div></div>' +
       '<div class="gg-debug" data-debug hidden></div>';
@@ -633,14 +639,16 @@ export class GameHud {
     this.charge = get('charge'); this.mode = get('mode');
     this.buildStatus = get('build-status'); this.buildPlacement = get('build-placement');
     this.slots = Array.from(this.root.querySelectorAll<HTMLElement>('[data-slot]'));
+    this.buildKeys = Array.from(this.root.querySelectorAll<HTMLElement>('[data-build-key]'));
     this.quantities = this.slots.map(element => element.querySelector<HTMLElement>('[data-quantity]'));
     this.supplies = {
       hay: get('supply-hay'), wood: get('supply-wood'), scrap: get('supply-scrap'),
     };
-    this.hint = get('hint'); this.debug = get('debug'); this.wallet = get('wallet');
+    this.hint = get('hint'); this.hintKey = get('hint-key'); this.hintCopy = get('hint-copy');
+    this.debug = get('debug'); this.wallet = get('wallet');
     this.gigCard = get('gig-card'); this.gigCheckbox = get('gig-checkbox');
     this.gigTitle = get('gig-title'); this.gigTask = get('gig-task');
-    this.gigDetail = get('gig-detail'); this.board = get('board-hint');
+    this.gigDetail = get('gig-detail'); this.board = get('board-hint'); this.boardKey = get('board-key');
     this.hotbar = get('hotbar');
   }
 
@@ -733,7 +741,8 @@ export class GameHud {
 
 
   update(game: Game, fps: number, stepMilliseconds: number, debugVisible: boolean,
-    pointerLocked: boolean, perf?: FramePerformance, hayHaul: HayHaulGuidance | null = null): void {
+    pointerLocked: boolean, perf?: FramePerformance, hayHaul: HayHaulGuidance | null = null,
+    device: InputDevice = 'keyboard-mouse'): void {
     const rules = game.rules;
     const inventory = rules.inventory.all;
     const activeGig = game.gigs.active;
@@ -791,7 +800,8 @@ export class GameHud {
       element.classList.toggle('is-empty', slot.available === 0);
       const count = this.quantities[i];
       if (count) count.textContent = '×' + slot.available;
-      element.title = slot.label + ' · ' + slot.available + ' can be built now · key ' + slot.key;
+      const binding = device === 'gamepad' ? PAD_BUILD_BINDINGS[slot.type].label : 'key ' + slot.key;
+      element.title = slot.label + ' · ' + slot.available + ' can be built now · ' + binding;
     }
     for (const material of ['hay', 'wood', 'scrap'] as const) {
       this.supplies[material].textContent = String(inventory[material]);
@@ -810,7 +820,7 @@ export class GameHud {
       this.gigLayoutKey = gigLayoutKey;
     }
     this.board.hidden = !boardInRange;
-    this.setPointerLockHint(pointerLocked, boardInRange);
+    this.setPointerLockHint(pointerLocked, boardInRange, device);
     this.debug.hidden = !debugVisible;
     if (debugVisible) this.debug.textContent = 'F3 · PERFORMANCE\n' +
       'FPS: ' + (perf?.fps ?? fps).toFixed(0) + '\n' +
@@ -825,12 +835,17 @@ export class GameHud {
       'TICK: ' + game.physics.stepCount;
   }
 
-  setBuildPreview(validation: Validation | null, gamepad: boolean): void {
+  setBuildPreview(validation: Validation | null, device: InputDevice): void {
     const state = validation === null ? 'idle' : validation.valid ? 'ready' : validation.reason;
-    const key = state + ':' + gamepad;
+    const key = state + ':' + device;
     if (key === this.buildControlsKey) return;
     this.buildControlsKey = key;
 
+    const gamepad = device === 'gamepad';
+    this.buildKeys.forEach((badge, i) => {
+      const piece = HUD_PIECES[i]!;
+      badge.textContent = gamepad ? PAD_BUILD_BINDINGS[piece.type].key : piece.key;
+    });
     this.hotbar.dataset.active = String(validation !== null);
     this.buildStatus.textContent = validation
       ? (gamepad ? 'D-PAD SELECT · RT PLACE · Y EXIT' : '1–4 SELECT · LMB PLACE · B EXIT')
@@ -848,9 +863,18 @@ export class GameHud {
     this.buildPlacement.textContent = validation.valid ? 'READY' : reasons[validation.reason];
   }
 
-  /** Preserve the CSS flex row when unlocked; hidden hides it under pointer lock. */
-  setPointerLockHint(pointerLocked: boolean, boardInRange = false): void {
-    this.hint.hidden = pointerLocked || boardInRange;
+  setPointerLockHint(pointerLocked: boolean, boardInRange = false,
+    device: InputDevice = 'keyboard-mouse'): void {
+    const gamepad = device === 'gamepad';
+    if (device !== this.inputDevice) {
+      this.inputDevice = device;
+      this.hintKey.className = gamepad ? 'gg-prompt-key' : 'gg-prompt-key gg-prompt-mouse';
+      this.hintKey.textContent = gamepad ? 'RS' : '🖱';
+      this.hintCopy.textContent = gamepad ? 'RIGHT STICK TO LOOK' : 'MOUSE / IJKL LOOK · C CAPTURE MOUSE';
+      this.boardKey.textContent = gamepad ? 'X' : 'E';
+    }
+    const hideLookHint = boardInRange || (pointerLocked && !gamepad);
+    if (this.hint.hidden !== hideLookHint) this.hint.hidden = hideLookHint;
   }
 
   setVisible(visible: boolean): void { this.root.style.display = visible ? 'block' : 'none'; }
