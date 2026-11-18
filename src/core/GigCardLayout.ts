@@ -19,10 +19,6 @@ export function fitGigCardText(card: HTMLElement): void {
     element.style.removeProperty('font-size');
   }
 
-  // Portrait uses normal flow with a reserved footer. Do not shrink its type
-  // or force two long footer labels onto the same line.
-  if (getComputedStyle(paper).position !== 'absolute') return;
-
   const shrink = (element: HTMLElement, minimum: number): boolean => {
     const current = Number.parseFloat(getComputedStyle(element).fontSize);
     if (!Number.isFinite(current) || current <= minimum + 0.05) return false;

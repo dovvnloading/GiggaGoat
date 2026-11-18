@@ -1,5 +1,5 @@
 import type { Game } from './Game';
-import { TUNING, type PlacementFailure, type Validation } from '../gameplay';
+import type { PlacementFailure, Validation } from '../gameplay';
 import { HUD_PIECES, deriveHudState, projectHudMap } from './GameHudState';
 import { buildArtwork, goatArtwork, renderHudMinimap } from './HudArtwork';
 import { fitGigCardText } from './GigCardLayout';
@@ -261,90 +261,6 @@ const CSS = `
  .gg-slot{border-width:5px;border-image-width:5px}
  .gg-slot-key{width:17px;height:18px;border-width:4px;border-image-width:4px}
 }
-@media (max-width:760px) and (orientation:portrait){
- .gg-ui{
-  --gg-portrait-meter-width:min(53vw,244px);
-  --gg-portrait-meter-height:calc(var(--gg-portrait-meter-width) * .51);
-  --gg-portrait-map-width:clamp(88px,min(29vw,15vh),143px);
-  --gg-portrait-left-width:clamp(110px,35vw,188px);
-  --gg-portrait-score-height:calc(var(--gg-portrait-left-width) * .47);
-  --gg-portrait-second-row:calc(18px + max(var(--gg-portrait-meter-height),var(--gg-portrait-map-width) * 337 / 311));
- }
- .gg-meter{left:8px;top:8px;width:var(--gg-portrait-meter-width);height:var(--gg-portrait-meter-height)}
- .gg-meter-label{font-size:clamp(10px,2.7vw,14px)}
- .gg-meter-caption{
-  top:58%;height:14.8%;left:6%;right:5.8%;display:grid;place-items:center;
-  color:#fff9db;font-size:clamp(9px,2.65vw,12px);letter-spacing:0;font-variant-numeric:tabular-nums;text-shadow:none
- }
- .gg-meter-caption :is(.gg-meter-tagline,.gg-meter-separator,[data-tier]){display:none}
- .gg-meter-caption [data-meter]{display:block;padding:0 4px;border-radius:6px;background:#301f33db}
- .gg-map-panel{top:8px;right:8px;width:var(--gg-portrait-map-width)}
- .gg-map-location{
-  left:8%;right:8%;bottom:4.3%;height:15%;padding-inline:1px;display:flex;align-items:center;justify-content:center;
-  white-space:normal;text-align:center;text-wrap:balance;font-size:clamp(7px,2.1vw,10px);line-height:1.04;letter-spacing:0
- }
- .gg-combo{
-  left:8px;top:var(--gg-portrait-second-row);width:var(--gg-portrait-left-width);
-  height:var(--gg-portrait-score-height);transform:none
- }
- .gg-combo-title{font-size:clamp(10px,2.75vw,15px);text-shadow:1px 1px #682a46,2px 2px #fff2a4}
- .gg-combo-count{font-size:clamp(6px,1.52vw,8px)}
- .gg-score{font-size:clamp(14px,3.8vw,21px);line-height:1}
- .gg-score-caption{left:7%;right:16%;font-size:clamp(5.5px,1.55vw,7px);letter-spacing:0}
- /* Give the copy its own rows and let this card grow with the objective. */
- .gg-gig-card{
-  right:8px;top:var(--gg-portrait-second-row);width:calc(100% - var(--gg-portrait-left-width) - 24px);
-  height:auto;display:grid;grid-template-rows:auto 1fr auto;align-content:start;
-  border:2px solid #dca354;border-radius:13px;overflow:hidden;
-  background:linear-gradient(140deg,#fff4d9,#efd9ae);box-shadow:0 3px 0 #643628,0 5px 8px #281b4860
- }
- .gg-gig-card::before{content:none}
- .gg-gig-card :is(.gg-gig-checkbox,.gg-gig-checkbox-mask){display:none}
- .gg-gig-header{
-  position:static;display:block;height:auto;padding:4px 8px;border-bottom:1px solid #dca354;
-  background:#643928;color:#ffe194;font-size:clamp(11px,2.8vw,14px);line-height:1.15;
-  letter-spacing:.4px;-webkit-text-stroke:0;text-shadow:none
- }
- .gg-gig-paper{
-  position:static;display:grid;gap:3px;min-height:52px;
-  padding:7px 8px 6px;align-content:start
- }
- .gg-gig-title{font-size:clamp(10px,2.6vw,13px)}
- .gg-gig-task{font-size:clamp(12px,3.1vw,15px)}
- .gg-gig-detail{font-size:clamp(10px,2.6vw,12px)}
- .gg-gig-footer{
-  position:static;height:auto;min-height:23px;margin:0 8px;padding:4px 0;flex-wrap:wrap;row-gap:2px;
-  border-top:1px solid #b88658;white-space:normal;font-size:clamp(9px,2.3vw,11px);line-height:1.15
- }
- .gg-gig-footer :is(.gg-gig-wallet,[data-mode]){min-width:0;flex-shrink:1;overflow-wrap:anywhere}
- .gg-coin{width:12px;height:12px}
- .gg-stamina{
-  position:absolute;left:8px;top:calc(var(--gg-portrait-second-row) + var(--gg-portrait-score-height) + 8px);
-  bottom:auto;width:var(--gg-portrait-left-width);height:34px;aspect-ratio:auto;border:1px solid #d5a15c;
-  border-radius:9px;background:#352b3c;filter:none;text-shadow:none
- }
- .gg-stamina-progress{
-  inset:auto 6px 5px;height:4px;border-radius:4px;--gg-portrait-stamina-color:#a2ed57;
-  background:linear-gradient(90deg,var(--gg-portrait-stamina-color) 0 var(--gg-stamina,100%),#66536a var(--gg-stamina,100%) 100%);
-  mask:none;-webkit-mask:none
- }
- .gg-stamina-inner{inset:4px 6px auto;display:flex;flex-direction:row;justify-content:space-between;gap:2px}
- .gg-stamina-inner .gg-hoof{display:none}
- .gg-stamina-label,.gg-stamina-value{margin:0;font-size:clamp(9px,2.55vw,11px);line-height:1.15;transform:none;text-shadow:none}
- .gg-stamina-value{font-variant-numeric:tabular-nums;white-space:nowrap}
- .gg-stamina[data-low="true"] .gg-stamina-progress{--gg-portrait-stamina-color:#ff926f}
- .gg-stamina[data-low="true"] .gg-stamina-label::after{content:" LOW";color:#ffac93}
- .gg-prompts{
-  left:8px;top:calc(var(--gg-portrait-second-row) + var(--gg-portrait-score-height) + 50px);
-  width:var(--gg-portrait-left-width);transform:none;align-items:stretch;gap:5px
- }
- .gg-board-hint,.gg-hint{
-  width:100%;min-height:36px;gap:4px;flex-wrap:nowrap;padding:0 3px;
-  border-width:6px;border-image-width:6px;font-size:clamp(9px,2.5vw,11px)
- }
- .gg-prompt-copy{min-width:0;overflow-wrap:anywhere}
- .gg-hotbar{width:min(calc(100% - 16px),420px);height:clamp(82px,24vw,105px);bottom:max(8px,env(safe-area-inset-bottom))}
-}
 .gg-build-controls{
  position:absolute;bottom:100%;left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100% - 12px);
  display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:1px 8px;min-height:25px;padding:3px 9px;
@@ -441,8 +357,8 @@ export class GameHud {
       '<div class="gg-meter-track"><div class="gg-meter-fill" data-fill></div>' +
       '<div class="gg-meter-ticks"></div><div class="gg-meter-arrow" data-needle></div></div>' +
       '<div class="gg-meter-stage-labels">' + stageLabels + '</div>' +
-      '<div class="gg-meter-caption"><span class="gg-meter-tagline">CHAOS MAKES YOU BIGGER</span>' +
-      '<span><b data-tier>KID</b><span class="gg-meter-separator"> · </span><b data-meter>0 / 100</b></span></div></section>' +
+      '<div class="gg-meter-caption"><span>CHAOS MAKES YOU BIGGER</span>' +
+      '<span><b data-tier>KID</b> · <b data-meter>0 / 100</b></span></div></section>' +
       '<section class="gg-combo" data-sprite="' + HUD_SPRITES.scoreStarburst +
       '" aria-label="Chaos combo and score">' +
       '<div class="gg-combo-title" data-combo-title>GIGGA-GOAT!</div>' +
@@ -642,7 +558,6 @@ export class GameHud {
     this.updateMap(game, state.location, hayHaul);
 
     this.stamina.style.setProperty('--gg-stamina', state.stamina.toFixed(2) + '%');
-    this.stamina.dataset.low = String(state.stamina < TUNING.stamina.minStart);
     this.staminaNumber.textContent = Math.floor(state.stamina) + ' / 100';
     this.charge.style.width = state.headbutt.toFixed(2) + '%';
     this.mode.textContent = state.mode;
