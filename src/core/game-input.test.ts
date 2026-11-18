@@ -4,7 +4,10 @@ import { PLAY_CAMERA_PITCH } from './GoatCamera';
 
 function setup() {
   const requestPointerLock = vi.fn<() => Promise<void> | void>().mockResolvedValue(undefined);
-  const canvas = Object.assign(new EventTarget(), { requestPointerLock });
+  const canvas = Object.assign(new EventTarget(), {
+    requestPointerLock,
+    getBoundingClientRect: () => ({ left: 0, right: 800, top: 0, bottom: 500 }),
+  });
   const doc = Object.assign(new EventTarget(), {
     pointerLockElement: null as EventTarget | null,
     exitPointerLock: vi.fn(),
@@ -53,6 +56,43 @@ describe('game camera input', () => {
     expect(input.pitch).toBeCloseTo(PLAY_CAMERA_PITCH - .105);
     expect(input.sample(1 / 60, false)).toMatchObject({ chargeHeadbutt: false, tongue: false });
     expect(input.sample(1 / 60, true).placeBuild).toBe(false);
+  });
+
+  it('continues turning at either edge when an unlocked cursor runs out of space', async () => {
+    const { canvas, doc, requestPointerLock, input, move } = setup();
+    requestPointerLock.mockRejectedValue(new DOMException('Wrong document', 'WrongDocumentError'));
+    await input.requestPointerLock();
+
+    move(720, 250);
+    move(799, 250);
+    const right = input.yaw;
+    for (let frame = 0; frame < 30; frame++) input.sample(1 / 60, false);
+    expect(input.yaw - right).toBeGreaterThan(.8);
+
+    move(600, 250);
+    const inside = input.yaw;
+    input.sample(.2, false);
+    expect(input.yaw).toBe(inside);
+
+    move(1, 250);
+    const left = input.yaw;
+    for (let frame = 0; frame < 30; frame++) input.sample(1 / 60, false);
+    expect(input.yaw - left).toBeLessThan(-.8);
+
+    canvas.dispatchEvent(new Event('mouseleave'));
+    const outside = input.yaw;
+    input.sample(.2, false);
+    expect(input.yaw).toBe(outside);
+
+    move(710, 250);
+    move(799, 250);
+    doc.pointerLockElement = canvas;
+    doc.dispatchEvent(new Event('pointerlockchange'));
+    const locked = input.yaw;
+    input.sample(.2, false);
+    expect(input.yaw).toBe(locked);
+    move(799, 250, 0, 15, 0);
+    expect(input.yaw - locked).toBeCloseTo(.039);
   });
 
   it('restarts hover tracking after leaving the canvas, blur, or a menu transition', () => {

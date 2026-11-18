@@ -299,7 +299,11 @@ export class GameMenu {
         return;
       }
       const button = target.closest<HTMLButtonElement>('[data-action]');
-      if (button) this.action(button.dataset.action ?? '');
+      if (button) {
+        const mouseClick = event.isTrusted && event.detail > 0 &&
+          (!('pointerType' in event) || event.pointerType === 'mouse');
+        this.action(button.dataset.action ?? '', mouseClick);
+      }
     });
     // Pointer, native keyboard focus, and gamepad .focus() all use the same PNG states.
     this.root.addEventListener('focusin', event =>
@@ -396,20 +400,20 @@ export class GameMenu {
     }
     this.render();
   }
-  private resume(): void {
+  private resume(mouseClick = false): void {
     this.setScreen('playing');
-    // Chrome rejects immediate pointer-lock reacquisition after Escape with a
-    // SecurityError. Resume with unlocked mouse look so C can request capture.
-    if (!this.pointerLockNeedsUserRequest) {
+    // Escape can release capture without delivering a keydown. A subsequent
+    // deliberate mouse click on a menu action supplies a new capture gesture.
+    if (mouseClick || !this.pointerLockNeedsUserRequest) {
       void this.view.input.requestPointerLock();
     }
   }
-  private action(key: string): void {
+  private action(key: string, mouseClick = false): void {
     if (key !== 'back') this.audio?.queueCue({ sound: key === 'pause' ? 'ui-back' : 'ui-confirm' });
     if (key === 'play') {
       this.view.alignCameraForPlay();
-      this.resume();
-    } else if (key === 'resume') this.resume();
+      this.resume(mouseClick);
+    } else if (key === 'resume') this.resume(mouseClick);
     else if (key === 'pause') this.setScreen('pause');
     else if (key === 'title') {
       this.game.party.returnToFreeRoam();
@@ -423,19 +427,19 @@ export class GameMenu {
       this.settingsReturn = this.screen;
       this.settingsTab = 'controls';
       this.setScreen('settings');
-    } else if (key === 'back') this.back();
+    } else if (key === 'back') this.back(mouseClick);
     else if (key === 'start-party') {
       try {
         this.game.party.start(this.mode, this.botCount, this.difficulty);
         this.view.alignCameraForPlay();
-        this.resume();
+        this.resume(mouseClick);
       } catch (error) { this.error(error); }
     } else if (key.startsWith('offer:')) {
       try {
         this.game.gigs.accept(key.slice(6));
         if (this.game.gigs.active?.setup.config.kind === 'rooftop-express') this.view.alignCameraForPlay();
         this.save();
-        this.resume();
+        this.resume(mouseClick);
       } catch (error) { this.error(error); }
     } else if (key === 'retry-gig' && this.screen === 'gig-results') {
       try {
@@ -443,16 +447,16 @@ export class GameMenu {
         if (this.game.gigs.active?.setup.config.kind === 'rooftop-express') this.view.alignCameraForPlay();
         // The new attempt replaces the failed one. Leaving results saves the
         // running attempt through the same acknowledgement path as Free Roam.
-        this.resume();
+        this.resume(mouseClick);
       } catch (error) { this.error(error); }
     } else if (key === 'leave-party') {
       this.game.party.returnToFreeRoam();
       this.save();
-      this.resume();
+      this.resume(mouseClick);
     } else if (key === 'abandon-gig') {
       this.game.gigs.abandon();
       this.save();
-      this.resume();
+      this.resume(mouseClick);
     }
   }
   private error(error: unknown): void {
@@ -461,15 +465,15 @@ export class GameMenu {
     message.textContent = error instanceof Error ? error.message : 'Action unavailable';
     this.root.querySelector('.gg-shell-panel')?.prepend(message);
   }
-  private back(): void {
+  private back(mouseClick = false): void {
     if (this.screen === 'title') return;
     this.audio?.queueCue({ sound: 'ui-back' });
     if (this.screen === 'party') this.setScreen(this.partyReturn);
     else if (this.screen === 'settings') this.setScreen(this.settingsReturn);
-    else if (this.screen === 'board') this.resume();
-    else if (this.screen === 'pause') this.resume();
-    else if (this.screen === 'gig-results') this.resume();
-    else if (this.screen === 'party-results') this.action('leave-party');
+    else if (this.screen === 'board') this.resume(mouseClick);
+    else if (this.screen === 'pause') this.resume(mouseClick);
+    else if (this.screen === 'gig-results') this.resume(mouseClick);
+    else if (this.screen === 'party-results') this.action('leave-party', mouseClick);
     else this.setScreen('title');
   }
   private onKey(event: KeyboardEvent): void {
