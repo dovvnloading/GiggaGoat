@@ -78,6 +78,7 @@ export class Game {
   readonly surfaces: SurfaceSystem;
   readonly budget: DynamicBodyBudget;
   readonly gigs: GigSession;
+  private acknowledgedGigAttempt = 0;
   readonly party: PartySession;
   readonly surfaceMarkers: SurfaceMarker[] = [];
   readonly destroyedProps = new Set<string>();
@@ -231,6 +232,15 @@ export class Game {
       this.gigs = new GigSession(this, island.seed, options.progress?.gigs, options.progress?.gigBodies);
     } catch {
       this.gigs = new GigSession(this, island.seed);
+    }
+    const restoredGig = this.gigs.active;
+    const acknowledgement = options.progress?.acknowledgedGigAttempt;
+    if (typeof acknowledgement === 'number' && Number.isSafeInteger(acknowledgement) &&
+      acknowledgement >= 0 && acknowledgement <= (restoredGig?.attemptId ?? 0)) {
+      this.acknowledgedGigAttempt = acknowledgement;
+    } else if (restoredGig?.status === 'completed' || restoredGig?.status === 'failed') {
+      // Legacy saves could retain the terminal attempt after its modal closed.
+      this.acknowledgedGigAttempt = restoredGig.attemptId;
     }
     this.party = new PartySession(this);
   }
@@ -870,7 +880,18 @@ export class Game {
 
   exportProgress(): GameProgress {
     return { gameplay: this.rules.toJSON(), gigs: this.gigs.director.toJSON(),
-      gigBodies: this.gigs.saveBodies() };
+      gigBodies: this.gigs.saveBodies(), acknowledgedGigAttempt: this.acknowledgedGigAttempt };
+  }
+
+  get pendingGigResult() {
+    const run = this.gigs.active;
+    return (run?.status === 'completed' || run?.status === 'failed') &&
+      run.attemptId > this.acknowledgedGigAttempt ? run : null;
+  }
+
+  acknowledgeGigResult(): void {
+    const result = this.pendingGigResult;
+    if (result) this.acknowledgedGigAttempt = result.attemptId;
   }
 
   get bodyCount(): number {

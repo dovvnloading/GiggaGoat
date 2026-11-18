@@ -220,7 +220,6 @@ export class GameMenu {
   private mode: ModeId = 'rising-tide';
   private botCount = 3;
   private difficulty: BotDifficulty = 'normal';
-  private lastGigAttempt = 0;
   private lastSavedTick = 0;
   private padDirection = 0;
   private padHorizontal = 0;
@@ -341,6 +340,10 @@ export class GameMenu {
 
   private save(): void { saveGame(this.game, this.settings); }
   private setScreen(next: Screen): void {
+    if (this.screen === 'gig-results' && next !== 'gig-results') {
+      this.game.acknowledgeGigResult();
+      this.save();
+    }
     this.screen = next;
     // Leaving gameplay intentionally can asynchronously release pointer lock.
     // Forget that lock before a later menu action resumes the game.
@@ -594,11 +597,7 @@ export class GameMenu {
     if (this.screen === 'playing' && this.game.party.match?.phase === 'results') {
       this.setScreen('party-results');
     }
-    const gig = this.game.gigs.active;
-    if (this.screen === 'playing' && gig &&
-      (gig.status === 'completed' || gig.status === 'failed') &&
-      gig.attemptId !== this.lastGigAttempt) {
-      this.lastGigAttempt = gig.attemptId;
+    if (this.screen === 'playing' && this.game.pendingGigResult) {
       this.save();
       this.setScreen('gig-results');
     }

@@ -7,6 +7,7 @@ export interface GameProgress {
   gameplay: GameSnapshot;
   gigs: GigSnapshot;
   gigBodies: GigBodySave[];
+  acknowledgedGigAttempt?: number;
 }
 export interface GameSettings {
   mouseSensitivity: number;

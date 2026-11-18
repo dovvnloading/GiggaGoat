@@ -65,11 +65,27 @@ describe('Core game loop — production adapters on real Rapier ticks', () => {
       const loaded = await Game.create({ seed: 'full-loop-core-test', resolution: 97,
         progress: copy.progress });
       try {
+        expect(loaded.pendingGigResult?.attemptId).toBe(finished.attemptId);
         expect(loaded.rules.wallet.coins).toBe(game.rules.wallet.coins);
         expect(loaded.gigs.director.personalBests).toEqual(game.gigs.director.personalBests);
         expect(loaded.gigs.director.ownedCosmetics).toEqual(game.gigs.director.ownedCosmetics);
         ticks(loaded, 25);
         expect(loaded.rules.wallet.coins).toBe(game.rules.wallet.coins);
+
+        loaded.acknowledgeGigResult();
+        expect(loaded.pendingGigResult).toBeNull();
+        const dismissed = loaded.exportProgress();
+        const legacy = { ...copy.progress };
+        delete legacy.acknowledgedGigAttempt;
+        for (const progress of [dismissed, legacy]) {
+          const restored = await Game.create({ seed: 'full-loop-core-test', resolution: 97, progress });
+          try {
+            expect(restored.pendingGigResult).toBeNull();
+            expect(restored.gigs.active?.attemptId).toBe(finished.attemptId);
+            expect(restored.gigs.director.personalBests).toEqual(loaded.gigs.director.personalBests);
+            expect(restored.rules.wallet.coins).toBe(loaded.rules.wallet.coins);
+          } finally { restored.dispose(); }
+        }
       } finally { loaded.dispose(); }
     } finally { game.dispose(); }
   });
