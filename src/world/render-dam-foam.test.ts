@@ -6,18 +6,17 @@ import { createWorldScene } from './render';
 const damLoad = vi.hoisted(() => ({ ready: false }));
 // Model loading is asynchronous in a browser. Simulate its success notification
 // without fetching a GLB or changing headless test budgets.
-vi.mock('./visual-dam', async () => {
-  const THREE = await import('three');
+vi.mock('./visual-dam', async importOriginal => {
+  const actual = await importOriginal<typeof import('./visual-dam')>();
   return {
-    buildDamVisuals: () => ({
-      group: new THREE.Group(),
-      update: (_seconds: number) => {},
+    ...actual,
+    buildDamVisuals: (...args: Parameters<typeof actual.buildDamVisuals>) => ({
+      ...actual.buildDamVisuals(...args),
       consumeShadowChange: () => {
         const ready = damLoad.ready;
         damLoad.ready = false;
         return ready;
       },
-      dispose: () => {},
     }),
   };
 });
