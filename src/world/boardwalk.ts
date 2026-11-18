@@ -124,8 +124,8 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
     });
   }
 
-  // From the beach looking out to sea, kiosks occupy the LEFT (+X) deck strip.
-  // Their glTF +Z fronts and signs face the central promenade (-X).
+  // Alternate the kiosks across the promenade. The glTF +Z front always
+  // faces the walking lane, regardless of which rail the stall backs onto.
   const kioskKinds = [
     'kiosk-icecream', 'kiosk-popcorn', 'kiosk-games',
     'kiosk-prizes', 'kiosk-candy',
@@ -136,13 +136,14 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
   ] as const satisfies readonly PropKind[];
   for (let i = 0; i < 5; i++) {
     const z = -27 + i * 11;
+    const side = i % 2 === 0 ? 1 : -1;
+    const yaw = -side * Math.PI / 2;
     // Each GLB includes its own scalloped canopy, lanterns and counter goods.
-    // The rear edge remains beside the rail at X=10.8 after the quarter turn.
-    place(kioskKinds[i]!, 8.55, z, 5.0, 4.8, 4.5, {
-      floor: deckY, yaw: -Math.PI / 2,
+    place(kioskKinds[i]!, side * 8.55, z, 5.0, 4.8, 4.5, {
+      floor: deckY, yaw,
     });
-    place(kioskSigns[i]!, 6.0, z, 4.6, 1.4, 0.3, {
-      centreY: deckY + 4.2 * scale, yaw: -Math.PI / 2,
+    place(kioskSigns[i]!, side * 6.0, z, 4.6, 1.4, 0.3, {
+      centreY: deckY + 4.2 * scale, yaw,
       color: 0xffe3a7, collidable: false,
     });
   }
@@ -176,17 +177,19 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
     place('bench', -8.2, z, 2.0, 0.95, 0.75,
       { floor: deckY, yaw: -Math.PI / 2, color: 0xa77853 });
   }
-  // Compact cargo stays in the west strip, clear of benches, lamps and the
-  // central |X|<4 promenade. Upper crates sit directly on lower crates.
-  for (const z of [-13, 6, 27]) {
-    place('crate', -6.5, z, 1.0, 1.0, 1.0, { floor: deckY });
-    place('crate', -6.5, z, 1.0, 1.0, 1.0, { floor: deckY + 1.0 * scale });
+  // Cargo occupies the gaps between stops, with two stacks on the west
+  // and one between the games and the candy stall.
+  for (const [x, z] of [[-6.5, -12], [7.2, 6], [-6.5, 27]] as const) {
+    place('crate', x, z, 1.0, 1.0, 1.0, { floor: deckY });
+    place('crate', x, z, 1.0, 1.0, 1.0, { floor: deckY + 1.0 * scale });
   }
-  for (const z of [-14, 4, 23, 34]) {
+  for (const z of [-11, 2, 23, 34]) {
     place('barrel', -9.6, z, 0.8, 1.0, 0.8, { floor: deckY });
   }
-  place('trampoline', 2, 33, 3.6, 0.8, 3.6,
-    { floor: deckY, color: 0x5d8fe6 });
+  // Game registers the spring surface at this art's bounds.
+  place('trampoline', 7.8, 33, 3.6, 0.8, 3.6, {
+    floor: deckY, color: 0x5d8fe6, collidable: false, lickable: false, climbable: false,
+  });
   place('bench', -15.5, 67, 2.0, 0.95, 0.75,
     { floor: headY, yaw: Math.PI / 2 });
   place('bench', 15.5, 67, 2.0, 0.95, 0.75,
@@ -219,5 +222,7 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
     place('palm-tree', dx, dz, height * 0.5, height, height * 0.5,
       { yaw });
   }
+  place('bench', -7.8, 33.5, 2.0, 0.95, 0.75,
+    { floor: deckY, yaw: -Math.PI / 2, color: 0xa77853 });
   return result;
 }

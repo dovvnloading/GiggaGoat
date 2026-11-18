@@ -53,6 +53,7 @@ export interface SurfaceMarker {
   position: Vec3;
   halfExtents: Vec3;
   direction?: Vec3;
+  hasWorldArt?: true;
 }
 export interface FallingPiece { body: RigidBody; type: PieceType; born: number }
 export interface GameOptions { seed?: string | number; resolution?: number; progress?: GameProgress }
@@ -420,6 +421,13 @@ export class Game {
     place('launch', farm.center.x + 3, farm.center.z - 8);
     const boardwalk = this.island.pois.find(p => p.id === 'baa-ardwalk')!;
     place('launch', boardwalk.center.x + 6, boardwalk.center.z + 12);
+    for (const prop of this.island.props) {
+      if (prop.poiId !== 'baa-ardwalk' || prop.kind !== 'trampoline') continue;
+      const position = prop.transform.position;
+      const halfExtents = V(prop.size.x / 2, prop.size.y / 2, prop.size.z / 2);
+      const id = this.surfaces.createTrampoline({ id: prop.id, position, halfExtents, bounceSpeed: 13 });
+      this.surfaceMarkers.push({ id, kind: 'trampoline', position, halfExtents, hasWorldArt: true });
+    }
   }
 
   private installBuildEvents(): void {

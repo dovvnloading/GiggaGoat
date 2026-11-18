@@ -137,9 +137,11 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
       expect(props.filter(p => p.kind === 'scaffold' &&
         Math.abs((p.transform.position.z - centre.z) / (island.size / 600) -
           shift - 55) < 0.001)).toHaveLength(0);
-      for (const stall of shops) {
+      const sides = [1, -1, 1, -1, 1] as const;
+      for (const [index, stall] of shops.entries()) {
+        const side = sides[index]!;
         expect(stall.transform.position.x).toBeCloseTo(
-          centre.x + 8.55 * island.size / 600, 6);
+          centre.x + side * 8.55 * island.size / 600, 6);
         expect(stall.size).toEqual({ x: 5 * island.size / 600,
           y: 4.8 * island.size / 600, z: 4.5 * island.size / 600 });
         expect(stall.color).toBeUndefined();
@@ -147,7 +149,7 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
         expect(stall.shape).toBe('cuboid');
         expect(stall.collidable && stall.lickable && stall.climbable).toBe(true);
         expect(island.colliders.some(c => 'id' in c && c.id === stall.id)).toBe(true);
-        expect(stall.transform.rotationY).toBeCloseTo(-Math.PI / 2, 6);
+        expect(stall.transform.rotationY).toBeCloseTo(-side * Math.PI / 2, 6);
         expect(footprintOnDeck(stall, pier, 0.05), stall.id).toBe(true);
         expect(Math.abs(floorOf(stall) - topOf(pier)), stall.id).toBeLessThan(0.05);
         // Guards against the earlier grading pass moving stalls back onto sand.
@@ -166,11 +168,11 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
       expect(props.filter(p => p.kind === 'signboard')).toHaveLength(0);
       for (const [i, sign] of signs.entries()) {
         expect(sign.kind).toBe(kioskSigns[i]);
-        expect(sign.transform.position.x).toBeCloseTo(centre.x + 6.0 * scale, 6);
+        expect(sign.transform.position.x).toBeCloseTo(centre.x + sides[i]! * 6 * scale, 6);
         expect(sign.transform.position.z).toBeCloseTo(shops[i]!.transform.position.z, 6);
         expect(sign.transform.position.y).toBeCloseTo(topOf(pier) + 4.2 * scale, 6);
         expect(sign.size).toEqual({ x: 4.6 * scale, y: 1.4 * scale, z: 0.3 * scale });
-        expect(sign.transform.rotationY).toBeCloseTo(-Math.PI / 2, 6);
+        expect(sign.transform.rotationY).toBeCloseTo(-sides[i]! * Math.PI / 2, 6);
         expect(sign.color).toBe(0xffe3a7);
         expect(sign.collidable).toBe(false);
       }
@@ -192,6 +194,8 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
       expect(trampolines[0]!.size).toEqual({
         x: 3.6 * scale, y: 0.8 * scale, z: 3.6 * scale,
       });
+      expect(trampolines[0]!.transform.position.x).toBeCloseTo(centre.x + 7.8 * scale);
+      expect(footprintOnDeck(trampolines[0]!, pier, 0.05)).toBe(true);
       for (const ball of props.filter(p => p.kind === 'bumper'))
         expect(ball.size).toEqual({ x: scale, y: scale, z: scale });
       const wheel = wheels[0]!;
@@ -301,7 +305,7 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
     { seed: 'billy-isle', size: 600 },
     { seed: 'shore-check', size: 400 },
     { seed: 'art-deck-A', size: 850 },
-  ])('fits three two-high crate stacks and four barrels in the clear west lane ($seed, $size)', 
+  ])('keeps the cargo stacks clear of the promenade and stalls ($seed, $size)',
     ({ seed, size }) => {
       const island = generateIsland({ seed, size, resolution: 97 });
       const scale = size / 600;
@@ -326,7 +330,7 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
         stacks.set(z, entries);
         expect(crate.size).toEqual({ x: scale, y: scale, z: scale });
       }
-      expect([...stacks.keys()]).toEqual([-13, 6, 27]);
+      expect([...stacks.keys()]).toEqual([-12, 6, 27]);
       for (const pair of stacks.values()) {
         expect(pair).toHaveLength(2);
         const [lower, upper] = pair.sort((a, b) =>
@@ -336,7 +340,7 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
         expect(upper!.transform.position.x).toBeCloseTo(lower!.transform.position.x, 6);
         expect(upper!.transform.position.z).toBeCloseTo(lower!.transform.position.z, 6);
       }
-      expect(barrels.map(b => Math.round(localZ(b)))).toEqual([-14, 4, 23, 34]);
+      expect(barrels.map(b => Math.round(localZ(b)))).toEqual([-11, 2, 23, 34]);
       for (const barrel of barrels) {
         expect(barrel.size).toEqual({
           x: 0.8 * scale, y: scale, z: 0.8 * scale,
@@ -346,10 +350,8 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
 
       for (const prop of cargo) {
         const box = boundsXZ(prop);
-        expect((box.minX - centre.x) / scale, prop.id + ' west edge')
-          .toBeGreaterThanOrEqual(-11 - 1e-5);
-        expect((box.maxX - centre.x) / scale, prop.id + ' east edge')
-          .toBeLessThanOrEqual(-5 + 1e-5);
+        const laneLeft = centre.x - 5 * scale, laneRight = centre.x + 5 * scale;
+        expect(box.maxX <= laneLeft || box.minX >= laneRight, prop.id + ' promenade').toBe(true);
         expect(Math.max(Math.abs((box.minX - centre.x) / scale),
           Math.abs((box.maxX - centre.x) / scale)), prop.id + ' deck edge')
           .toBeLessThanOrEqual(12.5);

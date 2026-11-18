@@ -152,6 +152,25 @@ describe('Walkable roads and coastal routes', () => {
       expect(game.location).toBe('Billy Isle');
       game.step();
       expect(game.respawns).toBe(1);
+
+      const bounce = game.surfaceMarkers.find(surface =>
+        surface.kind === 'trampoline' && surface.hasWorldArt)!;
+      expect(bounce.id).toMatch(/^baa-ardwalk-art-trampoline-/);
+      const { position, halfExtents } = bounce;
+      game.teleport(V(position.x, position.y + halfExtents.y + 1.1, position.z));
+      let playerBounce = false;
+      const offBounce = game.surfaces.events.on(event => {
+        if (event.type === 'bounce' && event.surfaceId === bounce.id &&
+            game.goat.ownsBody(event.bodyHandle)) playerBounce = true;
+      });
+      let peak = 0;
+      for (let tick = 0; tick < 80; tick++) {
+        game.step();
+        peak = Math.max(peak, game.goat.torso.linvel().y);
+      }
+      offBounce();
+      expect(playerBounce).toBe(true);
+      expect(peak).toBeGreaterThan(3);
     } finally { game.dispose(); }
   });
 
