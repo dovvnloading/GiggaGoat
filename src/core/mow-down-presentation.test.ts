@@ -1,14 +1,15 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { GigCatalog } from '../gigs';
-import { generateIsland } from '../world';
+import { V } from '../physics';
+import { heightAt } from '../world';
+import { Game } from './Game';
 import { MowDownPresentation } from './MowDownPresentation';
 
 describe('Mow-Down marker readability', () => {
-  it('keeps the hard course to ground rings with a shared boundary and one nearest label', () => {
-    const island = generateIsland({ resolution: 97 });
-    const catalog = new GigCatalog(island);
-    const { config } = catalog.build(catalog.makeOffer('mow-down', 'hard'));
+  it('clears the ground ring and moves the single label when the player grazes a patch', async () => {
+    const game = await Game.create({ resolution: 97 });
+    const { island } = game;
+    const { config } = game.gigs.director.startPractice('mow-down', 'hard');
     if (config.kind !== 'mow-down') throw new Error('Expected hard Mow-Down');
     expect(config.patches).toHaveLength(24);
 
@@ -21,12 +22,18 @@ describe('Mow-Down marker readability', () => {
       const first = config.patches[0]!;
       guide.update([], first);
       expect(guide.children.filter(child => child instanceof THREE.Sprite)).toEqual([label]);
+      expect(label.material.sizeAttenuation).toBe(false);
       expect(rings.count).toBe(config.patches.length);
       expect((rings.geometry as THREE.RingGeometry).parameters).toMatchObject({ outerRadius: .93 });
       expect(bounds.geometry.getAttribute('position').count).toBeGreaterThan(4);
       expect(label.getWorldPosition(new THREE.Vector3())).toMatchObject({ x: first.x, z: first.z });
 
-      guide.update(['grass-0'], first);
+      game.teleport(V(first.x, heightAt(island, first.x, first.z), first.z), 0);
+      for (let i = 0; i < 40; i++) game.step();
+      game.step({ graze: true });
+      const grazed = game.gigs.active?.finishedIds ?? [];
+      expect(grazed).toEqual(['0']);
+      guide.update(grazed, first);
       rings.getMatrixAt(0, midpoint);
       const next = config.patches[1]!;
       expect(rings.count).toBe(config.patches.length - 1);
@@ -34,7 +41,7 @@ describe('Mow-Down marker readability', () => {
       expect(midpoint.elements[14]).toBeCloseTo(next.z);
       expect(Math.hypot(label.position.x - first.x, label.position.z - first.z)).toBeCloseTo(2.1);
 
-      guide.update(config.patches.map((_, i) => 'grass-' + i), first);
+      guide.update(config.patches.map((_, i) => String(i)), first);
       expect(rings.count).toBe(0);
       expect(label.visible).toBe(false);
     } finally {
@@ -44,6 +51,7 @@ describe('Mow-Down marker readability', () => {
       bounds.geometry.dispose();
       (bounds.material as THREE.Material).dispose();
       label.material.dispose();
+      game.dispose();
     }
   });
 });

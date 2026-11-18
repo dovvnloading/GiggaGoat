@@ -1,4 +1,5 @@
 import type { Game } from './Game';
+import type { PlacementFailure, Validation } from '../gameplay';
 import { HUD_PIECES, deriveHudState, projectHudMap } from './GameHudState';
 import { buildArtwork, goatArtwork, renderHudMinimap } from './HudArtwork';
 import { fitGigCardText } from './GigCardLayout';
@@ -71,7 +72,17 @@ const CSS = `
 .gg-hoof{width:56%;height:55%;filter:drop-shadow(0 2px 1px #422c3b)}
 .gg-stamina-label{margin-top:2px;color:#ffe8ad;font-size:clamp(13px,1.2vw,20px);line-height:1.1;transform:rotate(6deg);text-shadow:2px 2px #4b2840}
 .gg-stamina-value{font-size:clamp(8px,.72vw,12px);color:#fff7c9;margin-top:2px}
-.gg-hotbar{position:absolute;left:50%;bottom:clamp(3px,.6vw,10px);transform:translateX(-50%);width:clamp(500px,40vw,665px);height:clamp(126px,10.35vw,186px);background:var(--gg-hotbarTray) center/100% 100% no-repeat}
+.gg-hotbar{position:absolute;left:50%;bottom:clamp(3px,.6vw,10px);transform:translateX(-50%);width:clamp(500px,40vw,665px);height:clamp(126px,10.35vw,186px);isolation:isolate}
+/* Continue the outer rim beneath the clipped button artwork without moving the tray slots. */
+.gg-hotbar[data-active="true"]::before,.gg-hotbar[data-active="true"]::after{content:"";position:absolute;pointer-events:none}
+.gg-hotbar[data-active="true"]::before{
+ inset:25% 6.8% 2.2%;z-index:-2;border:clamp(3px,.6vw,8px) solid #be7734;border-radius:clamp(10px,2.6vw,23px);
+ box-shadow:inset 0 0 0 1px #f4bd74,inset 0 0 6px 2px #704320;background:#895024
+}
+.gg-hotbar[data-active="true"]::after{
+ inset:0;z-index:-1;background:var(--gg-hotbarTray) center/100% 100% no-repeat;
+ clip-path:polygon(0 0,100% 0,100% 45%,90.3% 45%,90.3% 79%,100% 79%,100% 100%,0 100%,0 79%,9.7% 79%,9.7% 45%,0 45%)
+}
 .gg-hotbar-header{position:absolute;left:30%;right:24%;top:9%;height:23%;display:grid;place-items:center;padding-left:38px;color:#ffe4a3;font-size:clamp(17px,1.42vw,24px);line-height:1;white-space:nowrap;letter-spacing:.5px;text-shadow:2px 3px #5b2e42}
 .gg-hotbar-slots{position:absolute;left:11%;right:11%;top:37%;height:54%;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1.8%}
 .gg-slot{position:relative;min-width:0;min-height:0;border:11px solid transparent;border-image:var(--gg-hotbarSlot) 44 fill / 11px / 0 stretch}
@@ -81,7 +92,13 @@ const CSS = `
 .gg-piece-art{position:absolute;width:74%;height:76%;left:13%;top:9%;filter:drop-shadow(0 3px 2px #3d2528a0)}
 .gg-slot-count{position:absolute;right:3%;bottom:0;z-index:3;font-size:clamp(12px,1.04vw,18px);line-height:1;color:#fff7da;text-shadow:2px 2px #33243e}
 .gg-slot-name{position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden;white-space:nowrap}
-.gg-hotbar-foot{position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden;white-space:nowrap}
+.gg-supply{
+ display:flex;flex-direction:column;justify-content:center;min-width:0;padding:1px clamp(2px,.65vw,8px);
+ border:1px solid #e1ba823f;border-radius:9%;background:#3b2726;color:#f9deb0;
+ font-size:clamp(7px,min(1.55vw,2.38vh),11px);line-height:1.06;text-shadow:none
+}
+.gg-supply-title{text-align:center;font-size:.84em;color:#fde7bf}
+.gg-supply-amounts{display:grid;grid-template-columns:1fr auto;gap:0 2px;font-variant-numeric:tabular-nums}
 .gg-hotbar-charge{position:absolute;left:16%;right:16%;bottom:4.5%;height:3px;border-radius:6px;background:#442742;overflow:hidden}
 .gg-hotbar-charge>div{height:100%;width:0;background:linear-gradient(90deg,#f6a32c,#fff071);transition:width .12s linear}
 /* The prompt, key badge and slot art are genuine nine-slice border images. */
@@ -97,7 +114,6 @@ const CSS = `
  .gg-map-panel{right:10px}
  .gg-gig-card{right:9px}
  .gg-meter-caption{display:none}
- .gg-hotbar-foot{display:none}
 }
 @media(max-width:760px){
  .gg-meter{left:6px;top:8px;width:min(270px,51vw);height:clamp(105px,21vw,128px)}
@@ -245,6 +261,17 @@ const CSS = `
  .gg-slot{border-width:5px;border-image-width:5px}
  .gg-slot-key{width:17px;height:18px;border-width:4px;border-image-width:4px}
 }
+.gg-build-controls{
+ position:absolute;bottom:100%;left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100% - 12px);
+ display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:1px 8px;min-height:25px;padding:3px 9px;
+ border:1px solid #eebf76;border-radius:9px;background:#3b231eea;color:#fff3d8;
+ font-size:clamp(9px,1.7vw,12px);line-height:1.16;letter-spacing:.1px;text-shadow:none;text-align:center
+}
+.gg-build-placement{color:#ffc0b4}
+.gg-build-placement[data-ready="true"]{color:#c4ffdf}
+.gg-hotbar[data-active="false"]{width:max-content;height:auto;aspect-ratio:auto;background:none}
+.gg-hotbar[data-active="false"] .gg-build-controls{position:static;transform:none;max-width:none}
+.gg-hotbar[data-active="false"] :is(.gg-hotbar-header,.gg-hotbar-slots,.gg-hotbar-charge){display:none}
 `;
 
 /** Sampled from renderer.info after a submitted frame (renderMs is CPU submit time). */
@@ -283,11 +310,12 @@ export class GameHud {
   private readonly charge: HTMLElement;
   private readonly mode: HTMLElement;
   private readonly buildStatus: HTMLElement;
+  private readonly buildPlacement: HTMLElement;
+  private buildControlsKey = '';
   private readonly slots: HTMLElement[];
   private readonly quantities: Array<HTMLElement | null>;
-  private readonly supply: HTMLElement;
+  private readonly supplies: Record<'hay' | 'wood' | 'scrap', HTMLElement>;
   private readonly stageElements: HTMLElement[];
-  private readonly materials: HTMLElement;
   private readonly hint: HTMLElement;
   private readonly debug: HTMLElement;
   private readonly wallet: HTMLElement;
@@ -363,16 +391,16 @@ export class GameHud {
       '<strong class="gg-stamina-label">STAMINA</strong>' +
       '<span class="gg-stamina-value" data-stamina-number>100</span></div></section>' +
       '<section class="gg-hotbar" data-sprite="' + HUD_SPRITES.hotbarTray +
-      '" data-hotbar aria-label="Hay-Build hotbar">' +
+      '" data-hotbar data-active="false" aria-label="Hay-Build hotbar">' +
+      '<div class="gg-build-controls"><span data-build-status>B · BUILD</span>' +
+      '<strong class="gg-build-placement" data-build-placement hidden></strong></div>' +
       '<div class="gg-hotbar-header">HAY-BUILD</div>' +
       '<div class="gg-hotbar-slots">' + hotbar +
-      '<div class="gg-slot gg-supply" data-sprite="' + HUD_SPRITES.hotbarSlot +
-      '" title="Materials in your inventory">' +
-      '<span class="gg-slot-key" data-sprite="' + HUD_SPRITES.keyBadge + '">5</span>' +
-      buildArtwork('supplies') +
-      '<span class="gg-slot-name">SUPPLIES</span><span class="gg-slot-count" data-supply>×0</span></div></div>' +
-      '<div class="gg-hotbar-foot"><span class="gg-build-tip" data-build-status>B TO BUILD · 1–4 SELECT</span>' +
-      '<strong data-materials></strong></div><div class="gg-hotbar-charge"><div data-charge></div></div></section>' +
+      '<div class="gg-supply" aria-label="Supplies inventory">' +
+      '<strong class="gg-supply-title">SUPPLIES</strong><div class="gg-supply-amounts">' +
+      '<span>HAY</span><b data-supply-hay>0</b><span>WOOD</span><b data-supply-wood>0</b>' +
+      '<span>SCRAP</span><b data-supply-scrap>0</b></div></div></div>' +
+      '<div class="gg-hotbar-charge"><div data-charge></div></div></section>' +
       '<div class="gg-prompts"><div class="gg-board-hint" data-sprite="' + HUD_SPRITES.promptPill +
       '" data-board-hint hidden><span class="gg-prompt-key" data-sprite="' +
       HUD_SPRITES.keyBadge + '">E</span><span class="gg-prompt-copy">GOAT GIGS · GAMEPAD X</span></div>' +
@@ -400,10 +428,12 @@ export class GameHud {
     this.mapCanvas = map;
     this.stamina = get('stamina'); this.staminaNumber = get('stamina-number');
     this.charge = get('charge'); this.mode = get('mode');
-    this.buildStatus = get('build-status'); this.materials = get('materials');
+    this.buildStatus = get('build-status'); this.buildPlacement = get('build-placement');
     this.slots = Array.from(this.root.querySelectorAll<HTMLElement>('[data-slot]'));
     this.quantities = this.slots.map(element => element.querySelector<HTMLElement>('[data-quantity]'));
-    this.supply = get('supply');
+    this.supplies = {
+      hay: get('supply-hay'), wood: get('supply-wood'), scrap: get('supply-scrap'),
+    };
     this.hint = get('hint'); this.debug = get('debug'); this.wallet = get('wallet');
     this.gigCard = get('gig-card'); this.gigCheckbox = get('gig-checkbox');
     this.gigTitle = get('gig-title'); this.gigTask = get('gig-task');
@@ -491,12 +521,13 @@ export class GameHud {
   update(game: Game, fps: number, stepMilliseconds: number, debugVisible: boolean,
     pointerLocked: boolean, perf?: FramePerformance, hayHaul: HayHaulGuidance | null = null): void {
     const rules = game.rules;
+    const inventory = rules.inventory.all;
     const run = game.gigs.active;
     const state = deriveHudState({
       tier: rules.style.tier, meter: rules.style.meter, score: rules.style.score,
       combo: rules.style.combo, stamina: rules.abilities.stamina,
       headbuttCharge: rules.abilities.headbuttCharge,
-      inventory: rules.inventory.all, buildMode: game.buildMode,
+      inventory, buildMode: game.buildMode,
       buildPiece: game.buildPiece, ragdoll: game.goat.isRagdoll,
       location: game.location, coins: rules.wallet.coins,
       partyTitle: game.party.match ? game.party.title : undefined,
@@ -529,11 +560,6 @@ export class GameHud {
     this.staminaNumber.textContent = Math.floor(state.stamina) + ' / 100';
     this.charge.style.width = state.headbutt.toFixed(2) + '%';
     this.mode.textContent = state.mode;
-    // Keep the compact tray visible in free roam as in the HUD reference.
-    this.hotbar.dataset.active = state.buildMode ? 'true' : 'false';
-    this.buildStatus.textContent = state.buildMode ?
-      'B EXIT BUILD · 1–4 SELECT · LMB PLACE' : 'B TO BUILD · 1–4 SELECT';
-    this.materials.textContent = state.materials;
     for (let i = 0; i < state.slots.length; i++) {
       const slot = state.slots[i]!, element = this.slots[i]!;
       element.classList.toggle('is-selected', slot.selected);
@@ -543,7 +569,9 @@ export class GameHud {
       if (count) count.textContent = '×' + slot.available;
       element.title = slot.label + ' · ' + slot.available + ' can be built now · key ' + slot.key;
     }
-    this.supply.textContent = '×' + rules.inventory.get('scrap');
+    for (const material of ['hay', 'wood', 'scrap'] as const) {
+      this.supplies[material].textContent = String(inventory[material]);
+    }
     this.gigTitle.textContent = state.gig.title;
     this.gigTask.textContent = hayHaul?.task ?? state.gig.task;
     this.gigDetail.textContent = state.gig.detail;
@@ -572,6 +600,29 @@ export class GameHud {
       'PIXEL RATIO: ' + (perf?.pixelRatio ?? 1).toFixed(2) + '×\n' +
       'BODIES: ' + game.bodyCount + '\n' +
       'TICK: ' + game.physics.stepCount;
+  }
+
+  setBuildPreview(validation: Validation | null, gamepad: boolean): void {
+    const state = validation === null ? 'idle' : validation.valid ? 'ready' : validation.reason;
+    const key = state + ':' + gamepad;
+    if (key === this.buildControlsKey) return;
+    this.buildControlsKey = key;
+
+    this.hotbar.dataset.active = String(validation !== null);
+    this.buildStatus.textContent = validation
+      ? (gamepad ? 'D-PAD SELECT · RT PLACE · Y EXIT' : '1–4 SELECT · LMB PLACE · B EXIT')
+      : (gamepad ? 'Y · BUILD' : 'B · BUILD');
+    this.buildPlacement.hidden = validation === null;
+    if (!validation) return;
+    this.buildPlacement.dataset.ready = String(validation.valid);
+    const reasons: Record<PlacementFailure, string> = {
+      'out-of-bounds': 'OUT OF BOUNDS',
+      'invalid-rotation': 'INVALID ROTATION',
+      overlap: 'SPACE OCCUPIED',
+      'no-support': 'NEEDS SUPPORT',
+      cost: 'NEED MATERIALS',
+    };
+    this.buildPlacement.textContent = validation.valid ? 'READY' : reasons[validation.reason];
   }
 
   /** Preserve the CSS flex row when unlocked; hidden hides it under pointer lock. */

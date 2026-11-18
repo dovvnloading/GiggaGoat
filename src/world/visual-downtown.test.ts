@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createWorldScene, generateIsland } from './index';
 import {
   DOWNTOWN_MODELS, DOWNTOWN_SIGN_ANCHORS, DOWNTOWN_BUILDING_SIZES,
@@ -226,7 +227,7 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     }
   });
 
-  it('derives facade ornaments and rooftop equipment from each resized roof', () => {
+  it('derives facade ornaments from each resized building', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
     const scale = island.size / 600;
     const centre = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
@@ -240,16 +241,11 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     const findAt = (kind: string, x: number, z: number) => details.find(p =>
       p.kind === kind && Math.hypot(p.transform.position.x - x,
         p.transform.position.z - z) < 0.01);
-    for (const [i, building] of buildings.entries()) {
+    for (const building of buildings) {
       const { x, z } = building.transform.position;
       const yaw = building.transform.rotationY;
       const frontX = Math.sin(yaw), frontZ = Math.cos(yaw);
       const roof = building.transform.position.y + building.size.y / 2;
-      const ac = findAt('ac-unit', x - frontX * 1.8 * scale,
-        z - frontZ * 1.8 * scale);
-      expect(ac, building.id + ' AC').toBeDefined();
-      expect(ac!.transform.position.y - ac!.size.y / 2,
-        building.id + ' AC base').toBeCloseTo(roof, 5);
       const facade = building.size.z / 2;
       const awning = findAt('awning', x + frontX * (facade + 1 * scale),
         z + frontZ * (facade + 1 * scale));
@@ -265,13 +261,82 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       } else {
         expect(sign, building.id + ' house must have no signboard').toBeUndefined();
       }
-      if (i % 4 === 0) {
-        const waterTower = findAt('water-tower', x - frontX * 1.7 * scale,
-          z - frontZ * 1.7 * scale);
-        expect(waterTower, building.id + ' roof water tower').toBeDefined();
-        expect(waterTower!.transform.position.y - waterTower!.size.y / 2)
-          .toBeCloseTo(roof, 5);
+
+    }
+  });
+
+  it('seats tank feet and AC bases on the rendered roof surfaces', async () => {
+    const island = generateIsland();
+    const placements = makeDowntownPlacements(island);
+    const roofs = placements.filter(entry => entry.source?.kind === 'shop' || entry.source?.kind === 'house');
+    const hardware = placements.filter(entry => entry.model === 'waterTower' || entry.model === 'ac');
+    expect(hardware.filter(entry => entry.model === 'ac')).toHaveLength(16);
+    const tanks = hardware.filter(entry => entry.model === 'waterTower');
+    expect(tanks).toHaveLength(4);
+    const models = new Map<DowntownModel, THREE.Group>();
+    const geometry = new Map<DowntownPlacement, THREE.BufferGeometry>();
+    const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+    try {
+      vi.stubGlobal('self', globalThis);
+      vi.stubGlobal('createImageBitmap', async () => ({ width: 1, height: 1, close() {} }));
+      const loader = new GLTFLoader();
+      for (const model of new Set([...roofs, ...hardware].map(entry => entry.model))) {
+        const bytes = readFileSync('public/' + DOWNTOWN_MODELS[model]);
+        models.set(model, (await loader.parseAsync(Uint8Array.from(bytes).buffer, '')).scene);
       }
+      const bake = (entry: DowntownPlacement): THREE.BufferGeometry => {
+        const existing = geometry.get(entry);
+        if (existing) return existing;
+        const mesh = bakeLibraryGeometry([entry], models, undefined, DOWNTOWN_MODELS)!;
+        geometry.set(entry, mesh);
+        return mesh;
+      };
+      const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0), 0, 120);
+      for (const unit of hardware) {
+        const distance = (roof: DowntownPlacement): number => Math.hypot(
+          roof.position.x - unit.position.x, roof.position.z - unit.position.z);
+        const host = roofs.reduce((closest, roof) =>
+          distance(roof) < distance(closest) ? roof : closest);
+        const roofMesh = new THREE.Mesh(bake(host), material);
+        const model = bake(unit);
+        model.computeBoundingBox();
+        const floor = model.boundingBox!.min.y;
+        const positions = model.getAttribute('position');
+        const sampled = new Set<string>();
+        for (let i = 0; i < positions.count; i++) {
+          const y = positions.getY(i);
+          if (y > floor + .015) continue;
+          const x = positions.getX(i), z = positions.getZ(i);
+          const key = x.toFixed(3) + ',' + z.toFixed(3);
+          if (sampled.has(key)) continue;
+          sampled.add(key);
+          ray.ray.origin.set(x, floor + .05, z);
+          const support = ray.intersectObject(roofMesh, false)[0]?.point.y;
+          expect(support, unit.source?.id + ' at ' + key).toBeDefined();
+          expect(Math.abs(y - support!), unit.source?.id + ' contact gap').toBeLessThan(.02);
+        }
+        expect(sampled.size).toBeGreaterThanOrEqual(4);
+        if (unit.model === 'ac') {
+          for (const tank of tanks) {
+            const clearance = tank.size.x / 2 + Math.hypot(unit.size.x, unit.size.z) / 2;
+            expect(distance(tank), unit.source?.id + ' tank clearance').toBeGreaterThan(clearance);
+          }
+        }
+      }
+    } finally {
+      vi.unstubAllGlobals();
+      material.dispose();
+      for (const mesh of geometry.values()) mesh.dispose();
+      const textures = new Set<THREE.Texture>();
+      for (const model of models.values()) model.traverse(object => {
+        if (!(object instanceof THREE.Mesh)) return;
+        object.geometry.dispose();
+        for (const surface of Array.isArray(object.material) ? object.material : [object.material]) {
+          for (const value of Object.values(surface)) if (value instanceof THREE.Texture) textures.add(value);
+          surface.dispose();
+        }
+      });
+      for (const texture of textures) texture.dispose();
     }
   });
 
@@ -289,14 +354,6 @@ describe('Downtown Bleatsville sourced streetscape', () => {
         expect(ac.size).toEqual({
           x: 1.2 * scale, y: 1.0 * scale, z: 1.0 * scale,
         });
-        const roof = buildings.reduce((closest, b) =>
-          Math.hypot(ac.transform.position.x - b.transform.position.x,
-            ac.transform.position.z - b.transform.position.z) <
-          Math.hypot(ac.transform.position.x - closest.transform.position.x,
-            ac.transform.position.z - closest.transform.position.z) ? b : closest,
-        buildings[0]!);
-        expect(ac.transform.position.y - ac.size.y / 2).toBeCloseTo(
-          roof.transform.position.y + roof.size.y / 2, 6);
         const collider = island.colliders.find(c =>
           c.shape !== 'heightfield' && c.id === ac.id);
         expect(collider).toBeDefined();

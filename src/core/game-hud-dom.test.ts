@@ -11,6 +11,7 @@ class ElementStub {
   textContent = '';
   hidden = false;
   readonly children: ElementStub[] = [];
+  readonly dataset: Record<string, string> = {};
   private readonly dataAttributes = new Set<string>();
   private nodes: ElementStub[] = [];
   private html = '';
@@ -54,6 +55,60 @@ class ElementStub {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('live free-roam HUD DOM', () => {
+  it('reserves the numbered shortcuts for build pieces and separates the Supplies totals', () => {
+    const head = new ElementStub();
+    vi.stubGlobal('document', { head, createElement: () => new ElementStub() });
+    const host = new ElementStub();
+    const hud = new GameHud(host as unknown as HTMLElement);
+    try {
+      const root = host.children[0]!;
+      expect(root.querySelectorAll<ElementStub>('.gg-slot-key').map(node => node.textContent))
+        .toEqual(['1', '2', '3', '4']);
+      expect(root.querySelectorAll('.gg-slot')).toHaveLength(4);
+      expect(root.querySelector<ElementStub>('.gg-supply')?.className).toBe('gg-supply');
+      for (const material of ['hay', 'wood', 'scrap']) {
+        expect(root.querySelector('[data-supply-' + material + ']')).not.toBeNull();
+      }
+      const css = head.children[0]!.textContent;
+      expect(css).toMatch(/\.gg-hotbar\[data-active="true"\]::after\{[^}]*clip-path:polygon/);
+    } finally {
+      hud.dispose();
+    }
+  });
+  it('shows compact idle build entry and controls with a visible placement reason in build mode', () => {
+    const head = new ElementStub();
+    vi.stubGlobal('document', { head, createElement: () => new ElementStub() });
+    const host = new ElementStub();
+    const hud = new GameHud(host as unknown as HTMLElement);
+    try {
+      const root = host.children[0]!;
+      const controls = root.querySelector<ElementStub>('[data-build-status]')!;
+      const placement = root.querySelector<ElementStub>('[data-build-placement]')!;
+      const hotbar = root.querySelector<ElementStub>('[data-hotbar]')!;
+      expect(controls.textContent).toBe('B · BUILD');
+
+      hud.setBuildPreview({ valid: false, reason: 'no-support' }, false);
+      expect(hotbar.dataset.active).toBe('true');
+      expect(controls.textContent).toBe('1–4 SELECT · LMB PLACE · B EXIT');
+      expect(placement.hidden).toBe(false);
+      expect(placement.textContent).toBe('NEEDS SUPPORT');
+      expect(placement.dataset.ready).toBe('false');
+
+      hud.setBuildPreview({ valid: true, snapped: {
+        type: 'floor', cell: { x: 0, y: 0, z: 0 }, rotation: 0,
+      } }, true);
+      expect(controls.textContent).toBe('D-PAD SELECT · RT PLACE · Y EXIT');
+      expect(placement.textContent).toBe('READY');
+      expect(placement.dataset.ready).toBe('true');
+
+      hud.setBuildPreview(null, true);
+      expect(hotbar.dataset.active).toBe('false');
+      expect(controls.textContent).toBe('Y · BUILD');
+      expect(placement.hidden).toBe(true);
+    } finally {
+      hud.dispose();
+    }
+  });
   it('renders one STYLE SCORE label, without a second copy from a panel-wide shadow', () => {
     const head = new ElementStub();
     vi.stubGlobal('document', { head, createElement: () => new ElementStub() });

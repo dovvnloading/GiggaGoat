@@ -184,8 +184,12 @@ export class LocomotionController {
       { groups: GROUND_QUERY_GROUPS });
     this.groundHit = ground;
     const walkable = !!ground && ground.normal.y >= Math.cos(this.tuning.maxSlopeDegrees*Math.PI/180);
+    const rideHeight = g.balance.tuning.rideHeight * s;
+    // A small upward gait impulse can still leave the goat at ride height.
+    // Apply the usual takeoff cutoff as soon as it has moved clear of that support.
+    const takeoffSpeed = ground && ground.distance <= rideHeight + .08 * s ? 1.6 : 1.2;
     this.grounded = !!(walkable && ground && ground.distance <=
-      (g.balance.tuning.rideHeight+.16)*s && this.clock >= this.jumpLockUntil && torso.linvel().y < 1.2);
+      rideHeight + .16 * s && this.clock >= this.jumpLockUntil && torso.linvel().y < takeoffSpeed);
     if (this.grounded) {
       this.lastGroundAt = this.clock;
       this.jumpConsumed = false;

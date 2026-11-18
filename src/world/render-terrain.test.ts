@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { createWorldScene, generateIsland } from './index';
 import { gridIndex } from './terrain';
+import { terrainRockMask } from './terrain-paint';
 import { BIOMES } from './types';
 import { smoothstep } from './random';
 import type { WorldScene } from './render';
@@ -110,9 +111,10 @@ describe('IS-24 narrow beach tint and IS-15 per-fragment cliffs', () => {
     }
   });
 
-  it('injects a smoothed world-space rock/noise blend into the existing toon material', () => {
+  it('injects a filtered world-space rock atlas into the existing toon material', () => {
     const island = generateIsland({ seed: 'terrain-rock-shader', resolution: 33 });
     const scene = createWorldScene(island, { chunkSegments: 16 });
+    let textureDisposed = false;
     try {
       const material = scene.chunks[0]!.material as THREE.MeshToonMaterial;
       expect(material).toBeInstanceOf(THREE.MeshToonMaterial);
@@ -127,18 +129,24 @@ describe('IS-24 narrow beach tint and IS-15 per-fragment cliffs', () => {
         null as unknown as Parameters<typeof material.onBeforeCompile>[1],
       );
       expect(shader.vertexShader).toContain('varying vec3 vWorld;');
-      expect(shader.vertexShader).toContain('varying vec3 vWorldNormal;');
       expect(shader.vertexShader).toContain('modelMatrix * vec4(transformed, 1.0)');
-      expect(shader.vertexShader).toContain('mat3(modelMatrix) * objectNormal');
-      expect(shader.fragmentShader).toContain('float hash(vec2 p)');
-      expect(shader.fragmentShader).toContain('float noise(vec2 p)');
-      expect(shader.fragmentShader).toContain('floor(p)');
-      expect(shader.fragmentShader).toContain('f * f * (3.0 - 2.0 * f)');
-      expect(shader.fragmentShader).toContain('smoothstep(0.30, 0.42, 1.0 - worldNormal.y');
-      expect(shader.fragmentShader).toContain('noise(vWorld.xz * 0.15)');
+      expect(shader.fragmentShader).not.toContain('vWorldNormal');
+      expect(shader.fragmentShader).toContain('texture2D(uTerrainRockMask, vWorld.xz * uRockUvScale + 0.5)');
+      expect(shader.fragmentShader).toContain('smoothstep(0.19, 0.48, exposure');
       expect(shader.fragmentShader).toContain('mix(diffuseColor.rgb, uStone, rock)');
       expect(shader.fragmentShader).toContain('length(vWorld.xz) / uTerrainScale');
-      expect(shader.fragmentShader).toContain('sin(vWorld.y / uTerrainScale * 0.85)');
+      expect(shader.fragmentShader).toContain('vWorld.y / uTerrainScale');
+      const atlas = shader.uniforms['uTerrainRockMask']!.value as THREE.DataTexture;
+      expect(atlas).toBeInstanceOf(THREE.DataTexture);
+      expect(atlas.image.data).toBeInstanceOf(Uint8Array);
+      expect(atlas.image.width).toBe(island.resolution);
+      expect(atlas.image.height).toBe(island.resolution);
+      expect(atlas.magFilter).toBe(THREE.LinearFilter);
+      expect(atlas.minFilter).toBe(THREE.LinearMipmapLinearFilter);
+      expect(atlas.generateMipmaps).toBe(true);
+      atlas.addEventListener('dispose', () => { textureDisposed = true; });
+      expect(shader.uniforms['uRockUvScale']!.value)
+        .toBe((island.resolution - 1) / (island.resolution * island.size));
       expect((shader.uniforms['uRockStone']!.value as THREE.Color).getHex())
         .toBe(0x8c919e);
       expect((shader.uniforms['uMountainStone']!.value as THREE.Color).getHex())
@@ -147,16 +155,33 @@ describe('IS-24 narrow beach tint and IS-15 per-fragment cliffs', () => {
     } finally {
       scene.dispose();
     }
+    expect(textureDisposed).toBe(true);
   });
 
-  it('gives no rock on flat ground and full rock on 60-degree slopes for any noise value', () => {
-    const rockAt = (normalY: number, noiseValue: number): number =>
-      smoothstep(0.30, 0.42,
-        1.0 - normalY + (noiseValue - 0.5) * 0.08);
-    for (const noiseValue of [0, 0.25, 0.5, 0.75, 1]) {
-      expect(rockAt(1, noiseValue)).toBe(0);
-      expect(rockAt(Math.cos(Math.PI / 3), noiseValue)).toBe(1);
+  it('keeps flat turf and continuous steep walls distinct while smoothing local slope peaks', () => {
+    const island = generateIsland({ seed: 'terrain-atlas-contrast', resolution: 65 });
+    const n = island.resolution, cell = island.size / (n - 1);
+    const mid = Math.floor(n / 2);
+    const rockAt = (exposure: number): number => smoothstep(.19, .48, exposure / 255);
+    island.heights.fill(30);
+    const flat = terrainRockMask(island);
+    expect(flat.every(exposure => rockAt(exposure) === 0)).toBe(true);
+
+    for (let z = 0; z < n; z++) {
+      for (let x = 0; x < n; x++) {
+        island.heights[gridIndex(n, x, z)] = 30 + (x - mid) * cell * Math.sqrt(3);
+      }
     }
+    const steep = terrainRockMask(island);
+    expect(steep.every(exposure => rockAt(exposure) > .9)).toBe(true);
+    const meanRock = steep.reduce((sum, exposure) => sum + rockAt(exposure), 0) / steep.length;
+    expect(meanRock).toBeGreaterThan(.98);
+
+    island.heights.fill(30);
+    island.heights[gridIndex(n, mid, mid)] = 30 + 7 * cell;
+    const localPeak = terrainRockMask(island);
+    expect(rockAt(localPeak[gridIndex(n, mid - 1, mid)]!)).toBeLessThan(.8);
+    expect(localPeak).toEqual(terrainRockMask(island));
   });
 
   it.each(['billy-isle', 'forest-low-1', 'terrain-rock-shader-alt'])(

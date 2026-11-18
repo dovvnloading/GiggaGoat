@@ -3,6 +3,13 @@ import type { Material, PieceType } from './config';
 import { EventBus } from './events';
 import { clamp, copyJSON, integer, isRecord, nonNegative, requireNumber, requireRecord, requireString } from './math';
 
+/** The ramp's rising +Z edge, shared by the collider, model and placement preview. */
+export const BUILD_RAMP_VERTICES = [
+  -1, -.9, -1, 1, -.9, -1, -1, -.9, 1, 1, -.9, 1, -1, .9, 1, 1, .9, 1,
+] as const;
+export const BUILD_RAMP_TRIANGLES = [0, 2, 1, 1, 2, 3, 2, 4, 3, 3, 4, 5,
+  0, 1, 4, 1, 5, 4, 0, 4, 2, 1, 3, 5] as const;
+
 export type MaterialCounts = Record<Material, number>;
 export type Cell = { x: number; y: number; z: number };
 export type QuarterTurn = 0 | 1 | 2 | 3;
@@ -110,6 +117,7 @@ export class HayBuild {
   private nextId = 1;
   constructor(private readonly inventory: Inventory, private readonly bus: EventBus) {}
 
+  get size(): number { return this.map.size; }
   get pieces(): BuildPiece[] { return [...this.map.values()].sort((a, b) => a.id - b.id).map(p => copyJSON(p)); }
   getPiece(id: number): BuildPiece | undefined { const p = this.map.get(id); return p ? copyJSON(p) : undefined; }
 

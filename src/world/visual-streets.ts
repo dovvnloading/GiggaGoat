@@ -65,6 +65,68 @@ function buildHoofingtonZebraCrossing(
   return mesh;
 }
 
+/** Shared vertices along each grade interval keep adjoining surfaces flush. */
+function buildHoofingtonVerge(
+  island: IslandData, road: RoadDescriptor, group: THREE.Group, scale: number,
+): void {
+  const edge = road.width / 2;
+  const profiles = [
+    { from: edge + .36 * scale, to: edge + 2.34 * scale,
+      color: 0xdcd4ba, y: (x: number, z: number) => gridSample(island, x, z) + .04 * scale },
+    { from: edge + .022 * scale, to: edge + .36 * scale,
+      color: 0xf2e6ce, skirt: true,
+      y: (_x: number, _z: number, roadY: number) => roadY + .20 + .08 * scale },
+    { from: edge - .39 * scale, to: edge - .30 * scale,
+      color: 0xf2e9cf, y: (_x: number, _z: number, roadY: number) => roadY + .214 },
+  ];
+  const positions: number[] = [], indices: number[] = [], colors: number[] = [];
+  for (const profile of profiles) {
+    const startVertex = positions.length / 3;
+    for (const side of [-1, 1]) {
+      const first = positions.length / 3;
+      const left = side < 0 ? -profile.to : profile.from;
+      const right = side < 0 ? -profile.from : profile.to;
+      for (const point of road.points) {
+        for (const offset of [left, right]) {
+          const x = point.x + offset;
+          positions.push(x, profile.y(x, point.z, point.y), point.z);
+        }
+      }
+      for (let i = 1; i < road.points.length; i++) {
+        const a = first + (i - 1) * 2, b = a + 2;
+        indices.push(a, b, a + 1, a + 1, b, b + 1);
+      }
+      if (profile.skirt) for (const offset of [left, right]) {
+        const start = positions.length / 3;
+        for (const point of road.points) {
+          const x = point.x + offset;
+          positions.push(x, profile.y(x, point.z, point.y), point.z,
+            x, gridSample(island, x, point.z) - .04 * scale, point.z);
+        }
+        for (let i = 1; i < road.points.length; i++) {
+          const a = start + (i - 1) * 2, b = a + 2;
+          if (offset === left) indices.push(a, a + 1, b, a + 1, b + 1, b);
+          else indices.push(a, b, a + 1, a + 1, b, b + 1);
+        }
+      }
+    }
+    const color = new THREE.Color(profile.color);
+    for (let i = startVertex; i < positions.length / 3; i++) colors.push(color.r, color.g, color.b);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshToonMaterial({
+    vertexColors: true, gradientMap: TOON_RAMP,
+  }));
+  mesh.name = 'hoofington-street-verge';
+  mesh.receiveShadow = true;
+  group.add(mesh);
+}
+
 /**
  * The road mesh itself is a 6.8-m two-lane carriageway in Hoofington.
  * Curbs, walkways, edge lines and zebra crossings sit beside/on that mesh,
@@ -83,6 +145,11 @@ export function buildStreetDetails(island: IslandData): THREE.Group {
 
   for (const road of makeLocalStreets(island)) {
     const centre = island.pois.find(p => p.id === road.from)!.center;
+    if (road.from === 'hoofington') {
+      buildHoofingtonVerge(island, road, group, scale);
+      group.add(buildHoofingtonZebraCrossing(road, centre, scale));
+      continue;
+    }
     for (let i = 1; i < road.points.length; i++) {
       const a = road.points[i - 1]!, b = road.points[i]!;
       const dx = b.x - a.x, dz = b.z - a.z;
@@ -116,8 +183,7 @@ export function buildStreetDetails(island: IslandData): THREE.Group {
     }
 
     // Painted, climb-free crossings are separated from the house-front lawns.
-    const crossingOffsets = road.from === 'hoofington' ? [17] : [-27, 7, 29];
-    for (const offset of crossingOffsets) {
+    for (const offset of [-27, 7, 29]) {
       const z = centre.z + offset * scale;
       for (let lane = -3; lane <= 3; lane++) {
         const x = centre.x + lane * road.width / 8;
@@ -127,9 +193,6 @@ export function buildStreetDetails(island: IslandData): THREE.Group {
           length: 0.47 * scale, yaw: 0,
         });
       }
-    }
-    if (road.from === 'hoofington') {
-      group.add(buildHoofingtonZebraCrossing(road, centre, scale));
     }
   }
 

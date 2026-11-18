@@ -46,6 +46,7 @@ export function isHoofingtonTrailOverlay(
 interface RoadRibbonRun {
   points: RoadPoint[];
   width: number;
+  widths?: number[];
 }
 interface RibbonSegment {
   a: RoadPoint;
@@ -53,18 +54,55 @@ interface RibbonSegment {
   tangent: THREE.Vector3;
 }
 
-/**
- * Every kept polyline run gets one joined strip, but all runs of a surface
- * type share a single indexed geometry. A point has two top vertices and
- * separate skirt vertices so side normals cannot tilt the asphalt normals.
- */
-export function roadRibbonData(island: IslandData, type: RoadDescriptor['type']): {
-  positions: number[]; indices: number[]; supportIndices: number[]; segments: RibbonSegment[];
-} {
+/** Join Hoofington's two regional roads and village street into one surface. */
+function hoofingtonThroughStreet(allRoads: readonly RoadDescriptor[], scale: number):
+  { run: RoadRibbonRun; replaced: ReadonlySet<string> } | null {
+  const street = allRoads.find(road => road.id === 'hoofington-main-street');
+  const north = allRoads.find(road => road.id === 'whispering-pines--hoofington');
+  const south = allRoads.find(road => road.id === 'hoofington--baa-ardwalk');
+  if (!street || !north || !south) return null;
+  const northEnd = street.points[0]!, southEnd = street.points.at(-1)!;
+  const fromFarm = [...north.points].reverse().findIndex(point => point.z <= northEnd.z - 3 * scale);
+  const northIndex = north.points.length - 1 - fromFarm;
+  const southIndex = south.points.findIndex(point => point.z >= southEnd.z + 3 * scale);
+  if (fromFarm < 0 || southIndex < 0) return null;
+
+  const points: RoadPoint[] = [];
+  const widths: number[] = [];
+  const streetWidth = street.width;
+  function append(roadPoints: readonly RoadPoint[], width: number): void {
+    for (const point of roadPoints) {
+      points.push(point);
+      widths.push(width);
+    }
+  }
+  function taper(edge: RoadPoint, anchor: RoadPoint, width: number, inward: boolean): void {
+    for (const t of inward ? [.75, .50, .25] : [.25, .50, .75]) {
+      const eased = t * t * (3 - 2 * t);
+      points.push({
+        x: THREE.MathUtils.lerp(edge.x, anchor.x, eased),
+        y: THREE.MathUtils.lerp(edge.y, anchor.y, t),
+        z: THREE.MathUtils.lerp(edge.z, anchor.z, t),
+        bridge: false,
+      });
+      widths.push(THREE.MathUtils.lerp(streetWidth, width, eased));
+    }
+  }
+  append(north.points.slice(0, northIndex + 1), north.width);
+  taper(northEnd, north.points[northIndex]!, north.width, true);
+  append(street.points, street.width);
+  taper(southEnd, south.points[southIndex]!, south.width, false);
+  append(south.points.slice(southIndex), south.width);
+  return { run: { points, width: street.width, widths }, replaced: new Set([street.id, north.id, south.id]) };
+}
+
+export function roadRibbonRuns(island: IslandData, type: RoadDescriptor['type']): RoadRibbonRun[] {
   const allRoads = [...island.roads, ...makeLocalStreets(island)];
   const runs: RoadRibbonRun[] = [];
+  const throughStreet = type === 'road' ? hoofingtonThroughStreet(allRoads, island.size / 600) : null;
+  if (throughStreet) runs.push(throughStreet.run);
   for (const road of allRoads) {
-    if (road.type !== type) continue;
+    if (road.type !== type || throughStreet?.replaced.has(road.id)) continue;
     let kept: RoadPoint[] = [];
     for (let i = 1; i < road.points.length; i++) {
       const a = road.points[i - 1]!, b = road.points[i]!;
@@ -80,14 +118,25 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'])
     }
     if (kept.length > 1) runs.push({ points: kept, width: road.width });
   }
+  return runs;
+}
 
+/**
+ * Every kept polyline run gets one joined strip, but all runs of a surface
+ * type share a single indexed geometry. A point has two top vertices and
+ * separate skirt vertices so side normals cannot tilt the asphalt normals.
+ */
+export function roadRibbonData(island: IslandData, type: RoadDescriptor['type']): {
+  positions: number[]; indices: number[]; supportIndices: number[]; segments: RibbonSegment[];
+} {
+  const runs = roadRibbonRuns(island, type);
   const topOffset = type === 'road' ? 0.2 : 0.19;
   const positions: number[] = [];
   const indices: number[] = [];
   const supportIndices: number[] = [];
   const segments: RibbonSegment[] = [];
 
-  for (const { points, width } of runs) {
+  for (const { points, width, widths } of runs) {
     const firstVertex = positions.length / 3;
     const directions = points.slice(1).map((b, i) => {
       const a = points[i]!;
@@ -113,8 +162,9 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'])
       const perp = new THREE.Vector2(-tangent.y, tangent.x);
       const perpIn = new THREE.Vector2(-incoming.y, incoming.x);
       const mitre = Math.min(2, 1 / Math.max(0.5, perpIn.dot(perp)));
-      const x = perp.x * width / 2 * mitre;
-      const z = perp.y * width / 2 * mitre;
+      const halfWidth = (widths?.[i] ?? width) / 2;
+      const x = perp.x * halfWidth * mitre;
+      const z = perp.y * halfWidth * mitre;
       const top = point.y + topOffset, bottom = point.y - 0.15;
       positions.push(
         point.x + x, top, point.z + z,   // top left

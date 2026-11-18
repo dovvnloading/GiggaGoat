@@ -31,6 +31,28 @@ function instanceFootprint(mesh: THREE.InstancedMesh, index: number): Footprint 
 }
 
 describe('Hoofington E1: road surface and painted crossing', () => {
+  it('renders one asphalt deck through the village and joins both approach roads', () => {
+    const island = generateIsland({ seed: 'billy-isle' });
+    const farm = island.pois.find(p => p.id === 'hoofington')!.center;
+    const view = createWorldScene(island);
+    try {
+      const road = view.group.getObjectByName('paths-road') as THREE.Mesh;
+      const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
+      for (const dz of [-44.3, -42.3, -41.7, -27.3, -16.4, -5.9, 5.2, 16.1, 27.7, 41.7, 42.3, 44.3]) {
+        ray.ray.origin.set(farm.x + .23, 50, farm.z + dz);
+        expect(ray.intersectObject(road), 'asphalt at street offset ' + dz).toHaveLength(1);
+      }
+      for (const dz of [-39.6, -31.3, -16.1, 16.1, 28.1, 39.4]) {
+        for (const side of [-1, 1]) {
+          ray.ray.origin.set(farm.x + side * 4.15, 50, farm.z + dz);
+          expect(ray.intersectObject(road), 'verge at street offset ' + dz).toHaveLength(0);
+        }
+      }
+    } finally {
+      view.dispose();
+    }
+  });
+
   it('keeps dirt trails, paving, curbs and surface props off the carriageway', () => {
     for (const seed of ['billy-isle', 'hoofington-e1']) {
       const island = generateIsland({ seed, resolution: 97 });
