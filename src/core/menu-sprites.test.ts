@@ -570,6 +570,35 @@ describe('sprite-backed menu DOM', () => {
     } finally { menu.dispose(); }
   });
 
+  it('names the owned Gold reward on a completed gig result', () => {
+    const { menu, game, root, setScreen } = setup();
+    try {
+      const catalog = new GigCatalog(generateIsland({ resolution: 97 }));
+      const director = new GigDirector(catalog);
+      const setup = director.startPractice('demolition-contract', 'hard');
+      if (setup.config.kind !== 'demolition-contract') throw new Error('Expected Demolition');
+      const pieces = setup.config.pieces;
+      director.step({
+        goat: { position: setup.start, size: .6 },
+        props: pieces.map(piece => ({
+          id: piece.id, position: { ...piece.start, x: piece.start.x + 5 },
+        })),
+        abilities: [{ type: 'headbutt', targetId: pieces[0]!.id }],
+      });
+      const result = director.active!;
+      expect(result.rating).toBe('gold');
+      Object.assign(game, { pendingGigResult: result });
+      Object.assign(game.gigs.director, { personalBests: director.personalBests, ownedCosmetics: director.ownedCosmetics });
+
+      setScreen('gig-results');
+      expect(root.innerHTML).toContain('<strong>GOLD REWARD</strong> · Safety Third Horns');
+
+      result.rating = 'silver';
+      setScreen('gig-results');
+      expect(root.innerHTML).not.toContain('Safety Third Horns');
+    } finally { menu.dispose(); }
+  });
+
   it('keeps checkpoint names intact in results and requires a confirmed water landing', () => {
     const { menu, game, root, setScreen } = setup();
     try {
