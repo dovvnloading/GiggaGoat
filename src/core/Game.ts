@@ -17,7 +17,7 @@ import {
   DynamicBodyBudget, applyPhysicsMaterial,
 } from '../chaos';
 import { addRapierPropCollider } from '../world/colliders';
-import { BOARDWALK_SHORE_GUARD_ID, BOARDWALK_SHORE_ID, boardwalkPierDecks } from '../world/boardwalk';
+import { BOARDWALK_SHORE_GUARD_ID, BOARDWALK_SHORE_ID, boardwalkFarEnd, boardwalkPierDecks } from '../world/boardwalk';
 import { PINES_LOG_ENTRY_ID } from '../world/pines-log-access';
 import { HOOFINGTON_HAUL_BALE_PREFIX } from '../world/hoofington-entrances';
 import { getDamHeadwater, isDamHeadwater } from '../world/dam-landscape';
@@ -114,7 +114,8 @@ export class Game {
   private buildOrigin: Vec3;
   private readonly pierDecks: readonly PropDescriptor[];
   private readonly blockedClimbHandles = new Set<number>();
-  private readonly craneRailHandles = new Set<number>();
+  private readonly safetyRailHandles = new Set<number>();
+  private readonly boardwalkEnd: ReturnType<typeof boardwalkFarEnd>;
   private readonly craneCenter: Vec3;
   private readonly spawnGround: number;
   private disposed = false;
@@ -147,6 +148,11 @@ export class Game {
       }
     }
     this.pierDecks = boardwalkPierDecks(island);
+    this.boardwalkEnd = boardwalkFarEnd(island);
+    for (const rail of this.boardwalkEnd?.rails ?? []) {
+      const collider = colliders.props.get(rail.id);
+      if (collider) this.safetyRailHandles.add(collider.handle);
+    }
     // Restore only validated, complete progression. Any corrupt save is ignored.
     try {
       this.rules = options.progress ? GameSimulation.fromJSON(options.progress.gameplay) :
@@ -348,7 +354,7 @@ export class Game {
     collider.setCollisionGroups(collisionGroups('prop'));
     const craneRail = prop.poiId === 'crane-yard' && prop.kind === 'safety-rail' &&
       prop.restitution === 0 && !body;
-    if (craneRail) this.craneRailHandles.add(collider.handle);
+    if (craneRail) this.safetyRailHandles.add(collider.handle);
     if (craneRail || !prop.climbable) this.blockedClimbHandles.add(collider.handle);
     collider.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS);
     const material = prop.kind === 'rock' ? 'rock' :
@@ -370,7 +376,7 @@ export class Game {
     const collider = this.colliders.props.get(id);
     if (collider) {
       this.blockedClimbHandles.delete(collider.handle);
-      this.craneRailHandles.delete(collider.handle);
+      this.safetyRailHandles.delete(collider.handle);
     }
     this.colliders.bodies.delete(id);
     this.colliders.props.delete(id);
@@ -702,7 +708,7 @@ export class Game {
     const commands = result.commands[0]!;
     const parcelHeld = towingParcel && commands.tongue?.action !== 'fling';
     const safetyRail = !commands.jump && !commands.ragdoll
-      ? this.craneSafetyRail(goat, wish) : undefined;
+      ? this.nearbySafetyRail(goat, wish) : undefined;
     goat.locomotion.setInput({
       x: mx, z: mz, cameraYaw, sprint: commands.setSprint,
       canSprint: commands.setSprint, canClimb: commands.setClimb, climbContact,
@@ -717,13 +723,18 @@ export class Game {
     }
   }
 
-  private craneSafetyRail(goat: GoatRagdoll, wish: Vec3): MovementInput['safetyRail'] {
+  private nearbySafetyRail(goat: GoatRagdoll, wish: Vec3): MovementInput['safetyRail'] {
     if (!goat.locomotion.grounded || goat.isRagdoll) return;
     const position = goat.torso.translation();
     const scale = this.island.size / 600;
-    if (Math.abs(position.x - this.craneCenter.x) > CRANE_YARD_PLAN.halfWidth * scale ||
-        Math.abs(position.z - this.craneCenter.z) > CRANE_YARD_PLAN.halfDepth * scale) return;
-    return goat.locomotion.findSafetyRail(wish, this.craneRailHandles);
+    const inCraneYard = Math.abs(position.x - this.craneCenter.x) <= CRANE_YARD_PLAN.halfWidth * scale &&
+      Math.abs(position.z - this.craneCenter.z) <= CRANE_YARD_PLAN.halfDepth * scale;
+    if (!inCraneYard) {
+      const end = this.boardwalkEnd;
+      if (!end || position.z < end.edgeZ - 5 * scale || position.z > end.edgeZ ||
+          Math.abs(position.x - end.deck.transform.position.x) > end.deck.size.x / 2) return;
+    }
+    return goat.locomotion.findSafetyRail(wish, this.safetyRailHandles);
   }
 
   /** The courier can lick the parcel below a grown goat's normal shallow aim.

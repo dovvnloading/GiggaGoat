@@ -84,7 +84,7 @@ it.each([undefined, 'Big', 'GIGGA'] as const)('allows an ordinary %s nudge to mo
       game.step({ moveZ: 1, cameraYaw: angle });
       if (game.gigs.active!.checkpointIndex >= 2) break;
     }
-    expect(game.gigs.active?.status).toBe('running');
+    expect(game.gigs.active?.status, game.gigs.active?.failReason).toBe('running');
     expect(gnome.isValid()).toBe(true);
     const end = gnome.translation();
     expect(Math.hypot(end.x - from.x, end.z - from.z)).toBeGreaterThan(1);
@@ -160,6 +160,20 @@ it('still cracks the gnome under an external collision', async () => {
     const incoming = game.physics.createBox(V(at.x, at.y + 3, at.z), V(.6, .5, .6), 90);
     incoming.setLinvel(V(0, -18, 0), true);
     for (let tick = 0; tick < 50 && game.gigs.active?.status === 'running'; tick++) game.step();
+    expect(game.gigs.active).toMatchObject({ status: 'failed', failReason: expect.stringContaining('cracked') });
+  } finally { game.dispose(); }
+});
+
+it('still cracks the gnome after a hard landing without goat contact', async () => {
+  const game = await accept('escort-the-gnome', 'medium', 'Big');
+  try {
+    const config = game.gigs.active!.setup.config;
+    if (config.kind !== 'escort-the-gnome') throw new Error('Expected Escort the Gnome');
+    const body = game.gigs.props.get(config.gnomeId)!.body;
+    const { x, y, z } = body.translation();
+    game.teleport(V(x - 5, heightAt(game.island, x - 5, z), z), 0);
+    body.setTranslation(V(x, y + 9, z), true);
+    for (let tick = 0; tick < 125 && game.gigs.active?.status === 'running'; tick++) game.step();
     expect(game.gigs.active).toMatchObject({ status: 'failed', failReason: expect.stringContaining('cracked') });
   } finally { game.dispose(); }
 });

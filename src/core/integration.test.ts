@@ -4,7 +4,7 @@ import { Game, FIXED_DT } from './Game';
 import { renderHudMinimap } from './HudArtwork';
 import { V, forward, RAPIER, collisionGroups } from '../physics';
 import { createWorldScene, heightAt } from '../world';
-import { boardwalkPierDecks } from '../world/boardwalk';
+import { boardwalkFarEnd, boardwalkPierDecks } from '../world/boardwalk';
 import { DAM_DECK_HEIGHT, getDamPlacement } from '../world/the-dam';
 
 const create = (): Promise<Game> => Game.create({ seed: 'first-playable-test', resolution: 97 });
@@ -341,6 +341,47 @@ describe('Walkable roads and coastal routes', () => {
       expect(peak).toBeGreaterThan(3);
     } finally { game.dispose(); }
   });
+
+  it.each([[-4.4436, 20], [-3.75, 32]])(
+    'stops a sprint softly at the Ferris deck far rail (X offset %s)', async (offset, settle) => {
+      const game = await Game.create();
+      try {
+        const end = boardwalkFarEnd(game.island)!;
+        expect(end.rails).toHaveLength(5);
+        const { x, y } = end.deck.transform.position;
+        const deckTop = y + end.deck.size.y / 2;
+        const cameraYaw = Math.PI;
+        game.step();
+        game.teleport(V(x + offset, deckTop, end.edgeZ - 5.2729), -cameraYaw);
+        ticks(game, settle, { cameraYaw });
+
+        let recoil = 0, lift = 0;
+        for (let tick = 0; tick < 122; tick++) {
+          game.step(tick < 81 ? { moveZ: 1, sprint: true, cameraYaw } : { cameraYaw });
+          const velocity = game.goat.torso.linvel();
+          recoil = Math.max(recoil, -velocity.z);
+          lift = Math.max(lift, velocity.y);
+          expect(game.goat.isRagdoll).toBe(false);
+          expect(game.goat.locomotion.isClinging).toBe(false);
+        }
+        const stopped = game.goat.torso.translation();
+        expect(stopped.z).toBeGreaterThan(end.edgeZ - 1.3);
+        expect(stopped.z).toBeLessThan(end.edgeZ - .5);
+        expect(stopped.y).toBeCloseTo(deckTop + .56, 1);
+        expect(game.goat.locomotion.grounded).toBe(true);
+        expect(recoil).toBeLessThan(.8);
+        expect(lift).toBeLessThan(.8);
+
+        ticks(game, 36, { moveX: -1, moveZ: 1, cameraYaw });
+        expect(game.goat.torso.translation().x).toBeGreaterThan(stopped.x + .65);
+        expect(game.goat.locomotion.grounded).toBe(true);
+        ticks(game, 32, { moveZ: -1, cameraYaw });
+        expect(game.goat.torso.translation().z).toBeLessThan(stopped.z - 1.2);
+        game.step({ jump: true, cameraYaw });
+        expect(game.goat.torso.linvel().y).toBeGreaterThan(2);
+        expect(game.respawns).toBe(0);
+      } finally { game.dispose(); }
+    });
 
   it('reaches the Lighthouse job board outside the tower footing', async () => {
     const game = await Game.create();

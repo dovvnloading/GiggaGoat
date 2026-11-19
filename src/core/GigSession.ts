@@ -54,6 +54,7 @@ export class GigSession {
   private courierPressure = 0;
   private courierShrink: { previousSize: number; expiresAt: number } | null = null;
   private gnomePressure = 0;
+  private gnomeFloorPressure = 0;
   private gnomeRiskUntil = -1;
   private summitAscent: SummitAscent | null = null;
   private readonly abilities: AbilityFact[] = [];
@@ -386,8 +387,12 @@ export class GigSession {
       const goat = this.game.goat;
       if (gnome !== undefined && (contact.bodyA === gnome || contact.bodyB === gnome)) {
         const other = contact.bodyA === gnome ? contact.bodyB : contact.bodyA;
+        const collider = contact.bodyA === gnome ? contact.colliderB : contact.colliderA;
         if (other !== null && goat.ownsBody(this.game.physics.raw.getRigidBody(other))) {
           this.gnomePressure += contact.impulse;
+        } else if (collider === this.game.colliders.terrain.handle ||
+            this.game.colliders.paths.some(path => path.handle === collider)) {
+          this.gnomeFloorPressure += contact.impulse;
         }
       }
     }
@@ -631,7 +636,10 @@ export class GigSession {
         const up = Math.max(-1, Math.min(1, 1 - 2 * (rotation.x ** 2 + rotation.z ** 2)));
         let impact = this.impacts.get(body.handle) ?? 0;
         if (gnome && this.game.physics.stepCount > this.gnomeRiskUntil && !this.game.goat.isRagdoll) {
-          const gentle = Math.min(impact, this.gnomePressure);
+          // A hoof pressing into the gnome also loads the supporting floor.
+          // Count only the reaction matched by this tick's direct pressure.
+          const supported = Math.min(this.gnomePressure, this.gnomeFloorPressure);
+          const gentle = Math.min(impact, this.gnomePressure + supported);
           impact -= gentle - gentle / (1 + 4 * this.game.goat.size ** 3);
         }
         // A fragile prop visibly breaks only under an actual measured contact impulse.
@@ -673,6 +681,7 @@ export class GigSession {
     this.impacts.clear();
     this.courierPressure = 0;
     this.gnomePressure = 0;
+    this.gnomeFloorPressure = 0;
   }
   saveBodies(): GigBodySave[] {
     const save = (id: string, body: RigidBody, broken: boolean): GigBodySave => ({
@@ -707,6 +716,7 @@ export class GigSession {
     this.courierPressure = 0;
     this.courierShrink = null;
     this.gnomePressure = 0;
+    this.gnomeFloorPressure = 0;
     this.gnomeRiskUntil = -1;
     this.summitAscent = null;
   }
