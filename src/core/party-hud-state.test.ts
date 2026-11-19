@@ -43,6 +43,23 @@ describe('party scoreboard state', () => {
     ]);
   });
 
+  it('reports the player elimination throughout later tide warnings while rivals are still playing', () => {
+    const match = readyMatch({ mode: 'rising-tide', config: {
+      durationTicks: 1200, tideRiseEveryTicks: 360, tideWarningTicks: 120, submergeTicks: 1,
+    } }, ['player', 'rival', 'third']);
+    const underwater = frame(goat('player', 0, 0, 2), goat('rival'), goat('third'));
+    for (let tick = 0; tick < 360; tick++) match.step(underwater);
+    expect(match.phase).toBe('playing');
+    expect(match.players.find(player => player.id === 'player')?.eliminatedAt).not.toBeNull();
+    expect(hud(match)).toMatchObject({
+      goal: 'Round still in progress', status: 'YOU WERE ELIMINATED', urgent: false,
+      metrics: [{ label: 'GOATS LEFT', value: '2' }, { label: 'SEA LEVEL', value: '3.0 m' }],
+    });
+    for (let tick = 0; tick < 240; tick++) match.step(underwater);
+    expect(match.toJSON().tide?.warned).toBe(true);
+    expect(hud(match)).toMatchObject({ status: 'YOU WERE ELIMINATED', urgent: false });
+  });
+
   it('shows the highest rival score separately from summit possession and the win target', () => {
     const match = readyMatch({ mode: 'king-of-the-peak', config: {
       peakPointsPerSecond: 3, peakTargetScore: 40,
