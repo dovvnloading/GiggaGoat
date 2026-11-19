@@ -571,6 +571,7 @@ describe('sprite-backed menu DOM', () => {
       const island = generateIsland({ resolution: 97 });
       const catalog = new GigCatalog(island, island.seed);
       const board = catalog.board('hoofington', 0);
+      Object.assign(game, { island });
       game.gigs.catalog = catalog;
       game.gigs.director.board.mockReturnValue(board);
       game.gigs.nearBoard.mockReturnValue('hoofington');

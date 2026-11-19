@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { GigPropSpawn } from '../gigs';
 import type { PropDescriptor } from '../world';
+import { isSodaBarrel } from '../world/types';
 import {
   PropFactory, BUILD_PIECE_SIZES, DEFAULT_CRATE_SIZE, SURFACE_HALF_EXTENTS,
   type BuildPieceType, type Size3,
@@ -50,8 +51,10 @@ export function createWorldLibraryProp(factory: PropFactory,
   // 5.48% to 100.31% of its overall fitted height at the two ends.
   const artFit = prop.kind === 'ramp' && prop.id?.startsWith('downtown-bleatsville-ramp-')
     ? { yaw: Math.PI, treadElevations: [.0548, 1.0031] as const } : undefined;
-  return factory.createWorldProp(prop.kind as WorldLibraryPropKind, prop.size, prop.color,
+  const root = factory.createWorldProp(prop.kind as WorldLibraryPropKind, prop.size, prop.color,
     () => legacyWorldProp(factory, prop), artFit);
+  if (isSodaBarrel(prop)) factory.addSodaLabel(root, prop.size);
+  return root;
 }
 
 export function createBoardLibraryProp(factory: PropFactory): THREE.Group {

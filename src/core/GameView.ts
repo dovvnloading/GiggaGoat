@@ -296,6 +296,8 @@ export class GameView {
       if (marker.hasWorldArt) continue;
       const root = createSurfaceLibraryProp(this.propFactory, marker);
       root.position.copy(vec(marker.position));
+      if (marker.kind === 'launch' && marker.direction)
+        root.rotation.y = Math.atan2(-marker.direction.x, -marker.direction.z);
       this.instancedProps.add(root);
     }
   }

@@ -73,7 +73,8 @@ export class SurfaceSystem {
   private readonly surfaces = new Map<string, Surface>();
   private readonly unsubscribe: () => void;
   private nextId = 0;
-  constructor(readonly physics: PhysicsWorld) {
+  constructor(readonly physics: PhysicsWorld, private readonly linkedActor?: (body: RigidBody) =>
+    { readonly torso: RigidBody; readonly bodies: readonly RigidBody[] } | undefined) {
     this.unsubscribe = physics.onAfterStep(dt => this.step(dt));
   }
   get count(): number { return this.surfaces.size; }
@@ -109,9 +110,20 @@ export class SurfaceSystem {
       const collider = this.physics.raw.createCollider(RAPIER.ColliderDesc.cuboid(h.x,h.y,h.z),body);
       applyPhysicsMaterial(collider,opts.material ?? (kind === 'trampoline' ? 'rubber' : 'wood'));
     }
+    let skin = RAPIER.ColliderDesc.cuboid(h.x,.32,h.z);
+    if (kind === 'trampoline') {
+      // Match the oval fabric inside the padded rim. The corners of the
+      // supporting box are passable without triggering a rebound.
+      const vertices: number[] = [];
+      for (let i = 0; i < 24; i++) {
+        const angle = i * Math.PI / 12;
+        const x = h.x * .86 * Math.cos(angle), z = h.z * .86 * Math.sin(angle);
+        vertices.push(x,-.17,z,x,.17,z);
+      }
+      skin = RAPIER.ColliderDesc.convexHull(new Float32Array(vertices))!;
+    }
     const sensor = this.physics.raw.createCollider(
-      RAPIER.ColliderDesc.cuboid(h.x,.32,h.z)
-        .setTranslation(0,h.y + .27,0).setSensor(true),body);
+      skin.setTranslation(0,h.y + (kind === 'trampoline' ? .12 : .27),0).setSensor(true),body);
     this.physics.registerBody(body,{kind:'chaos-surface',owner:id});
     this.surfaces.set(id,{id,kind,body,sensor,direction,speed,acceleration,cooldown,
       lastUsed:new Map(),touching:new Set()});
@@ -130,7 +142,9 @@ export class SurfaceSystem {
       this.physics.raw.intersectionPairsWith(surface.sensor, other => {
         const body = other.parent();
         if (!body || !body.isDynamic()) return;
-        const handle=body.handle;
+        const actor = surface.kind === 'conveyor' ? undefined : this.linkedActor?.(body);
+        const root = actor?.torso ?? body;
+        const handle=root.handle;
         // Compound bodies may have several colliders inside the same sensor.
         if (currentlyTouching.has(handle)) return;
         currentlyTouching.add(handle);
@@ -148,17 +162,22 @@ export class SurfaceSystem {
         }
         const previous = surface.lastUsed.get(handle) ?? -Infinity;
         if (this.physics.time - previous + 1e-9 < surface.cooldown) return;
-        if (surface.kind === 'trampoline' && body.linvel().y > 1.5) return;
-        const velocity = body.linvel();
+        if (surface.kind === 'trampoline' && root.linvel().y > 1.5) return;
+        const velocity = root.linvel();
+        // Send a single velocity change through the linked skeleton. Kicking
+        // only the first overlapping hoof makes the knees chatter on the bed.
+        const parts = actor?.bodies ?? [body];
         if (surface.kind === 'trampoline') {
           const dv = Math.max(0,surface.speed - velocity.y);
-          if (dv > 0) body.applyImpulse(V(0,body.mass()*dv,0),true);
+          for (const part of parts) part.applyImpulse(V(0,part.mass()*dv,0),true);
           this.events.emit({type:'bounce',time:this.physics.time,
             surfaceId:surface.id,bodyHandle:handle,speed:surface.speed});
         } else {
-          body.applyImpulse(V(surface.direction.x*surface.speed*body.mass(),
-            surface.direction.y*surface.speed*body.mass(),
-            surface.direction.z*surface.speed*body.mass()),true);
+          for (const part of parts) {
+            const impulse = surface.speed * part.mass();
+            part.applyImpulse(V(surface.direction.x*impulse,surface.direction.y*impulse,
+              surface.direction.z*impulse),true);
+          }
           this.events.emit({type:'launch',time:this.physics.time,
             surfaceId:surface.id,bodyHandle:handle,speed:surface.speed});
         }

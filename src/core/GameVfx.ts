@@ -10,6 +10,7 @@ import {
   type CoinPickupSparkle,
 } from '../vfx';
 import type { Game } from './Game';
+import { rotate, V } from '../physics/math';
 
 /** Testable cosmetic sinks. The production factories allocate every bounded pool only once. */
 export interface GameVfxEffects {
@@ -32,8 +33,8 @@ export function createGameVfxEffects(): GameVfxEffects {
     headbutt: createHeadbuttImpactStars({ capacity: 8 }),
     water: createWaterSplash({ capacity: 8 }),
     crate: createCrateBreakDebris({ capacity: 6 }),
-    trampoline: createTrampolineBoing({ capacity: 4 }),
-    launch: createLaunchPadBurst({ capacity: 4 }),
+    trampoline: createTrampolineBoing({ capacity: 4, effectsOnly: true }),
+    launch: createLaunchPadBurst({ capacity: 4, effectsOnly: true }),
     combo: createComboPopText({ capacity: 6 }),
     aura: createGiggaGrowthPurpleAura({ capacity: 3 }),
     coin: createCoinPickupSparkle({ capacity: 6 }),
@@ -160,7 +161,7 @@ export class GameVfx {
         const p = marker?.position ?? built!.translation();
         const position = { x: p.x, y: marker ? p.y - marker.halfExtents.y : p.y + .14, z: p.z };
         if (this.onScreen(position)) effects.launch.emit(position,
-          marker?.direction ?? { x: 0, y: 0, z: -1 },
+          marker?.direction ?? rotate(built!.rotation(), V(0, 0, -1)),
           Math.min(4, event.speed / 10));
       }
     }));

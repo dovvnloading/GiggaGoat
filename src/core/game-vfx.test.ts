@@ -72,7 +72,8 @@ function fixture() {
         halfExtents: { x: 2.1, y: .23, z: 2.1 },
         direction: { x: .2, y: .93, z: -.3 } },
     ],
-    buildBodies: new Map([[7, { translation: () => ({ x: 5, y: 4, z: -1 }) }]]),
+    buildBodies: new Map([[7, { translation: () => ({ x: 5, y: 4, z: -1 }),
+      rotation: () => ({ x: 0, y: 1, z: 0, w: 0 }) }]]),
     physics: {
       onAfterStep: (callback: (dt: number) => void) => steps.on(callback as (e: never) => void),
       raw: { getRigidBody: (handle: number) =>
@@ -177,7 +178,7 @@ describe('GameVfx gameplay integration', () => {
       expect(f.effects.trampoline.emit).not.toHaveBeenCalled(); // not the goat
       f.surfaceEvents.emit({ type: 'launch', surfaceId: 'hay-7', bodyHandle: 10, speed: 13, time: 2 });
       expect(f.effects.launch.emit).toHaveBeenCalledExactlyOnceWith(
-        { x: 5, y: 4.14, z: -1 }, { x: 0, y: 0, z: -1 }, 1.3);
+        { x: 5, y: 4.14, z: -1 }, { x: 0, y: 0, z: 1 }, 1.3);
       f.surfaceEvents.emit({ type: 'bounce', surfaceId: 'spring', bodyHandle: 10, speed: 13, time: 3 });
       f.surfaceEvents.emit({ type: 'bounce', surfaceId: 'spring', bodyHandle: 11, speed: 13, time: 3.02 });
       expect(f.effects.trampoline.emit).toHaveBeenCalledTimes(1);
