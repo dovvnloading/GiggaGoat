@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { simplifiedWorldGeometry } from './lod';
 import { kitShape, kitPreview } from './kit-preview';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData, PropDescriptor, PropKind } from './types';
@@ -14,6 +15,7 @@ export interface LighthouseVisuals {
   group: THREE.Group;
   isFallbackHidden(mesh: THREE.InstancedMesh): boolean;
   setLighting(daylight: number, golden: number): void;
+  updateCulling(position: THREE.Vector3): void;
   dispose(): void;
 }
 
@@ -927,7 +929,13 @@ export function buildLighthouseVisuals(island: IslandData,
   kitPlacements('wreckMast', 'lighthouse-broken-ship-mast', mastPlacement);
   kitPlacements('pierLantern', 'lighthouse-library-lanterns', lanterns);
   kitPlacements('life-ring', 'lighthouse-red-white-life-ring', ringPlacement);
-  batchHeroMeshes(group, 'lighthouse-static-painted-landmarks', mesh => mesh !== cliffRocks);
+  const harbour = batchHeroMeshes(group, 'lighthouse-static-painted-landmarks', mesh => mesh !== cliffRocks);
+  const fullHarbour = harbour.geometry;
+  let farHarbour = fullHarbour, disposed = false;
+  void simplifiedWorldGeometry(fullHarbour).then(low => {
+    if (disposed && low !== fullHarbour) low.dispose();
+    else farHarbour = low;
+  });
   if (beacon) group.add(beacon.glass, beacon.halo);
   // Add after the hero batch so this stays one named Mesh and one draw call.
   const bridgeRopes = makeRopeBridgeRopes(island);
@@ -945,10 +953,17 @@ export function buildLighthouseVisuals(island: IslandData,
       const kind = mesh.name.replace(/^(?:props-|architecture-details-|outline-)/, '');
       return fullyHidden.has(kind as PropKind);
     },
+    updateCulling(position) {
+      const dx = position.x - center.x, dz = position.z - center.z;
+      harbour.geometry = dx * dx + dz * dz > (155 * scale) ** 2 ? farHarbour : fullHarbour;
+    },
     setLighting(daylight: number, golden: number): void {
       beacon?.setLighting(daylight, golden);
     },
     dispose(): void {
+      disposed = true;
+      harbour.geometry = fullHarbour;
+      if (farHarbour !== fullHarbour) farHarbour.dispose();
       beacon?.dispose();
       // All geometry/materials are released by WorldScene.dispose's traversal.
     },

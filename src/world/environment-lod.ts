@@ -36,7 +36,7 @@ export function createEnvironmentLod(group: THREE.Group): {
   let shadowDirty = false;
 
   function eligible(name: string): boolean {
-    return name.startsWith('meadow-') ||
+    return name.startsWith('meadow-') || name.startsWith('planted-') ||
       name === 'hoofington-garden-gnomes' ||
       (name.startsWith('dam-') &&
         /pines|tree|rock|boulder|shrub|wildflower|cattail|reed/.test(name)) ||
@@ -49,7 +49,7 @@ export function createEnvironmentLod(group: THREE.Group): {
     registered.add(source);
     const count = source.count;
     if (!count) return;
-    const small = /meadow-|gnome|shrub|wildflower|cattail|reed/.test(source.name);
+    const small = /meadow-|planted-|gnome|shrub|wildflower|cattail|reed/.test(source.name);
     const makeBatch = (name: string): THREE.InstancedMesh => {
       const copy = new THREE.InstancedMesh(source.geometry, source.material, count);
       copy.name = 'environment-lod-' + name + '-' + source.name;
@@ -81,6 +81,7 @@ export function createEnvironmentLod(group: THREE.Group): {
       }
       entry.low = low;
       far.geometry = low;
+      lastPose = undefined;
       if (low !== source.geometry) lowGeometries.add(low);
       if (far.castShadow) shadowDirty = true;
     });
@@ -150,7 +151,7 @@ export function createEnvironmentLod(group: THREE.Group): {
           bounds.center.copy(centre);
           bounds.radius = radius;
           if (!frustum.intersectsSphere(bounds)) continue;
-          (distance <= WORLD_LOD.detailedDistance ?
+          (distance <= WORLD_LOD.detailedDistance || entry.low === high ?
             nearIndices : farIndices).push(i);
         }
         const same = (a: number[], b: number[]): boolean =>
@@ -173,6 +174,8 @@ export function createEnvironmentLod(group: THREE.Group): {
       for (const entry of entries) {
         entry.near.removeFromParent();
         entry.far.removeFromParent();
+        entry.near.dispose();
+        entry.far.dispose();
         // Original batches still own their own meshes/materials/geometry.
       }
       for (const geometry of lowGeometries) geometry.dispose();

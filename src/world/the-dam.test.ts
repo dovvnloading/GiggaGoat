@@ -320,7 +320,14 @@ describe('The Dam hero POI', () => {
       light.set(0.16, 0.20, 0.34);
       dam.refreshWaterLight();
       expect(completeModelLoad).toBeTypeOf('function');
+      const near = new THREE.Vector3().copy(position);
+      const acrossIsland = near.clone().add(new THREE.Vector3(240 * scale, 0, 0));
+      dam.updateCulling(acrossIsland);
       completeModelLoad!();
+      expect(dam.group.getObjectByName('the-dam-model')).toBeUndefined();
+      expect(dam.group.getObjectByName('the-dam-kit-preview')).toBeDefined();
+      dam.updateCulling(near);
+      expect(dam.group.getObjectByName('the-dam-kit-preview')).toBeUndefined();
       const sculpted = dam.group.getObjectByName('the-dam-model')!;
       const submerged = sculpted.children.find(part => part.userData['damWater'])!;
       const structure = sculpted.children.find(part => part.castShadow)!;
@@ -332,6 +339,10 @@ describe('The Dam hero POI', () => {
       light.set(1, 1, 1);
       dam.refreshWaterLight();
       expect(submerged.visible).toBe(true);
+      expect(foamMaterial.emissiveIntensity).toBe(0.5);
+      dam.updateCulling(acrossIsland);
+      dam.updateCulling(near);
+      expect(dam.group.getObjectByName('the-dam-model')).toBe(sculpted);
       expect(foamMaterial.emissiveIntensity).toBe(0.5);
     } finally {
       dam.dispose();

@@ -34,6 +34,12 @@ Each row of a sheet follows one location across three views.
 
 [Landmarks in daylight and at dusk](landmarks.jpg) · [Livestock animation frames](livestock.jpg)
 
+## Follow-up rendering checks
+
+The hosted WebGL profiler recorded 467,984 triangles from the Hoofington street camera. The distant lighthouse alone contributed 51,296. The harbor now switches to a distant mesh, individual planted crops are culled outside the view, and the distant Dam uses its batched kit. Close-range checks covered the lighthouse terraces and four active spillways.
+
+The Downtown WebGL capture also revealed two lanterns on the same sidewalk, 0.87 m apart. The road and the shopfront each supplied one. The district lantern now owns that spot.
+
 ## Verification limits
 
 The fixed cameras captured both the embedded scenery and the scene after the shipped GLB files and their textures loaded. The images establish placement, silhouettes, palette and selected poses in the software renderer. Player-camera visibility, movement, frame pacing and the WebGL rendering path require separate evidence.
