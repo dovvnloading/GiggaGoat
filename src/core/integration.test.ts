@@ -686,6 +686,7 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
     { dx: 3.73, dz: 2.67, facing: .89, input: { moveZ: 1, cameraYaw: -Math.PI / 2 } },
     { dx: 3.92, dz: 3.03, facing: -3.07, input: { moveX: -1, cameraYaw: .674 } },
     { dx: 4.02, dz: 3.22, facing: 2.84, input: { moveX: -1, cameraYaw: .6265 } },
+    { dx: 5.64, dz: .71, facing: -1.8, input: { moveX: -1, cameraYaw: -.353 } },
     { dx: 6.5, dz: 7.83, facing: 2.20, ticksToRun: 280, input: { moveX: -1, cameraYaw: .6265 } },
   ])('keeps a continuous grip on the Hoofington silo from ($dx, $dz)', async ({ dx, dz, facing, input, ticksToRun = 180 }) => {
     const game = await Game.create();
