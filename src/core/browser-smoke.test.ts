@@ -563,9 +563,11 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         'gig board to close');
 
       page.phase = 'active gig pause geometry';
+      const postedOffer = '.gg-shell:not([hidden]) [data-action^="offer:"]';
       await page.tap('KeyE');
-      await page.waitFor(`!!document.querySelector('[data-action^="offer:"]')`, 'Hoofington offer');
-      await page.click('[data-action^="offer:"]');
+      await page.waitFor(`!!document.querySelector(${JSON.stringify(postedOffer)})?.getClientRects().length`,
+        'visible Hoofington offer');
+      await page.click(postedOffer);
       await page.waitFor('document.querySelector(".gg-shell")?.hidden === true', 'contract to start');
       await page.tap('Escape');
       await page.waitFor(`!!document.querySelector('.gg-pause-panel [data-action="abandon-gig"]')`,
