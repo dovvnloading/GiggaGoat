@@ -402,7 +402,8 @@ function buildRoads(island: IslandData, terrain: readonly Chunk[], atmosphere: R
       const marks = segments.filter((segment, i) => i % 5 === 0 &&
         !isHoofingtonCrossingDash(island, segment.a, segment.b));
       const dashes = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1),
-        new THREE.MeshBasicMaterial({ color: 0xffe0a5 }), marks.length);
+        new THREE.MeshLambertMaterial({ color: 0xffe0a5 }), marks.length);
+      dashes.receiveShadow = true;
       dashes.name = 'road-centre-dashes';
       for (let i = 0; i < marks.length; i++) {
         const { a, b, tangent } = marks[i]!;
