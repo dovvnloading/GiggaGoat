@@ -194,7 +194,9 @@ export function renderHudMinimap(island: IslandData, origin: { x: number; z: num
     '<g clip-path="url(#gg-hud-map-clip)">' + terrain.join('') + shorePaths(island, origin) +
     roads.join('') + decking + '<g data-map-scenery mask="url(#gg-hud-map-scenery)" opacity=".63">' +
     trees.join('') + structures.join('') + boards + '</g>' +
-    '<g data-map-objectives></g>' +
+    '<g data-map-objectives><path data-map-climb-target visibility="hidden" ' +
+    'd="M-8 10v-21h18l-4 5 4 5H-8" stroke="#463227" stroke-width="2.5" ' +
+    'stroke-linejoin="round" fill="#ffdf74"/></g>' +
     '<g data-player><path d="M0 -17 L12 14 L0 8 L-12 14Z" fill="#fff7df" stroke="#88411d" stroke-width="6" stroke-linejoin="round"/>' +
     '<path d="M0 -17 L12 14 L0 8 L-12 14Z" fill="#ff8e28" stroke="#ffe883" stroke-width="2"/></g></g>' +
     '<circle cx="140" cy="140" r="132" fill="none" stroke="#f6d78d" stroke-width="6"/>';

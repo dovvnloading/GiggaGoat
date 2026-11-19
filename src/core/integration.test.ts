@@ -4,6 +4,7 @@ import { Game, FIXED_DT } from './Game';
 import { renderHudMinimap } from './HudArtwork';
 import { V, forward, RAPIER, collisionGroups } from '../physics';
 import { createWorldScene, heightAt } from '../world';
+import { boardwalkPierDecks } from '../world/boardwalk';
 import { DAM_DECK_HEIGHT, getDamPlacement } from '../world/the-dam';
 
 const create = (): Promise<Game> => Game.create({ seed: 'first-playable-test', resolution: 97 });
@@ -171,7 +172,7 @@ describe('Walkable roads and coastal routes', () => {
       expect(game.goat.torso.translation().z).toBeLessThan(wheel!.transform.position.z + wheel!.size.z / 2);
       expect(game.respawns).toBe(0);
       const mapSvg = renderHudMinimap(game.island, { x, z: finish });
-      expect(mapSvg.match(/data-pier-deck/g)).toHaveLength(decks.length);
+      expect(mapSvg.match(/data-pier-deck/g)).toHaveLength(boardwalkPierDecks(game.island).length);
 
       // The exception must stay on the pier, even at the same offshore Z.
       game.teleport(V(x + wheel!.size.x, game.goat.torso.translation().y, finish), 0);

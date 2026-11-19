@@ -10,6 +10,10 @@ describe('live party courses on Rapier', () => {
       for (let tick = 0; tick < 88; tick++) game.step({ moveX: 1, moveZ: 1, cameraYaw: 0 });
       for (let tick = 0; tick < 630; tick++) game.step();
       expect(match.players.find(player => player.id === 'player')!.score).toBeGreaterThan(0);
+      const earned = () => match.players.reduce((total, player) => total + player.score, 0);
+      const openingScore = earned();
+      for (let tick = 0; tick < 720; tick++) game.step();
+      expect(earned()).toBeGreaterThan(openingScore);
     } finally { game.dispose(); }
   }, 90_000);
 

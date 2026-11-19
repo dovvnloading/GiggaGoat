@@ -410,9 +410,16 @@ export class LocomotionController {
     }
     // Body parts share their load through the joint solver.
     torso.applyImpulse(mul(deltaV,g.mass),true);
-    if (this.grounded) {
-      g.phase += dt*(sprinting ? 12 : 7.6)*Math.max(.4,wishLength);
-      g.setPose(wishLength > .12 ? (sprinting ? 'gallop' : 'walk') : 'stand');
+    // A brief gap above shallow ground is common mid-stride. Keep the
+    // walking animation through it without granting any grounded abilities.
+    const striding = wishLength > .12 && (g.pose === 'walk' || g.pose === 'gallop');
+    const strideGap = striding && !this.jumpConsumed && walkable && ground &&
+      ground.distance <= groundedDistance + .13 * s &&
+      this.clock - this.lastGroundAt <= .22 && Math.abs(v.y) < 1.6;
+    if (this.grounded || strideGap) {
+      const galloping = sprinting || (strideGap && g.pose === 'gallop' && this.input.sprint);
+      g.phase += dt * (galloping ? 12 : 7.6) * Math.max(.4, wishLength);
+      g.setPose(wishLength > .12 ? (galloping ? 'gallop' : 'walk') : 'stand');
     } else {
       g.setPose('jumpTuck');
     }

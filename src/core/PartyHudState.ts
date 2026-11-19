@@ -68,7 +68,8 @@ export function derivePartyHudState(
     goal = phase === 'overtime' ? 'Break the lead tie' :
       config.peakLeadDistance ? 'Hold the center to score' : 'Hold the summit to score';
     const owner = players.find(player => player.id === peak.ownerId);
-    status = peak.contested ? 'SUMMIT CONTESTED' : peak.ownerId === playerId ? 'YOU HOLD THE SUMMIT' :
+    const contested = config.peakLeadDistance ? 'CONTESTED · TAKE CENTER' : 'SUMMIT CONTESTED';
+    status = peak.contested ? contested : peak.ownerId === playerId ? 'YOU HOLD THE SUMMIT' :
       owner ? owner.name.toUpperCase() + ' HOLDS SUMMIT' : 'SUMMIT OPEN';
   } else if (heist) {
     const ownTeam = you?.teamId;

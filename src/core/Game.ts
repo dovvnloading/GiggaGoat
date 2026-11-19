@@ -236,7 +236,7 @@ export class Game {
     // Both deterministic lanes are stepped only at completed Rapier tick boundaries.
     try {
       this.gigs = new GigSession(this, island.seed, options.progress?.gigs,
-        options.progress?.gigBodies, options.progress?.rooftopPose);
+        options.progress?.gigBodies, options.progress?.rooftopPose, options.progress?.gigPlayerPose);
     } catch {
       this.gigs = new GigSession(this, island.seed);
     }
@@ -793,10 +793,7 @@ export class Game {
     }
     if (commands.headbutt) {
       this.sendVisualCue(g, 'headbutt');
-      if (player) {
-        this.lastActionTime = this.physics.time;
-        this.gigs.noteAbility({ type: 'headbutt' });
-      }
+      if (player) this.lastActionTime = this.physics.time;
       const charge = Math.min(1, commands.headbutt.charge / TUNING.headbutt.maxCharge);
       // The physics lane's downward grazing ray can choose the terrain before a
       // nearby crate. Retain its torso lunge, then resolve an explicitly dynamic
@@ -833,6 +830,10 @@ export class Game {
             impulse });
           struck = target;
         }
+      }
+      if (player) {
+        const targetId = struck ? this.physics.bodyData(struck.handle)?.owner : undefined;
+        this.gigs.noteAbility({ type: 'headbutt', targetId });
       }
       if (struck) this.breakables.hit(struck, commands.headbutt.impulse * .75);
       // Fixed Hay-Build pieces cannot be returned from GoatInteractions.headbutt,
@@ -1031,14 +1032,25 @@ export class Game {
     this.respawns++;
   }
 
+  /** Use the same offshore limits as rescue, including the authored pier. */
+  canResumeGigAt(position: Vec3): boolean {
+    if (![position.x, position.y, position.z].every(Number.isFinite) ||
+        position.y < this.island.seaLevel - .2 || position.y > 500) return false;
+    const outside = Math.max(Math.abs(position.x), Math.abs(position.z)) > this.island.size * .57;
+    if (outside) return this.isAbovePierDeck(position);
+    return position.y >= heightAt(this.island, position.x, position.z) - this.goat.size;
+  }
+
   exportProgress(): GameProgress {
     const progress: GameProgress = { gameplay: this.rules.toJSON(), gigs: this.gigs.director.toJSON(),
       gigBodies: this.gigs.saveBodies(), acknowledgedGigAttempt: this.acknowledgedGigAttempt };
     const run = this.gigs.active;
-    if (run?.status === 'running' && run.setup.config.kind === 'rooftop-express') {
+    if (run?.status === 'running') {
       const { x, y, z } = this.goat.torso.translation();
-      progress.rooftopPose = { position: { x, y: y - .92 * this.goat.size, z },
-        heading: this.goat.locomotion.heading };
+      const position = { x, y: y - .92 * this.goat.size, z };
+      if (this.canResumeGigAt(position)) {
+        progress.gigPlayerPose = { attemptId: run.attemptId, position, heading: this.goat.locomotion.heading };
+      }
     }
     return progress;
   }

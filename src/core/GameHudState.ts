@@ -60,18 +60,68 @@ export function clampHudPercent(value: number): number {
   return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
 }
 
-export function formatHudObjective(objective: GigObjective): string {
+export function hudObjectiveParts(objective: GigObjective): { measure: string; unit: string } {
   switch (objective.kind) {
-    case 'deliver': return objective.done + ' / ' + objective.required + ' BALES';
-    case 'coverage': return objective.eaten + ' / ' + objective.total + ' PATCHES';
+    case 'deliver': return { measure: objective.done + ' / ' + objective.required, unit: 'BALES' };
+    case 'coverage': return { measure: objective.eaten + ' / ' + objective.total, unit: 'PATCHES' };
     case 'checkpoints':
     case 'escort':
-    case 'summit': return objective.reached + ' / ' + objective.total + ' CHECKPOINTS';
-    case 'displace': return Math.round(objective.movedMass) + ' / ' +
-      Math.round(objective.requiredMass) + ' MASS';
-    case 'stack': return objective.layers + ' / ' + objective.required + ' CRATES';
-    case 'splash': return objective.drop.toFixed(1) + ' / ' +
-      objective.requiredDrop.toFixed(1) + 'm DROP';
+    case 'summit': return {
+      measure: objective.reached + ' / ' + objective.total, unit: 'CHECKPOINTS',
+    };
+    case 'displace': return { measure: Math.round(objective.movedMass) + ' / ' +
+      Math.round(objective.requiredMass), unit: 'MASS' };
+    case 'stack': return { measure: objective.layers + ' / ' + objective.required, unit: 'CRATES' };
+    case 'splash': return { measure: objective.drop.toFixed(1) + ' / ' +
+      objective.requiredDrop.toFixed(1) + 'm', unit: 'DROP' };
+  }
+}
+
+export function formatHudObjective(objective: GigObjective): string {
+  const { measure, unit } = hudObjectiveParts(objective);
+  return measure + ' ' + unit;
+}
+
+function runningGigText(run: NonNullable<HudInput['gig']>): Pick<HudState['gig'], 'task' | 'detail'> {
+  const { objective } = run;
+  const remaining = Math.max(0, Math.ceil((run.maxTicks - run.elapsedTicks) / 60)) + 's LEFT';
+  switch (objective.kind) {
+    case 'splash':
+      return {
+        task: objective.launchReached
+          ? (objective.requiresFlop ? 'Flop into marked water' : 'Land in marked water')
+          : 'Reach the launch marker',
+        detail: objective.requiredDrop.toFixed(1) + 'm DROP NEEDED · ' + remaining,
+      };
+    case 'stack':
+      return {
+        task: objective.layers >= objective.required ? 'Keep the stack still' : 'Stack in the marked zone',
+        detail: objective.layers >= objective.required
+          ? 'HOLD ' + Math.ceil((objective.holdTicks - objective.stableTicks) / 60) + 's MORE · ' + remaining
+          : formatHudObjective(objective) + ' · ' + remaining,
+      };
+    case 'summit': {
+      const needsFlags = objective.reached < objective.total;
+      const minimumClimb = objective.minimumClimb ?? 0;
+      const needsClimb = objective.climbed < minimumClimb;
+      return {
+        task: needsFlags ? 'Reach flag ' + (objective.reached + 1) :
+          (needsClimb ? 'Keep climbing' : objective.requiresBleat ? 'Bleat at the beacon' : 'Reach the summit'),
+        detail: objective.reached + '/' + objective.total + ' FLAGS · ' +
+          (minimumClimb > 0 ? Math.floor(objective.climbed) + '/' + minimumClimb + 'm CLIMB · ' : '') + remaining,
+      };
+    }
+    case 'displace':
+      return {
+        task: objective.movedMass > 0 ? 'Topple the rest of the tower' : 'Charge a hit at the base',
+        detail: Math.round(objective.movedMass) + '/' + Math.round(objective.requiredMass) +
+          ' kg MOVED · ' + remaining,
+      };
+    default: {
+      const pace = run.elapsedTicks <= run.goldTicks ? 'GOLD PACE*' :
+        run.elapsedTicks <= run.silverTicks ? 'SILVER PACE*' : 'BRONZE PACE';
+      return { task: objective.label, detail: formatHudObjective(objective) + ' · ' + remaining + ' · ' + pace };
+    }
   }
 }
 
@@ -108,12 +158,7 @@ export function deriveHudState(input: HudInput): HudState {
   } else if (input.gig) {
     const run = input.gig;
     if (run.status === 'running') {
-      const seconds = Math.max(0, Math.ceil((run.maxTicks - run.elapsedTicks) / 60));
-      const pace = run.elapsedTicks <= run.goldTicks ? 'GOLD PACE*' :
-        run.elapsedTicks <= run.silverTicks ? 'SILVER PACE*' : 'BRONZE PACE';
-      gig = { title: run.title, task: run.objective.label,
-        detail: formatHudObjective(run.objective) + ' · ' + seconds + 's LEFT · ' + pace,
-        active: true };
+      gig = { title: run.title, ...runningGigText(run), active: true };
     } else if (run.status === 'completed') {
       gig = { title: run.title, task: 'GIG COMPLETE!',
         detail: (run.rating ?? 'bronze').toUpperCase() + ' · +' + num(run.payout ?? 0) + ' CUD COINS',

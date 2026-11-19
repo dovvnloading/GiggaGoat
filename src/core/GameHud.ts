@@ -4,7 +4,7 @@ import { HUD_PIECES, deriveHudState, projectHudMap } from './GameHudState';
 import { PAD_BUILD_BINDINGS, type InputDevice } from './GameInput';
 import { buildArtwork, goatArtwork, renderHudMinimap } from './HudArtwork';
 import { fitGigCardText } from './GigCardLayout';
-import { createHayHaulMapMarker, hayHaulMapPoint, separateMapObjective,
+import { createHayHaulMapMarker, gigMapPoint, separateMapObjective,
   type HayHaulGuidance } from './GigPresentation';
 import { HUD_SPRITES, hudSpriteImage, hudSpriteVariables } from './HudSprites';
 import { carryStaminaForHud, derivePartyHudState } from './PartyHudState';
@@ -704,6 +704,17 @@ export class GameHud {
       this.mapSceneryClearance.setAttribute('transform', translate);
     }
     this.updateHayHaulMap(hayHaul, point);
+    const run = game.gigs.active;
+    const target = !game.party.match && run?.status === 'running' && run.objective.kind === 'summit'
+      ? run.objective.next : undefined;
+    const flag = this.mapObjectives?.querySelector('[data-map-climb-target]');
+    if (flag) {
+      flag.setAttribute('visibility', target ? 'visible' : 'hidden');
+      if (target) {
+        const { x, y } = gigMapPoint(target, this.mapOrigin);
+        flag.setAttribute('transform', 'translate(' + x.toFixed(1) + ' ' + y.toFixed(1) + ')');
+      }
+    }
   }
 
   private updateHayHaulMap(hayHaul: HayHaulGuidance | null,
@@ -717,7 +728,7 @@ export class GameHud {
       this.hayHaulMapMarker = createHayHaulMapMarker(hayHaul.kind);
       this.mapObjectives.append(this.hayHaulMapMarker);
     }
-    const anchor = hayHaulMapPoint(hayHaul.position, this.mapOrigin);
+    const anchor = gigMapPoint(hayHaul.position, this.mapOrigin);
     const badge = separateMapObjective(anchor, player);
     const leader = this.hayHaulMapMarker.querySelector('line');
     leader?.setAttribute('x2', (anchor.x - badge.x).toFixed(1));
@@ -775,7 +786,7 @@ export class GameHud {
 
   update(game: Game, fps: number, stepMilliseconds: number, debugVisible: boolean,
     pointerLocked: boolean, perf?: FramePerformance, hayHaul: HayHaulGuidance | null = null,
-    device: InputDevice = 'keyboard-mouse'): void {
+    device: InputDevice = 'keyboard-mouse', pointerLockUnavailable = false): void {
     const rules = game.rules;
     const inventory = rules.inventory.all;
     const activeGig = game.gigs.active;
@@ -858,7 +869,7 @@ export class GameHud {
       this.gigLayoutKey = gigLayoutKey;
     }
     this.board.hidden = !boardInRange;
-    this.setPointerLockHint(pointerLocked, boardInRange, device);
+    this.setPointerLockHint(pointerLocked, boardInRange, device, pointerLockUnavailable);
     this.debug.hidden = !debugVisible;
     if (debugVisible) this.debug.textContent = 'F3 · PERFORMANCE\n' +
       'FPS: ' + (perf?.fps ?? fps).toFixed(0) + '\n' +
@@ -902,15 +913,17 @@ export class GameHud {
   }
 
   setPointerLockHint(pointerLocked: boolean, boardInRange = false,
-    device: InputDevice = 'keyboard-mouse'): void {
+    device: InputDevice = 'keyboard-mouse', pointerLockUnavailable = false): void {
     const gamepad = device === 'gamepad';
     if (device !== this.inputDevice) {
       this.inputDevice = device;
       this.hintKey.className = gamepad ? 'gg-prompt-key' : 'gg-prompt-key gg-prompt-mouse';
       this.hintKey.textContent = gamepad ? 'RS' : '🖱';
-      this.hintCopy.textContent = gamepad ? 'RIGHT STICK TO LOOK' : 'MOUSE / IJKL LOOK · C CAPTURE MOUSE';
       this.boardKey.textContent = gamepad ? 'X' : 'E';
     }
+    const copy = gamepad ? 'RIGHT STICK TO LOOK' : pointerLockUnavailable
+      ? 'MOUSE / IJKL LOOK · HOLD EDGE TO TURN' : 'MOUSE / IJKL LOOK · C CAPTURE MOUSE';
+    if (this.hintCopy.textContent !== copy) this.hintCopy.textContent = copy;
     const hideLookHint = boardInRange || (pointerLocked && !gamepad);
     if (this.hint.hidden !== hideLookHint) this.hint.hidden = hideLookHint;
   }

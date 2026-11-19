@@ -1,6 +1,9 @@
 import { HOOFINGTON_HAUL_BALE_PREFIX } from '../world/hoofington-entrances';
+import { SPLASH_DIVE_BOARD_ID } from '../world/boardwalk';
 import type { IslandData, PoiDescriptor, PropDescriptor, PoiId } from '../world';
 import { rooftopDecks } from '../world/rooftop-course';
+import { lighthouseAccess, lighthouseFlagPositions } from '../world/lighthouse-access';
+import { sectionCenter } from '../world/access-path';
 import {
   DIFFICULTIES, GIG_IDS,
 } from './types';
@@ -31,7 +34,7 @@ export const GIG_INFO: Readonly<Record<GigId, GigInfo>> = {
   'demolition-contract': {
     id: 'demolition-contract', title: 'DEMOLITION CONTRACT', poiId: 'crane-yard',
     pitch: 'The official building inspector is a goat.',
-    instruction: 'Headbutt the marked temporary tower. Move mass, not just dust.',
+    instruction: 'Hold and release headbutt against the marked tower’s bottom row to topple it.',
     verbs: ['headbutt', 'bleat'], baseCoins: 80,
     cosmetic: { id: 'safety-horns', name: 'Safety Third Horns', slot: 'horns', color: '#FF891E' },
   },
@@ -45,43 +48,43 @@ export const GIG_INFO: Readonly<Record<GigId, GigInfo>> = {
   'escort-the-gnome': {
     id: 'escort-the-gnome', title: 'ESCORT THE GNOME', poiId: 'whispering-pines',
     pitch: 'Fragile passenger. Unlicensed goat movers.',
-    instruction: 'Nudge the gnome through the flags. Too hard and he cracks.',
+    instruction: 'Walk behind the gnome to nudge it through the flags, or hold lick and back away. Avoid headbutts.',
     verbs: ['headbutt', 'tongue', 'bleat'], baseCoins: 75,
     cosmetic: { id: 'gnome-cap', name: 'Tiny Guardian Cap', slot: 'hat', color: '#D84F3D' },
   },
   'stack-up': {
     id: 'stack-up', title: 'STACK-UP', poiId: 'crane-yard',
     pitch: 'Structural engineering by the least qualified animal on site.',
-    instruction: 'Tongue/ram crates into a vertical tower. Hold steady for five seconds.',
+    instruction: 'Tow the loose crates to the marked pad. Stack them and keep still for five seconds.',
     verbs: ['tongue', 'headbutt', 'flop'], baseCoins: 85,
     cosmetic: { id: 'hard-hat', name: 'Questionably Safe Hard Hat', slot: 'hat', color: '#FFD833' },
   },
   'summit-sprint': {
     id: 'summit-sprint', title: 'SUMMIT SPRINT', poiId: 'mt-gigga',
     pitch: 'A cliff is just a shortcut with consequences.',
-    instruction: 'Climb through the ledge flags to Mt. Gigga’s summit.',
+    instruction: 'Start at the first flag and follow the marked trail uphill to the summit.',
     verbs: ['climb', 'tongue'], baseCoins: 82,
     cosmetic: { id: 'summit-badge', name: 'Peak Freak Badge', slot: 'badge', color: '#8C919E' },
   },
   'splash-dive': {
     id: 'splash-dive', title: 'SPLASH DIVE', poiId: 'baa-ardwalk',
     pitch: 'The crowd wants a big splash, not a graceful one.',
-    instruction: 'Reach the high board, leap, and make a measured big splash.',
+    instruction: 'Find the side diving board. Leap straight toward the ring in open water.',
     verbs: ['flop', 'climb', 'bleat'], baseCoins: 63,
     cosmetic: { id: 'bubble-trail', name: 'Bubble Trouble', slot: 'trail', color: '#21A8C6' },
   },
   'dam-bomb': {
     id: 'dam-bomb', title: 'DAM BOMB', poiId: 'the-dam',
     pitch: 'The water inspector recommends a full-body impact.',
-    instruction: 'Flop off the dam high walk into the reservoir. Make a huge splash.',
+    instruction: 'Take the yellow ramp beside the board to the upper deck. Run through the spillway gap and flop toward the splash ring.',
     verbs: ['flop', 'climb'], baseCoins: 75,
     cosmetic: { id: 'dam-flippers', name: 'Dam Good Flippers', slot: 'trail', color: '#21A8C6' },
   },
   'beacon-bleat': {
     id: 'beacon-bleat', title: 'BEACON BLEAT', poiId: 'old-lighthouse',
     pitch: 'The lighthouse foghorn has been replaced by one loud goat.',
-    instruction: 'Climb the lighthouse rooftops, then BLEAT at the top.',
-    verbs: ['climb', 'tongue', 'bleat'], baseCoins: 79,
+    instruction: 'Follow the outside stair through the flags, then press BLEAT at the lantern.',
+    verbs: ['bleat'], baseCoins: 79,
     cosmetic: { id: 'beacon-horns', name: 'Fog-horn Horns', slot: 'horns', color: '#FFD833' },
   },
 };
@@ -184,6 +187,7 @@ export class GigCatalog {
   private readonly islandSize: number;
   private readonly mowProps: LawnObstacle[];
   private readonly mowRoads: LawnObstacle[];
+  private readonly summitTrail: Point[];
   constructor(island: Pick<IslandData, 'seed' | 'pois' | 'props' | 'seaLevel' | 'reservoir' | 'heights' |
     'resolution' | 'size'> & Partial<Pick<IslandData, 'roads'>>, seed: number | string = 1) {
     this.seed = hash(String(island.seed) + ':' + String(seed));
@@ -216,6 +220,8 @@ export class GigCatalog {
       return [{ x, z, halfX: road.width / 2 + 1.7 * scale, halfZ: length / 2 + scale,
         cos: dz / length, sin: dx / length }];
     }));
+    this.summitTrail = ((island.roads ?? []).find(road => road.id === 'mt-gigga--hoofington')?.points ?? [])
+      .map(copy).reverse();
   }
   /** Billy Isle row-major bilinear terrain lookup, duplicated as plain data to avoid engine imports. */
   private terrainY(x: number, z: number): number {
@@ -283,6 +289,58 @@ export class GigCatalog {
     return true;
   }
 
+  private escortRoute(poi: PoiDescriptor, count: number, variant: number): Point[] | undefined {
+    const scale = this.islandSize / 600;
+    const near = this.props.filter(prop => prop.collidable && prop.kind !== 'grass-tuft' &&
+      Math.hypot(prop.transform.position.x - poi.center.x, prop.transform.position.z - poi.center.z) <= 55 * scale);
+    const spacing = 5 * scale;
+    const open = (x: number, z: number): boolean => {
+      const y = this.terrainY(x, z);
+      if (y <= this.seaLevel + scale) return false;
+      for (const [dx, dz] of [[scale, 0], [-scale, 0], [0, scale], [0, -scale]]) {
+        if (Math.abs(this.terrainY(x + dx!, z + dz!) - y) > 0.38 * scale) return false;
+      }
+      return !near.some(prop => {
+        const p = prop.transform.position;
+        if (p.y - prop.size.y / 2 > y + 2.2 * scale || p.y + prop.size.y / 2 < y) return false;
+        const c = Math.cos(prop.transform.rotationY), s = Math.sin(prop.transform.rotationY);
+        const dx = x - p.x, dz = z - p.z;
+        return Math.abs(dx * c - dz * s) < prop.size.x / 2 + 1.15 * scale &&
+          Math.abs(dx * s + dz * c) < prop.size.z / 2 + 1.15 * scale;
+      });
+    };
+    for (const angle of [0, 0.23, -0.23, 0.46, -0.46]) {
+      for (const zOffset of [10, 8, 12, 6, 14, 16, 18, 20]) {
+        for (const xOffset of [variant, variant - 2, variant + 2, variant - 4]) {
+          const x = poi.center.x + xOffset * scale, z = poi.center.z + zOffset * scale;
+          const at = (offset: number): Point => {
+            const px = x + offset * Math.cos(angle), pz = z + offset * Math.sin(angle);
+            return { x: px, y: this.terrainY(px, pz) + .8, z: pz };
+          };
+          const last = (count - 1) * spacing;
+          const steps = Math.ceil((last + 4 * scale) / (.55 * scale));
+          if (!Array.from({ length: steps + 1 }, (_, i) => at(-2.5 * scale + (last + 4 * scale) * i / steps))
+            .every(p => open(p.x, p.z))) continue;
+          return Array.from({ length: count }, (_, i) => at(i * spacing));
+        }
+      }
+    }
+  }
+
+  private summitCheckpoints(tier: number, variant: number): Point[] {
+    const scale = this.islandSize / 600;
+    const reversed = this.summitTrail.slice().reverse();
+    const distances = reversed.map((p, i) => i === 0 ? 0 :
+      Math.hypot(p.x - reversed[i - 1]!.x, p.z - reversed[i - 1]!.z));
+    for (let i = 1; i < distances.length; i++) distances[i] = distances[i]! + distances[i - 1]!;
+    const run = Math.min((50 + 6 * tier + variant * 1.5) * scale, distances.at(-1)!);
+    return Array.from({ length: 3 + tier }, (_, i) => {
+      const remaining = run * (1 - i / (2 + tier));
+      const point = reversed[distances.findIndex(distance => distance >= remaining)]!;
+      return { ...point, y: Math.max(point.y + .19, this.terrainY(point.x, point.z)) + .12 };
+    });
+  }
+
   get ids(): readonly GigId[] { return GIG_IDS; }
   info(id: GigId): GigInfo { return structuredClone(GIG_INFO[id]); }
   private poi(id: PoiId): PoiDescriptor {
@@ -330,7 +388,14 @@ export class GigCatalog {
       if (JSON.stringify(fieldSupply) === serialized) return saved;
       if (JSON.stringify(this.buildVariant(saved.offer, true, true)) === serialized) return fieldSupply;
     }
-    if ((current.config.kind === 'mow-down' || current.config.kind === 'rooftop-express') &&
+    if ((current.config.kind === 'mow-down' || current.config.kind === 'rooftop-express' ||
+        saved.offer.gigId === 'beacon-bleat') &&
+        JSON.stringify(this.buildVariant(saved.offer, true)) === serialized) return current;
+    if (saved.offer.gigId === 'dam-bomb' &&
+        JSON.stringify(this.buildVariant(saved.offer, true)) === serialized) return saved;
+    if (['splash-dive', 'summit-sprint', 'escort-the-gnome'].includes(saved.offer.gigId) &&
+        JSON.stringify(this.buildVariant(saved.offer, true)) === serialized) return current;
+    if ((current.config.kind === 'demolition-contract' || current.config.kind === 'stack-up') &&
         JSON.stringify(this.buildVariant(saved.offer, true)) === serialized) return current;
     return null;
   }
@@ -419,22 +484,35 @@ export class GigCatalog {
         break;
       }
       case 'demolition-contract': {
+        const scale = this.islandSize / 600;
         const tower = requireKind(this.props, 'crane-yard', 'tower')[0]!;
-        const anchor = plus(tower.transform.position, tower.size.x / 2 + 7 + rng.int(3) - 1,
-          -tower.size.y / 2, rng.int(5) - 2);
+        // A standalone practice tower belongs on the open front apron.
+        const anchor = legacyLayout
+          ? plus(tower.transform.position, tower.size.x / 2 + 7 + rng.int(3) - 1,
+            -tower.size.y / 2, rng.int(5) - 2)
+          : plus(poi.center, 11 * scale, 0, 12 * scale);
+        const size = legacyLayout ? { x: 2.15, y: 2.3, z: 2.15 } :
+          { x: 1.65 * Math.min(1, scale), y: 1.50 * Math.min(1, scale), z: 1.45 * Math.min(1, scale) };
+        if (!legacyLayout) {
+          anchor.y = Math.max(this.terrainY(anchor.x - size.x / 2, anchor.z),
+            this.terrainY(anchor.x + size.x / 2, anchor.z));
+        }
         const pieces: { id: string; start: Point; mass: number }[] = [];
         const rows = 3 + tier;
         for (let y = 0; y < rows; y++) for (let x = 0; x < 2; x++) {
-          const position = plus(anchor, (x - 0.5) * 2.15, 1.15 + y * 2.3, 0);
+          const position = plus(anchor, (x - 0.5) * size.x,
+            legacyLayout ? 1.15 + y * 2.3 : (y + .5) * size.y,
+            legacyLayout ? 0 : -y * .24 * Math.min(1, scale));
           const id = 'gig-tower-' + s + '-' + y + '-' + x;
-          const mass = 18 + y * 3;
+          const mass = legacyLayout ? 18 + y * 3 : 4.5 + y * .5;
           pieces.push({ id, start: position, mass });
           spawns.push({ id, role: 'tower', position: copy(position),
-            size: { x: 2.15, y: 2.3, z: 2.15 }, mass, fragile: false, color: '#FF891E' });
+            size, mass, fragile: false, color: '#FF891E' });
         }
         config = { kind: 'demolition-contract', pieces, requiredFraction: [0.56, 0.64, 0.72][tier]! };
-        start = plus(anchor, 0, 1, 9);
-        markers = [marker('tower', 'Topple me', plus(anchor, 0, 3, 0), 5, 'destination')];
+        start = plus(anchor, 0, 1, legacyLayout ? 9 : 7 * scale);
+        markers = [marker('tower', legacyLayout ? 'Topple me' : 'Hit the base',
+          plus(anchor, 0, 3, 0), 5, 'destination')];
         break;
       }
       case 'mow-down': {
@@ -450,41 +528,62 @@ export class GigCatalog {
       case 'escort-the-gnome': {
         const sign = requireKind(this.props, 'whispering-pines', 'sign')[0]!;
         const gnomeId = 'gig-gnome-' + s;
-        const route: Point[] = [];
+        const oldRoute: Point[] = [];
         const initial = plus(sign.transform.position, 3 + rng.int(3),
           0, 1 + rng.int(3));
         for (let i = 0; i < 4 + tier; i++) {
           const p = plus(initial, i * 5.5, 0, Math.sin(i * 1.3) * 3 + i * 2);
           p.y = this.terrainY(p.x, p.z) + 0.8;
-          route.push(p);
+          oldRoute.push(p);
         }
+        const route = legacyLayout ? oldRoute : this.escortRoute(poi, 4 + tier, rng.int(3)) ?? oldRoute;
         config = { kind: 'escort-the-gnome', gnomeId, route,
           breakImpulse: [48, 36, 27][tier]! };
-        spawns = [{ id: gnomeId, role: 'gnome', position: copy(route[0]!),
+        spawns = [{ id: gnomeId, role: 'gnome', position: plus(route[0]!, 0, legacyLayout ? 0 : .12, 0),
           size: { x: 0.8, y: 1.6, z: 0.8 }, mass: 3.5, fragile: true, color: '#D84F3D' }];
         start = plus(route[0]!, 2, 0, 1);
-        markers = route.map((p, i) => marker('gnome-' + i, 'Flag ' + (i + 1), p, 2.3, 'checkpoint'));
+        markers = route.map((p, i) => marker('gnome-' + i,
+          !legacyLayout && i === 0 ? 'Nudge or lick the gnome' : 'Flag ' + (i + 1), p, 2.3, 'checkpoint'));
         break;
       }
       case 'stack-up': {
-        const center = plus(poi.center, 25 + rng.int(3), 0, -25 + rng.int(3));
+        const scale = this.islandSize / 600;
+        // Reserve the west end of the north apron for the stack, with a
+        // compact crate rack to its east. This stays clear of the pipe bay,
+        // shipping container and through road.
+        const center = legacyLayout ? plus(poi.center, 25 + rng.int(3), 0, -25 + rng.int(3)) :
+          plus(poi.center, 11 * scale, 0, -24 * scale);
         center.y = this.terrainY(center.x, center.z);
         const layers = 2 + tier;
+        const crateHeight = legacyLayout ? 2.2 : 1.45 * Math.min(1, scale);
         const crateIds: string[] = [];
         for (let i = 0; i < layers + 2; i++) {
           const id = 'gig-crate-' + s + '-' + i;
-          const position = plus(center, 4 + i * 2.8, 1.1, 2);
+          const position = legacyLayout ? plus(center, 4 + i * 2.8, 1.1, 2) :
+            plus(center, (4.8 + (i % 2) * 3.2) * scale, 0, [0, -3.2, 3.2][Math.floor(i / 2)]! * scale);
+          if (!legacyLayout) position.y = this.terrainY(position.x, position.z) + crateHeight / 2;
           crateIds.push(id);
-          spawns.push({ id, role: 'stack-crate', position, size: { x: 2.2, y: 2.2, z: 2.2 },
-            mass: 20, fragile: false, color: '#F2C14F' });
+          spawns.push({ id, role: 'stack-crate', position,
+            size: { x: crateHeight, y: crateHeight, z: crateHeight },
+            mass: legacyLayout ? 20 : 5.5, fragile: false, color: '#F2C14F' });
         }
         config = { kind: 'stack-up', crateIds, center: copy(center),
-          groundY: center.y, crateHeight: 2.2, requiredLayers: layers, holdTicks: 300 };
-        start = plus(center, 5, 1, 5);
-        markers = [marker('stack-zone', 'Build here', plus(center, 0, 1.1, 0), 2, 'destination')];
+          groundY: center.y, crateHeight, requiredLayers: layers, holdTicks: 300 };
+        start = legacyLayout ? plus(center, 5, 1, 5) : plus(center, 0, .6, 4.5 * scale);
+        markers = [marker('stack-zone', 'Build here', plus(center, 0, crateHeight / 2, 0), 2, 'destination')];
         break;
       }
       case 'summit-sprint': {
+        if (!legacyLayout && this.summitTrail.length) {
+          const checkpoints = this.summitCheckpoints(tier, rng.int(3));
+          config = { kind: 'summit-sprint', checkpoints,
+            minimumClimb: [4, 6, 8][tier]!, goldClimb: [6, 7.5, 9][tier]! };
+          start = copy(checkpoints[0]!);
+          markers = checkpoints.map((p, i) => marker('summit-' + i,
+            i === 0 ? 'Start here' : i === checkpoints.length - 1 ? 'Summit' : 'Trail flag ' + (i + 1), p, 6,
+            i === 0 ? 'start' : i === checkpoints.length - 1 ? 'destination' : 'checkpoint'));
+          break;
+        }
         const ledges = requireKind(this.props, 'mt-gigga', 'ledge')
           .filter(p => p.transform.position.y < poi.center.y - 3)
           .sort((a, b) => a.transform.position.y - b.transform.position.y);
@@ -517,6 +616,17 @@ export class GigCatalog {
       }
       case 'beacon-bleat': {
         const tower = requireKind(this.props, 'old-lighthouse', 'lighthouse')[0]!;
+        if (!legacyLayout) {
+          const path = lighthouseAccess(tower, (x, z) => this.terrainY(x, z));
+          const checkpoints = lighthouseFlagPositions(path, 2 + tier, rng.int(5) - 2)
+            .map(point => plus(point, 0, .6, 0));
+          config = { kind: 'summit-sprint', checkpoints, minimumClimb: 0, requiresBleat: true };
+          start = sectionCenter(path[0]!);
+          markers = checkpoints.map((point, i) => marker('beacon-' + i,
+            i === checkpoints.length - 1 ? 'BLEAT HERE' : 'Stair flag ' + (i + 1),
+            point, 3.0, 'checkpoint'));
+          break;
+        }
         const house = requireKind(this.props, 'old-lighthouse', 'house')[0]!;
         const platform = requireKind(this.props, 'old-lighthouse', 'platform')[0]!;
         const roof = (prop: PropDescriptor): Point =>
@@ -536,13 +646,17 @@ export class GigCatalog {
       }
       case 'splash-dive': {
         const pier = requireKind(this.props, 'baa-ardwalk', 'pier')[0]!;
-        const jumpPoint = plus(pier.transform.position, rng.int(5) - 2,
-          pier.size.y / 2 + 0.7, pier.size.z / 2 - 5);
-        const landing = plus(jumpPoint, 0, this.seaLevel - jumpPoint.y, 7);
+        const board = legacyLayout ? undefined : this.props.find(prop => prop.id === SPLASH_DIVE_BOARD_ID);
+        const scale = this.islandSize / 600;
+        const jumpPoint = board ? plus(board.transform.position,
+          board.size.x / 2 - .9 * scale, board.size.y / 2 + .55 * scale, (rng.int(5) - 2) * .36 * scale)
+          : plus(pier.transform.position, rng.int(5) - 2, pier.size.y / 2 + 0.7, pier.size.z / 2 - 5);
+        const landing = plus(jumpPoint, board ? .9 * scale + 4 : 0,
+          this.seaLevel - jumpPoint.y, board ? 0 : 7);
         config = { kind: 'splash-dive', jumpPoint, landing, waterY: this.seaLevel,
           minDrop: [2.5, 3.5, 4.5][tier]! };
         start = copy(jumpPoint);
-        markers = [marker('high-board', 'Jump from here', jumpPoint, 3.5, 'start'),
+        markers = [marker('high-board', board ? 'Leap seaward' : 'Jump from here', jumpPoint, 3.5, 'start'),
           marker('splash-zone', 'Make waves', landing, 3.6, 'destination')];
         break;
       }
@@ -553,12 +667,34 @@ export class GigCatalog {
       if (legacyLayout) info.instruction = 'Lick the marked bales into the barn. Chain-tow two for a combo.';
       else if (fieldSupply) info.instruction = 'Drag the marked bales to the drop beside the barn. Chain-tow two for a combo.';
     }
+    if (legacyLayout && offer.gigId === 'demolition-contract') {
+      info.instruction = 'Headbutt the marked temporary tower. Move mass, not just dust.';
+    }
+    if (legacyLayout && offer.gigId === 'stack-up') {
+      info.instruction = 'Tongue/ram crates into a vertical tower. Hold steady for five seconds.';
+    }
     if (legacyLayout && offer.gigId === 'mow-down') {
       info.instruction = 'Eat every glowing grass patch. Plan an efficient bite path.';
     }
     if (legacyLayout && offer.gigId === 'rooftop-express') {
       info.instruction = 'Tongue-carry the parcel across the roof markers. Never touch the street.';
       info.verbs = ['tongue', 'climb', 'flop'];
+    }
+    if (legacyLayout && offer.gigId === 'dam-bomb') {
+      info.instruction = 'Flop off the dam high walk into the reservoir. Make a huge splash.';
+    }
+    if (legacyLayout && offer.gigId === 'beacon-bleat') {
+      info.instruction = 'Climb the lighthouse rooftops, then BLEAT at the top.';
+      info.verbs = ['climb', 'tongue', 'bleat'];
+    }
+    if (legacyLayout && offer.gigId === 'splash-dive') {
+      info.instruction = 'Reach the high board, leap, and make a measured big splash.';
+    }
+    if (legacyLayout && offer.gigId === 'summit-sprint') {
+      info.instruction = 'Climb through the ledge flags to Mt. Gigga’s summit.';
+    }
+    if (legacyLayout && offer.gigId === 'escort-the-gnome') {
+      info.instruction = 'Nudge the gnome through the flags. Too hard and he cracks.';
     }
     return {
       offer: structuredClone(offer), info, start, config,

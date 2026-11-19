@@ -6,7 +6,7 @@ import { RAPIER, V, collisionGroups, type PhysicsContact } from '../physics';
 import { heightAt, type PoiId } from '../world';
 import { ROOFTOP_DECK_PREFIX, ROOFTOP_SPAN_PREFIX, rooftopDecks } from '../world/rooftop-course';
 import type { Game } from './Game';
-import type { RooftopPose } from './Persistence';
+import type { GigPlayerPose, RooftopPose } from './Persistence';
 
 export interface GigBodySave {
   id: string;
@@ -33,6 +33,10 @@ export class GigSession {
   readonly isCourierRamp = (handle: number): boolean => this.courierRamps.has(handle);
   private courierPressure = 0;
   private courierShrink: { previousSize: number; expiresAt: number } | null = null;
+  private gnomePressure = 0;
+  private gnomeRiskUntil = -1;
+  private summitPeak = -Infinity;
+  private previousSummitPosition: { x: number; y: number; z: number } | null = null;
   private readonly abilities: AbilityFact[] = [];
   private readonly style: StyleFact[] = [];
   private readonly off: Array<() => void> = [];
@@ -41,7 +45,7 @@ export class GigSession {
   latestPayout = 0;
 
   constructor(game: Game, seed: string | number, snapshot?: GigSnapshot,
-    bodies: GigBodySave[] = [], rooftopPose?: RooftopPose) {
+    bodies: GigBodySave[] = [], rooftopPose?: RooftopPose, gigPlayerPose?: GigPlayerPose) {
     this.game = game;
     const laneX = rooftopDecks(game.island.props)[0]?.transform.position.x;
     for (const prop of game.island.props) {
@@ -71,12 +75,15 @@ export class GigSession {
     const run = this.director.active;
     if (run?.status === 'running') {
       const previous = snapshot?.run?.setup;
-      const start = run.setup.start;
-      const relocatedRoof = previous?.config.kind === 'rooftop-express' &&
-        run.setup.config.kind === 'rooftop-express' &&
-        (previous.start.x !== start.x || previous.start.y !== start.y || previous.start.z !== start.z);
-      this.spawn(run.setup.spawns, relocatedRoof ? [] : bodies);
-      this.stageRooftop(run.setup, relocatedRoof ? undefined : rooftopPose);
+      const relocated = previous && run.setup.config.kind !== 'hay-haul' &&
+        run.setup.config.kind !== 'mow-down' && JSON.stringify(previous) !== JSON.stringify(run.setup);
+      this.spawn(run.setup.spawns, relocated ? [] : bodies);
+      const saved = !relocated && gigPlayerPose?.attemptId === run.attemptId ? gigPlayerPose : undefined;
+      if (run.setup.config.kind === 'rooftop-express') {
+        this.stageRooftop(run.setup, saved ?? (relocated ? undefined : rooftopPose));
+      } else {
+        this.restorePlayer(run.setup, saved);
+      }
       this.keepHayBalesAvailable(run);
       if (run.setup.config.kind === 'hay-haul') {
         const saved = new Map(bodies.map(body => [body.id, body]));
@@ -165,8 +172,40 @@ export class GigSession {
     const setup = this.director.accept(offerId);
     this.spawn(setup.spawns);
     this.stageRooftop(setup);
+    this.stageSummit(setup);
     const run = this.active;
     if (run) this.keepHayBalesAvailable(run);
+  }
+
+  private stageSummit(setup: GigSetup): void {
+    if (setup.offer.gigId !== 'summit-sprint' || setup.config.kind !== 'summit-sprint' ||
+        setup.markers[0]?.type !== 'start') return;
+    const trail = this.game.island.roads.find(road => road.id === 'mt-gigga--hoofington')?.points;
+    const { start } = setup;
+    const index = trail?.findIndex(point => point.x === start.x && point.z === start.z) ?? -1;
+    const ahead = trail?.[index - 1] ?? setup.config.checkpoints[1]!;
+    const heading = Math.atan2(ahead.x - start.x, start.z - ahead.z);
+    this.game.teleport(start, -heading);
+  }
+
+  private restorePlayer(setup: GigSetup, saved?: GigPlayerPose): void {
+    if (saved?.position && Number.isFinite(saved.heading) && this.game.canResumeGigAt(saved.position)) {
+      this.game.teleport(saved.position, -saved.heading);
+      return;
+    }
+    if (setup.offer.gigId === 'summit-sprint' && setup.markers[0]?.type === 'start') {
+      this.stageSummit(setup);
+      return;
+    }
+    // Older saves have a running clock and objective but no player location.
+    // Put the goat back on the local course at a reliable starting point.
+    const start = setup.start;
+    const position = this.game.canResumeGigAt(start) ? start :
+      this.boards.find(board => board.poiId === setup.offer.poiId)?.position;
+    if (!position) return;
+    const target = setup.markers[0]?.position ?? start;
+    const heading = Math.atan2(target.x - position.x, position.z - target.z);
+    this.game.teleport(position, -heading);
   }
 
   private stageRooftop(setup: GigSetup, saved?: RooftopPose): void {
@@ -209,12 +248,18 @@ export class GigSession {
       const body = this.game.physics.raw.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(p.x, p.y, p.z).setCcdEnabled(true)
         .setLinearDamping(.25).setAngularDamping(.45));
-      this.game.physics.raw.createCollider(RAPIER.ColliderDesc.cuboid(
+      const collider = RAPIER.ColliderDesc.cuboid(
         descriptor.size.x / 2, descriptor.size.y / 2, descriptor.size.z / 2)
         .setMass(descriptor.mass).setFriction(.85)
         .setCollisionGroups(collisionGroups('prop'))
         .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS |
-          RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS), body);
+          RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS);
+      // The practice tower's sled crates can slide out from under a stack
+      // when a Kid hits its base. The surrounding worksite keeps its traction.
+      if (descriptor.role === 'tower') {
+        collider.setFriction(.24).setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min);
+      }
+      this.game.physics.raw.createCollider(collider, body);
       if (savedBody) {
         body.setRotation(savedBody.rotation, true);
         body.setLinvel(savedBody.velocity, true);
@@ -312,6 +357,16 @@ export class GigSession {
     if (contact.type !== 'impact') return;
     const run = this.active;
     if (run?.status !== 'running') return;
+    if (run.setup.config.kind === 'escort-the-gnome') {
+      const gnome = this.temporary.get(run.setup.config.gnomeId)?.body.handle;
+      const goat = this.game.goat;
+      if (gnome !== undefined && (contact.bodyA === gnome || contact.bodyB === gnome)) {
+        const other = contact.bodyA === gnome ? contact.bodyB : contact.bodyA;
+        if (other !== null && goat.ownsBody(this.game.physics.raw.getRigidBody(other))) {
+          this.gnomePressure += contact.impulse;
+        }
+      }
+    }
     if (run.setup.config.kind === 'rooftop-express') {
       const parcel = this.temporary.get(run.setup.config.parcelId)?.body.handle;
       const goat = this.game.goat;
@@ -332,6 +387,28 @@ export class GigSession {
       this.impacts.set(handle, (this.impacts.get(handle) ?? 0) + contact.impulse);
     }
   }
+
+  private gnomeBuried(position: { x: number; y: number; z: number }): boolean {
+    const { island, colliders } = this.game;
+    const approximate = heightAt(island, position.x, position.z);
+    if (position.y > approximate + .4) return false;
+    if (Math.abs(position.x) > island.size / 2 || Math.abs(position.z) > island.size / 2) return true;
+    const ray = new RAPIER.Ray(V(position.x, approximate + 2.5, position.z), V(0, -1, 0));
+    return [colliders.terrain, ...colliders.paths].some(floor => {
+      const distance = floor.castRay(ray, 4, false);
+      return distance >= 0 && position.y < ray.origin.y - distance - .23;
+    });
+  }
+
+  private measuredSummitAscent(position: { x: number; y: number; z: number }): number {
+    const previous = this.previousSummitPosition;
+    const delta = previous ? Math.hypot(position.x - previous.x, position.z - previous.z) : 0;
+    const gain = this.game.goat.locomotion.grounded && delta > .005 && delta < .45 &&
+      previous && Math.abs(position.y - previous.y) < .35 ? Math.max(0, position.y - this.summitPeak) : 0;
+    this.previousSummitPosition = { ...position };
+    this.summitPeak = Math.max(this.summitPeak, position.y);
+    return gain;
+  }
   /** Called after each completed physics tick, including catch-up substeps. */
   tick(climbed: number): void {
     const run = this.active;
@@ -341,6 +418,9 @@ export class GigSession {
     }
     const p = this.game.goat.torso.translation();
     const abilities = this.abilities.splice(0);
+    if (run?.status === 'running' && run.setup.offer.gigId === 'summit-sprint') {
+      climbed = Math.max(climbed, this.measuredSummitAscent(p));
+    }
     if (climbed > 0) abilities.push({ type: 'climb', metres: climbed });
     const style = this.style.splice(0);
     const props: PropFact[] = [];
@@ -350,6 +430,10 @@ export class GigSession {
       : undefined;
     this.setHayTowCollider(hay ? this.game.colliders.props.get(hay.id) ?? null : null);
     if (run?.status === 'running') {
+      if (run.setup.config.kind === 'escort-the-gnome' &&
+          abilities.some(action => action.type === 'headbutt' || action.type === 'flop' || action.type === 'bleat')) {
+        this.gnomeRiskUntil = this.game.physics.stepCount + 12;
+      }
       this.keepHayBalesAvailable(run);
       const relevant = new Set<string>(run.setup.spawns.map(s => s.id));
       if (run.setup.config.kind === 'hay-haul') {
@@ -358,10 +442,18 @@ export class GigSession {
       for (const id of relevant) {
         const entry = this.temporary.get(id);
         const body = entry?.body ?? this.game.colliders.bodies.get(id);
-        if (!body || !this.game.physics.raw.getRigidBody(body.handle)) continue;
+        const gnome = run.setup.config.kind === 'escort-the-gnome' && id === run.setup.config.gnomeId;
+        if (!body || !this.game.physics.raw.getRigidBody(body.handle)) {
+          if (gnome) props.push({ id, position: run.setup.start, unreachable: true });
+          continue;
+        }
         const position = body.translation(), rotation = body.rotation();
         const up = Math.max(-1, Math.min(1, 1 - 2 * (rotation.x ** 2 + rotation.z ** 2)));
-        const impact = this.impacts.get(body.handle) ?? 0;
+        let impact = this.impacts.get(body.handle) ?? 0;
+        if (gnome && this.game.physics.stepCount > this.gnomeRiskUntil && !this.game.goat.isRagdoll) {
+          const gentle = Math.min(impact, this.gnomePressure);
+          impact -= gentle - gentle / (1 + 4 * this.game.goat.size ** 3);
+        }
         // A fragile prop visibly breaks only under an actual measured contact impulse.
         if (entry?.descriptor.fragile) {
           const threshold = run.setup.config.kind === 'escort-the-gnome' ?
@@ -380,7 +472,8 @@ export class GigSession {
         }
         props.push({ id, position: { ...position }, velocity: { ...body.linvel() },
           tilt: Math.acos(up), impact, heldByTongue: held === body.handle,
-          carried: held === body.handle, broken: !!entry?.broken || this.game.destroyedProps.has(id) });
+          carried: held === body.handle, broken: !!entry?.broken || this.game.destroyedProps.has(id),
+          ...(gnome && this.gnomeBuried(position) ? { unreachable: true } : {}) });
       }
     }
     const events = this.director.step({
@@ -398,6 +491,7 @@ export class GigSession {
     if (events.some(event => ['gig.completed', 'gig.failed', 'gig.abandoned'].includes(event.type))) this.clear();
     this.impacts.clear();
     this.courierPressure = 0;
+    this.gnomePressure = 0;
   }
   saveBodies(): GigBodySave[] {
     const save = (id: string, body: RigidBody, broken: boolean): GigBodySave => ({
@@ -429,6 +523,10 @@ export class GigSession {
     this.impacts.clear();
     this.courierPressure = 0;
     this.courierShrink = null;
+    this.gnomePressure = 0;
+    this.gnomeRiskUntil = -1;
+    this.summitPeak = -Infinity;
+    this.previousSummitPosition = null;
   }
   dispose(): void { this.clear(); for (const off of this.off.splice(0)) off(); }
 }

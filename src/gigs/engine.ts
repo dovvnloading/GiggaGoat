@@ -41,11 +41,18 @@ function objective(run: GigRun): GigObjective {
     case 'stack-up': return { kind: 'stack', label: 'Stable crate layers',
       layers: run.metrics.maxLayers, required: c.requiredLayers,
       stableTicks: run.stableTicks, holdTicks: c.holdTicks };
-    case 'summit-sprint': return { kind: 'summit', label: 'Cliff flags reached',
-      reached: run.checkpointIndex, total: c.checkpoints.length, climbed: run.metrics.climbed };
+    case 'summit-sprint': {
+      const next = c.checkpoints[run.checkpointIndex] ??
+        (c.requiresBleat ? c.checkpoints.at(-1) : undefined);
+      return { kind: 'summit', label: 'Cliff flags reached',
+        reached: run.checkpointIndex, total: c.checkpoints.length, climbed: run.metrics.climbed,
+        minimumClimb: c.minimumClimb, requiresBleat: c.requiresBleat,
+        ...(next ? { next: clone(next) } : {}) };
+    }
     case 'splash-dive': return { kind: 'splash', label: 'Real drop into water',
       drop: run.metrics.splashDrop, requiredDrop: c.minDrop,
-      splashed: run.finishedIds.includes('splash') };
+      splashed: run.finishedIds.includes('splash'), launchReached: run.streetStarted,
+      requiresFlop: c.requiresFlop };
   }
 }
 function freshRun(setup: GigSetup, attemptId: number): GigRun {
@@ -85,10 +92,11 @@ function judgedSkill(run: GigRun): { silver: boolean; gold: boolean; bonus: numb
       return { silver: m.maxLayers >= c.requiredLayers,
         gold: m.maxLayers > c.requiredLayers,
         bonus: Math.min(0.22, (m.maxLayers - c.requiredLayers) * 0.11) };
-    case 'summit-sprint':
+    case 'summit-sprint': {
+      const gold = m.climbed >= (c.goldClimb ?? c.minimumClimb * 1.5);
       return { silver: m.climbed >= c.minimumClimb,
-        gold: m.climbed >= c.minimumClimb * 1.5,
-        bonus: m.climbed >= c.minimumClimb * 1.5 ? 0.14 : 0 };
+        gold, bonus: gold ? 0.14 : 0 };
+    }
     case 'splash-dive':
       return { silver: m.splashDrop >= c.minDrop,
         gold: m.splashDrop >= c.minDrop + 2.5,
@@ -343,13 +351,15 @@ export class GigDirector {
         break;
       }
       case 'demolition-contract': {
-        run.metrics.headbutts += actions.filter(a => a.type === 'headbutt').length;
+        run.metrics.headbutts += actions.filter(action =>
+          action.type === 'headbutt' && c.pieces.some(piece => piece.id === action.targetId)).length;
         let mass = 0;
+        const metreScale = (run.setup.spawns[0]?.size.x ?? 2.15) / 2.15;
         for (const piece of c.pieces) {
           const p = props.get(piece.id);
           if (!p) continue;
-          const displacement = dist(p.position, piece.start);
-          // Count maximum displaced mass this attempt, not distance travelled each frame.
+          // Judge displacement relative to the size of the physical crate.
+          const displacement = dist(p.position, piece.start) / metreScale;
           mass += piece.mass * Math.min(1, Math.max(0, displacement - 0.7) / 3.3);
         }
         run.metrics.displacedMass = Math.max(run.metrics.displacedMass, mass);
@@ -375,6 +385,9 @@ export class GigDirector {
       }
       case 'escort-the-gnome': {
         const gnome = props.get(c.gnomeId);
+        if (gnome?.unreachable) {
+          this.fail('Gnome fell out of reach. Retry to reset the route.'); break;
+        }
         if (gnome?.broken || (gnome?.impact ?? 0) >= c.breakImpulse) {
           this.fail('Gnome cracked: use gentle nudges'); break;
         }
@@ -507,10 +520,12 @@ export class GigDirector {
         !run.metrics || Object.values(run.metrics).some(n => !finite(n) || n < 0)) {
         throw new RangeError('Malformed active gig snapshot');
       }
-      const relocatedRooftop = expected !== run.setup && expected.config.kind === 'rooftop-express';
-      restoredRun = relocatedRooftop && run.status === 'running'
-        ? freshRun(expected, run.attemptId) : clone(run);
-      if (expected !== run.setup && !relocatedRooftop) {
+      const relocated = expected !== run.setup && [
+        'rooftop-express', 'splash-dive', 'summit-sprint', 'escort-the-gnome', 'beacon-bleat',
+        'demolition-contract', 'stack-up',
+      ].includes(expected.offer.gigId);
+      restoredRun = relocated && run.status === 'running' ? freshRun(expected, run.attemptId) : clone(run);
+      if (!relocated) {
         restoredRun.setup = expected;
         restoredRun.objective = objective(restoredRun);
       }

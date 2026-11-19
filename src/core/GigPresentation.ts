@@ -57,7 +57,7 @@ const OBJECTIVE_MAP_RADIUS = 108;
 const MARKER_SEPARATION = 40;
 
 /** Keep an out-of-range waypoint just inside the rim of the circular minimap. */
-export function hayHaulMapPoint(position: Point, origin: { x: number; z: number }) {
+export function gigMapPoint(position: Point, origin: { x: number; z: number }) {
   const { x, y } = projectHudMap(position, origin);
   const dx = x - MAP_CENTER, dy = y - MAP_CENTER;
   const scale = Math.min(1, OBJECTIVE_MAP_RADIUS / Math.hypot(dx, dy));

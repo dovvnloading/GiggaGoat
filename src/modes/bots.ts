@@ -3,7 +3,7 @@ import type {
 } from './types';
 import { direction, distanceSquared, compareIds } from './internal';
 
-type BotGoal = 'wander' | 'chase' | 'shove' | 'flee' | 'capture' | 'grab-hay' | 'carry-hay';
+type BotGoal = 'wander' | 'chase' | 'shove' | 'flee' | 'capture' | 'circle-peak' | 'grab-hay' | 'carry-hay';
 export interface BotSnapshot {
   version: 1;
   playerId: string;
@@ -90,6 +90,29 @@ export class BotBrain {
         }
       }
     } else if (view.mode === 'king-of-the-peak') {
+      if (view.config.peakLeadDistance !== undefined) {
+        const center = view.arena.summit;
+        const returning = state.goal === 'circle-peak';
+        const distance = distanceSquared(self.position, center);
+        const nearby = rivals.filter(rival => rival.position.y >= center.y - 6 &&
+          distanceSquared(self.position, rival.position) < 3.2 ** 2);
+        const behind = nearby.some(rival => distanceSquared(rival.position, center) < distance);
+        if (!returning && nearby.length >= 2 && behind && distance < (.65 * view.config.peakRadius) ** 2) {
+          // When a crowd is already between us and the center, make room for
+          // a fresh approach instead of continuing to push the same pile.
+          const turn = (this.random() < .5 ? -1 : 1) * (.55 + .3 * this.random());
+          const angle = Math.atan2(self.position.z - center.z, self.position.x - center.x) + turn;
+          const radius = .78 * view.config.peakRadius;
+          state.goal = 'circle-peak';
+          state.target = { x: center.x + radius * Math.cos(angle), z: center.z + radius * Math.sin(angle) };
+          state.nextPlanTick = view.tick + 45 + Math.floor(this.random() * 23);
+          return;
+        }
+        state.goal = 'capture';
+        state.target = { x: center.x, z: center.z };
+        state.nextPlanTick = view.tick + (returning ? 53 : SKILL[state.difficulty].reaction);
+        return;
+      }
       state.goal = 'capture';
       state.target = { x: view.arena.summit.x + (this.random() - 0.5) * 3.5,
         z: view.arena.summit.z + (this.random() - 0.5) * 3.5 };
@@ -142,8 +165,11 @@ export class BotBrain {
     const distance = Math.hypot(dx, dz);
     const error = (this.random() - 0.5) * skill.error;
     const angle = Math.atan2(dz, dx) + error;
-    const move = distance > (this.state.goal === 'carry-hay' ? 1 : 1.7)
-      ? { x: Math.cos(angle), z: Math.sin(angle) } : { x: 0, z: 0 };
+    const centerCourse = view.mode === 'king-of-the-peak' && view.config.peakLeadDistance !== undefined;
+    const arrival = centerCourse ? .26 : this.state.goal === 'carry-hay' ? 1 : 1.7;
+    const pace = centerCourse ? Math.min(1, .35 + distance * .32) : 1;
+    const move = distance > arrival
+      ? { x: Math.cos(angle) * pace, z: Math.sin(angle) * pace } : { x: 0, z: 0 };
     const nearest = goats.filter(g => g.id !== me.id &&
       view.players.some(p => p.id === g.id && p.eliminatedAt === null &&
         (view.mode !== 'hay-heist' || p.teamId !== me.teamId)))
@@ -151,7 +177,10 @@ export class BotBrain {
         distanceSquared(b.position, self.position) || compareIds(a.id, b.id))[0];
     const opponentClose = nearest && distanceSquared(nearest.position, self.position) <
       skill.shoveRange ** 2;
-    const butt = !!opponentClose && view.tick - this.state.lastButtTick >=
+    const towardRival = nearest && (nearest.position.x - self.position.x) * self.facing.x +
+      (nearest.position.z - self.position.z) * self.facing.z;
+    const canStrike = !centerCourse || (this.state.goal !== 'circle-peak' && !!towardRival && towardRival > .35);
+    const butt = !!opponentClose && canStrike && view.tick - this.state.lastButtTick >=
       (this.state.difficulty === 'easy' ? 100 : 40);
     if (butt) this.state.lastButtTick = view.tick;
 

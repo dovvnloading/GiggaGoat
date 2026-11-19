@@ -51,9 +51,8 @@ describe('island QA pass 2: structural decks and removed farm clutter', () => {
       p.kind === 'deck-stilts')).toHaveLength(2);
   });
 
-  it('keeps the Beacon Bleat Lighthouse checkpoint, but grounds its cliff deck', () => {
+  it('keeps the Lighthouse cliff deck grounded', () => {
     const island = generateIsland({ seed: 'billy-isle' });
-    // Beacon Bleat requires the Lighthouse platform descriptor as a checkpoint.
     const cliff = island.props.filter(p =>
       p.poiId === 'old-lighthouse' && p.kind === 'platform');
     expect(cliff).toHaveLength(1);
