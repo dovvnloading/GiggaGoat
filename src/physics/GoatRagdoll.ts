@@ -1,7 +1,7 @@
 import RAPIER, { type ImpulseJoint, type RevoluteImpulseJoint, type RigidBody, type ColliderDesc } from '@dimforge/rapier3d-compat';
 import { collisionGroups } from './CollisionGroups';
 import { PhysicsEventBus, type PhysicsContact } from './events';
-import { add, clamp, mul, rotate, V, yawQuaternion, type Vec3 } from './math';
+import { add, clamp, cross, dot, mul, rotate, V, yawQuaternion, type Vec3 } from './math';
 import type { PhysicsWorld } from './PhysicsWorld';
 import { BalanceController, LocomotionController } from './Controllers';
 import { GoatInteractions } from './Interactions';
@@ -23,7 +23,11 @@ export interface MotorTuning {
   damping: number;
   maxTorque: number;
 }
-type Motor = { name: Exclude<GoatPart, 'torso'>; joint: RevoluteImpulseJoint };
+type Motor = {
+  name: Exclude<GoatPart, 'torso'>;
+  joint: RevoluteImpulseJoint;
+  recoveryAngle: number | undefined;
+};
 const HIP_NAMES = ['frontLeft','frontRight','backLeft','backRight'] as const;
 let nextGoatId = 1;
 
@@ -125,7 +129,7 @@ export class GoatRagdoll {
       const joint = this.world.raw.createImpulseJoint(desc,a,b,true) as RevoluteImpulseJoint;
       joint.setContactsEnabled(false);
       joint.setLimits(-.95,.95);
-      this.hinges.push({ name, joint });
+      this.hinges.push({ name, joint, recoveryAngle: undefined });
     };
     attach('neck',torso,neck,V(0,.17,-.5),V(0,-.15,.12));
     attach('head',neck,head,V(0,.13,-.12),V(0,-.11,.10));
@@ -143,9 +147,26 @@ export class GoatRagdoll {
   private driveMotors(): void {
     const s5 = this.size ** 5;
     const standing = !this.balance?.isRagdoll;
-    for (const { name, joint } of this.hinges) {
-      const target = standing ? this.targetAngle(name) : 0;
-      const strength = standing ? 1 : 0;
+    const hipGain = this.balance?.hipRecoveryGain ?? 1;
+    for (const motor of this.hinges) {
+      const { name, joint } = motor;
+      const isHip = name !== 'neck' && name !== 'head';
+      const strength = standing ? (isHip ? hipGain : 1) : 0;
+      const desired = standing ? this.targetAngle(name) : 0;
+      let target = desired;
+      if (strength === 0 || strength === 1) {
+        motor.recoveryAngle = undefined;
+      } else {
+        // Resume from the real folded angle, so a planted hoof cannot turn
+        // a sudden full-size hinge correction into a jump.
+        if (motor.recoveryAngle === undefined) {
+          const q = this.torso.rotation();
+          const up = rotate(q, V(0, 1, 0));
+          const legUp = rotate(this.getPart(name).rotation(), V(0, 1, 0));
+          motor.recoveryAngle = Math.atan2(dot(cross(up, legUp), rotate(q, V(1, 0, 0))), dot(up, legUp));
+        }
+        target = motor.recoveryAngle + (desired - motor.recoveryAngle) * strength;
+      }
       joint.configureMotorPosition(target, this.motors.stiffness*s5*strength,
         this.motors.damping*s5*strength);
       joint.setMotorMaxForce(this.motors.maxTorque*s5*strength);
