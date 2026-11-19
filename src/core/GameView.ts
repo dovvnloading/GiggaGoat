@@ -154,6 +154,7 @@ export class GameView {
     this.scene.background = new THREE.Color(0x87c5f0);
     this.scene.fog = new THREE.FogExp2(SKY_HORIZON_COLOR, .0016);
     this.world = createWorldScene(game.island, {
+      gameplaySelectsCasters: true,
       chunkSegments: 24,
       cullingDistance: 340,
       externallyRenderedPropKinds: WORLD_LIBRARY_KINDS,
@@ -942,7 +943,7 @@ export class GameView {
     const throttleScene = this.paused && !this.titleCamera;
     if (throttleScene && timestamp < this.nextPausedRender) {
       // Keep menu gamepad input and audio context transitions on the browser frame loop.
-      this.audio?.frame(dt, this.audioPose, night);
+      this.audio?.frame(dt, this.audioPose, night, weather, this.atmosphere.underCover);
       this.onFrame?.();
       return;
     }
@@ -998,7 +999,7 @@ export class GameView {
       this.renderer.shadowMap.needsUpdate = true;
     }
     this.camera.getWorldDirection(this.audioForward);
-    this.audio?.frame(dt, this.audioPose, night);
+    this.audio?.frame(dt, this.audioPose, night, weather, this.atmosphere.underCover);
     const renderStart = performance.now();
     this.renderer.render(this.scene, this.camera);
     const renderElapsed = performance.now() - renderStart;

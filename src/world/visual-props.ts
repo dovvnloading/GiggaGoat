@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { isTerrainTreeAnchor, treeArtCenterY } from './visual-tree-grounding';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { loadLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
+import { fitPlantGeometry, plantKitBatches } from './plant-palette';
+import { loadGroundedKitGeometry, loadLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import { appendPinesLogEntries } from './visual-pines-log-access';
 import { setPinesStiltMorphs, type TerrainHeight } from './visual-pines-deck-stilts';
@@ -749,6 +750,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     batch: PropBatch;
     near?: THREE.InstancedMesh;
     far?: THREE.InstancedMesh;
+    slots: number[]; // Indices in the authoritative physics mesh used by this model.
     nearIndices: number[];
     farIndices: number[];
     /** Visual-only transforms, multiplied after the unchanged physics matrices. */
@@ -871,7 +873,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       nearOnly: false,
     };
     batches.push(batch);
-    jobs.push({ kind, entries, mesh, batch, stiltPose, nearIndices: [], farIndices: [],
+    jobs.push({ kind, entries, mesh, batch, stiltPose, slots: entries.map((_, i) => i), nearIndices: [], farIndices: [],
       originalVersion: -1,
       occluded: entries.map(entry => Boolean(island && entry.body.type !== 'dynamic' &&
         completelyOccluded(island, entry.transform.position, entry.size, entry))),
@@ -880,8 +882,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
 
   // The procedural silhouettes are synchronous placeholders and genuine
   // failure fallbacks. Once loaded, swap their *geometry*, not the mesh:
-  // physics bindings, descriptor order, seeded transforms and draw budget
-  // remain exactly as before (one InstancedMesh per kind).
+  // the physics bindings and descriptor order stay stable. Habitat variants
+  // draw compact subsets of those same transforms in model-specific batches.
   let disposed = false, shadowChanged = false;
   group.userData['libraryLoaded'] = 0;
   group.userData['libraryFailed'] = 0;
@@ -901,10 +903,49 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       return (left < 0 ? priorityKinds.length : left) -
         (right < 0 ? priorityKinds.length : right);
     });
+    const originalJobs = jobs.length;
     let next = 0;
     const white = new THREE.Color(0xffffff), tint = new THREE.Color();
+    async function loadPlantVariants(job: Job, island: IslandData): Promise<void> {
+      if (!['tree-oak','tree-pine','bush','flower'].includes(job.kind)) return;
+      const trunk = job.kind === 'tree-oak' || job.kind === 'tree-pine';
+      for (const [model, slots] of plantKitBatches(job.entries)) {
+        if (disposed) break;
+        const path = 'assets/library/kenney/nature-kit/' + model + '.glb';
+        let geometry: THREE.BufferGeometry;
+        try {
+          geometry = await loadGroundedKitGeometry(path, loader);
+        } catch (error) {
+          // The original kit batch still owns these slots if a variant fails.
+          console.warn('Could not load plant kit ' + path, error);
+          continue;
+        }
+        if (disposed) { geometry.dispose(); break; }
+        fitPlantGeometry(geometry, trunk);
+        const draw = new THREE.InstancedMesh(geometry, job.mesh.material, slots.length);
+        draw.name = 'habitat-' + model;
+        draw.count = 0;
+        draw.frustumCulled = false;
+        draw.castShadow = job.mesh.castShadow;
+        draw.receiveShadow = job.mesh.receiveShadow;
+        draw.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        group.add(draw);
+        job.batch.meshes.push(draw);
+        const claimed = new Set(slots);
+        job.slots = job.slots.filter(i => !claimed.has(i));
+        job.originalVersion = -1;
+        const adjustments: THREE.Matrix4[] = [];
+        if (trunk) for (const i of slots) {
+          const p = job.entries[i]!;
+          const y = treeArtCenterY(island, p.transform.position, p.size.y, -.49);
+          adjustments[i] = new THREE.Matrix4().makeTranslation(0, (y - p.transform.position.y) / p.size.y, 0);
+        }
+        jobs.push({ ...job, slots, adjustments, near: draw, far: draw, nearIndices: [], farIndices: [] });
+        shadowChanged = true;
+      }
+    }
     async function worker(): Promise<void> {
-      while (!disposed && next < jobs.length) {
+      while (!disposed && next < originalJobs) {
         const job = jobs[next++]!;
         const path = PROP_LIBRARY_MODELS[job.kind];
         let pending = cache.get(path);
@@ -1031,6 +1072,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
           original.dispose();
           group.userData['libraryLoaded'] = (group.userData['libraryLoaded'] as number) + 1;
           if (job.mesh.castShadow) shadowChanged = true;
+          if (island) await loadPlantVariants(job, island);
         } catch (error) {
           if (!disposed) {
             group.userData['libraryFailed'] = (group.userData['libraryFailed'] as number) + 1;
@@ -1132,7 +1174,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
         }
 
         const nearIndices: number[] = [], farIndices: number[] = [];
-        if (!suppressed) for (let i = 0; i < job.entries.length; i++) {
+        if (!suppressed) for (const i of job.slots) {
           if (job.occluded[i]) continue;
           job.mesh.getMatrixAt(i, matrix);
           const el = matrix.elements;
@@ -1208,11 +1250,13 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     },
     dispose(): void {
       disposed = true;
-      for (const job of jobs) if (job.stiltPose) {
-        job.mesh.dispose();
-        job.near?.dispose();
-        if (job.far !== job.near) job.far?.dispose();
+      const instances = new Set<THREE.InstancedMesh>();
+      for (const job of jobs) {
+        instances.add(job.mesh);
+        if (job.near) instances.add(job.near);
+        if (job.far) instances.add(job.far);
       }
+      for (const instance of instances) instance.dispose();
     },
   };
 }

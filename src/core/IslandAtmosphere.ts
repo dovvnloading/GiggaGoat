@@ -17,6 +17,7 @@ export class IslandAtmosphere {
   private readonly lights = [new THREE.PointLight(0xffb45e, 0, 13, 2), new THREE.PointLight(0xffb45e, 0, 13, 2)];
   private nextCheck = -1;
   private sheltered = false;
+  get underCover(): boolean { return this.sheltered; }
 
   constructor(private readonly game: Game) {
     let seed = 19273;
@@ -40,7 +41,7 @@ export class IslandAtmosphere {
     const lightPower = 115 * (1 - dusk);
     if (time >= this.nextCheck || time < this.nextCheck - .5) {
       this.nextCheck = time + .32;
-      this.sheltered = rain > .01 && !!this.game.physics.raycast(camera, { x:0,y:1,z:0 }, 32,
+      this.sheltered = (rain > .01 || weather.wet > .15) && !!this.game.physics.raycast(camera, { x:0,y:1,z:0 }, 32,
         { predicate: collider => !!collider.parent()?.isFixed() });
       if (lightPower > .01) {
         let first: THREE.Vector3 | undefined, second: THREE.Vector3 | undefined;

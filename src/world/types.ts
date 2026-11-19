@@ -163,6 +163,8 @@ export interface IslandData {
   reservoir: ReservoirDescriptor;
   roads: RoadDescriptor[];
   props: PropDescriptor[];
+  /** Bottom-aligned kit meshes and their matching physical scenery. */
+  districtSets?: import('./district-sets').DistrictSet[];
   /** Original anchors for offers stored before blocked climbing shelves moved. */
   legacySummitLedgePositions?: Readonly<Record<string, Vec3>>;
   colliders: ColliderDescriptor[];

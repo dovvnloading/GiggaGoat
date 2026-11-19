@@ -93,7 +93,8 @@ describe('island meadow painted clumps and paved-area exclusions (IS-19)', () =>
       expect(flowers.geometry.getAttribute('color')).toBeDefined();
 
       await vi.waitFor(() => expect(triangleCount(tuft.geometry)).toBe(27));
-      expect(load).toHaveBeenCalledTimes(1);
+      expect(load).toHaveBeenCalledTimes(2);
+      expect(load.mock.calls[1]![0]).toContain('flower_yellowA.glb');
       expect(load.mock.calls[0]![0]).toContain(GRASS_CLUMP_PATH);
       expect(tuft.geometry).not.toBe(fallback);
       expect(tuft.geometry.index).toBeNull();
@@ -209,10 +210,10 @@ describe('island meadow painted clumps and paved-area exclusions (IS-19)', () =>
     vi.stubGlobal('document', {});
     const loader = vi.spyOn(GLTFLoader.prototype, 'loadAsync')
       .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValueOnce({ scene: new THREE.Group() } as LoadedGLTF);
+      .mockResolvedValue({ scene: new THREE.Group() } as LoadedGLTF);
     const offline = buildMeadowScatter(island), invalid = buildMeadowScatter(island);
     try {
-      await vi.waitFor(() => expect(loader).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() => expect(loader).toHaveBeenCalledTimes(4));
       await Promise.resolve();
       await Promise.resolve();
       for (const group of [offline, invalid]) {

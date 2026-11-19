@@ -121,9 +121,7 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
     view.group.traverse(object => {
       if (object instanceof THREE.Mesh) meshes.push(object);
     });
-    const shadowPass = meshes.filter(mesh => mesh.castShadow).length;
     const outlines = meshes.filter(mesh => mesh.name.startsWith('outline-')).length;
-    // This detects the previous ~600-call pattern even without a GPU.
     // These features each contribute a single non-shadow draw.
     const featureNames = ['props-fern', 'props-lily-pads', 'whispering-pines-rock-step',
       'mountain-terrace-water', 'mountain-wayfinding-batched', 'rising-tide-escape-route-cues'];
@@ -132,9 +130,15 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
       expect(feature, name).toHaveLength(1);
       expect(feature[0]!.castShadow, name).toBe(false);
     }
-    expect(meshes.length + shadowPass - featureNames.length)
-      .toBeLessThan(180 + AUTHORED_HERO_DRESSING_KINDS.size - 1);
-    expect(shadowPass).toBeLessThan(20);
+    const ensembles = view.group.getObjectByName('island-kit-districts')!;
+    expect(ensembles.children).toHaveLength(island.districtSets!.length);
+    for (const ensemble of ensembles.children) {
+      expect(ensemble).toBeInstanceOf(THREE.Mesh);
+      const mesh = ensemble as THREE.Mesh;
+      expect(Array.isArray(mesh.material)).toBe(false);
+      expect(mesh.geometry.groups).toHaveLength(0);
+      expect(mesh.children).toHaveLength(0);
+    }
     expect(outlines).toBeLessThanOrEqual(8);
     for (const mesh of meshes) {
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
@@ -150,6 +154,48 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
     expect(merged.children.length).toBeGreaterThan(1);
     expect(merged.children.length).toBeLessThan(18);
     expect(merged.children.every(child => child instanceof THREE.Mesh)).toBe(true);
+  });
+
+  it('fits colour and directional shadow passes at street level across all eight districts', () => {
+    const camera = new THREE.PerspectiveCamera(65, 16 / 9, .1, 1200);
+    const colourFrustum = new THREE.Frustum(), projection = new THREE.Matrix4();
+    const districts = new Set(island.districtSets!.map(set => set.district));
+    expect(districts.size).toBe(8);
+    for (const set of island.districtSets!) {
+      const target = new THREE.Vector3().copy(set.pieces[0]!.bottom);
+      camera.position.copy(target).add(new THREE.Vector3(9, 3, 12));
+      camera.lookAt(target);
+      view.updateCulling(camera);
+      view.group.updateMatrixWorld(true);
+      colourFrustum.setFromProjectionMatrix(projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+      view.sun.shadow.updateMatrices(view.sun);
+      const sunFrustum = view.sun.shadow.getFrustum();
+      let colour = 0, shadows = 0, selectedSetVisible = false;
+      view.group.traverseVisible(object => {
+        if (!(object instanceof THREE.Mesh || object instanceof THREE.Points || object instanceof THREE.Line)) return;
+        if (object instanceof THREE.InstancedMesh && !object.count) return;
+        const geometry: THREE.BufferGeometry = object.geometry;
+        if (!geometry.drawRange.count || !(geometry.index ?? geometry.getAttribute('position'))?.count) return;
+        const materials = object.material;
+        const groups = Array.isArray(materials)
+          ? geometry.groups.filter(g => g.count > 0).map(g => materials[g.materialIndex!])
+          : [materials];
+        const inView = !object.frustumCulled || colourFrustum.intersectsObject(object);
+        const inShadow = object.castShadow && (!object.frustumCulled || sunFrustum.intersectsObject(object));
+        for (const material of groups) {
+          if (!material?.visible) continue;
+          if (inView) {
+            colour += material.transparent && material.side === THREE.DoubleSide && !material.forceSinglePass ? 2 : 1;
+            if (object.name === 'kit-set-' + set.district + '-' + set.name) selectedSetVisible = true;
+          }
+          if (inShadow) shadows++;
+        }
+      });
+      expect(selectedSetVisible, set.name).toBe(true);
+      expect(colour + shadows, set.name + ' colour=' + colour + ' shadow=' + shadows)
+        .toBeLessThan(180 + AUTHORED_HERO_DRESSING_KINDS.size - 1);
+      expect(shadows, set.name).toBeLessThan(20);
+    }
   });
 
   it('has exact high/low boundary vertex matches, not double-sided skirt geometry', () => {

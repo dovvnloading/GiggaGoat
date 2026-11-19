@@ -1,7 +1,12 @@
 import contacts from './assets/foley/contacts.json';
 import contactUrl from './assets/foley/contact-bank.wav?url';
 import party from './assets/music/last-bale-standing.mp3?url';
-import farm from './assets/music/gate-latch-reel.mp3?url';
+import farm from './assets/music/island-village-shuffle.mp3?url';
+import boardwalk from './assets/music/island-promenade.mp3?url';
+import yard from './assets/music/clockwork-swing.mp3?url';
+import forest from './assets/music/curious-motif.mp3?url';
+import summit from './assets/music/mountain-ascent.mp3?url';
+import dam from './assets/music/e-minor-groove.mp3?url';
 import town from './assets/music/switchyard-shuffle.mp3?url';
 import coast from './assets/music/glasswater.mp3?url';
 import baa_ardwalk from './assets/ambience/baa-ardwalk.mp3?url';
@@ -14,14 +19,35 @@ import old_lighthouse from './assets/ambience/old-lighthouse.mp3?url';
 import pines_understory from './assets/ambience/pines-understory.mp3?url';
 import the_dam from './assets/ambience/the-dam.mp3?url';
 import whispering_pines from './assets/ambience/whispering-pines.mp3?url';
+import laneRain from './assets/ambience/rain-lane.mp3?url';
+import shelteredRain from './assets/ambience/rain-shelter.mp3?url';
+import afterRain from './assets/ambience/after-rain.mp3?url';
+import pierRigging from './assets/ambience/pier-rigging.mp3?url';
+import pineCrickets from './assets/ambience/pine-crickets.mp3?url';
+import millAxle from './assets/ambience/mill-axle.mp3?url';
+import turbineHouse from './assets/ambience/turbine-house.mp3?url';
 import { RECORDED_EFFECTS } from './recorded-effects';
 import type { RecordedAssets } from './recordings';
 
 export const BILLY_ISLE_RECORDINGS: RecordedAssets = {
-  music: { farm, town, coast, party },
+  music: {
+    farm, town, coast, party,
+    'baa-ardwalk': boardwalk,
+    'crane-yard': yard,
+    'whispering-pines': forest,
+    'mt-gigga': summit,
+    'the-dam': dam,
+  },
   effects: RECORDED_EFFECTS,
   foley: { url: contactUrl, contacts },
   ambience: {
+    'rain-lane': laneRain,
+    'rain-shelter': shelteredRain,
+    'after-rain': afterRain,
+    'pier-rigging': pierRigging,
+    'pine-crickets': pineCrickets,
+    'mill-axle': millAxle,
+    'turbine-house': turbineHouse,
     'baa-ardwalk': baa_ardwalk,
     'crane-yard': crane_yard,
     'downtown-bleatsville': downtown_bleatsville,

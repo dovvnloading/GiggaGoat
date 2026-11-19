@@ -5,7 +5,7 @@ import type { RECORDED_EFFECTS } from './recorded-effects';
 
 export type RecordedEffect = keyof typeof RECORDED_EFFECTS;
 type Region = 'farm' | 'town' | 'coast';
-type Track = Region | 'party';
+type Track = Region | AudioLocation | 'party';
 
 interface FoleyBank {
   url: string;
@@ -14,7 +14,7 @@ interface FoleyBank {
 export interface RecordedAssets {
   foley?: FoleyBank;
   ambience?: import('./zone-ambience').AmbienceLibrary;
-  music: Readonly<Record<Region, string> & { party?: string }>;
+  music: Readonly<Record<Region, string> & Partial<Record<AudioLocation | 'party', string>>>;
   effects: Readonly<Partial<Record<RecordedEffect, string>>>;
 }
 
@@ -124,7 +124,8 @@ export class RecordedAudio {
 
   updateMusic(state: MusicState): void {
     if (this.disposed) return;
-    const next = state.mode === 'free' ? TRACKS[state.poi] : this.assets.music.party ? 'party' : null;
+    const freeRoamTrack = this.assets.music[state.poi] ? state.poi : TRACKS[state.poi];
+    const next = state.mode === 'free' ? freeRoamTrack : this.assets.music.party ? 'party' : null;
     const now = this.context.currentTime;
     if (next !== this.target) {
       this.pending?.abort();
