@@ -17,7 +17,8 @@ import {
   DynamicBodyBudget, applyPhysicsMaterial,
 } from '../chaos';
 import { addRapierPropCollider } from '../world/colliders';
-import { BOARDWALK_SHORE_GUARD_ID, boardwalkPierDecks } from '../world/boardwalk';
+import { BOARDWALK_SHORE_GUARD_ID, BOARDWALK_SHORE_ID, boardwalkPierDecks } from '../world/boardwalk';
+import { PINES_LOG_ENTRY_ID } from '../world/pines-log-access';
 import { HOOFINGTON_HAUL_BALE_PREFIX } from '../world/hoofington-entrances';
 import { getDamHeadwater, isDamHeadwater } from '../world/dam-landscape';
 import { DAM_ACCESS_GUARD_ID, DAM_BACK_GUARD, DAM_FRONT_GUARD } from '../world/the-dam';
@@ -1047,6 +1048,23 @@ export class Game {
     const outside = Math.max(Math.abs(position.x), Math.abs(position.z)) > this.island.size * .57;
     if (outside) return this.isAbovePierDeck(position);
     return position.y >= heightAt(this.island, position.x, position.z) - this.goat.size;
+  }
+
+  /** Older saves can carry a bank height below the new timber crossings. */
+  gigResumeGround(position: Vec3): Vec3 {
+    const clearance = 3 * this.island.size / 600;
+    const fromY = position.y + clearance;
+    const ray = new RAPIER.Ray(V(position.x, fromY, position.z), V(0, -1, 0));
+    let y = position.y;
+    // The world query index is still empty while Game restores the running gig.
+    for (const [id, collider] of this.colliders.props) {
+      const shoreDeck = id.startsWith(BOARDWALK_SHORE_ID + 'deck-');
+      const logTread = id.startsWith(PINES_LOG_ENTRY_ID) && id.includes('-tread-');
+      if (!shoreDeck && !logTread) continue;
+      const hit = collider.castRay(ray, clearance, false);
+      if (hit >= 0) y = Math.max(y, fromY - hit);
+    }
+    return V(position.x, y, position.z);
   }
 
   exportProgress(): GameProgress {

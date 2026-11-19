@@ -199,7 +199,7 @@ export class GigSession {
 
   private restorePlayer(setup: GigSetup, saved?: GigPlayerPose): void {
     if (saved?.position && Number.isFinite(saved.heading) && this.game.canResumeGigAt(saved.position)) {
-      this.game.teleport(saved.position, -saved.heading);
+      this.game.teleport(this.game.gigResumeGround(saved.position), -saved.heading);
       return;
     }
     if (setup.offer.gigId === 'summit-sprint' && setup.markers[0]?.type === 'start') {

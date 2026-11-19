@@ -126,6 +126,37 @@ describe('retrying a failed gig', () => {
     } finally { game.dispose(); }
   });
 
+  it.each([
+    ['baa-ardwalk', { x: 55.91, y: 3.90, z: 253.70 }],
+    ['whispering-pines', { x: -117.99, y: 5.93, z: -153.58 }],
+  ] as const)('resumes an older %s save above the new crossing', async (poi, position) => {
+    const game = await Game.create();
+    try {
+      const board = game.gigs.boards.find(entry => entry.poiId === poi)!;
+      game.teleport(board.position);
+      game.gigs.accept(game.gigs.board(poi)[0]!.id);
+      const run = game.gigs.active!;
+      const progress = game.exportProgress();
+      // Foot positions measured while walking these approaches before the ramps existed.
+      progress.gigPlayerPose = { attemptId: run.attemptId, position, heading: .4 };
+
+      const restored = await Game.create({ progress });
+      try {
+        const torso = restored.goat.torso.translation();
+        const lift = torso.y - .92 * restored.goat.size - position.y;
+        expect(torso.x).toBeCloseTo(position.x, 4);
+        expect(torso.z).toBeCloseTo(position.z, 4);
+        expect(lift).toBeGreaterThan(.3);
+        expect(lift).toBeLessThan(1.2);
+        expect(restored.gigs.active).toMatchObject({ attemptId: run.attemptId,
+          elapsedTicks: run.elapsedTicks, status: 'running' });
+        for (let tick = 0; tick < 32; tick++) restored.step({ cameraYaw: .4 });
+        expect(restored.goat.locomotion.grounded).toBe(true);
+        expect(restored.respawns).toBe(0);
+      } finally { restored.dispose(); }
+    } finally { game.dispose(); }
+  });
+
   it('retains a failed result after its exact offer expires', async () => {
     const game = await create();
     try {
