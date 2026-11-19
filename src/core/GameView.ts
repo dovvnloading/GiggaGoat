@@ -949,7 +949,8 @@ export class GameView {
     const range = GRAPHICS_PRESETS[this.currentSettings.graphics].drawDistance;
     this.characters.update(sceneDt, alpha, this.camera, range);
     this.vfx.frame(sceneDt, this.camera, range);
-    this.toyEffects.update(this.game.physics.time, this.game.goat.torso.translation());
+    const goat = this.game.goat;
+    this.toyEffects.update(this.game.physics.time, goat.torso.translation(), goat.size, goat.locomotion.heading, goat.locomotion.grounded);
     this.updatePartyVisuals(alpha);
     this.updateBoardMarkers();
     this.updateGigVisuals(alpha);
