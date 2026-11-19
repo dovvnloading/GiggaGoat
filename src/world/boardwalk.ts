@@ -181,7 +181,7 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
         ? { type: 'static' } : { type: 'dynamic', mass: detail.mass },
       shape: detail.shape ?? 'cuboid',
       collidable: detail.collidable ?? true,
-      breakable: detail.mass !== undefined,
+      breakable: detail.mass !== undefined && kind !== 'bumper',
       lickable: detail.lickable ?? true,
       climbable: detail.climbable ?? (detail.mass === undefined && detail.collidable !== false),
       ...(detail.color === undefined ? {} : { color: detail.color }),
@@ -312,11 +312,11 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
   // Cargo occupies the gaps between stops, with two stacks on the west
   // and one between the games and the candy stall.
   for (const [x, z] of [[-6.5, -12], [7.2, 6], [-6.5, 27]] as const) {
-    place('crate', x, z, 1.0, 1.0, 1.0, { floor: deckY });
-    place('crate', x, z, 1.0, 1.0, 1.0, { floor: deckY + 1.0 * scale });
+    place('crate', x, z, 1.0, 1.0, 1.0, { floor: deckY, mass: 8 });
+    place('crate', x, z, 1.0, 1.0, 1.0, { floor: deckY + 1.0 * scale, mass: 8 });
   }
   for (const z of [-11, 2, 23, 34]) {
-    place('barrel', -9.6, z, 0.8, 1.0, 0.8, { floor: deckY });
+    place('barrel', -9.6, z, 0.8, 1.0, 0.8, { floor: deckY, mass: 7, shape: 'cylinder' });
   }
   // Game registers the spring surface at this art's bounds.
   place('trampoline', 7.8, 33, 3.6, 0.8, 3.6, {

@@ -6,6 +6,8 @@ import {
 } from './trampolineBoingMath';
 
 export interface TrampolineBoingOptions {
+  /** The game already renders the permanent platform. */
+  effectsOnly?: boolean;
   /** Maximum overlapping bounces. A full pool recycles its oldest bounce. */
   capacity?: number;
 }
@@ -180,7 +182,7 @@ export class TrampolineBoing {
   private nextSlot = 0;
   private disposed = false;
 
-  constructor(options: TrampolineBoingOptions = {}) {
+  constructor(private readonly options: TrampolineBoingOptions = {}) {
     const capacity = options.capacity ?? 6;
     if (!Number.isInteger(capacity) || capacity < 1 || capacity > 32) {
       throw new RangeError('Trampoline capacity must be an integer in 1..32');
@@ -247,6 +249,7 @@ export class TrampolineBoing {
         root.add(foot);
       }
 
+      if (options.effectsOnly) root.clear();
       const rays = new THREE.Mesh(this.raysGeometry, trailMaterial(0xffffff, true));
       rays.name = 'gold rim rebound speed-line fan';
       rays.position.y = TRAMPOLINE_MAT_Y; // scale the fan from the rim, not from ground
@@ -288,7 +291,7 @@ export class TrampolineBoing {
     const slot = this.slots[index]!;
     this.nextSlot = (index + 1) % this.slots.length;
     slot.burst = burst;
-    slot.age = 0;
+    slot.age = this.options.effectsOnly ? .365 * burst.lifetime : 0;
     slot.lastDip = NaN;
     slot.root.position.set(burst.position.x, burst.position.y, burst.position.z);
     slot.root.scale.setScalar(burst.scale);
@@ -318,7 +321,7 @@ export class TrampolineBoing {
       return;
     }
     slot.root.visible = true;
-    if (slot.lastDip !== frame.matDip) {
+    if (!this.options.effectsOnly && slot.lastDip !== frame.matDip) {
       const position = slot.mat.geometry.getAttribute('position') as THREE.BufferAttribute;
       const values = position.array as Float32Array;
       for (let j = 0; j < slot.matWeights.length; j++) {

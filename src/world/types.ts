@@ -43,6 +43,10 @@ export type PropKind =
   | 'palm-tree' | 'floodlight' | 'life-ring' | 'cable-spool'
   | 'pallet-stack' | 'log-bridge' | 'fern' | 'lily-pads' | 'cascade' | 'cascade-tall';
 
+/** Special soda stock shares the ordinary barrel model and has a fizzy label. */
+export const isSodaBarrel = (prop: { kind: PropKind; id?: string }): boolean =>
+  prop.kind === 'barrel' && prop.id?.endsWith('0') === true;
+
 export type BodyDescriptor =
   | { type: 'static' }
   | { type: 'dynamic'; mass: number };

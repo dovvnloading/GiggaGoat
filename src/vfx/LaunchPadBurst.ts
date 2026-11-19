@@ -7,6 +7,8 @@ import {
 } from './launchPadMath';
 
 export interface LaunchPadBurstOptions {
+  /** The game already renders the permanent platform. */
+  effectsOnly?: boolean;
   /** Maximum overlapping launches; the oldest is recycled when full. */
   capacity?: number;
 }
@@ -161,7 +163,7 @@ export class LaunchPadBurst {
   private nextSlot = 0;
   private disposed = false;
 
-  constructor(options: LaunchPadBurstOptions = {}) {
+  constructor(private readonly options: LaunchPadBurstOptions = {}) {
     const capacity = options.capacity ?? 6;
     if (!Number.isInteger(capacity) || capacity < 1 || capacity > 32) {
       throw new RangeError('Launch pad capacity must be an integer in 1..32');
@@ -220,6 +222,7 @@ export class LaunchPadBurst {
         arrows.push(arrow);
       }
 
+      if (options.effectsOnly) root.clear();
       const fountain = new THREE.Mesh(this.fountainGeometry,
         transparentMaterial(0xffffff, true));
       fountain.name = 'gold spiky launch fountain';
@@ -269,7 +272,7 @@ export class LaunchPadBurst {
     const slot = this.slots[index]!;
     this.nextSlot = (index + 1) % this.slots.length;
     slot.cue = cue;
-    slot.age = 0;
+    slot.age = this.options.effectsOnly ? .19 * cue.lifetime : 0;
     slot.root.position.set(cue.position.x, cue.position.y, cue.position.z);
     slot.root.rotation.y = -Math.atan2(cue.direction.z, cue.direction.x);
     this.paint(slot);

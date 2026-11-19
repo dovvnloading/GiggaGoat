@@ -82,10 +82,13 @@ it('bounces the goat on both Hoofington trampolines without duplicating the yard
     for (const surface of [roadside, yard]) {
       const { position, halfExtents } = surface;
       game.teleport(V(position.x, position.y + halfExtents.y + 1.1, position.z));
-      let bounced = false;
+      const hits: number[] = [];
       const stop = game.surfaces.events.on(event => {
         if (event.type === 'bounce' && event.surfaceId === surface.id &&
-          game.goat.ownsBody(event.bodyHandle)) bounced = true;
+          game.goat.ownsBody(event.bodyHandle)) {
+          expect(event.bodyHandle).toBe(game.goat.torso.handle);
+          hits.push(event.time);
+        }
       });
       let peak = 0;
       try {
@@ -94,8 +97,8 @@ it('bounces the goat on both Hoofington trampolines without duplicating the yard
           peak = Math.max(peak, game.goat.torso.linvel().y);
         }
       } finally { stop(); }
-      expect(bounced, surface.id).toBe(true);
-      expect(peak, surface.id).toBeGreaterThan(3);
+      expect(hits, surface.id).toHaveLength(1);
+      expect(peak, surface.id).toBeGreaterThan(11);
     }
     expect(game.respawns).toBe(0);
   } finally {

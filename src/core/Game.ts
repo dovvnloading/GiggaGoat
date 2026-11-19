@@ -17,6 +17,7 @@ import {
   DynamicBodyBudget, applyPhysicsMaterial, type DestructionEvent,
 } from '../chaos';
 import { addRapierPropCollider } from '../world/colliders';
+import { isSodaBarrel } from '../world/types';
 import { BOARDWALK_SHORE_GUARD_ID, BOARDWALK_SHORE_ID, boardwalkFarEnd, boardwalkPierDecks } from '../world/boardwalk';
 import { PINES_LOG_ENTRY_ID } from '../world/pines-log-access';
 import { HOOFINGTON_HAUL_BALE_PREFIX } from '../world/hoofington-entrances';
@@ -33,6 +34,7 @@ import type { GameProgress } from './Persistence';
 import { findStockBaleSeat, isLegacyStockBale } from './HoofingtonStock';
 
 export const FIXED_DT = 1 / 60;
+const SODA_POP_IMPULSE = 35;
 
 const buildHalfHeight: Record<PieceType, number> = {
   floor: .23, wall: 1, ramp: .9, 'launch-pad': .23,
@@ -222,7 +224,11 @@ export class Game {
       maxDebris: 144, debrisLifetime: 18, sleepCleanupSeconds: 4, bodyBudget: this.budget,
     });
     this.chains = new ChainReactions(physics);
-    this.surfaces = new SurfaceSystem(physics);
+    this.surfaces = new SurfaceSystem(physics, body => {
+      const record = physics.bodyData(body.handle);
+      if (record?.kind !== 'goat' || !record.owner) return;
+      return record.owner === this.goat.id ? this.goat : this.party?.bots.get(record.owner)?.goat;
+    });
     this.registerChaosProps();
     this.makePlaySurfaces();
 
@@ -273,6 +279,10 @@ export class Game {
     }));
     this.off.push(this.chains.events.on(event => {
       const body = physics.raw.getRigidBody(event.bodyHandle);
+      if (body && event.type === 'sodaPop' && this.propByBody.get(body.handle)?.breakable) {
+        // A full barrel pops first. Its empty shell breaks like ordinary stock.
+        this.breakables.register(body, { impulseThreshold: 12, damageThreshold: 30, chunks: 6 });
+      }
       if (!body || !this.nearPlayer(body.translation(), 20) || !this.recentChaos()) return;
       if (event.type === 'topple') this.award('topple', Math.min(2, event.tiltRadians));
       else if (event.type === 'sodaPop') this.award('destruction', 1.6);
@@ -465,7 +475,7 @@ export class Game {
       const prop = this.island.props.find(p => p.id === id);
       if (!prop) continue;
       this.water.track(body, { buoyancyScale: prop.kind === 'barrel' || prop.kind === 'hay-bale' ? 1.15 : .8 });
-      if (prop.breakable) {
+      if (prop.breakable && !isSodaBarrel(prop)) {
         // Packed loading bales endure routine handling and still break on a hard hit.
         const threshold = id.startsWith(HOOFINGTON_HAUL_BALE_PREFIX) ? 36 :
           Math.max(9, Math.min(38, body.mass() * .92));
@@ -477,8 +487,8 @@ export class Game {
       if (prop.kind === 'fence' || prop.kind === 'crate' || prop.kind === 'sign') {
         this.chains.registerDomino(body, { neighbourRadius: 4.6 });
       }
-      if (prop.kind === 'barrel' && id.endsWith('0')) {
-        this.chains.registerSoda(body, { impactThreshold: 35, radius: 4.5, shoveImpulse: 38 });
+      if (isSodaBarrel(prop)) {
+        this.chains.registerSoda(body, { impactThreshold: SODA_POP_IMPULSE, radius: 4.5, shoveImpulse: 38 });
       }
     }
   }
@@ -613,7 +623,7 @@ export class Game {
     if (piece.type === 'launch-pad') {
       this.surfaces.createLaunchPad({ id: 'hay-' + piece.id,
         position: p, halfExtents: V(.97, buildHalfHeight[piece.type], .97),
-        sensorOnly: true, direction: V(0, 1, -.45), launchSpeed: 13 });
+        sensorOnly: true, direction: rotate(rotation, V(0, 1, -.45)), launchSpeed: 13 });
     }
   }
 
@@ -1064,7 +1074,11 @@ export class Game {
       }
       // The preferred body can be removed immediately by the break below.
       const fixedBuildHandle = preferred?.body && !preferred.body.isDynamic() ? preferred.body.handle : undefined;
-      if (struck) this.breakables.hit(struck, commands.headbutt.impulse * .75);
+      if (struck) {
+        const impact = commands.headbutt.impulse * .75;
+        const shake = commands.headbutt.level === 'meteor' ? Math.max(SODA_POP_IMPULSE, impact) : impact;
+        if (!this.chains.shakeSoda(struck, shake)) this.breakables.hit(struck, impact);
+      }
       // Fixed Hay-Build pieces cannot be returned from GoatInteractions.headbutt,
       // so use the same forward query to route impact to logical HP.
       let hitPiece = false;

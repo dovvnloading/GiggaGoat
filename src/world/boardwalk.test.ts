@@ -359,6 +359,7 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
       const cargo = [...crates, ...barrels];
       expect(crates).toHaveLength(6);
       expect(barrels).toHaveLength(4);
+      for (const ball of props.filter(p => p.kind === 'bumper')) expect(ball.breakable).toBe(false);
 
       // The main deck starts at local Z=-38 after the seed-dependent shore shift.
       const entrance = deck.transform.position.z - deck.size.z / 2;
@@ -398,9 +399,10 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
           Math.abs((box.maxX - centre.x) / scale)), prop.id + ' deck edge')
           .toBeLessThanOrEqual(12.5);
         expect(footprintOnDeck(prop, deck, 0.05), prop.id + ' on deck').toBe(true);
-        expect(prop.shape).toBe('cuboid');
-        expect(prop.body).toEqual({ type: 'static' });
-        expect(prop.collidable && prop.lickable && prop.climbable).toBe(true);
+        expect(prop.shape).toBe(prop.kind === 'barrel' ? 'cylinder' : 'cuboid');
+        expect(prop.body.type).toBe('dynamic');
+        expect(prop.collidable && prop.lickable && prop.breakable).toBe(true);
+        expect(prop.climbable).toBe(false);
         for (const other of props) {
           if (other.id === prop.id) continue;
           // The deck is the floor, and two crates in one stack meet at a

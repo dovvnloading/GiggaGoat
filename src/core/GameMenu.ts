@@ -930,6 +930,7 @@ export class GameMenu {
 
   private boardBody(): string {
     const poi = this.boardPoi;
+    const district = this.game.island.pois.find(site => site.id === poi)?.name ?? nice(poi ?? '');
     const board = poi ? this.game.gigs.director.board(poi) : null;
     const offers = board?.offers.map(offer => this.game.gigs.catalog.build(offer)) ?? [];
     const first = offers[0];
@@ -946,7 +947,7 @@ export class GameMenu {
           <span class="gg-board-coins">${info.baseCoins} base coins</span>
         </span></span>
       </button>`).join('');
-    return `<div class="gg-shell-eyebrow">GIG BOARD · ${esc(nice(poi ?? ''))}</div><h2>MAKE CUD COINS</h2>
+    return `<div class="gg-shell-eyebrow">GIG BOARD · ${esc(district.toUpperCase())}</div><h2>MAKE CUD COINS</h2>
       ${first ? `<div class="gg-board-offers" role="group" aria-label="Available contracts">${choices}</div>
       <p class="gg-board-note" data-board-note aria-live="polite">${esc(first.info.instruction)}</p>` : '<p>Board is refreshing.</p>'}
       <div class="gg-options gg-board-actions">

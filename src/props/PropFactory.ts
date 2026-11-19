@@ -449,7 +449,7 @@ export class PropFactory {
     return root;
   }
 
-  private springPad(kind: 'trampoline' | 'launch', halfExtents: Size3, artAtGround = false): THREE.Group {
+  private springPad(kind: 'trampoline' | 'launch', halfExtents: Size3, artAtGround = true): THREE.Group {
     const s = getSurfaceFootprint(halfExtents);
     const root = this.root(kind, s, true);
     const y = artAtGround ? -halfExtents.y : halfExtents.y;
@@ -475,7 +475,7 @@ export class PropFactory {
     return this.springPad('trampoline', halfExtents);
   }
 
-  createLaunchPad(halfExtents: Size3 = SURFACE_HALF_EXTENTS, artAtGround = false): THREE.Group {
+  createLaunchPad(halfExtents: Size3 = SURFACE_HALF_EXTENTS, artAtGround = true): THREE.Group {
     return this.springPad('launch', halfExtents, artAtGround);
   }
 
@@ -503,6 +503,21 @@ export class PropFactory {
       }
     }, 0, 0, new Map([['twine', this.material(binding)]]));
     return root;
+  }
+
+  /** A wraparound bubble label stays readable as the barrel rolls. */
+  addSodaLabel(root: THREE.Group, size: Size3): void {
+    const band = this.cylinder(root, .504, .504, size.y * .31, 'heistBlue', 0, .04 * size.y);
+    band.scale.set(size.x, 1, size.z);
+    for (let i = 0; i < 8; i++) {
+      const angle = i * Math.PI / 4;
+      const bubble = this.cylinder(root, .061, .061, .016, 'paper',
+        Math.sin(angle) * .504 * size.x, (.04 + .05 * (i % 2)) * size.y,
+        Math.cos(angle) * .504 * size.z);
+      bubble.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0),
+        new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle)));
+      bubble.scale.multiplyScalar(Math.min(size.x, size.z));
+    }
   }
 
   /** For GameView's variable-size spawned gig props (hay haul and supplies). */
@@ -578,6 +593,8 @@ export class PropFactory {
         { x: .95, y: .20, z: .95 }, new THREE.Vector3(0, .015, 0), 'spring');
       this.cylinder(root, .82, .82, .08, 'red', 0, .18, 0, 32);
       this.cylinder(root, .70, .70, .012, 'redLight', 0, .224, 0, 32);
+      this.mount(root, root, LIBRARY_MODELS.arrow,
+        { x: .56, y: .018, z: .78 }, new THREE.Vector3(0, .242, 0), 'paper', 0, -Math.PI / 2);
     }
     return root;
   }

@@ -131,6 +131,29 @@ describe('Hay-Build placement preview', () => {
     }
   });
 
+  it.each([0, 1, 2, 3] as const)('launches along the built arrow at quarter turn %i', async rotation => {
+    const game = await Game.create();
+    try {
+      const x = 210, z = -91.5;
+      game.teleport(V(x, heightAt(game.island, x, z), z), 0);
+      for (let i = 0; i < 40; i++) game.step();
+      game.advance(0, { toggleBuild: true, buildPiece: 'launch-pad', cameraYaw: 0 });
+      const preview = game.buildPreview()!;
+      const piece = game.rules.build.place({ ...preview.placement, rotation }).piece!;
+      const p = game.buildPosition(piece);
+      game.teleport(V(p.x, p.y + 1.2, p.z), 0);
+      let velocity: { x: number; z: number } | undefined;
+      game.surfaces.events.on(e => {
+        if (e.type === 'launch' && e.surfaceId === 'hay-' + piece.id) velocity = game.goat.torso.linvel();
+      });
+      for (let tick = 0; tick < 90 && !velocity; tick++) game.step();
+      expect(velocity).toBeDefined();
+      const yaw = rotation * Math.PI / 2;
+      expect(-velocity!.x * Math.sin(yaw) - velocity!.z * Math.cos(yaw)).toBeGreaterThan(4);
+      expect(Math.abs(velocity!.x * Math.cos(yaw) - velocity!.z * Math.sin(yaw))).toBeLessThan(.7);
+    } finally { game.dispose(); }
+  });
+
   it('tracks quarter-turn orientation and changes color and visibility for a blocked shape', () => {
     const ghost = new BuildPlacementGhost();
     try {

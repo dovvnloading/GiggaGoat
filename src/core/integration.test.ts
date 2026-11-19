@@ -565,6 +565,24 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
     } finally { game.dispose(); }
   });
 
+  it('keeps the pier cargo available and pops its soda barrel once on a charged strike', async () => {
+    const game = await create();
+    try {
+      ticks(game, 180);
+      const cargo = game.island.props.filter(p => p.poiId === 'baa-ardwalk' &&
+        (p.kind === 'crate' || p.kind === 'barrel'));
+      for (const p of cargo) expect(game.colliders.bodies.get(p.id)?.isDynamic(), p.id).toBe(true);
+      const soda = cargo.find(p => p.kind === 'barrel' && p.id.endsWith('0'))!;
+      const p = game.colliders.bodies.get(soda.id)!.translation();
+      const pops: number[] = [];
+      game.chains.events.on(e => { if (e.type === 'sodaPop') pops.push(e.bodyHandle); });
+      game.teleport(V(p.x, p.y - soda.size.y / 2, p.z + 1.35), 0);
+      ticks(game, 70, { cameraYaw: 0, chargeHeadbutt: true });
+      game.step({ cameraYaw: 0 });
+      expect(pops).toEqual([game.colliders.bodies.get(soda.id)!.handle]);
+    } finally { game.dispose(); }
+  });
+
   it('charges a headbutt through GoatAbilities and moves a real dynamic prop with physical momentum', async () => {
     const game = await create();
     try {
