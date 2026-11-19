@@ -9,6 +9,7 @@ import { accessArrows, accessPathVisual, mergePaintedParts } from './visual-acce
 import { publicAssetUrl } from './public-assets';
 import { buildDamLandscape, DAM_SPILLWAY_IMPACTS } from './visual-dam-landscape';
 import { damChannelAt } from './dam-landscape';
+import { buildDamBypassPaint } from './visual-dam-bypass';
 
 export interface DamVisuals {
   group: THREE.Group;
@@ -319,6 +320,8 @@ export function buildDamVisuals(island: IslandData,
   approach.position.copy(group.position).multiplyScalar(-1 / placement.scale);
   approach.scale.setScalar(1 / placement.scale);
   group.add(fallback, approach);
+  const bypassPaint = buildDamBypassPaint(island, ramp[0]!.outer, placement);
+  if (bypassPaint) group.add(bypassPaint);
   let waterfallMaps: THREE.Texture[] = [];
   let shadowChange = false;
   let disposed = false;
