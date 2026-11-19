@@ -220,9 +220,7 @@ function makePainter() {
 }
 
 /**
- * Bake all fixed painted detail into one world-space vertex-coloured draw and
- * all three model fallbacks into a second. This keeps the full hero at four
- * draws (including the instanced rocks and emissive lens), not twenty-one.
+ * Batch the fixed cape furnishings and harbor art in world space.
  * Groups remain as named semantic anchors for art inspection and gameplay.
  */
 function batchHeroMeshes(root: THREE.Group, name: string,

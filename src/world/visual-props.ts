@@ -189,7 +189,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       geometry = kitPreview(kind, entries[0]!.size);
       if (island && kind === 'log-bridge' && entries.length === 1)
         geometry = appendPinesLogEntries(geometry, island, entries[0]!);
-      // A small local embed also seats the procedural trees while the GLBs
+      // A small local embed also seats the kit trees while the GLBs
       // load. Keep stable source matrices for the renderer's prop bindings.
       if (island && (kind === 'tree-oak' || kind === 'tree-pine') &&
         entries.every(prop => prop.body.type === 'static' &&

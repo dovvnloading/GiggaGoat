@@ -15,6 +15,8 @@ assets = re.findall(r"'([\w-]+)':\s*'(assets/library/[^']+\.glb)'", catalog)
 scenery = {
     'grassClump': 'custom/hoofington-props/grass-clump',
     'meadowFlower': 'kenney/nature-kit/flower_yellowA',
+    'pavingTile': 'kenney/city-kit-roads/tile-low',
+    'boardwalkPlanks': 'kenney/survival-kit/floor',
     'keeperDock': 'kenney/pirate-kit/structure-platform-dock',
     'wreckMast': 'kenney/pirate-kit/mast-ropes',
     'tender': 'kenney/watercraft-kit/boat-row-small',

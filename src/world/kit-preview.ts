@@ -17,7 +17,7 @@ export function kitShape(kind: keyof typeof library, nativeMetres = false): THRE
     for (let j = 0; j < 3; j++) {
       const source = 20 + 6 * bytes.getUint16(face + j * 2, true);
       const dst = i * 9 + j * 3;
-      for (let k = 0; k < 3; k++) pos[dst + k] = bytes.getInt16(source + 2 * k, true) / 4096;
+      for (let k = 0; k < 3; k++) pos[dst + k] = bytes.getInt16(source + 2 * k, true) / 32760;
       colour.toArray(rgb, dst);
     }
   }

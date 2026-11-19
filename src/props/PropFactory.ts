@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { BUILD_RAMP_VERTICES, BUILD_RAMP_TRIANGLES } from '../gameplay';
 import { PROP_LIBRARY_MODELS, bakeLibraryPropGeometry } from '../world/library-props';
 import { fitLibraryModel, isAuthoredLibraryAsset } from '../world/library-fit';
-import { kitPreview } from '../world/kit-preview';
+import { kitShape } from '../world/kit-preview';
 import { TOON_RAMP } from '../world/visual-props';
 
 /**
@@ -277,21 +277,25 @@ export class PropFactory {
     }
     const nativeBounds = geometry.boundingBox;
     if (!nativeBounds || nativeBounds.isEmpty()) return null;
-    const path = PROP_LIBRARY_MODELS[kind];
-    const fit = fitLibraryModel(nativeBounds.getSize(new THREE.Vector3()),
-      new THREE.Vector3(size.x, size.y, size.z), path);
     const mesh = new THREE.Mesh(geometry, this.worldPaint(kind, color));
     mesh.name = 'world-library-model';
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     const fitted = new THREE.Group();
     fitted.name = 'world-library-fitted';
+    fitted.add(mesh);
+    this.fitWorldSlot(fitted, nativeBounds, kind, size, artFit);
+    return fitted;
+  }
+
+  private fitWorldSlot(fitted: THREE.Object3D, source: THREE.Box3, kind: WorldLibraryPropKind,
+    size: Size3, artFit?: WorldArtFit): void {
+    const fit = fitLibraryModel(source.getSize(new THREE.Vector3()),
+      new THREE.Vector3(size.x, size.y, size.z), PROP_LIBRARY_MODELS[kind]);
     fitted.rotation.y = fit.yaw + (artFit?.yaw ?? 0);
     fitted.scale.copy(fit.scale);
-    fitted.add(mesh);
-    fitted.updateMatrixWorld(true);
-    const bounds = new THREE.Box3().setFromObject(fitted);
-    if (bounds.isEmpty()) return null;
+    fitted.updateMatrix();
+    const bounds = source.clone().applyMatrix4(fitted.matrix);
     // World roots are collider-centred: centre X/Z, put the lowest point
     // at the collider floor, and leave descriptor yaw on the caller's root.
     fitted.position.set(
@@ -305,28 +309,24 @@ export class PropFactory {
       fitted.scale.y *= verticalScale;
       fitted.position.y = -size.y / 2 - (bounds.min.y + size.y * toe) * verticalScale;
     }
-    return fitted;
+    fitted.updateMatrixWorld(true);
   }
 
-  /** Draw one placeholder, then swap in the exact World Lab GLB. */
+  /** Fit shared kit geometry immediately and keep the slot when native art arrives. */
   createWorldProp(kind: WorldLibraryPropKind, size: Size3, color: number | undefined,
     artFit?: WorldArtFit): THREE.Group {
     const root = this.root('world-' + kind, size);
     const slot = new THREE.Group();
     slot.name = 'library-slot';
     root.add(slot);
-    const preview = this.cachedGeometry(`kit-preview:${kind}:${size.x}:${size.y}:${size.z}`,
-      () => kitPreview(kind, size));
+    const preview = this.cachedGeometry('kit-preview:' + kind, () => {
+      const geometry = kitShape(kind);
+      geometry.userData.sourceKit = PROP_LIBRARY_MODELS[kind];
+      return geometry;
+    });
     const proxy = new THREE.Mesh(preview, this.worldPaint(kind, color));
     proxy.name = kind === 'fence' ? 'world-picket-fence' : kind === 'gnome' ? 'gig-gnome-placeholder' : 'kit-preview-' + kind;
-    proxy.scale.set(size.x, size.y, size.z);
-    if (artFit) {
-      const [toe, crest] = artFit.treadElevations;
-      const height = size.y / (crest - toe);
-      proxy.rotation.y = artFit.yaw;
-      proxy.scale.y = height;
-      proxy.position.y = -size.y / 2 + (.5 - toe) * height;
-    }
+    this.fitWorldSlot(proxy, preview.boundingBox!, kind, size, artFit);
     proxy.castShadow = true;
     proxy.receiveShadow = true;
     slot.add(proxy);

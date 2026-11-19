@@ -477,7 +477,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   for (const chunk of chunks) group.add(chunk.mesh);
   const roads = buildRoads(island, chunks, sky.atmosphere);
   group.add(roads);
-  const kitSets = districtSetVisuals(island.districtSets ?? [], options.gameplaySelectsCasters);
+  const kitSets = districtSetVisuals(island.districtSets ?? [], options.gameplaySelectsCasters, island);
   group.add(kitSets.group);
   const roadsideSigns = buildRoadsideSigns(island);
   if (roadsideSigns) group.add(roadsideSigns);

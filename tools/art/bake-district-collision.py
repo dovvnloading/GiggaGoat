@@ -72,7 +72,7 @@ def bake(model, face_budget=192, graphics=False, include=None):
         **({"frame": [float((low[0] + high[0]) / 2), float(low[1]), float((low[2] + high[2]) / 2), float(length)]} if graphics else {}),
         "palette": palette.tolist(), "paint": colours.tolist(),
         "span": np.round(span / length, 5).tolist(),
-        "vertices": np.rint(mesh.vertices.flatten() * 4096).astype(int).tolist(),
+        "vertices": np.rint(mesh.vertices.flatten() * (32760 if graphics else 4096)).astype(int).tolist(),
         "indices": mesh.faces.flatten().tolist(),
     }
 
