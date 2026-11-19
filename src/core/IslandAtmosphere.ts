@@ -37,7 +37,7 @@ export class IslandAtmosphere {
   update(weather: IslandWeather, camera: THREE.Vector3, low: boolean): void {
     const { time, rain, phase } = weather;
     const dusk = THREE.MathUtils.smoothstep(-Math.cos(phase * Math.PI * 2), -.40, .22);
-    const lightPower = 58 * (1 - dusk);
+    const lightPower = 115 * (1 - dusk);
     if (time >= this.nextCheck || time < this.nextCheck - .5) {
       this.nextCheck = time + .32;
       this.sheltered = rain > .01 && !!this.game.physics.raycast(camera, { x:0,y:1,z:0 }, 32,

@@ -50,7 +50,9 @@ function noise(x: number, y: number, cells: number): number {
 }
 const field = new Uint8Array(SIZE * SIZE);
 for (let j = 0; j < SIZE; j++) for (let i = 0; i < SIZE; i++) {
-  const u = i / SIZE, v = j / SIZE;
+  const x = i / SIZE, y = j / SIZE;
+  // Bend the density contours so the lower deck breaks into banks and wisps.
+  const u = x + .18 * noise(x,y,3), v = y + .19 * noise(y+.37,x+.21,4);
   field[j * SIZE + i] = Math.round(255 * (.50 * noise(u,v,5) + .27 * noise(u,v,11) +
     .15 * noise(u,v,23) + .08 * noise(u,v,51)));
 }

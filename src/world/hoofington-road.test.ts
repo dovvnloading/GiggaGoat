@@ -110,7 +110,9 @@ describe('Hoofington E1: road surface and painted crossing', () => {
       const mesh = view.group.getObjectByName('hoofington-zebra-crossing') as THREE.Mesh;
       expect(mesh).toBeInstanceOf(THREE.Mesh);
       expect(mesh).not.toBeInstanceOf(THREE.InstancedMesh);
-      const material = mesh.material as THREE.MeshBasicMaterial;
+      const material = mesh.material as THREE.MeshLambertMaterial;
+      expect(material).toBeInstanceOf(THREE.MeshLambertMaterial);
+      expect(mesh.receiveShadow).toBe(true);
       expect(material.color.getHex()).toBe(0xffffff);
       expect(material.polygonOffset).toBe(true);
       const geometry = mesh.geometry;
