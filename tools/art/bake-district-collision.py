@@ -11,11 +11,13 @@ import trimesh
 from scipy.spatial import cKDTree
 
 
-def bake(model):
+def bake(model, face_budget=192, graphics=False, include=None):
     scene = trimesh.load_scene(model)
     components = []
     colours = []
     for node in scene.graph.nodes_geometry:
+        if include is not None and not include(node):
+            continue
         transform, key = scene.graph[node]
         part = scene.geometry[key].copy()
         part.apply_transform(transform)
@@ -40,24 +42,37 @@ def bake(model):
     length = max(span)
     mesh.apply_translation(-np.array([(high[0] + low[0]) / 2, low[1], (high[2] + low[2]) / 2]))
     mesh.apply_scale(1 / length)
-    paint_points = cKDTree(mesh.triangles_center)
-    normals = mesh.face_normals.copy()
     paint = np.concatenate(colours)
+    if not graphics:
+        paint_points = cKDTree(mesh.triangles_center)
+        normals = mesh.face_normals.copy()
     mesh.merge_vertices(merge_tex=True, merge_norm=True)
-    if len(mesh.faces) > 192:
-        mesh = mesh.simplify_quadric_decimation(face_count=192, aggression=4)
-    mesh.update_faces(mesh.nondegenerate_faces() & mesh.unique_faces())
-    mesh.remove_unreferenced_vertices()
-    # Map simplified triangles back to nearby authored faces facing the same way.
-    distances, near = paint_points.query(mesh.triangles_center, k=4)
-    score = distances + .04 * (1 - (normals[near] * mesh.face_normals[:, None, :]).sum(axis=2))
-    rgb = paint[near[np.arange(len(near)), score.argmin(axis=1)]]
+    if graphics:
+        # Keep the artist's triangle order, double-sided faces and paint correspondence.
+        # Contact simplification can remove a whole roof, wheel or thin plank.
+        rgb = paint
+        if graphics == "two-sided":
+            # These batches draw both sides. Coincident back faces from the kit
+            # shade differently at the same depth and stripe tents and awnings.
+            unique = mesh.unique_faces()
+            mesh.update_faces(unique)
+            rgb = rgb[unique]
+    else:
+        if len(mesh.faces) > face_budget:
+            mesh = mesh.simplify_quadric_decimation(face_count=face_budget, aggression=4)
+        mesh.update_faces(mesh.nondegenerate_faces() & mesh.unique_faces())
+        mesh.remove_unreferenced_vertices()
+        # Map simplified triangles back to nearby authored faces facing the same way.
+        distances, near = paint_points.query(mesh.triangles_center, k=4)
+        score = distances + .04 * (1 - (normals[near] * mesh.face_normals[:, None, :]).sum(axis=2))
+        rgb = paint[near[np.arange(len(near)), score.argmin(axis=1)]]
     packed = (rgb[:, 0] << 16) | (rgb[:, 1] << 8) | rgb[:, 2]
     palette, colours = np.unique(packed, return_inverse=True)
     return {
+        **({"frame": [float((low[0] + high[0]) / 2), float(low[1]), float((low[2] + high[2]) / 2), float(length)]} if graphics else {}),
         "palette": palette.tolist(), "paint": colours.tolist(),
         "span": np.round(span / length, 5).tolist(),
-        "vertices": np.rint(mesh.vertices.flatten() * 4096).astype(int).tolist(),
+        "vertices": np.rint(mesh.vertices.flatten() * (32760 if graphics else 4096)).astype(int).tolist(),
         "indices": mesh.faces.flatten().tolist(),
     }
 

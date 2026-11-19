@@ -96,7 +96,7 @@ describe('library prop catalog', () => {
         const mesh = visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
         expect(mesh).toBeInstanceOf(THREE.InstancedMesh);
         expect(mesh.count).toBe(1);
-        expect(mesh.geometry.getAttribute('position').count).toBe(36);
+        expect(mesh.geometry.userData.sourceKit).toBe(PROP_LIBRARY_MODELS[mesh.name.slice(6) as PropKind]);
         expect(mesh.geometry.getAttribute('color')).toBeDefined();
       } finally {
         visuals.dispose();
@@ -131,7 +131,7 @@ describe('library prop catalog', () => {
       expect(lily).toBeInstanceOf(THREE.InstancedMesh);
       for (const mesh of [fern, lily]) {
         expect(mesh.count).toBe(1);
-        expect(mesh.geometry.getAttribute('position').count).toBe(36);
+        expect(mesh.geometry.userData.sourceKit).toBe(PROP_LIBRARY_MODELS[mesh.name.slice(6) as PropKind]);
         expect(mesh.geometry.getAttribute('color')).toBeDefined();
       }
       expect((fern.material as THREE.MeshToonMaterial).onBeforeCompile.toString())
@@ -752,15 +752,13 @@ describe('authored Baa-ardwalk model colours and LOD', () => {
     }));
     const visuals = buildPropVisuals(props);
     try {
-      for (const [kind, hex] of painted) {
+      for (const [kind] of painted) {
         const mesh = visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
         expect(mesh).toBeInstanceOf(THREE.InstancedMesh);
-        expect(mesh.geometry.getAttribute('position').count).toBe(36);
+        expect(mesh.geometry.userData.sourceKit).toBe(PROP_LIBRARY_MODELS[mesh.name.slice(6) as PropKind]);
         const colour = mesh.geometry.getAttribute('color');
-        const expected = new THREE.Color(hex), actual = new THREE.Color();
-        expect(colour.getX(0)).toBeCloseTo(expected.r, 5);
-        expect(colour.getY(0)).toBeCloseTo(expected.g, 5);
-        expect(colour.getZ(0)).toBeCloseTo(expected.b, 5);
+        const actual = new THREE.Color();
+        expect(new Set(Array.from(colour.array)).size).toBeGreaterThan(3);
         mesh.getColorAt(0, actual);
         expect(actual.getHex(), kind + ' instance tint').toBe(0xffffff);
       }
@@ -787,15 +785,12 @@ describe('authored Baa-ardwalk model colours and LOD', () => {
     }));
     const visuals = buildPropVisuals(props);
     try {
-      for (const [kind, hex] of signs) {
+      for (const [kind] of signs) {
         const mesh = visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
         expect(mesh).toBeInstanceOf(THREE.InstancedMesh);
-        expect(mesh.geometry.getAttribute('position').count, kind).toBe(36);
+        expect(mesh.geometry.userData.sourceKit).toBe(PROP_LIBRARY_MODELS[kind]);
         const painted = mesh.geometry.getAttribute('color');
-        const expected = new THREE.Color(hex);
-        expect(painted.getX(0), kind).toBeCloseTo(expected.r, 5);
-        expect(painted.getY(0), kind).toBeCloseTo(expected.g, 5);
-        expect(painted.getZ(0), kind).toBeCloseTo(expected.b, 5);
+        expect(new Set(Array.from(painted.array)).size).toBeGreaterThan(3);
         const instance = new THREE.Color();
         mesh.getColorAt(0, instance);
         expect(instance.getHex(), kind).toBe(0xffffff);

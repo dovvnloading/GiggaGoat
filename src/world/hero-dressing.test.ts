@@ -64,8 +64,7 @@ describe('authored painting-dressing GLB mapping and fallback', () => {
         const mesh = visuals.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
         expect(mesh).toBeInstanceOf(THREE.InstancedMesh);
         expect(mesh.count).toBe(1);
-        const vertices = mesh.geometry.getAttribute('position');
-        expect(vertices.count).toBe(36); // plain box fallback, never a missing mesh
+        expect(mesh.geometry.userData.sourceKit).toBe(PROP_LIBRARY_MODELS[kind]);
         expect(mesh.geometry.getAttribute('color')).toBeDefined();
       }
     } finally {

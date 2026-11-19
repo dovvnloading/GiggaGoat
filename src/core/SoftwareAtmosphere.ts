@@ -4,9 +4,19 @@ import { pixel, type SoftwareFrame } from './SoftwareFrame';
 
 const ease = THREE.MathUtils.smoothstep;
 
+// Blend packed, opaque RGB samples. The weight is an integer in [0, 256].
+function blendSky(a: number, b: number, weight: number): number {
+  if (a === b) return a;
+  const back = 256 - weight;
+  const rb = (((a & 0xff00ff) * back + (b & 0xff00ff) * weight) >>> 8) & 0xff00ff;
+  const g = (((a & 0x00ff00) * back + (b & 0x00ff00) * weight) >>> 8) & 0x00ff00;
+  return 0xff000000 | rb | g;
+}
+
 /** Use reciprocal scene depth to keep distant haze off the goat and nearby props. */
 export class SoftwareAtmosphere {
   private palette = new Uint8Array(64 * 3 * 256);
+  private skySamples = new Uint32Array(0);
   private lastGrade = -Infinity;
   private readonly start = new THREE.Vector3();
   private readonly end = new THREE.Vector3();
@@ -20,11 +30,14 @@ export class SoftwareAtmosphere {
     const base = [horizon >> 16, (horizon >> 8) & 255, horizon & 255];
     const top = [26 + 38*day + 65*gold, 35 + 115*day - 32*gold, 77 + 145*day - 48*gold];
     const e = camera.matrixWorld.elements, p = camera.projectionMatrix.elements;
-    // Sample the upper hemisphere in small spans; opaque geometry then overwrites these pixels.
-    for (let y = 0; y < height; y += 3) {
+    const columns = Math.ceil(width / 5) + 1, rows = Math.ceil(height / 3) + 1;
+    if (this.skySamples.length < columns * rows) this.skySamples = new Uint32Array(columns * rows);
+    const samples = this.skySamples;
+    for (let j = 0; j < rows; j++) {
+      const y = 3 * j;
       const v = (1 - 2*y/height + p[9]) / p[5];
-      const row = y * width;
-      for (let x = 0; x < width; x += 5) {
+      for (let i = 0; i < columns; i++) {
+        const x = 5 * i;
         const u = (2*x/width - 1 + p[8]) / p[0];
         const rx = e[0]*u + e[4]*v - e[8], ry = e[1]*u + e[5]*v - e[9], rz = e[2]*u + e[6]*v - e[10];
         const h = Math.max(0,ry) / Math.hypot(rx,ry,rz);
@@ -37,10 +50,21 @@ export class SoftwareAtmosphere {
         const light = (.29+.71*day)*(1-.30*storm);
         const r = base[0]!+(top[0]!-base[0]!)*grad, g = base[1]!+(top[1]!-base[1]!)*grad;
         const b = base[2]!+(top[2]!-base[2]!)*grad;
-        frame.pixels.fill(pixel(r+(222*light-r)*mass,g+((232-22*gold)*light-g)*mass,
-          b+((247-48*gold)*light-b)*mass),row+x,row+Math.min(width,x+5));
+        samples[j * columns + i] = pixel(r+(222*light-r)*mass,g+((232-22*gold)*light-g)*mass,
+          b+((247-48*gold)*light-b)*mass);
       }
-      for (let dy = 1; dy < 3 && y+dy < height; dy++) frame.pixels.copyWithin(row+dy*width,row,row+width);
+    }
+    for (let y = 0; y < height; y++) {
+      const start = Math.floor(y / 3) * columns, t = (y % 3) * 85;
+      let left = blendSky(samples[start]!, samples[start + columns]!, t);
+      for (let i = 0, x = 0; x < width; i++, x += 5) {
+        const k = start + i + 1;
+        const right = blendSky(samples[k]!, samples[k + columns]!, t);
+        const offset = y * width + x, count = Math.min(5, width - x);
+        if (left === right) frame.pixels.fill(left, offset, offset + count);
+        else for (let d = 0; d < count; d++) frame.pixels[offset + d] = blendSky(left, right, d * 51);
+        left = right;
+      }
     }
   }
 

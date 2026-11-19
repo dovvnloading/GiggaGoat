@@ -13,15 +13,15 @@ import { gridSample, segmentProjection } from './terrain';
 it('seats kit ensembles in all eight districts and gives every object a scaled triangle collider', async () => {
   const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
   const sets = island.districtSets!;
-  expect(sets).toHaveLength(17);
-  expect(sets.reduce((n, set) => n + set.pieces.length, 0)).toBe(67);
+  expect(sets, sets.map(set => set.name).join(', ')).toHaveLength(24);
+  expect(sets.reduce((n, set) => n + set.pieces.length, 0)).toBe(87);
   expect(new Set(sets.map(s => s.district))).toEqual(new Set(POI_IDS));
   const roads = [...island.roads, ...makeLocalStreets(island)];
   const visuals = districtSetVisuals(sets);
-  expect(visuals.group.children).toHaveLength(17);
+  expect(visuals.group.children).toHaveLength(24);
   for (const mesh of visuals.group.children as THREE.Mesh[]) {
     expect(mesh.geometry.getAttribute('color').count).toBe(mesh.geometry.getAttribute('position').count);
-    expect(mesh.userData.kitDetail).toBe('distant');
+    expect(mesh.userData.kitDetail).toBe('full');
   }
   const near = new THREE.Vector3().copy(sets.find(s => s.name === 'Tractor yard')!.pieces[0]!.bottom);
   expect(visuals.update(near)).toBe(true);
@@ -41,6 +41,7 @@ it('seats kit ensembles in all eight districts and gives every object a scaled t
         segmentProjection(p.bottom, road.points[j]!, end).distance)) - radius - road.width / 2;
       expect(gap, set.name + ' at ' + road.id).toBeGreaterThan(.98);
     }
+    expect(shape.surface, p.model).toMatch(/^(wood|stone|metal|soft)$/);
     expect(shape.transform.position).toEqual(p.bottom);
     expect(shape.transform.rotationY).toBe(p.yaw);
     expect(shape.vertices!.length).toBeGreaterThan(9);
@@ -68,7 +69,7 @@ it('can walk to every district ensemble from its landmark on the production isla
   const game = await Game.create();
   try {
     const { island } = game;
-    expect(island.districtSets).toHaveLength(17);
+    expect(island.districtSets).toHaveLength(24);
     for (const set of island.districtSets!) {
       const { from, to } = set.approach;
       const dx = to.x - from.x, dz = to.z - from.z;

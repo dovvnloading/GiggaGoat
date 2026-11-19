@@ -19,31 +19,6 @@ function fitRoot(root: THREE.Group, size: Size3, nominal: Size3): THREE.Group {
   return root;
 }
 
-/** Legacy PropFactory toy art is a failure fallback only, never the normal world view. */
-function legacyWorldProp(factory: PropFactory,
-  prop: Pick<PropDescriptor, 'kind' | 'size'>): THREE.Group {
-  switch (prop.kind) {
-    case 'crate':
-      return fitRoot(factory.createCrate(), prop.size, DEFAULT_CRATE_SIZE);
-    case 'barrel':
-      return fitRoot(factory.createGigProp(DEFAULT_CRATE_SIZE, 'barrel'),
-        prop.size, DEFAULT_CRATE_SIZE);
-    case 'hay-bale':
-      return fitRoot(factory.createGigProp(DEFAULT_CRATE_SIZE, 'hay'),
-        prop.size, DEFAULT_CRATE_SIZE);
-    case 'ramp':
-      return fitRoot(factory.createBuildPiece('ramp'), prop.size, BUILD_PIECE_SIZES.ramp);
-    case 'trampoline':
-      return fitRoot(factory.createTrampoline(), prop.size, {
-        x: SURFACE_HALF_EXTENTS.x * 2, y: SURFACE_HALF_EXTENTS.y * 2,
-        z: SURFACE_HALF_EXTENTS.z * 2,
-      });
-    default:
-      return fitRoot(factory.createCrate(), prop.size, DEFAULT_CRATE_SIZE);
-  }
-}
-
-/** World instances use the World Lab GLB, centred on their collider and yaw. */
 export function createWorldLibraryProp(factory: PropFactory,
   prop: Pick<PropDescriptor, 'kind' | 'size' | 'color'> & { id?: string }): THREE.Group | null {
   if (!WORLD_LIBRARY_KINDS.has(prop.kind)) return null;
@@ -52,7 +27,7 @@ export function createWorldLibraryProp(factory: PropFactory,
   const artFit = prop.kind === 'ramp' && prop.id?.startsWith('downtown-bleatsville-ramp-')
     ? { yaw: Math.PI, treadElevations: [.0548, 1.0031] as const } : undefined;
   const root = factory.createWorldProp(prop.kind as WorldLibraryPropKind, prop.size, prop.color,
-    () => legacyWorldProp(factory, prop), artFit);
+    artFit);
   if (isSodaBarrel(prop)) factory.addSodaLabel(root, prop.size);
   return root;
 }

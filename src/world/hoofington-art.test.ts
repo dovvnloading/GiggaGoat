@@ -79,17 +79,14 @@ describe('Hoofington art / building slicing regressions', () => {
       const mesh = view.group.getObjectByName('props-' + kind) as THREE.InstancedMesh;
       const ornament = view.group.getObjectByName('architecture-details-' + kind) as THREE.InstancedMesh;
       expect(mesh).toBeInstanceOf(THREE.InstancedMesh);
-      expect(ornament).toBeInstanceOf(THREE.InstancedMesh);
+      expect(ornament).toBeUndefined();
+      expect(mesh.geometry.userData.sourceKit).toContain('assets/library/');
       expect(mesh.count, kind).toBe(props.length);
-      expect(ornament.count, kind).toBe(props.length);
       expect(mesh.instanceColor, kind).not.toBeNull();
-      expect(ornament.instanceColor, kind).toBeNull();
-      const matrix = new THREE.Matrix4(), ornamentMatrix = new THREE.Matrix4();
+      const matrix = new THREE.Matrix4();
       const up = new THREE.Vector3(0, 1, 0);
       for (let i = 0; i < props.length; i++) {
         mesh.getMatrixAt(i, matrix);
-        ornament.getMatrixAt(i, ornamentMatrix);
-        expect(ornamentMatrix.elements, kind + ':' + i).toEqual(matrix.elements);
         // Scaling and yaw cannot rotate the local walls' Y axis into X/Z.
         const rotation = new THREE.Quaternion();
         matrix.decompose(new THREE.Vector3(), rotation, new THREE.Vector3());

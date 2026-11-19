@@ -1,6 +1,38 @@
-import { clamp, GradientNoise, hashString, smoothstep } from './random';
+import type * as THREE from 'three';
+import { clamp, GradientNoise, hashString, lerp, smoothstep } from './random';
 import { gridCoordinate, gridIndex } from './terrain';
 import type { IslandData } from './types';
+
+interface CliffPalette {
+  data: Uint8Array; size: number; samples: number; stone: THREE.Color; mountainStone: THREE.Color;
+}
+export const terrainCliffMaps = new WeakMap<THREE.Material, CliffPalette>();
+
+/** The terrain vertices lie on atlas texel centres in both mesh detail levels. */
+export function paintCliffVertex(color: THREE.Color, cliffs: CliffPalette, x: number, y: number, z: number): void {
+  const { size, samples, data, stone, mountainStone } = cliffs;
+  const ix = clamp(Math.round((x / size + .5) * (samples - 1)), 0, samples - 1);
+  const iz = clamp(Math.round((z / size + .5) * (samples - 1)), 0, samples - 1);
+  const at = 2 * (iz * samples + ix);
+  const scale = 600 / size, altitude = y * scale;
+  const rock = smoothstep(.14, .51, data[at]! / 255 + .04 * smoothstep(16, 85, altitude));
+  const foot = data[at + 1]! / 255;
+  color.r *= 1 - .30 * foot * .24;
+  color.g *= 1 - .33 * foot * .24;
+  color.b *= 1 - .39 * foot * .24;
+  if (!rock) return;
+  const u = x * scale, v = z * scale;
+  const mountain = 1 - smoothstep(99, 113, Math.hypot(u, v));
+  const bedding = altitude + 2.8 * Math.sin(.05 * u + .026 * v) + 1.5 * Math.sin(-.033 * u + .105 * v);
+  const bands = .74 * Math.sin(.49 * bedding) + .26 * Math.sin(.23 * bedding + .62);
+  const layer = smoothstep(-.56, .52, bands), contrast = .6 + .4 * mountain;
+  color.r = lerp(color.r, lerp(stone.r, mountainStone.r, mountain) *
+    (1 + contrast * (-.34 + .53 * layer)) * (1 - .30 * foot), rock);
+  color.g = lerp(color.g, lerp(stone.g, mountainStone.g, mountain) *
+    (1 + contrast * (-.30 + .45 * layer)) * (1 - .33 * foot), rock);
+  color.b = lerp(color.b, lerp(stone.b, mountainStone.b, mountain) *
+    (1 + contrast * (-.27 + .36 * layer)) * (1 - .39 * foot), rock);
+}
 
 /** Red is exposed rock and green is soil accumulation at a concave cliff foot. */
 export function terrainRockAtlas(island: IslandData): Uint8Array {

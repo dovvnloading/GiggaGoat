@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { createFarmAnimal, FARM_ANIMALS } from './farm-animals';
+import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import type { IslandData, PropDescriptor, PropKind, Vec3 } from './types';
 import { gridSample } from './terrain';
 import { treeArtCenterY } from './visual-tree-grounding';
@@ -41,10 +42,10 @@ export const HOOFINGTON_MODELS = {
   oakC: 'assets/library/custom/hoofington-props/tree-round-c.glb',
   pine: 'assets/library/kenney/nature-kit/tree_pineTallA.glb',
   hay: 'assets/library/custom/hoofington-props/hay-bale.glb',
-  cow: 'assets/library/quaternius/farm-animal-pack/cow_5XSc2Fka3F.glb',
+  cow: 'assets/library/quaternius/animated-animal-pack/cow_26zM1outCr.glb',
   sheep: 'assets/library/quaternius/farm-animal-pack/sheep_C39AUXUUes.glb',
   pig: 'assets/library/quaternius/farm-animal-pack/pig_TNvG3QUFlp.glb',
-  horse: 'assets/library/quaternius/farm-animal-pack/horse_F8HAAcLeBL.glb',
+  horse: 'assets/library/quaternius/animated-animal-pack/horse_qvTrSG9pZF.glb',
 } as const;
 export type HoofModel = keyof typeof HOOFINGTON_MODELS;
 
@@ -76,6 +77,7 @@ export interface HoofPlacement<Model extends string = HoofModel> {
 
 export interface HoofingtonVisuals {
   group: THREE.Group;
+  updateAnimals(time: number): void;
   /** The old whole-kind draws are suppressed even when culling is updated. */
   isFallbackHidden(mesh: THREE.InstancedMesh): boolean;
   consumeShadowChange(): boolean;
@@ -172,10 +174,10 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
     [-41, -16, 0.2], [-39, -14, 1.1], [-42, -13, -0.3],
     [-39, -10, 0.5], [-37, -14, 1.3],
   ] as const) scatter('hay', dx, dz, 2.15, 1.45, 2.2, yaw);
-  scatter('cow', -43, 12, 2, 2.8, 4, -0.8);
-  scatter('sheep', -40, 26, 1.65, 1.9, 2.5, 0.9);
-  scatter('sheep', 43, -20, 1.6, 1.9, 2.4, -1.2);
-  scatter('pig', -43, 31, 1.5, 1.6, 2, -0.2);
+  scatter('cow', -48, 11, 2, 2.8, 4, -0.8);
+  scatter('sheep', -46, 25, 1.65, 1.9, 2.5, 0.9);
+  scatter('sheep', 41, -19, 1.6, 1.9, 2.4, -1.2);
+  scatter('pig', -48, 33, 1.5, 1.6, 2, -0.2);
   scatter('horse', 45, -35, 1.85, 3.5, 4, -0.3);
   return plan;
 }
@@ -408,11 +410,13 @@ export function bakeLibraryGeometry<Model extends string>(
 export const bakeHoofingtonGeometry = bakeLibraryGeometry;
 
 function disposeModel(root: THREE.Object3D): void {
+  const skeletons = new Set<THREE.Skeleton>();
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
   const textures = new Set<THREE.Texture>();
   root.traverse(object => {
     if (!(object instanceof THREE.Mesh)) return;
+    if (object instanceof THREE.SkinnedMesh) skeletons.add(object.skeleton);
     geometries.add(object.geometry);
     for (const material of (Array.isArray(object.material) ? object.material : [object.material])) {
       materials.add(material);
@@ -420,6 +424,7 @@ function disposeModel(root: THREE.Object3D): void {
         if (value instanceof THREE.Texture) textures.add(value);
     }
   });
+  skeletons.forEach(skeleton => skeleton.dispose());
   geometries.forEach(geometry => geometry.dispose());
   materials.forEach(material => material.dispose());
   textures.forEach(texture => texture.dispose());
@@ -605,6 +610,8 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
   group.userData['loadedModels'] = 0;
   const fullyHidden = new Set<PropKind>();
   let shadowChanged = false, disposed = false;
+  const animals: ReturnType<typeof createFarmAnimal>[] = [];
+  const animalSources = new Map<HoofModel, GLTF>();
   let districtLod: DistrictLod | undefined;
   let lanterns: LanternLampBatch | null = null;
   if (typeof document !== 'undefined') {
@@ -626,7 +633,15 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
     const load = (id: HoofModel): Promise<[HoofModel, ModelScene]> =>
       new Promise((resolve, reject) => {
         loader.load(publicAssetUrl(HOOFINGTON_MODELS[id]),
-          gltf => resolve([id, gltf.scene]), undefined, reject);
+          gltf => {
+            if (disposed) {
+              disposeModel(gltf.scene);
+              reject(new Error('Village disposed'));
+              return;
+            }
+            if (FARM_ANIMALS.has(id)) animalSources.set(id, gltf);
+            resolve([id, gltf.scene]);
+          }, undefined, reject);
       });
     void Promise.allSettled([...required].map(load)).then(async results => {
       const models = new Map<HoofModel, ModelScene>();
@@ -638,7 +653,14 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
         if (disposed) return;
         // The flat-colour gnome now joins the normal vertex-colour batch.
         // Only material-authored lamps need a separate native-material draw.
-        const staticPlan = plan.filter(p => p.model !== 'lamp' &&
+        for (const place of villagePlan) {
+          const asset = animalSources.get(place.model);
+          if (!asset) continue;
+          const actor = createFarmAnimal(asset, place, animals.length);
+          animals.push(actor);
+          group.add(actor.root);
+        }
+        const staticPlan = plan.filter(p => p.model !== 'lamp' && !FARM_ANIMALS.has(p.model) &&
           models.has(p.model));
         const ranges: BakedPlacement<HoofModel>[] = [];
         const geometry = bakeLibraryGeometry(staticPlan, models,
@@ -687,12 +709,18 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
       } finally {
         group.userData['loadedModels'] = models.size;
         group.userData['ready'] = true;
-        for (const root of models.values()) disposeModel(root);
+        for (const [id, root] of models) {
+          if (!FARM_ANIMALS.has(id)) disposeModel(root);
+        }
+
       }
     });
   }
   return {
     group,
+    updateAnimals(time) {
+      for (const animal of animals) animal.update(time);
+    },
     isFallbackHidden(mesh: THREE.InstancedMesh): boolean {
       const name = mesh.name.replace(/^(?:props-|architecture-details-|outline-)/, '');
       return fullyHidden.has(name as PropKind);
@@ -703,11 +731,17 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
       return changed;
     },
     updateCulling(position, frustum): boolean {
+      for (const animal of animals) animal.root.visible = animal.root.position.distanceToSquared(position) < 150 * 150;
       const districtChanged = districtLod?.updateCulling(position, frustum) ?? false;
       return (lanterns?.updateCulling(position, frustum) ?? false) || districtChanged;
     },
     dispose(): void {
       disposed = true;
+      for (const animal of animals) animal.dispose();
+      for (const asset of animalSources.values()) {
+        disposeModel(asset.scene);
+      }
+      animalSources.clear();
       districtLod?.dispose();
       lanterns?.dispose();
       group.traverse(object => {

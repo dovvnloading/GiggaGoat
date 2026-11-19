@@ -133,7 +133,10 @@ export interface HeightfieldColliderDescriptor {
   scale: Vec3;
   position: Vec3;
 }
+export type ScenerySurface = 'wood' | 'metal' | 'stone' | 'soft';
+
 export interface PropColliderDescriptor {
+  surface?: ScenerySurface;
   shape: 'cuboid' | 'cylinder' | 'convex' | 'trimesh';
   id: string;
   transform: Transform;

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { createWorldScene, generateIsland } from './index';
 import { gridIndex } from './terrain';
+import { groundGrain } from './ground-kit-grain';
 import { terrainRockAtlas } from './terrain-paint';
 import { TOON_RAMP } from './visual-props';
 import { findBookmark } from './viewer/bookmarks';
@@ -13,11 +14,7 @@ const INDUSTRIAL = new THREE.Color('#9EAE90');
 const SAND = new THREE.Color('#F7DB99');
 
 function variationAt(x: number, z: number): number {
-  const broad = Math.sin(x * 0.071 + Math.cos(z * 0.039) * 1.4) *
-    Math.cos(z * 0.092 - Math.sin(x * 0.047));
-  const fine = Math.sin(x * 0.36 + z * 0.17) *
-    Math.cos(z * 0.29 - x * 0.21);
-  return 0.968 + broad * 0.038 + fine * 0.022;
+  return .98 + .15 * groundGrain(x / 4, z / 4, 3) + .065 * groundGrain(-z, x, 3);
 }
 
 function nearestVertex(scene: WorldScene, targetX: number, targetZ: number): {
@@ -54,6 +51,7 @@ describe('IS-24 narrow beach tint and IS-15 per-fragment cliffs', () => {
   it('keeps Hoofington-height ground free of sand, and makes the 1 m beach fully sand', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 65 });
     island.roads = [];
+    island.districtSets = [];
     // Isolate the sand band from meadow mottling and authored trail colours.
     island.biomeMap.fill(BIOMES.indexOf('industrial'));
     const hoofington = island.pois.find(p => p.id === 'hoofington')!.center;
@@ -92,6 +90,7 @@ describe('IS-24 narrow beach tint and IS-15 per-fragment cliffs', () => {
   it('leaves a 45-degree off-mountain cliff in its biome vertex colour', () => {
     const island = generateIsland({ seed: 'terrain-rock-buffer', resolution: 65 });
     island.roads = [];
+    island.districtSets = [];
     island.biomeMap.fill(BIOMES.indexOf('industrial'));
     island.heights.fill(5);
     const n = island.resolution;

@@ -3,12 +3,12 @@ import { roadsideGravelAt, roadsideStops } from './roadside-stops';
 import * as THREE from 'three';
 import { paintNatureKit } from './plant-palette';
 import type { skyUniforms } from './visual-sky';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { kitShape } from './kit-preview';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { IslandData } from './types';
 import { BIOMES } from './types';
 import { hashString, SeededRandom } from './random';
-import { gridIndex, gridSample } from './terrain';
+import { gridIndex, gridSample, segmentProjection } from './terrain';
 import { makeLocalStreets } from './roads';
 import { CRANE_YARD_PLAN } from './crane-yard';
 import { loadGroundedKitGeometry } from './library-props';
@@ -21,33 +21,6 @@ interface Sprig {
   y: number;
   z: number;
   size: number;
-}
-
-/** Small folded blades keep a grassy silhouette while the authored mesh loads. */
-function makeGrassBlades(): THREE.BufferGeometry {
-  const positions: number[] = [], colors: number[] = [];
-  const palette = [0x6fae4f, 0x8cc65c, 0xa9d77a].map(hex => new THREE.Color(hex));
-  for (let blade = 0; blade < 6; blade++) {
-    const angle = blade * Math.PI / 3;
-    const x = Math.cos(angle), z = Math.sin(angle);
-    const root = 0.045 + 0.02 * (blade % 2);
-    const width = 0.027 + 0.009 * (blade % 3);
-    const reach = 0.15 + 0.018 * ((blade + 1) % 3);
-    const height = 0.23 + 0.045 * ((blade * 2) % 5);
-    const left = [x * root - z * width, 0, z * root + x * width];
-    const right = [x * root + z * width, 0, z * root - x * width];
-    const ridge = [x * (root + 0.055), height * 0.38, z * (root + 0.055)];
-    const tip = [x * reach, height, z * reach];
-    positions.push(...left, ...tip, ...ridge, ...ridge, ...tip, ...right);
-    for (const shade of [palette[blade % 3]!, palette[(blade + 1) % 3]!]) {
-      for (let vertex = 0; vertex < 3; vertex++) colors.push(shade.r, shade.g, shade.b);
-    }
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geometry.computeVertexNormals();
-  return geometry;
 }
 
 /**
@@ -76,9 +49,16 @@ export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof s
       x: point.x, z: point.z, margin: road.width * 0.5 + 3.4 * scale,
     })));
 
+  // Keep the working surfaces and access aisles of the placed scenery clear.
+  const yardClearings = (island.districtSets ?? []).flatMap(set => set.pieces.map(piece => ({
+    x: piece.bottom.x, z: piece.bottom.z, radius: (piece.length * .72 + .5 * scale) ** 2,
+  })));
+  const approaches = (island.districtSets ?? []).map(set => set.approach);
   const roadside = roadsideStops(island);
   function outsideObstacles(x: number, z: number): boolean {
     if (roadsideGravelAt(roadside, x, z)) return false;
+    if (approaches.some(path => segmentProjection({ x, z }, path.from, path.to).distance < 1.25 * scale)) return false;
+    if (yardClearings.some(yard => (x - yard.x) ** 2 + (z - yard.z) ** 2 < yard.radius)) return false;
     for (const road of roadSamples) {
       const dx = x - road.x, dz = z - road.z;
       if (dx * dx + dz * dz < road.margin * road.margin) return false;
@@ -157,42 +137,17 @@ export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof s
     }
     if (flowers.length >= seeds.length) break;
   }
-  const tuft = makeGrassBlades();
-
-  const flowerParts: THREE.BufferGeometry[] = [];
-  const petals: number[] = [];
-  function flowerPart(geometry: THREE.BufferGeometry, color: number): void {
-    // Cylinders are indexed, icosahedra are not. Merge requires one topology.
-    const unpacked = geometry.index ? geometry.toNonIndexed() : geometry;
-    if (unpacked !== geometry) geometry.dispose();
-    const vertices = unpacked.getAttribute('position').count;
-    const tint = new THREE.Color(color);
-    for (let i = 0; i < vertices; i++) petals.push(tint.r, tint.g, tint.b);
-    flowerParts.push(unpacked);
-  }
-  const stalk = new THREE.CylinderGeometry(0.021, 0.035, 0.63, 5);
-  stalk.translate(0, 0.31, 0);
-  flowerPart(stalk, 0x4a9b56);
-  for (let i = 0; i < 6; i++) {
-    const a = Math.PI * i / 3;
-    const petal = new THREE.IcosahedronGeometry(0.12, 0);
-    petal.scale(1, 0.63, 0.9);
-    petal.translate(Math.cos(a) * 0.13, 0.67, Math.sin(a) * 0.13);
-    flowerPart(petal, i % 2 ? 0xfff9e5 : 0xffcfdf);
-  }
-  const centre = new THREE.IcosahedronGeometry(0.105, 0);
-  centre.translate(0, 0.68, 0);
-  flowerPart(centre, 0xffd64c);
-  const blossom = mergeGeometries(flowerParts, false);
-  flowerParts.forEach(p => p.dispose());
-  if (!blossom) throw new Error('Failed to assemble wildflowers');
-  blossom.setAttribute('color', new THREE.Float32BufferAttribute(petals, 3));
+  const tuft = kitShape('grassClump', true);
+  const blossom = kitShape('meadowFlower');
+  paintNatureKit(blossom);
+  const flowerScale = .74 / blossom.boundingBox!.getSize(new THREE.Vector3()).y;
+  blossom.scale(flowerScale, flowerScale, flowerScale);
 
   const transform = new THREE.Matrix4(), position = new THREE.Vector3();
   const rotation = new THREE.Quaternion(), scaling = new THREE.Vector3();
   const axis = new THREE.Vector3(0, 1, 0);
   function instances(geometry: THREE.BufferGeometry, samples: Sprig[],
-    name: string, material: THREE.MeshToonMaterial): THREE.InstancedMesh {
+    name: string, material: THREE.MeshToonMaterial, clumps = false): THREE.InstancedMesh {
     if (sky) material.onBeforeCompile = shader => {
       shader.uniforms['uWind'] = sky.uWind;
       shader.uniforms['uCover'] = sky.uCover;
@@ -212,8 +167,10 @@ export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof s
     for (let i = 0; i < samples.length; i++) {
       const item = samples[i]!;
       position.set(item.x, item.y, item.z);
-      scaling.setScalar(item.size);
-      rotation.setFromAxisAngle(axis, rng.range(0, Math.PI * 2));
+      const seedYaw = rng.range(0, Math.PI * 2);
+      const key = item.x.toFixed(4) + ':' + item.z.toFixed(4);
+      scaling.setScalar(clumps ? .8 + .5 * hashString(key + ':size') / 4294967296 : item.size);
+      rotation.setFromAxisAngle(axis, clumps ? Math.PI * 2 * hashString(key + ':yaw') / 4294967296 : seedYaw);
       transform.compose(position, rotation, scaling);
       mesh.setMatrixAt(i, transform);
     }
@@ -223,7 +180,7 @@ export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof s
     return mesh;
   }
   const grassMesh = instances(tuft, grasses, 'meadow-grass-sprigs',
-    new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_RAMP, side: THREE.DoubleSide }));
+    new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_RAMP, side: THREE.DoubleSide }), true);
   const flowersMesh = instances(blossom, flowers, 'meadow-daisy-flowers',
     new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_RAMP }));
 
@@ -236,21 +193,6 @@ export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof s
     (grassMesh.material as THREE.Material).addEventListener('dispose', () => { disposed = true; });
     void loadGroundedKitGeometry(GRASS_CLUMP_PATH, loader).then(clump => {
       if (disposed) { clump.dispose(); return; }
-      const matrix = new THREE.Matrix4(), point = new THREE.Vector3();
-      const turn = new THREE.Quaternion(), uniform = new THREE.Vector3();
-      const up = new THREE.Vector3(0, 1, 0);
-      for (let i = 0; i < grasses.length; i++) {
-        const sprig = grasses[i]!;
-        const key = sprig.x.toFixed(4) + ':' + sprig.z.toFixed(4);
-        // Two independent position hashes; never advance the placement RNG.
-        const size = 0.8 + 0.5 * (hashString(key + ':size') / 4294967296);
-        const yaw = Math.PI * 2 * (hashString(key + ':yaw') / 4294967296);
-        point.set(sprig.x, sprig.y, sprig.z);
-        turn.setFromAxisAngle(up, yaw);
-        uniform.setScalar(size);
-        matrix.compose(point, turn, uniform);
-        grassMesh.setMatrixAt(i, matrix);
-      }
       grassMesh.geometry = clump;
       grassMesh.instanceMatrix.needsUpdate = true;
       grassMesh.computeBoundingSphere();

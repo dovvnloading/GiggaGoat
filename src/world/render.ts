@@ -2,8 +2,9 @@ import * as THREE from 'three';
 import type { Biome, IslandData, PropKind, Vec2, Vec3 } from './types';
 import { BIOMES } from './types';
 import { clamp, smoothstep } from './random';
-import { gridCoordinate, gridIndex } from './terrain';
-import { terrainRockAtlas } from './terrain-paint';
+import { gridCoordinate, gridIndex, segmentProjection } from './terrain';
+import { groundGrain, groundGrainTexture } from './ground-kit-grain';
+import { terrainCliffMaps, terrainRockAtlas } from './terrain-paint';
 import { paintDowntownGround } from './downtown-public-space';
 import { buildRoadsideSigns, paintRoadsideGravel } from './visual-roadside-stops';
 import { makeVillageGroundPaint, paintAsphalt } from './surface-paint';
@@ -151,13 +152,21 @@ function terrainGeometry(
   const cz = gridCoordinate(island.size, n, startZ + countZ / 2);
   const positions: number[] = [], normals: number[] = [], colors: number[] = [];
   const indices: number[] = [];
+  const groundWeights: number[] = [];
   const color = new THREE.Color();
   const lighthouse = island.pois.find(p => p.id === 'old-lighthouse')!.center;
   const scale = island.size / 600;
   const workingGround = (island.districtSets ?? []).flatMap(set => set.pieces.map(piece => ({
     centre: piece.bottom, radius: piece.length * .67 + 2.8 * scale, paint: DISTRICT_GROUND[set.district],
+    paved: ['downtown-bleatsville', 'crane-yard', 'the-dam'].includes(set.district),
   }))).filter(p => Math.abs(p.centre.x - cx) <= countX * metres / 2 + p.radius &&
     Math.abs(p.centre.z - cz) <= countZ * metres / 2 + p.radius);
+  const approachWidth = 3.4 * scale;
+  const approaches = (island.districtSets ?? []).filter(({ approach: { from, to } }) =>
+    Math.min(from.x, to.x) <= cx + countX * metres / 2 + approachWidth &&
+    Math.max(from.x, to.x) >= cx - countX * metres / 2 - approachWidth &&
+    Math.min(from.z, to.z) <= cz + countZ * metres / 2 + approachWidth &&
+    Math.max(from.z, to.z) >= cz - countZ * metres / 2 - approachWidth);
   const sample = (x: number, z: number): number =>
     island.heights[gridIndex(n, Math.max(0, Math.min(n - 1, x)),
       Math.max(0, Math.min(n - 1, z)))]!;
@@ -216,26 +225,38 @@ function terrainGeometry(
       sample(gx + 1, gz) + sample(gx - 1, gz) +
       sample(gx, gz + 1) + sample(gx, gz - 1)) * 0.25 - h);
     const ambient = 1 - clamp(depression * 0.07, 0, 0.16);
-    const broad = Math.sin(x * 0.071 + Math.cos(z * 0.039) * 1.4) *
-      Math.cos(z * 0.092 - Math.sin(x * 0.047));
-    const fine = Math.sin(x * 0.36 + z * 0.17) *
-      Math.cos(z * 0.29 - x * 0.21);
+    const baseChannel = biome === 'industrial' ? 3 : cliff > .5 ? 2 : biome === 'beach' || trail > .5 ? 1 : 0;
+    const broad = groundGrain(x / (4 * scale), z / (4 * scale), baseChannel);
+    const fine = groundGrain(-z / scale, x / scale, baseChannel);
     const meadow = biome === 'meadow' || biome === 'farmland' || biome === 'town';
     if (meadow && cliff < 0.4 && mountain < 0.1) {
       color.lerp(COLORS.dirt, Math.max(0, -broad - 0.3) * 0.12);
       color.lerp(COLORS.pine, Math.max(0, broad - 0.1) * 0.09);
     }
-    let wear = 0;
+    let wear = 0, paved = false;
     let soil: THREE.Color | undefined;
     for (const patch of workingGround) {
       const px = x - patch.centre.x, pz = z - patch.centre.z;
       const ratio = (px * px + pz * pz) / (patch.radius * patch.radius);
       if (ratio >= 1) continue;
       const weight = 1 - smoothstep(.09, 1, ratio);
-      if (weight > wear) { wear = weight; soil = patch.paint; }
+      if (weight > wear) { wear = weight; soil = patch.paint; paved = patch.paved; }
+    }
+    // Paint the surveyed route from the public path to the pad, including the verge.
+    for (const site of approaches) {
+      const distance = segmentProjection({ x, z }, site.approach.from, site.approach.to).distance;
+      const weight = .87 * (1 - smoothstep(.75 * scale, approachWidth, distance));
+      if (weight <= wear) continue;
+      wear = weight;
+      soil = DISTRICT_GROUND[site.district];
+      paved = site.district === 'the-dam' || site.district === 'downtown-bleatsville' || site.district === 'crane-yard';
     }
     if (soil) color.lerp(soil, wear * (.80 + fine * .09));
-    const variation = 0.968 + broad * 0.038 + fine * 0.022;
+    const concrete = (1 - cliff) * Math.max(paved ? wear : 0, biome === 'industrial' ? .82 : 0);
+    const softGround = Math.max(0, 1 - cliff - concrete);
+    const dirt = softGround * Math.max(trail, wear, biome === 'beach' ? 1 : biome === 'pine-forest' ? .38 : 0);
+    groundWeights.push(softGround - dirt, dirt, cliff, concrete);
+    const variation = .98 + broad * .15 + fine * .065;
     color.multiplyScalar(ambient * variation);
     colors.push(color.r, color.g, color.b);
   }
@@ -272,6 +293,7 @@ function terrainGeometry(
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setAttribute('kitGroundWeights', new THREE.Float32BufferAttribute(groundWeights, 4));
   geometry.setIndex(indices);
   geometry.computeBoundingSphere();
   return geometry;
@@ -283,28 +305,36 @@ function buildTerrain(island: IslandData, segments: number,
     vertexColors: true, gradientMap: TERRAIN_RAMP, side: THREE.FrontSide,
   });
   // One filtered sample carries the continuous grass/stone edge and foot shadow at both LODs.
-  const rockMask = new THREE.DataTexture(terrainRockAtlas(island), n, n, THREE.RGFormat);
+  const cliffData = terrainRockAtlas(island);
+  terrainCliffMaps.set(material, { data: cliffData, size: island.size, samples: n,
+    stone: COLORS.rock, mountainStone: MT_GIGGA_STONE });
+  const rockMask = new THREE.DataTexture(cliffData, n, n, THREE.RGFormat);
   rockMask.magFilter = THREE.LinearFilter;
   rockMask.minFilter = THREE.LinearMipmapLinearFilter;
   rockMask.generateMipmaps = true;
   rockMask.needsUpdate = true;
-  material.addEventListener('dispose', () => rockMask.dispose());
+  const groundTile = groundGrainTexture();
+  material.addEventListener('dispose', () => { rockMask.dispose(); groundTile.dispose(); });
   const villagePaint = makeVillageGroundPaint(island, material);
   material.addEventListener('dispose', () => villagePaint.map.dispose());
   material.onBeforeCompile = shader => {
     shader.uniforms['uRockStone'] = { value: COLORS.rock };
     shader.uniforms['uMountainStone'] = { value: MT_GIGGA_STONE };
     shader.uniforms['uTerrainScale'] = { value: island.size / 600 };
+    shader.uniforms['uKitGround'] = { value: groundTile };
     shader.uniforms['uTerrainRockMask'] = { value: rockMask };
     // Map terrain grid endpoints to the first and last texel centres.
     shader.uniforms['uRockUvScale'] = { value: (n - 1) / (n * island.size) };
     shader.vertexShader = shader.vertexShader.replace(
       '#include <common>',
       `#include <common>
+attribute vec4 kitGroundWeights;
+varying vec4 vGroundWeights;
 varying vec3 vWorld;`,
     ).replace(
       '#include <begin_vertex>',
       `#include <begin_vertex>
+vGroundWeights = kitGroundWeights;
 vWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;`,
     );
     shader.fragmentShader = shader.fragmentShader.replace(
@@ -314,7 +344,9 @@ uniform vec3 uRockStone;
 uniform vec3 uMountainStone;
 uniform float uTerrainScale;
 uniform sampler2D uTerrainRockMask;
+uniform sampler2D uKitGround;
 uniform float uRockUvScale;
+varying vec4 vGroundWeights;
 varying vec3 vWorld;`,
     ).replace(
       '#include <color_fragment>',
@@ -338,7 +370,10 @@ if (rock > 0.0) {
   uStone *= mix(vec3(1.0), strata, 0.6 + 0.4 * mountain);
   uStone *= mix(vec3(1.0), footTint, cliffPaint.g);
   diffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);
-}`,
+}
+vec2 grainUV = vWorld.xz / (5.6 * uTerrainScale);
+vec4 grain = .72 * texture2D(uKitGround, grainUV) + .28 * texture2D(uKitGround, vec2(-grainUV.y, grainUV.x) * .43);
+diffuseColor.rgb *= 1.0 + .65 * (dot(grain, vGroundWeights) - .5);`,
     );
     villagePaint.apply(shader);
     paintDowntownGround(shader, island);
@@ -460,7 +495,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   for (const chunk of chunks) group.add(chunk.mesh);
   const roads = buildRoads(island, chunks, sky.atmosphere);
   group.add(roads);
-  const kitSets = districtSetVisuals(island.districtSets ?? [], options.gameplaySelectsCasters);
+  const kitSets = districtSetVisuals(island.districtSets ?? [], options.gameplaySelectsCasters, island);
   group.add(kitSets.group);
   const roadsideSigns = buildRoadsideSigns(island);
   if (roadsideSigns) group.add(roadsideSigns);
@@ -587,6 +622,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     elapsed = Number.isFinite(time) ? Math.max(0, time) : elapsed;
     waterVisuals.update(elapsed, tide);
     props.update(elapsed);
+    hoofington.updateAnimals(elapsed);
     dam.update(elapsed);
   }
   function updateCulling(camera: THREE.Camera): boolean {
