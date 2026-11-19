@@ -256,6 +256,7 @@ export class LocomotionController {
   private flipScored = false;
   private flightStarted: number | null = null;
   private lastClimbPosition: Vec3 = V();
+  private climbStallSeconds = 0;
   private lastGrounded = false;
   constructor(private readonly goat: GoatRagdoll) {}
 
@@ -512,6 +513,7 @@ export class LocomotionController {
       if (clinging) {
         this.lastClimbPosition = position;
         this.climbPhase = 0;
+        this.climbStallSeconds = 0;
         g.events.emit({type:'wallClingStart',goatId:g.id,time:g.world.time,normal:{...wall!.normal}});
       } else {
         g.events.emit({type:'wallClingEnd',goatId:g.id,time:g.world.time});
@@ -577,7 +579,12 @@ export class LocomotionController {
         const sideways = cross(ascent, normal);
         const velocity = torso.linvel();
         const clearance = dot(sub(position, this.climbSurface.point), normal);
-        const brace = clamp((.75 * s - clearance) * 80 - dot(velocity, normal) * 13, -19, 19);
+        // When a raised seam catches the leading limbs, push the torso out
+        // while its feet are braced, then draw it back as the ascent resumes.
+        const stalled = dot(velocity, ascent) < .30 * target;
+        this.climbStallSeconds = clamp(this.climbStallSeconds + (stalled ? dt : -2 * dt), 0, .35);
+        const stepOut = .30 * clamp((this.climbStallSeconds - .12) / .18, 0, 1);
+        const brace = clamp(((.75 + stepOut) * s - clearance) * 80 - dot(velocity, normal) * 13, -19, 19);
         grip = mul(normal, brace * dt);
         grip = sub(grip, mul(sideways, clamp(dot(velocity, sideways), -9 * dt, 9 * dt)));
       }

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Game } from '../core/Game';
+import { generateIsland } from '../world/island';
+import { addRapierPropCollider } from '../world/colliders';
 import { CollisionLayer, collisionGroups, GROUND_QUERY_GROUPS } from './CollisionGroups';
 import { GoatRagdoll, GOAT_SIZES, type GoatSize } from './GoatRagdoll';
 import { PhysicsWorld } from './PhysicsWorld';
@@ -213,6 +215,25 @@ describe('real Rapier physics simulation', () => {
     simulate(w, .65);
     expect(knockdowns).toEqual(['impact']);
     expect(g.isRagdoll).toBe(true);
+  });
+
+  it('steps across the raised silo bands from an angled contact without hanging under the first lip', async () => {
+    const w = await scene();
+    const silo = generateIsland().colliders.find(collider => collider.shape === 'trimesh')!;
+    if (silo.shape !== 'trimesh') throw Error('Missing the silo collision mesh');
+    addRapierPropCollider(w.raw, { props: new Map(), bodies: new Map() }, {
+      ...silo, transform: { position: V(0, silo.size.y / 2, 0), rotationY: 0 },
+    });
+    const climber = new GoatRagdoll(w, { size: .6, position: V(5.64, .02, .45), yaw: -1.8 });
+    goats.push(climber);
+    simulate(w, 1);
+    climber.locomotion.setInput({ x: -1, z: 0, cameraYaw: -.45, canClimb: true });
+    simulate(w, 2);
+    const firstBand = climber.torso.translation().y;
+    expect(firstBand).toBeGreaterThan(2);
+    simulate(w, 2);
+    expect(climber.torso.translation().y - firstBand).toBeGreaterThan(3);
+    expect(climber.locomotion.isClinging).toBe(true);
   });
 
   it('clings and climbs measurable height on a steep vertical wall', async () => {
