@@ -199,14 +199,16 @@ export class GigCatalog {
   private readonly mowProps: LawnObstacle[];
   private readonly mowRoads: LawnObstacle[];
   private readonly summitTrail: Point[];
+  private readonly legacySummitLedgePositions: Readonly<Record<string, Point>>;
   constructor(island: Pick<IslandData, 'seed' | 'pois' | 'props' | 'seaLevel' | 'reservoir' | 'heights' |
-    'resolution' | 'size'> & Partial<Pick<IslandData, 'roads'>>, seed: number | string = 1) {
+    'resolution' | 'size'> & Partial<Pick<IslandData, 'roads' | 'legacySummitLedgePositions'>>, seed: number | string = 1) {
     this.seed = hash(String(island.seed) + ':' + String(seed));
     this.seaLevel = island.seaLevel;
     this.reservoirLevel = island.reservoir.level;
     this.terrain = island.heights.slice();
     this.resolution = island.resolution;
     this.islandSize = island.size;
+    this.legacySummitLedgePositions = structuredClone(island.legacySummitLedgePositions ?? {});
     this.pois = new Map(island.pois.map(p => [p.id, {
       ...p, center: copy(p.center),
     }]));
@@ -617,15 +619,19 @@ export class GigCatalog {
           break;
         }
         const ledges = requireKind(this.props, 'mt-gigga', 'ledge')
-          .filter(p => p.transform.position.y < poi.center.y - 3)
-          .sort((a, b) => a.transform.position.y - b.transform.position.y);
+          .map(p => ({
+            position: (legacyLayout ? this.legacySummitLedgePositions[p.id] : undefined) ?? p.transform.position,
+            height: p.size.y,
+          }))
+          .filter(p => p.position.y < poi.center.y - 3)
+          .sort((a, b) => a.position.y - b.position.y);
         const steps = 2 + tier;
         const checkpoints: Point[] = [];
         for (let i = 0; i < steps; i++) {
           const index = Math.max(0, Math.min(ledges.length - 1,
             Math.floor((i + 1) * ledges.length / (steps + 1)) + rng.int(3) - 1));
           const p = ledges[index]!;
-          checkpoints.push(plus(p.transform.position, 0, p.size.y / 2 + 0.6, 0));
+          checkpoints.push(plus(p.position, 0, p.height / 2 + 0.6, 0));
         }
         checkpoints.push(plus(poi.center, 0, 1, 0));
         config = { kind: 'summit-sprint', checkpoints, minimumClimb: [4, 7, 10][tier]! };

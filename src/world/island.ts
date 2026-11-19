@@ -13,6 +13,7 @@ import { clearPavedRoadScenery } from './road-scenery';
 import { fitDowntownServiceRamps, populateProps, seatDowntownStock } from './layouts';
 import { dressIsland } from './dressing';
 import { makeRelics, makeSpawns } from './collectibles';
+import { clearMountainLedges } from './mountain-ledges';
 import { makeColliderDescriptors } from './colliders';
 import { sculptDamHeadwater, sculptDamOutflow } from './dam-landscape';
 
@@ -219,6 +220,7 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
     return true;
   });
   sculptDamHeadwater(island);
+  island.legacySummitLedgePositions = clearMountainLedges(island);
   assignBiomes(island);
   island.spawns = makeSpawns(island);
   island.relics = makeRelics(island, rng);

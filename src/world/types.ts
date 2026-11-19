@@ -158,6 +158,8 @@ export interface IslandData {
   reservoir: ReservoirDescriptor;
   roads: RoadDescriptor[];
   props: PropDescriptor[];
+  /** Original anchors for offers stored before blocked climbing shelves moved. */
+  legacySummitLedgePositions?: Readonly<Record<string, Vec3>>;
   colliders: ColliderDescriptor[];
   spawns: SpawnPoint[];
   relics: RelicSpot[];
