@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
+import { SoftwareGameRenderer } from '../core/SoftwareGameRenderer';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { addRapierPropCollider } from './colliders';
 import { createWorldScene, generateIsland } from './index';
@@ -14,6 +16,51 @@ import {
 } from './visual-hoofington';
 
 describe('Hoofington sourced village model integration', () => {
+
+  it('draws distinct ladder treads from the approach in the software renderer', async () => {
+    await MeshoptSimplifier.ready;
+    const island = generateIsland();
+    const placement = makeHoofingtonPlacements(island).find(p => p.model === 'silo')!;
+    const bytes = readFileSync('public/' + HOOFINGTON_MODELS.silo);
+    const { scene: asset } = await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, '');
+    const ranges: BakedPlacement<HoofModel>[] = [];
+    const baked = bakeHoofingtonGeometry([placement], new Map([['silo', asset]]),
+      (placement, start, count) => ranges.push({ placement, start, count }))!;
+    const scene = new THREE.Scene(), district = new THREE.Group();
+    scene.add(district);
+    const lod = await createDistrictLod(island, baked, ranges, district, 'hoofington-library-batched');
+    const width = 224, height = 320;
+    let frame!: ImageData;
+    const renderer = new SoftwareGameRenderer({} as HTMLCanvasElement, {
+      createImageData: (w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }) as ImageData,
+      putImageData: image => { frame = image; },
+    });
+    const camera = new THREE.PerspectiveCamera(48, width / height, .1, 80);
+    camera.position.copy(placement.position);
+    camera.position.y -= placement.size.y * .22;
+    camera.position.z += 10;
+    try {
+      renderer.setSize(width, height, false);
+      renderer.render(scene, camera);
+      let treads = 0, previous = false;
+      for (let y = 16; y < height - 16; y++) {
+        // A horizontal brown tread spans the grey mounting plate.
+        const tread = [-9, 0, 9].every(offset => {
+          const pixel = (width * y + width / 2 + offset) * 4;
+          return frame.data[pixel]! > 1.3 * frame.data[pixel + 1]!;
+        });
+        if (tread && !previous) treads++;
+        previous = tread;
+      }
+      expect(treads).toBeGreaterThanOrEqual(10);
+    } finally {
+      lod.dispose();
+      renderer.dispose();
+      asset.traverse(o => {
+        if (o instanceof THREE.Mesh) { o.geometry.dispose(); (o.material as THREE.Material).dispose(); }
+      });
+    }
+  });
 
   it('puts physical footholds on the rendered silo wall, ladder, pipe and roof', async () => {
     const island = generateIsland();

@@ -155,8 +155,10 @@ export function bakeLibraryPropGeometry(
   kind: PropKind, root: THREE.Object3D,
 ): THREE.BufferGeometry | null {
   const authored = isAuthoredLibraryAsset(PROP_LIBRARY_MODELS[kind]);
-  return bakeLibraryGeometry(root, authored, kind === 'planter' && !authored,
+  const geometry = bakeLibraryGeometry(root, authored, kind === 'planter' && !authored,
     kind === 'lighthouse' ? 'glass' : undefined);
+  if (geometry && kind === 'silo') geometry.userData.preserveSilhouette = true;
+  return geometry;
 }
 
 /** Clouds retain their native metres, flat base, and baked source material colours. */

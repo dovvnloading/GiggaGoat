@@ -242,8 +242,10 @@ export class SoftwareGameRenderer {
     const skinned = mesh instanceof THREE.SkinnedMesh;
     // Keep roads and terrain on their authored heights; their thin layers need exact depth.
     const fixed = mesh.userData.terrainChunk || mesh.name.startsWith('paths-');
+    // The district's nearby architecture includes playable details such as ladder treads.
+    const preserveSilhouette = geometry.userData.preserveSilhouette && distance - this.sphere.radius < 16;
     const detailRadius = radius * Math.min(1, 480 / this.frame!.image.height);
-    const detail = fixed || position.count < 250 ? 'full' :
+    const detail = fixed || preserveSilhouette || position.count < 250 ? 'full' :
       detailRadius < 32 || mesh.name === 'rising-sea' ? 'far' : position.count > 1500 ? 'near' : 'full';
     const data = softwareGeometry(geometry, detail);
     const ground = fixed && paints[0] ? this.groundColours(mesh, paints[0].material, data) : undefined;
