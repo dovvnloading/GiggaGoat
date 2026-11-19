@@ -614,6 +614,14 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
           document.querySelector('[data-score]')?.getClientRects().length !== 0) {
           issues.push('free-roam HUD competes with scoreboard');
         }
+        if (innerWidth <= 760 && innerHeight <= 460 && innerWidth > innerHeight) {
+          const meter = document.querySelector('.gg-meter')!.getBoundingClientRect();
+          const map = document.querySelector('.gg-map-panel')!.getBoundingClientRect();
+          const prompts = document.querySelector('.gg-prompts')!.getBoundingClientRect();
+          if (panel.left <= meter.right || panel.right >= map.left || prompts.top <= panel.bottom) {
+            issues.push('scoreboard overlaps its neighboring HUD elements');
+          }
+        }
         return issues;
       };
       for (const [index, [mode, title, goal, metrics]] of modes.entries()) {
@@ -638,14 +646,16 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         await page.waitFor('document.querySelector("[data-party-clock-label]")?.textContent === "ROUND"',
           mode + ' countdown to finish', 45000);
         try {
-          for (const [width, height] of [[1024, 576], [540, 360], [390, 844]] as const) {
+          const viewports: [number, number][] = [[1024, 576], [540, 360], [390, 844]];
+          if (mode === 'king-of-the-peak') viewports.push([420, 300]);
+          for (const [width, height] of viewports) {
             await page.send('Emulation.setDeviceMetricsOverride',
               { width, height, deviceScaleFactor: 1, mobile: false });
             await page.waitFor('innerWidth === ' + width + ' && innerHeight === ' + height,
               mode + ' compact viewport');
             const issues = await page.evaluate<string[]>('(' + partyHudIssues.toString() + ')(...' +
               JSON.stringify([title, goal, metrics]) + ')');
-            expect(issues.join(', '), mode + ' at ' + width + '×' + height).toBe('');
+            expect(issues, mode + ' at ' + width + '×' + height + ' · ' + issues.join(', ')).toEqual([]);
           }
         } finally {
           await page.send('Emulation.clearDeviceMetricsOverride');

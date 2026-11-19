@@ -343,6 +343,17 @@ const CSS = `
  .gg-meter-label{font-size:clamp(8px,1.85vw,13px);letter-spacing:.2px}
  .gg-meter-stage-labels span{font-size:clamp(7px,1.5vw,10px)}
  .gg-combo{left:50%;top:7px;width:var(--gg-landscape-score-width);height:var(--gg-landscape-score-height)}
+ .gg-ui:has(.gg-combo[data-party-active="true"]){
+   display:grid;grid-template-rows:minmax(var(--gg-landscape-meter-height),max-content) auto;
+   align-content:start;padding-top:7px
+ }
+ .gg-combo[data-party-active="true"]{
+   position:relative;inset:auto;grid-row:1;justify-self:center;align-self:start;transform:none;
+   width:min(34vw,218px,calc(100% - 2 * var(--gg-landscape-meter-width) - 24px));height:auto
+ }
+ .gg-combo[data-party-active="true"] .gg-party-scoreboard{
+   position:relative;inset:auto;min-height:var(--gg-landscape-score-height)
+ }
  .gg-combo-title{font-size:clamp(10px,2.5vw,18px)}
  .gg-combo-count{font-size:clamp(6px,1.48vw,9px)}
  .gg-score{font-size:clamp(13px,3.25vw,22px);letter-spacing:.3px}
@@ -363,6 +374,9 @@ const CSS = `
  .gg-prompts{
    left:8px;top:calc(15px + max(var(--gg-landscape-meter-height),var(--gg-landscape-score-height)));
    width:calc(100% - var(--gg-landscape-gig-width) - 24px);transform:none;gap:5px
+ }
+ .gg-ui:has(.gg-combo[data-party-active="true"]) .gg-prompts{
+   position:relative;inset:auto;grid-row:2;margin:8px 0 0 8px
  }
  .gg-board-hint,.gg-hint{
    flex-wrap:nowrap;width:max-content;max-width:100%;min-height:38px;
