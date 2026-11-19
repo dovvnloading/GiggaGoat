@@ -618,7 +618,8 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
           const meter = document.querySelector('.gg-meter')!.getBoundingClientRect();
           const map = document.querySelector('.gg-map-panel')!.getBoundingClientRect();
           const prompts = document.querySelector('.gg-prompts')!.getBoundingClientRect();
-          if (panel.left <= meter.right || panel.right >= map.left || prompts.top <= panel.bottom) {
+          if (panel.left <= meter.right || panel.right >= map.left ||
+            prompts.top <= Math.max(panel.bottom, meter.bottom)) {
             issues.push('scoreboard overlaps its neighboring HUD elements');
           }
         }

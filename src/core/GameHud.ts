@@ -883,7 +883,8 @@ export class GameHud {
     this.gigTitle.textContent = state.gig.title;
     this.gigTask.textContent = hayHaul?.task ?? state.gig.task;
     this.gigDetail.textContent = state.gig.detail;
-    this.gigCheckbox.hidden = run?.status !== 'running' || !!game.party.match;
+    const runningGig = run?.status === 'running' && !game.party.match;
+    this.gigCheckbox.hidden = !runningGig;
     this.updatePartyScoreboard(game);
     // Refit only when copy or dimensions change, not every simulation frame.
     const gigLayoutKey = [this.gigTitle.textContent, this.gigTask.textContent,
@@ -894,7 +895,7 @@ export class GameHud {
       this.gigLayoutKey = gigLayoutKey;
     }
     this.board.hidden = !boardInRange;
-    this.setPointerLockHint(pointerLocked, boardInRange, device, pointerLockUnavailable);
+    this.setPointerLockHint(pointerLocked, boardInRange, device, pointerLockUnavailable, runningGig);
     this.debug.hidden = !debugVisible;
     if (debugVisible) this.debug.textContent = 'F3 · PERFORMANCE\n' +
       'FPS: ' + (perf?.fps ?? fps).toFixed(0) + '\n' +
@@ -938,7 +939,7 @@ export class GameHud {
   }
 
   setPointerLockHint(pointerLocked: boolean, boardInRange = false,
-    device: InputDevice = 'keyboard-mouse', pointerLockUnavailable = false): void {
+    device: InputDevice = 'keyboard-mouse', pointerLockUnavailable = false, activeGig = false): void {
     const gamepad = device === 'gamepad';
     if (device !== this.inputDevice) {
       this.inputDevice = device;
@@ -949,10 +950,10 @@ export class GameHud {
     const copy = gamepad ? 'RIGHT STICK TO LOOK' : pointerLockUnavailable
       ? 'MOUSE / IJKL LOOK · HOLD EDGE TO TURN' : 'MOUSE / IJKL LOOK · C CAPTURE MOUSE';
     if (this.hintCopy.textContent !== copy) this.hintCopy.textContent = copy;
-    const hideLookHint = boardInRange || (pointerLocked && !gamepad);
+    const hideLookHint = activeGig || boardInRange || (pointerLocked && !gamepad);
     if (this.hint.hidden !== hideLookHint) this.hint.hidden = hideLookHint;
   }
 
-  setVisible(visible: boolean): void { this.root.style.display = visible ? 'block' : 'none'; }
+  setVisible(visible: boolean): void { this.root.style.display = visible ? '' : 'none'; }
   dispose(): void { this.root.remove(); this.styles.remove(); }
 }
