@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { generateIsland } from './index';
+import { readFile } from 'node:fs/promises';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import RAPIER from '@dimforge/rapier3d-compat';
+import { buildRapierColliders, createWorldScene, generateIsland } from './index';
 import { gridSample, riverAt, segmentProjection } from './terrain';
 import type { IslandData, PropDescriptor } from './types';
+import { bakeLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
+import { sectionCenter } from './access-path';
+import { overlapsPinesLogEntry, PINES_LOG_ENTRY_ID, pinesLogEntries } from './pines-log-access';
+import { appendPinesLogEntries } from './visual-pines-log-access';
 
 function props(island: IslandData, kind: 'fern' | 'lily-pads' | 'mushroom'): PropDescriptor[] {
   return island.props.filter(p => p.poiId === 'whispering-pines' && p.kind === kind);
@@ -19,6 +27,10 @@ describe('Whispering Pines seeded glade dressing (WP-6)', () => {
       const woods = island.pois.find(p => p.id === 'whispering-pines')!.center;
       const bridge = island.props.find(p =>
         p.poiId === 'whispering-pines' && p.kind === 'log-bridge');
+      expect(bridge).toBeDefined();
+      for (const prop of island.props.filter(p => p.poiId === 'whispering-pines' && p.collidable && p !== bridge)) {
+        expect(overlapsPinesLogEntry(bridge!, prop, size / 600), prop.id + ' clear of the log approaches').toBe(false);
+      }
       const anchor = bridge?.transform.position ?? woods;
       const ferns = props(island, 'fern');
       const pads = props(island, 'lily-pads');
@@ -117,4 +129,52 @@ describe('Whispering Pines seeded glade dressing (WP-6)', () => {
         seed + ' dressing should be best effort').not.toThrow();
     }
   });
+});
+
+it('draws the same supported bank treads with fallback and loaded log art', async () => {
+  await RAPIER.init();
+  const island = generateIsland();
+  const bridge = island.props.find(prop => prop.kind === 'log-bridge' && prop.poiId === 'whispering-pines')!;
+  const bytes = await readFile(new URL('../../public/' + PROP_LIBRARY_MODELS['log-bridge'], import.meta.url));
+  const { scene: raw } = await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, '');
+  const prepared = bakeLibraryPropGeometry('log-bridge', raw)!;
+  const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+  const loaded = new THREE.Mesh(appendPinesLogEntries(prepared, island, bridge), material);
+  const { position, rotationY } = bridge.transform;
+  loaded.position.set(position.x, position.y, position.z);
+  loaded.rotation.y = rotationY;
+  loaded.scale.set(bridge.size.x, bridge.size.y, bridge.size.z);
+  loaded.updateMatrixWorld(true);
+  const fallback = createWorldScene(island);
+  const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+  try {
+    const placeholder = fallback.group.getObjectByName('props-log-bridge')!;
+    expect(placeholder).toBeInstanceOf(THREE.InstancedMesh);
+    const { props: colliders } = buildRapierColliders(world, island);
+    const entries = pinesLogEntries(island, bridge);
+    for (const { side, sections } of entries) for (const [index, section] of sections.slice(1).entries()) {
+      const a = sectionCenter(sections[index]!), b = sectionCenter(section);
+      for (const across of [-.6, 0, .6]) {
+        const x = (a.x + b.x) / 2 + Math.cos(rotationY) * across;
+        const z = (a.z + b.z) / 2 - Math.sin(rotationY) * across;
+        const y = (a.y + b.y) / 2 + 2;
+        const hit = colliders.get(PINES_LOG_ENTRY_ID + side + '-tread-' + index)!
+          .castRay(new RAPIER.Ray({ x, y, z }, { x: 0, y: -1, z: 0 }), 5, false);
+        expect(hit).toBeCloseTo(2, 4);
+        const ray = new THREE.Raycaster(new THREE.Vector3(x, y, z), new THREE.Vector3(0, -1, 0));
+        for (const art of [placeholder, loaded]) expect(ray.intersectObject(art)[0]!.distance).toBeCloseTo(hit, 2);
+      }
+    }
+  } finally {
+    world.free();
+    fallback.dispose();
+    loaded.geometry.dispose();
+    material.dispose();
+    raw.traverse(node => {
+      if (node instanceof THREE.Mesh) {
+        node.geometry.dispose();
+        for (const coat of Array.isArray(node.material) ? node.material : [node.material]) coat.dispose();
+      }
+    });
+  }
 });

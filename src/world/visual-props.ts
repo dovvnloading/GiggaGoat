@@ -4,6 +4,7 @@ import { isTerrainTreeAnchor, treeArtCenterY } from './visual-tree-grounding';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { loadLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
+import { appendPinesLogEntries } from './visual-pines-log-access';
 import type { PropDescriptor, PropKind } from './types';
 import { buildArchitecture, isArchitecturalKind } from './visual-architecture';
 import type { IslandData } from './types';
@@ -763,6 +764,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     let geometry = geometries.get(kind);
     if (!geometry) {
       geometry = architecture?.shell ?? buildProceduralPropGeometry(kind);
+      if (island && kind === 'log-bridge' && entries.length === 1)
+        geometry = appendPinesLogEntries(geometry, island, entries[0]!);
       // A small local embed also seats the procedural trees while the GLBs
       // load. Keep stable source matrices for the renderer's prop bindings.
       if (island && (kind === 'tree-oak' || kind === 'tree-pine') &&
@@ -776,7 +779,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     if (!material) {
       material = new THREE.MeshToonMaterial({
         color: 0xffffff, vertexColors: true, gradientMap: TOON_RAMP,
-        side: kind === 'rock' || kind === 'stepping-stone'
+        side: kind === 'rock' || kind === 'stepping-stone' || kind === 'log-bridge'
           ? THREE.DoubleSide : THREE.FrontSide,
         emissive: kind === 'rock' ? 0x626773 : 0x000000,
         emissiveIntensity: kind === 'rock' ? 0.42 : 0,
@@ -816,7 +819,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       if (summitLandmark(prop)) poseSummitLandmark(prop, dummy);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
-      mesh.setColorAt(i, new THREE.Color(foliage.has(kind) || authoredKioskKinds.has(kind) ||
+      mesh.setColorAt(i, new THREE.Color(kind === 'log-bridge' || foliage.has(kind) || authoredKioskKinds.has(kind) ||
         authoredKioskSignKinds.has(kind)
         ? 0xffffff : (prop.color ?? COLORS[kind] ?? 0xc6c0a5)));
     }
@@ -890,7 +893,9 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
         const path = PROP_LIBRARY_MODELS[job.kind];
         let pending = cache.get(path);
         if (!pending) {
-          pending = loadLibraryPropGeometry(job.kind, loader);
+          pending = loadLibraryPropGeometry(job.kind, loader).then(geometry =>
+            island && job.kind === 'log-bridge' && job.entries.length === 1
+              ? appendPinesLogEntries(geometry, island, job.entries[0]!) : geometry);
           cache.set(path, pending);
         }
         try {
