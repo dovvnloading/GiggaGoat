@@ -96,13 +96,19 @@ it('seats the real Hoofington and Pines tree soles against their original terrai
       const focus = new THREE.Vector3().copy(trees[0]!.transform.position);
       const planes = Array.from({ length: 6 }, () => new THREE.Plane(new THREE.Vector3(), 1));
       render.updateCulling(focus, new THREE.Frustum(...planes), 200, () => false);
-      const near = render.group.getObjectByName('render-near-' + kind) as THREE.InstancedMesh;
-      expect(near.count).toBe(trees.length);
-      for (const [index, tree] of trees.entries()) {
-        const { x, z } = tree.transform.position;
-        near.getMatrixAt(index, matrix);
-        checkSole(near.geometry, x, z, matrix);
+      const draws = render.group.children.filter((mesh): mesh is THREE.InstancedMesh =>
+        mesh instanceof THREE.InstancedMesh && mesh.visible &&
+        (mesh.name === 'render-near-' + kind || mesh.name.startsWith('habitat-')));
+      const visited = new Set<string>();
+      for (const draw of draws) for (let i = 0; i < draw.count; i++) {
+        draw.getMatrixAt(i, matrix);
+        const tree = trees.find(p => Math.hypot(p.transform.position.x - matrix.elements[12],
+          p.transform.position.z - matrix.elements[14]) < .001)!;
+        expect(visited.has(tree.id)).toBe(false);
+        visited.add(tree.id);
+        checkSole(draw.geometry, tree.transform.position.x, tree.transform.position.z, matrix);
       }
+      expect(visited.size).toBe(trees.length);
     }
     for (const [prop, y] of fixedColliders) {
       expect(game.colliders.props.get(prop.id)!.translation().y).toBe(y);

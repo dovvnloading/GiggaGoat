@@ -10,8 +10,7 @@ import { hashString, SeededRandom } from './random';
 import { gridIndex, gridSample } from './terrain';
 import { makeLocalStreets } from './roads';
 import { CRANE_YARD_PLAN } from './crane-yard';
-import { bakeLibraryCloudGeometry } from './library-props';
-import { publicAssetUrl } from './public-assets';
+import { loadGroundedKitGeometry } from './library-props';
 import { TOON_RAMP } from './visual-props';
 
 const GRASS_CLUMP_PATH = 'assets/library/custom/hoofington-props/grass-clump.glb';
@@ -141,6 +140,22 @@ export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof s
     }
   }
 
+  // Wildflowers grow in drifts along the clear meadow, not at identical
+  // intervals. Keep the original budget and check each offshoot on the ground.
+  const seeds = flowers.splice(0);
+  for (let i = 0; i < seeds.length; i += 3) {
+    const root = seeds[i]!;
+    flowers.push(root);
+    for (let j = 1; j <= 3 && flowers.length < seeds.length; j++) {
+      const angle = hashString(root.x + ':petal:' + j) / 4294967296 * Math.PI * 2;
+      const offset = (.58 + j * .43) * scale;
+      const x = root.x + Math.sin(angle) * offset, z = root.z + Math.cos(angle) * offset;
+      const y = gridSample(island, x, z) + .03 * scale;
+      if (Math.abs(y - root.y) < offset * .38 && y > island.seaLevel + .4 && outsideObstacles(x,z))
+        flowers.push({ x, y, z, size: root.size * (1 - .08 * j) });
+    }
+    if (flowers.length >= seeds.length) break;
+  }
   const tuft = makeGrassBlades();
 
   const flowerParts: THREE.BufferGeometry[] = [];
@@ -208,7 +223,7 @@ export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof s
   }
   const grassMesh = instances(tuft, grasses, 'meadow-grass-sprigs',
     new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_RAMP, side: THREE.DoubleSide }));
-  instances(blossom, flowers, 'meadow-daisy-flowers',
+  const flowersMesh = instances(blossom, flowers, 'meadow-daisy-flowers',
     new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_RAMP }));
 
   // Use the library's native-metre colour baker (also used for clouds), not
@@ -216,21 +231,10 @@ export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof s
   // painted closed blades and must remain one draw with no per-instance tint.
   if (typeof document !== 'undefined') {
     const loader = new GLTFLoader();
-    void loader.loadAsync(publicAssetUrl(GRASS_CLUMP_PATH)).then(gltf => {
-      let clump: THREE.BufferGeometry | null = null;
-      try {
-        clump = bakeLibraryCloudGeometry(gltf.scene);
-      } finally {
-        // The baked geometry owns its vertices/paint, not the transient GLTF.
-        gltf.scene.traverse(object => {
-          if (!(object instanceof THREE.Mesh)) return;
-          object.geometry.dispose();
-          const materials = Array.isArray(object.material) ? object.material : [object.material];
-          materials.forEach(material => material.dispose());
-        });
-      }
-      if (!clump) return; // Invalid model: retain the visible procedural tufts.
-
+    let disposed = false;
+    (grassMesh.material as THREE.Material).addEventListener('dispose', () => { disposed = true; });
+    void loadGroundedKitGeometry(GRASS_CLUMP_PATH, loader).then(clump => {
+      if (disposed) { clump.dispose(); return; }
       const matrix = new THREE.Matrix4(), point = new THREE.Vector3();
       const turn = new THREE.Quaternion(), uniform = new THREE.Vector3();
       const up = new THREE.Vector3(0, 1, 0);
@@ -253,6 +257,14 @@ export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof s
     }).catch(() => {
       // A missing/corrupt GLB must never break the scene or hide its fallback.
     });
+    void loadGroundedKitGeometry('assets/library/kenney/nature-kit/flower_yellowA.glb', loader).then(geometry => {
+      if (disposed) { geometry.dispose(); return; }
+      const h = geometry.boundingBox!.max.y - geometry.boundingBox!.min.y;
+      geometry.scale(.74 / h, .74 / h, .74 / h);
+      flowersMesh.geometry = geometry;
+      flowersMesh.computeBoundingSphere();
+      blossom.dispose();
+    }).catch(() => { /* Retain the small blossom if the kit is unavailable. */ });
   }
   return group;
 }

@@ -76,6 +76,21 @@ it('loads the zone song, loops it, and falls back to adaptive music for party pl
   recorded.dispose();
 });
 
+it('selects a dedicated zone recording and preserves the regional fallback elsewhere', async () => {
+  const { context, output } = audioFixture();
+  const fetchTrack = vi.fn(async () => ({
+    ok: true, arrayBuffer: async () => Uint8Array.of(77).buffer,
+  }));
+  vi.stubGlobal('fetch', fetchTrack);
+  const recordings = { ...assets, music: { ...assets.music, 'crane-yard': '/clockwork.mp3' } };
+  const recorded = new RecordedAudio(context as unknown as AudioContext, recordings, output);
+  recorded.updateMusic({ ...DEFAULT_MUSIC_STATE, poi: 'crane-yard' });
+  expect(fetchTrack).toHaveBeenCalledWith('/clockwork.mp3', expect.anything());
+  recorded.updateMusic({ ...DEFAULT_MUSIC_STATE, poi: 'downtown-bleatsville' });
+  expect(fetchTrack).toHaveBeenCalledWith('/town.mp3', expect.anything());
+  recorded.dispose();
+});
+
 it('retries a failed soundtrack when the player returns to that music region', async () => {
   const { context, sources, output } = audioFixture();
   const fetchTrack = vi.fn(async () => ({

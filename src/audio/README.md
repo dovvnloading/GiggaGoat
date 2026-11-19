@@ -1,8 +1,19 @@
 # Gigga-Goat audio
 
-Billy Isle uses four newly arranged instrumental cues. Gate Latch Reel plays around the farm and forest, Switchyard Shuffle in the yard, city and dam, Glasswater on the coast and summit, and Last Bale Standing in party rounds. The arrangements use the project’s three existing Suno Studio masters for sampled percussion, new written parts, and GeneralUser GS instruments. The original recordings remain available to the offline render scripts. [Instrument library and music-use license](https://github.com/mrbumpy409/GeneralUser-GS/blob/main/documentation/LICENSE.txt)
+Each island district has its own instrumental score. Six recordings were generated in Suno Studio and level-matched for the game.
 
-Each of the eight zones loads its own stereo environment. Approaching the farm barn or walking beneath the pines brings in a distinct close environment. A separate contact bank edits the existing ElevenLabs recordings into three variants per surface for hoofbeats, takeoffs and landings. The sound, instrument and ambience source scripts are in `tools/audio`. Browser playback starts after a user gesture.
+| District | Music |
+| --- | --- |
+| Hoofington | Island Village Shuffle |
+| Baa-ardwalk | Island Promenade |
+| Crane Yard | Clockwork Swing |
+| Whispering Pines | Curious Motif |
+| Mt Gigga | Mountain Ascent |
+| The Dam | E Minor Groove |
+
+Downtown Bleatsville uses Switchyard Shuffle, the Old Lighthouse uses Glasswater, and party rounds use Last Bale Standing. These three arrangements use sampled percussion from earlier Suno Studio masters and GeneralUser GS instruments. [Instrument library and music-use license](https://github.com/mrbumpy409/GeneralUser-GS/blob/main/documentation/LICENSE.txt)
+
+Each of the eight zones loads its own stereo environment. Approaching the farm barn or walking beneath the pines brings in a distinct close environment. Seven additional loops generated in ElevenLabs Sound Effects follow the island simulation. Rain changes between open ground and roof cover, then gives way to isolated drips while the ground stays wet. The pine forest adds crickets after dark, the pier adds rigging on deck, and the windmill and dam control house fade in with proximity. These recordings load on demand. A separate contact bank edits the existing ElevenLabs recordings into three variants per surface for hoofbeats, takeoffs and landings. The sound, instrument and ambience source scripts are in `tools/audio`. Browser playback starts after a user gesture.
 
 ## Minimal integration — one call per render frame
 

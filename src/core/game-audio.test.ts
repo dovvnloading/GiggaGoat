@@ -42,7 +42,7 @@ function fixture() {
   const game = {
     island: {
       size: 10, resolution: 2, seaLevel: 0, tideLevels: [0, 10],
-      biomeMap: new Uint8Array(4).fill(2), zoneMap: new Uint8Array(4).fill(1), pois: [], props: [],
+      biomeMap: new Uint8Array(4).fill(2), zoneMap: new Uint8Array(4).fill(1), pois: [], props: [], colliders: [],
     },
     isAbovePierDeck: () => false,
     goat, rules: { events, style: { combo: { count: 3 }, meter: 67 } },
@@ -76,6 +76,21 @@ function fixture() {
 afterEach(() => vi.restoreAllMocks());
 
 describe('core audio render bridge', () => {
+  it('uses the offshore pier deck and passes weather and cover to the environment mix', () => {
+    const f = fixture();
+    vi.spyOn(f.game, 'isAbovePierDeck').mockReturnValue(true);
+    const bridge = new GameAudio(f.game, f.audio);
+    try {
+      bridge.frame(1 / 60, { position: V(0, 4, 0), forward: V(0, 0, -1), up: V(0, 1, 0) },
+        false, { rain: .55, wet: .8 }, true);
+      const frame = f.audio.updateFrame.mock.calls[0]![0];
+      expect(frame.state?.poi).toBe('baa-ardwalk');
+      expect(frame.environment).toEqual({
+        rain: .55, wet: .8, sheltered: true, atPier: true, mill: 0, turbine: 0,
+      });
+    } finally { bridge.dispose(); }
+  });
+
   it('updates a fake AudioEngine once per frame with every lane drained exactly once', () => {
     const f = fixture();
     const bridge = new GameAudio(f.game, f.audio);

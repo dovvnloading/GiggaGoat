@@ -7,6 +7,7 @@ import {
   assignBiomes, carveWater, clearTerrainUnderBridge, gridCoordinate, gridIndex, gridSample, makeTerrain,
   preserveLighthouseChannel, sculptLighthouseSeaCave, sculptMountainCaveLanding, stampPlot,
 } from './terrain';
+import { districtSets, districtSetColliders } from './district-sets';
 import { makeRoads, makeBridgeDecks, MOUNTAIN_SPIRAL_TRAIL, separateLighthouseFork } from './roads';
 import { makeRoadsideProps } from './roadside-stops';
 import { clearPavedRoadScenery } from './road-scenery';
@@ -231,6 +232,8 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   fitDowntownServiceRamps(island);
   seatDowntownStock(island);
   island.colliders = makeColliderDescriptors(island);
+  island.districtSets = districtSets(island);
+  island.colliders.push(...districtSetColliders(island.districtSets));
   // The last round leaves only the mountain's highest scramble.
   const summit = island.pois.find(p => p.id === 'mt-gigga')!.center.y;
   island.tideLevels = [...[0, 3, 7, 12, 20, 32, 49, 70, 91].map(value => value * scale),

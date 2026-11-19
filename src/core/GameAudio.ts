@@ -4,6 +4,7 @@ import type {
   SoundId, Surface, WalkingGoat,
 } from '../audio';
 import { biomeAt, zoneAt } from '../world';
+import type { IslandWeather } from '../world/island-weather';
 import type { GoatRagdoll, PhysicsEvent, Vec3 } from '../physics';
 import type { Game, MaterialAudioContact, PlayerIntent } from './Game';
 import type { GameSettings } from './Persistence';
@@ -33,6 +34,14 @@ function surfaceAt(game: Game, position: Vec3, goat: GoatRagdoll): Surface {
   if (biome === 'industrial') return 'rock';
   if (biome === 'cliff' || biome === 'highlands' || biome === 'town') return 'rock';
   return 'grass';
+}
+
+function landmarkGain(listener: Vec3, emitters: readonly Vec3[], range: number): number {
+  let nearest = range;
+  for (const p of emitters) nearest = Math.min(nearest, Math.hypot(
+    p.x - listener.x, p.y - listener.y, p.z - listener.z));
+  const t = Math.min(1, (range - nearest) / (range * .75));
+  return t * t * (3 - 2 * t);
 }
 
 function observeGoat(game: Game, goat: GoatRagdoll): WalkingGoat {
@@ -82,6 +91,8 @@ export class GameAudio {
   private objectiveAttempt = -1;
   private objectiveCount = 0;
   private readonly barns: Vec3[];
+  private readonly mills: Vec3[];
+  private readonly turbines: Vec3[];
   private readonly pines: Vec3[];
   private charging = false;
   private reeling = false;
@@ -91,6 +102,9 @@ export class GameAudio {
   private transition: Promise<void> | null = null;
 
   constructor(private readonly game: Game, private readonly audio: AudioSink) {
+    this.mills = game.island.props.filter(p => p.kind === 'windmill').map(p => p.transform.position);
+    this.turbines = game.island.colliders.flatMap(c =>
+      c.shape !== 'heightfield' && c.id === 'the-dam-control-house' ? [c.transform.position] : []);
     this.barns = game.island.props.filter(p => p.poiId === 'hoofington' && p.kind === 'barn').map(p => p.transform.position);
     this.pines = game.island.props.filter(p => p.poiId === 'whispering-pines' && p.kind === 'tree-pine').map(p => p.transform.position);
     if (game.toys) {
@@ -198,7 +212,8 @@ export class GameAudio {
   }
 
   /** Called on every visible animation frame, including while menus are open. */
-  frame(dt: number, camera: CameraAudioPose, night: boolean): void {
+  frame(dt: number, camera: CameraAudioPose, night: boolean,
+    weather?: Pick<IslandWeather, 'rain' | 'wet'>, sheltered = false): void {
     this.syncContext();
     const menuCue = this.pendingMenuCue;
     if (menuCue && performance.now() > menuCue.expiresAt) {
@@ -220,7 +235,8 @@ export class GameAudio {
       this.sizes.set(goat.id, goat.size);
     }
     const player = goats[0]!;
-    const zone = zoneAt(this.game.island, player.position.x, player.position.z);
+    const atPier = this.game.isAbovePierDeck(player.position);
+    const zone = atPier ? 'baa-ardwalk' : zoneAt(this.game.island, player.position.x, player.position.z);
     const poi = zone ?? this.game.island.pois.find(site =>
       Math.hypot(site.center.x - player.position.x, site.center.z - player.position.z) <
       site.radius * 1.25)?.id ?? 'hoofington';
@@ -250,6 +266,12 @@ export class GameAudio {
     // only retains the last catch-up tick), or drain a queue again this frame.
     this.audio.updateFrame({
       dt, camera,
+      environment: weather && {
+        rain: weather.rain, wet: weather.wet, sheltered,
+        atPier,
+        mill: poi === 'hoofington' ? landmarkGain(player.position, this.mills, 30) : 0,
+        turbine: landmarkGain(player.position, this.turbines, 36),
+      },
       habitat: poi === 'hoofington' && this.barns.some(p =>
         (p.x - player.position.x) ** 2 + (p.z - player.position.z) ** 2 < 17 ** 2) ? 'farm-paddock' :
         poi === 'whispering-pines' && this.pines.some(p =>

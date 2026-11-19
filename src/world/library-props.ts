@@ -314,10 +314,15 @@ export async function loadLibraryPropGeometry(
 export async function loadLibraryCloudGeometry(
   path: CloudLibraryModelPath, loader: GLTFLoader,
 ): Promise<THREE.BufferGeometry> {
+  return loadGroundedKitGeometry(path, loader);
+}
+
+/** Retain native proportions, palette and foot placement for instanced kit scenery. */
+export async function loadGroundedKitGeometry(path: string, loader: GLTFLoader): Promise<THREE.BufferGeometry> {
   const model = await loader.loadAsync(publicAssetUrl(path));
   try {
     const geometry = bakeLibraryCloudGeometry(model.scene);
-    if (!geometry) throw new Error('Library cloud has no visible triangles: ' + path);
+    if (!geometry) throw new Error('Library model has no visible triangles: ' + path);
     return geometry;
   } finally {
     disposeLoadedModel(model.scene);

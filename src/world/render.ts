@@ -13,6 +13,7 @@ import { buildBoardwalkRailVisuals } from './visual-boardwalk-rails';
 import { createEnvironmentLod } from './environment-lod';
 import { buildGroundDetails } from './visual-ground';
 import { buildStreetDetails } from './visual-streets';
+import { buildHabitatBeds } from './habitat-beds';
 import { buildMeadowScatter } from './visual-meadow';
 import { buildWaterVisuals } from './visual-water';
 import { buildTideRouteCues, meshSurfaceHeight } from './visual-tide-routes';
@@ -27,6 +28,7 @@ import { DAM_PINES_BRIDGE_PREFIX, MOUNTAIN_SPIRAL_BRIDGE_PREFIX } from './roads'
 import type { IslandWeather } from './island-weather';
 import { pinesFireflies } from './pines-fireflies';
 import { weatherSurface } from './weather-surfaces';
+import { districtSetVisuals } from './visual-district-sets';
 import { buildSkyVisuals, skyUniforms, type LightingPreset } from './visual-sky';
 
 export { isDowntownRoadOverlay, isHoofingtonTrailOverlay } from './road-ribbons';
@@ -430,6 +432,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   for (const chunk of chunks) group.add(chunk.mesh);
   const roads = buildRoads(island, chunks, sky.atmosphere);
   group.add(roads);
+  const kitSets = districtSetVisuals(island.districtSets ?? []);
+  group.add(kitSets.group);
   const roadsideSigns = buildRoadsideSigns(island);
   if (roadsideSigns) group.add(roadsideSigns);
   const tideRoutes = buildTideRouteCues(island, roads, chunks.map(chunk => ({
@@ -440,6 +444,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   // Coalesce unchanged ground decals to keep the extra zebra mesh within the draw budget.
   group.add(buildGroundDetails(island, 192));
   group.add(buildMeadowScatter(island, sky.atmosphere));
+  const beds = buildHabitatBeds(island);
+  group.add(beds.group);
   const fireflies = pinesFireflies(island);
   group.add(fireflies.swarm);
   const external = options.externallyRenderedPropKinds;
@@ -572,6 +578,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
       boardwalkRails.mesh.visible = railBounds.center.distanceTo(pos) <= cullingDistance + railBounds.radius &&
         frustum.intersectsSphere(railBounds);
     }
+    kitSets.update(pos);
     if (props.updateCulling(pos, frustum, cullingDistance,
       mesh => hoofington.isFallbackHidden(mesh) || downtown.isFallbackHidden(mesh) ||
         lighthouse.isFallbackHidden(mesh)))
@@ -586,6 +593,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     return shadowCastersChanged;
   }
   function dispose(): void {
+    kitSets.dispose();
+    beds.dispose();
     environmentLod.dispose();
     props.dispose();
     boardwalkRails?.mesh.dispose();

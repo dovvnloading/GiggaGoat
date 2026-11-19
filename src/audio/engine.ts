@@ -8,7 +8,7 @@ import type {
 import { ProceduralSynth } from './synth';
 import type { SfxOptions } from './synth';
 import { AdaptiveMusic, IslandAmbience } from './music';
-import { ZoneAmbience, type Habitat } from './zone-ambience';
+import { ZoneAmbience, type EnvironmentMix, type Habitat } from './zone-ambience';
 import { RecordedAudio } from './recordings';
 import type { RecordedAssets, RecordedEffect } from './recordings';
 import { mapLaneEvent } from './events';
@@ -55,6 +55,7 @@ export interface AudioFrame {
   dt: number;
   camera?: CameraAudioPose;
   habitat?: Habitat;
+  environment?: EnvironmentMix;
   /** Input-only one-shots (charge start, UI or explicit jump) in the same frame call. */
   cues?: readonly AudioCue[];
   /** Partial updates preserve prior music state. Meters are normalized by the adapter. */
@@ -492,7 +493,7 @@ export class AudioEngine {
       (awaitDuckGain(now - this.lastDuckAt)), now, .04);
     this.musicPlayer?.update(this.currentState);
     this.recordings?.updateMusic(this.currentState);
-    this.ambiencePlayer?.update(this.currentState.poi, this.currentState.night, frame.habitat);
+    this.ambiencePlayer?.update(this.currentState.poi, this.currentState.night, frame.habitat, frame.environment);
   }
 
   private updateFootsteps(goat: WalkingGoat, dt: number): void {

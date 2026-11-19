@@ -942,7 +942,7 @@ export class GameView {
     const throttleScene = this.paused && !this.titleCamera;
     if (throttleScene && timestamp < this.nextPausedRender) {
       // Keep menu gamepad input and audio context transitions on the browser frame loop.
-      this.audio?.frame(dt, this.audioPose, night);
+      this.audio?.frame(dt, this.audioPose, night, weather, this.atmosphere.underCover);
       this.onFrame?.();
       return;
     }
@@ -998,7 +998,7 @@ export class GameView {
       this.renderer.shadowMap.needsUpdate = true;
     }
     this.camera.getWorldDirection(this.audioForward);
-    this.audio?.frame(dt, this.audioPose, night);
+    this.audio?.frame(dt, this.audioPose, night, weather, this.atmosphere.underCover);
     const renderStart = performance.now();
     this.renderer.render(this.scene, this.camera);
     const renderElapsed = performance.now() - renderStart;
