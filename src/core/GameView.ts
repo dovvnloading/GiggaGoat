@@ -11,6 +11,7 @@ import type { GameAudio } from './GameAudio';
 import { PropFactory, InstancedPropRenderer } from '../props';
 import { HEIST_BALE_SIZE } from '../props/PropFactory';
 import { Game } from './Game';
+import type { GameRenderer } from './game-renderer';
 import { GameCharacters } from './GameCharacters';
 import { GameVfx } from './GameVfx';
 import { GameInput } from './GameInput';
@@ -126,10 +127,10 @@ export class GameView {
   private disposed = false;
 
   constructor(private readonly host: HTMLElement, readonly game: Game,
-    readonly renderer: THREE.WebGLRenderer, private readonly audio?: GameAudio) {
+    readonly renderer: GameRenderer, private readonly audio?: GameAudio) {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.setPixelRatio(1); // The saved graphics preset is applied by GameMenu.
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = !('isSoftwareRenderer' in renderer);
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     // Colour renders at 60 Hz; only refresh the shadow pass periodically.
     this.renderer.shadowMap.autoUpdate = false;
@@ -146,7 +147,7 @@ export class GameView {
     this.scene.add(this.world.group);
     if (this.scene.fog) this.scene.fog.color.copy(this.world.fogColor);
     this.renderer.setClearColor(this.world.fogColor);
-    this.world.sun.castShadow = true;
+    this.world.sun.castShadow = this.renderer.shadowMap.enabled;
     this.world.sun.shadow.mapSize.set(1024, 1024);
     this.world.sun.shadow.camera.left = -42;
     this.world.sun.shadow.camera.right = 42;
@@ -641,8 +642,8 @@ export class GameView {
     const preset = GRAPHICS_PRESETS[settings.graphics];
     const ratio = this.resolution.configure(settings.graphics, window.devicePixelRatio || 1);
     this.renderer.setPixelRatio(ratio);
-    this.renderer.shadowMap.enabled = preset.shadowMapSize > 0;
-    this.world.sun.castShadow = preset.shadowMapSize > 0;
+    this.renderer.shadowMap.enabled = preset.shadowMapSize > 0 && !('isSoftwareRenderer' in this.renderer);
+    this.world.sun.castShadow = this.renderer.shadowMap.enabled;
     if (this.world.sun.shadow.mapSize.x !== Math.max(1, preset.shadowMapSize)) {
       this.world.sun.shadow.map?.dispose();
       this.world.sun.shadow.map = null;

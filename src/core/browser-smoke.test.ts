@@ -747,6 +747,39 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
 
       // Allow any late asset fetches, async work and WebGL driver errors to surface.
       await sleep(700);
+      await page.scanWebgl();
+      faults.push(...await page.evaluate<string[]>('window.__browserSmokeFaults || []'));
+      expect(await page.evaluate<number>('window.__browserSmokeContexts.length')).toBeGreaterThan(0);
+
+      page.phase = 'cold launch and play without WebGL';
+      await page.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `const originalCanvasContext = HTMLCanvasElement.prototype.getContext;
+          HTMLCanvasElement.prototype.getContext = function(kind, ...args) {
+            if (kind.includes('webgl')) return null;
+            return originalCanvasContext.call(this, kind, ...args);
+          };`,
+      });
+      await page.send('Page.reload', { ignoreCache: true });
+      await page.waitFor('!!document.querySelector(".gg-shell [data-action=play]")',
+        'software-rendered title screen', 90000);
+      await page.click('[data-action="play"]');
+      await page.waitFor('document.querySelector(".gg-shell")?.hidden === true',
+        'software-rendered free roam');
+      const renderedScene = () => {
+        const canvas = document.querySelector<HTMLCanvasElement>('#app > canvas');
+        const context = canvas?.getContext('2d');
+        if (!canvas || !context) return false;
+        // A blank canvas or a sky gradient cannot produce distinct colours across a scanline.
+        const row = context.getImageData(0, Math.floor(canvas.height * .65), canvas.width, 1);
+        return new Set(new Uint32Array(row.data.buffer)).size > 8;
+      };
+      await page.waitFor('(' + renderedScene.toString() + ')()', 'visible island geometry', 20000);
+      await page.waitFor('!!document.querySelector("[data-player]")?.getAttribute("transform")',
+        'live player on the minimap');
+      const marker = 'document.querySelector("[data-player]").getAttribute("transform").split(" rotate")[0]';
+      const before = await page.evaluate<string>(marker);
+      await page.hold('KeyW', 1100);
+      await page.waitFor(marker + ' !== ' + JSON.stringify(before), 'player movement without WebGL');
     } catch (error) {
       failure = error;
     } finally {

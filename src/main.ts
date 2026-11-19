@@ -1,5 +1,5 @@
 import { bootGame } from './core/boot';
-import { WebGLUnavailableError } from './core/game-renderer';
+import { GameCanvasUnavailableError } from './core/game-renderer';
 
 // Supply a real document icon before Chrome's default /favicon.ico lookup.
 // A self-contained SVG also works at the GitHub Pages subpath, without an asset request.
@@ -29,8 +29,8 @@ void bootGame(host).catch(error => {
   title.textContent = 'Billy Isle couldn’t start';
   const detail = document.createElement('p');
   detail.setAttribute('role', 'alert');
-  detail.textContent = error instanceof WebGLUnavailableError
-    ? 'This browser could not start WebGL 2, which Gigga-Goat uses to draw the game.'
+  detail.textContent = error instanceof GameCanvasUnavailableError
+    ? 'The browser could not open a drawing surface for the game.'
     : 'The game hit an error during startup.';
   const retry = document.createElement('button');
   retry.type = 'button';

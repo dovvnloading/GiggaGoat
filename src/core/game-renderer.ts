@@ -1,18 +1,28 @@
 import { WebGLRenderer } from 'three';
+import type { SoftwareGameRenderer } from './SoftwareGameRenderer';
 
-export class WebGLUnavailableError extends Error {}
+export type GameRenderer = WebGLRenderer | SoftwareGameRenderer;
+export class GameCanvasUnavailableError extends Error {}
 
-function requestContext(powerPreference: WebGLPowerPreference, antialias: boolean) {
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('webgl2', { alpha: true, antialias, powerPreference });
-  return context && !context.isContextLost() && context.getContextAttributes()
-    ? { canvas, context }
-    : null;
+function tryWebGL(powerPreference: WebGLPowerPreference, antialias: boolean): WebGLRenderer | null {
+  try {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('webgl2', { alpha: true, antialias, powerPreference });
+    if (!context || context.isContextLost() || !context.getContextAttributes()) return null;
+    return new WebGLRenderer({ canvas, context });
+  } catch (error) {
+    console.warn('Gigga-Goat could not initialize the requested WebGL context.', error);
+    return null;
+  }
 }
 
 /** Request the context before loading the island and give Three the same canvas and context. */
-export function createGameRenderer(): WebGLRenderer {
-  const target = requestContext('high-performance', true) ?? requestContext('low-power', false);
-  if (!target) throw new WebGLUnavailableError('Could not create a WebGL 2 context');
-  return new WebGLRenderer(target);
+export async function createGameRenderer(): Promise<GameRenderer> {
+  const renderer = tryWebGL('high-performance', true) ?? tryWebGL('low-power', false);
+  if (renderer) return renderer;
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d', { alpha: false });
+  if (!context) throw new GameCanvasUnavailableError('No canvas rendering context is available');
+  const { SoftwareGameRenderer } = await import('./SoftwareGameRenderer');
+  return new SoftwareGameRenderer(canvas, context);
 }
