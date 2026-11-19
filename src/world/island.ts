@@ -14,6 +14,7 @@ import { fitDowntownServiceRamps, populateProps, seatDowntownStock } from './lay
 import { dressIsland } from './dressing';
 import { makeRelics, makeSpawns } from './collectibles';
 import { clearMountainLedges } from './mountain-ledges';
+import { clearMountainRocks } from './mountain-rocks';
 import { makeColliderDescriptors } from './colliders';
 import { sculptDamHeadwater, sculptDamOutflow } from './dam-landscape';
 
@@ -221,6 +222,7 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   });
   sculptDamHeadwater(island);
   island.legacySummitLedgePositions = clearMountainLedges(island);
+  clearMountainRocks(island);
   assignBiomes(island);
   island.spawns = makeSpawns(island);
   island.relics = makeRelics(island, rng);
