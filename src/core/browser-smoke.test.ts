@@ -317,6 +317,17 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
           rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1 &&
           rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1;
         const wide = innerWidth > 1100;
+        const title = document.querySelector('.gg-meter-label')!.getBoundingClientRect();
+        const portraits = document.querySelectorAll('.gg-meter-stage img');
+        const names = document.querySelectorAll('.gg-meter-stage-labels span');
+        const needle = document.querySelector('.gg-meter-arrow')!.getBoundingClientRect();
+        portraits.forEach((portrait, i) => {
+          const art = portrait.getBoundingClientRect(), name = names[i]!.getBoundingClientRect();
+          if (art.top < title.bottom || art.bottom > track.top || needle.bottom > name.top + 1 ||
+              Math.abs((art.left + art.right - name.left - name.right) / 2) > 1) {
+            issues.push('growth portrait, marker or name misaligned in column ' + i);
+          }
+        });
         try {
           growth.textContent = '100 / 100';
           if (!inside(ink(growth), track) ||
@@ -330,6 +341,12 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
             if (!inside(ink(value), staminaBounds) ||
               Number.parseFloat(getComputedStyle(value).fontSize) < (wide ? 13 : 8)) {
               issues.push('stamina reading is small or clipped');
+            }
+            const hoof = stamina.querySelector('.gg-hoof')!.getBoundingClientRect();
+            const labelBox = label.getBoundingClientRect(), numberBox = value.getBoundingClientRect();
+            if (hoof.width && (hoof.bottom > labelBox.top + 1 || labelBox.bottom > numberBox.top + 1 ||
+                Math.abs((hoof.left + hoof.right - numberBox.left - numberBox.right) / 2) > 1)) {
+              issues.push('stamina icon and readings overlap or are off centre');
             }
             const warning = getComputedStyle(label, '::after').content.includes('LOW');
             const warningColor = getComputedStyle(progress).backgroundImage.includes('255, 146, 111');
