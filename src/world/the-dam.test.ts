@@ -5,7 +5,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { generateIsland } from './island';
 import { buildRapierColliders } from './colliders';
-import { DAM_ACCESS_ID, DAM_ACCESS_SUPPORT_ID, DAM_DECK_HEIGHT, DAM_FRONT_GUARD, DAM_PLATFORM_GUARD_ID,
+import { DAM_ACCESS_ID, DAM_ACCESS_SUPPORT_ID, DAM_DECK_HEIGHT, DAM_PLATFORM_GUARD_ID,
   getDamPlacement } from './the-dam';
 import { buildDamVisuals, prepareDamModel, scrollDamWaterfallUVs } from './visual-dam';
 import type { PropColliderDescriptor } from './types';
@@ -56,7 +56,7 @@ describe('The Dam hero POI', () => {
     { seed: 'billy-isle', size: 600 },
     { seed: 'dam-rescaled', size: 450 },
     { seed: 'dam-rescaled', size: 900 },
-  ])('aligns the shipped deck, control house, and east platform ($size m)', async options => {
+  ])('aligns the shipped masonry, deck, control house, and east platform ($size m)', async options => {
     await RAPIER.init();
     const island = generateIsland({ ...options, resolution: 65 });
     const { position, scale } = getDamPlacement(island);
@@ -75,6 +75,11 @@ describe('The Dam hero POI', () => {
       ['the-dam-control-house', 'ControlHouse_Body'],
       ['the-dam-control-house-roof', 'ControlHouse_RoofSlab'],
       [DAM_PLATFORM_GUARD_ID, 'PlatformRail_'],
+      ['the-dam-pier-0', 'Pier_0'],
+      ['the-dam-pier-1', 'Pier_1'],
+      ['the-dam-pier-2', 'Pier_2'],
+      ['the-dam-pier-3', 'Pier_3'],
+      ['the-dam-pier-4', 'Pier_4'],
     ] as const;
     for (const [id, name] of parts) {
       const bounds = new THREE.Box3();
@@ -122,10 +127,42 @@ describe('The Dam hero POI', () => {
       const east = new RAPIER.Ray(at(14.5, 19.45, 0), { x: 1, y: 0, z: 0 });
       expect(props.get('the-dam-control-house')!.castRay(east, 20 * scale, false))
         .toBeCloseTo(16 * scale, 4);
-      const towardsGap = new RAPIER.Ray(at(14.5, 19.45, 2.6), { x: 0, y: 0, z: 1 });
-      for (const [id, collider] of props) {
-        if (id.startsWith(DAM_FRONT_GUARD.prefix))
-          expect(collider.castRay(towardsGap, 4 * scale, false), id).toBeLessThan(0);
+      const structures = [...props].filter(([id]) => id.startsWith('the-dam-'));
+      for (const x of [13.5, 14.5, 15.5]) {
+        const towardsGap = new RAPIER.Ray(at(x, 19.45, 2.6), { x: 0, y: 0, z: 1 });
+        for (const [id, collider] of structures)
+          expect(collider.castRay(towardsGap, 6 * scale, false), id).toBeLessThan(0);
+      }
+
+      const towardsWall = { x: 0, y: 0, z: -1 };
+      // The recess mouths remain empty between local Z 3.5 and the back at Z 2.
+      for (const center of [-10.2, -1.4, 7.4, 16.2]) {
+        const throughMouth = new RAPIER.Ray(at(center, 13.7, 4.2), towardsWall);
+        for (const [id, collider] of structures)
+          expect(collider.castRay(throughMouth, 2.1 * scale, false), id).toBeLessThan(0);
+        expect(props.get('the-dam-wall')!.castRay(throughMouth, 3 * scale, false))
+          .toBeCloseTo(2.2 * scale, 4);
+      }
+      const divider = new RAPIER.Ray(at(-20, 13.7, 4.2), towardsWall);
+      expect(props.get('the-dam-wall-front-divider-0')!.castRay(divider, scale, false))
+        .toBeCloseTo(.7 * scale, 4);
+      const rearWall = new RAPIER.Ray(at(29.7, 9, -5), { x: 0, y: 0, z: 1 });
+      expect(props.get('the-dam-wall')!.castRay(rearWall, 3 * scale, false))
+        .toBeCloseTo(1.5 * scale, 4);
+
+      // Cross sections of the shipped Pier_N meshes narrow from Z 7.169 m to Z 5.300 m.
+      for (const [i, x] of [-14.6, -5.8, 3, 11.8, 20.6].entries()) {
+        const pier = props.get('the-dam-pier-' + i)!;
+        for (const [y, face] of [[8, 7.16923], [14, 5.3]] as const) {
+          const towardsPier = new RAPIER.Ray(at(x, y, 9), towardsWall);
+          expect(pier.castRay(towardsPier, 6 * scale, false))
+            .toBeCloseTo((9 - face) * scale, 3);
+        }
+      }
+      for (const x of [-12, -2, 8, 18, 28]) {
+        const oldPier = new RAPIER.Ray(at(x, 16.3, 4.15), towardsWall);
+        for (const [id, collider] of structures)
+          expect(collider.castRay(oldPier, .5 * scale, false), id).toBeLessThan(0);
       }
       const towardsRail = new RAPIER.Ray(at(36, 19.45, 4.05), { x: 0, y: 0, z: 1 });
       expect(props.get(DAM_PLATFORM_GUARD_ID)!.castRay(towardsRail, scale, false)).toBeCloseTo(.3 * scale, 4);
@@ -226,6 +263,12 @@ describe('The Dam hero POI', () => {
       expect(fallback?.children).toHaveLength(4);
       visuals.group.updateMatrixWorld(true);
       const { position, scale } = getDamPlacement(island);
+      const stone = fallback!.getObjectByName('dam-fallback-stone')!;
+      const towardsPier = new THREE.Raycaster(
+        new THREE.Vector3(position.x - 14.6 * scale, position.y + 14 * scale, position.z + 9 * scale),
+        new THREE.Vector3(0, 0, -1), 0, 6 * scale);
+      expect(towardsPier.intersectObject(stone, false)[0]?.distance).toBeCloseTo(3.7 * scale, 3);
+
       const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, 0, 1), 0, scale);
       const backRailHits = (localX: number): number => {
         ray.ray.origin.set(position.x + localX * scale,

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData } from './types';
@@ -212,9 +213,19 @@ function buildProceduralDamFallback(island: IslandData): THREE.Group {
     const platformRail = collider.id === DAM_PLATFORM_GUARD_ID;
     if (!platformRail && [DAM_FRONT_GUARD.prefix, DAM_BACK_GUARD.prefix, DAM_ACCESS_ID]
       .some(prefix => collider.id.startsWith(prefix))) continue;
-    const geometry = new THREE.BoxGeometry(
-      collider.size.x / scale, collider.size.y / scale, collider.size.z / scale,
-    );
+    let geometry: THREE.BufferGeometry;
+    if (collider.shape === 'convex') {
+      const vertices = collider.vertices!;
+      const points: THREE.Vector3[] = [];
+      for (let i = 0; i < vertices.length; i += 3) {
+        points.push(new THREE.Vector3(vertices[i]! / scale, vertices[i + 1]! / scale, vertices[i + 2]! / scale));
+      }
+      geometry = new ConvexGeometry(points);
+    } else {
+      geometry = new THREE.BoxGeometry(
+        collider.size.x / scale, collider.size.y / scale, collider.size.z / scale,
+      );
+    }
     geometry.translate(
       (collider.transform.position.x - position.x) / scale,
       (collider.transform.position.y - position.y) / scale,
@@ -223,8 +234,18 @@ function buildProceduralDamFallback(island: IslandData): THREE.Group {
     const color = platformRail ? 0xf2c12e :
       collider.id === 'the-dam-control-house' || collider.id === 'the-dam-control-house-roof' ? 0xf3eee0 :
       collider.id === 'the-dam-deck' || collider.id === 'the-dam-control-house-platform' ? 0xd6d6c9 : undefined;
-    if (color === undefined) stoneParts.push(geometry);
-    else deckAndHouse.push({ geometry, color });
+    if (color === undefined) {
+      // ConvexGeometry contains only unindexed positions and normals.
+      if (geometry.index) {
+        const indexed = geometry;
+        geometry = indexed.toNonIndexed();
+        geometry.deleteAttribute('uv');
+        indexed.dispose();
+      }
+      stoneParts.push(geometry);
+    } else {
+      deckAndHouse.push({ geometry, color });
+    }
   }
 
   function addBatch(name: string, material: THREE.Material,

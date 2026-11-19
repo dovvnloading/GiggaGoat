@@ -107,6 +107,14 @@ export function sculptDamOutflow(island: IslandData): void {
       const rugged = 0.75 * Math.sin(x * 0.43 + z * 0.21);
       const bluffTop = surface + (5.6 + rugged) * scale;
       height = lerp(height, Math.max(height, bluffTop), shoulder * 0.72);
+      // A shallow east-bank exit from the plunge pool meets the meadow beyond
+      // the steep shoulder. Keep the launch lane and the submerged pool floor.
+      const exit = smoothstep(14, 21, z) * (1 - smoothstep(27, 36, z)) *
+        smoothstep(21, 25, x) * (1 - smoothstep(42, 48, x));
+      const fromBank = x - channel.x - half;
+      const beachHeight = Math.min(1.1, (fromBank + .8) * (fromBank < 0 ? .29 : .105));
+      const exitGrade = surface + (DAM_WATER_SURFACE_LIFT + beachHeight) * scale;
+      height = lerp(height, exitGrade, exit * fade);
       heights[index] = height;
     }
   }

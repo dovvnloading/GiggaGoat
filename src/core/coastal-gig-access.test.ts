@@ -1,5 +1,8 @@
+import RAPIER from '@dimforge/rapier3d-compat';
 import { describe, expect, it } from 'vitest';
+import { Q } from '../physics';
 import { Game } from './Game';
+import { goatOrbitOffset, PLAY_CAMERA_PITCH } from './GoatCamera';
 import { sectionCenter } from '../world/access-path';
 import { lighthouseAccess } from '../world/lighthouse-access';
 import { damAccess, getDamPlacement } from '../world/the-dam';
@@ -142,7 +145,7 @@ describe('Beacon and Dam access from their playable boards', () => {
     }
   });
 
-  it('walks from the lower Dam board to the spillway gap and completes a flop dive', async () => {
+  it('walks from the lower Dam board, completes a flop dive, and reaches dry ground again', async () => {
     const game = await Game.create();
     try {
       acceptAtBoard(game, 'the-dam');
@@ -159,6 +162,22 @@ describe('Beacon and Dam access from their playable boards', () => {
       const transfer = game.goat.torso.translation();
       expect(transfer.y).toBeGreaterThan(formerEdge.y);
       expect(transfer.z).toBeGreaterThan(landing[0]!.outer.z);
+
+      // This pivot entered the tapered guard while turning onto the deck.
+      const turnPivot = {
+        x: position.x - 12.629 * scale,
+        y: position.y + 19.5 * scale,
+        z: position.z - 3.542 * scale,
+      };
+      const cameraSpace = new RAPIER.Ball(.25);
+      for (const pitchOffset of [-.30, 0, .30]) {
+        const direction = goatOrbitOffset(game.goat.size, Math.PI, PLAY_CAMERA_PITCH + pitchOffset);
+        const hit = game.physics.shapeCast(turnPivot, Q(), direction, cameraSpace, 2, {
+          predicate: collider => !game.goat.ownsBody(collider.parent()),
+        });
+        expect(hit, 'clear view around the deck turn').toBeNull();
+      }
+
       const approach = sectionCenter(landing[1]!);
       walkTo(game, { ...approach, z: position.z }, .4);
       const config = game.gigs.active?.setup.config;
@@ -170,6 +189,15 @@ describe('Beacon and Dam access from their playable boards', () => {
       game.step({ ...launch, flop: true });
       settle(game, 150, { ...launch, sprint: false });
       expect(game.gigs.active?.status).toBe('completed');
+
+      settle(game, 180, { moveZ: 1, cameraYaw: Math.PI });
+      settle(game, 360, { moveZ: 1, cameraYaw: Math.PI / 2 });
+      const bank = game.goat.torso.translation();
+      expect(bank.x).toBeGreaterThan(position.x + 33 * scale);
+      expect(bank.y).toBeLessThan(position.y + 8.35 * scale);
+      expect(game.water.sample(game.goat.torso).fraction).toBe(0);
+      expect(game.goat.locomotion.grounded).toBe(true);
+      expect(game.respawns).toBe(0);
     } finally {
       game.dispose();
     }
