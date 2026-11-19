@@ -1,6 +1,6 @@
 import type { IslandData, PropDescriptor, Vec3 } from './types';
 import { gridSample } from './terrain';
-import { sectionCenter, type AccessSection } from './access-path';
+import { accessGuard, sectionCenter, type AccessSection } from './access-path';
 
 export const LIGHTHOUSE_ACCESS_ID = 'lighthouse-access-';
 export const LIGHTHOUSE_ACCESS_GUARD_ID = LIGHTHOUSE_ACCESS_ID + 'guard-';
@@ -27,6 +27,11 @@ export function lighthouseAccess(tower: PropDescriptor,
     });
     return { outer: at(10.7), inner: at(5.6) };
   });
+}
+
+/** The low ramp edge crosses the bridge approach and stays open to foot traffic. */
+export function lighthouseOuterGuard(path: readonly AccessSection[], scale: number): AccessSection[] {
+  return accessGuard(path.slice(3), 'outer', scale);
 }
 
 export function lighthouseFlagPositions(sections: readonly AccessSection[],

@@ -7,8 +7,8 @@ import { publicAssetUrl } from './public-assets';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import { buildArchitecture } from './visual-architecture';
 import { TOON_RAMP, BUILDING_RAMP } from './visual-props';
-import { accessGuard, type AccessSection } from './access-path';
-import { lighthouseAccess } from './lighthouse-access';
+import type { AccessSection } from './access-path';
+import { lighthouseAccess, lighthouseOuterGuard } from './lighthouse-access';
 import { accessArrows, accessPathVisual } from './visual-access-path';
 
 export interface LighthouseVisuals {
@@ -828,7 +828,7 @@ export function buildLighthouseVisuals(island: IslandData,
     foundation.receiveShadow = true;
     const stairs = lighthouseAccess(lighthouse, (x, z) => gridSample(island, x, z));
     group.add(foundation, accessPathVisual('lighthouse-keeper-stair', [stairs],
-      [accessGuard(stairs, 'outer', scale)], .34 * scale, scale, 0xceac7f, 0x704639,
+      [lighthouseOuterGuard(stairs, scale)], .34 * scale, scale, 0xceac7f, 0x704639,
       [accessArrows(stairs, scale, 0x77503a)]),
     makeKeeperStairBraces(lighthouse, stairs, scale));
   }

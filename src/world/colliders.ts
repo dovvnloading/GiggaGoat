@@ -5,9 +5,9 @@ import type {
 import { makeDamColliderDescriptors } from './the-dam';
 import { makeGradedBridgeColliders } from './roads';
 import { roadRibbonData } from './road-ribbons';
-import { accessGuard, accessSlabs } from './access-path';
+import { accessSlabs } from './access-path';
 import { LIGHTHOUSE_ACCESS_GUARD_ID, LIGHTHOUSE_ACCESS_ID, lighthouseAccess,
-  lighthouseFoundationDepth } from './lighthouse-access';
+  lighthouseFoundationDepth, lighthouseOuterGuard } from './lighthouse-access';
 import { gridSample } from './terrain';
 
 function hull(prop: PropDescriptor): Float32Array {
@@ -75,7 +75,7 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
       };
       const path = lighthouseAccess(prop, (x, z) => gridSample(island, x, z));
       const scale = island.size / 600;
-      const outerGuard = accessGuard(path, 'outer', scale);
+      const outerGuard = lighthouseOuterGuard(path, scale);
       colliders.push(...accessSlabs(LIGHTHOUSE_ACCESS_ID, path, .34 * scale),
         ...accessSlabs(LIGHTHOUSE_ACCESS_GUARD_ID, outerGuard, 1.22 * scale));
     }
