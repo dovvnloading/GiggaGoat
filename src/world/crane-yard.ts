@@ -28,6 +28,7 @@ interface YardOptions {
   dynamicMass?: number;
   collidable?: boolean;
   climbable?: boolean;
+  restitution?: number;
   shape?: PropDescriptor['shape'];
 }
 
@@ -67,6 +68,7 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
       breakable: options.dynamicMass !== undefined,
       lickable: options.collidable !== false,
       climbable: options.climbable ?? (options.dynamicMass === undefined && options.collidable !== false),
+      ...(options.restitution === undefined ? {} : { restitution: options.restitution }),
       ...(options.color === undefined ? {} : { color: options.color }),
     };
     props.push(prop);
@@ -252,6 +254,8 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
   const front = 3.6, rear = -11.4, run = front - rear;
   const treadWidth = 3.4, treadDepth = .26, accessTint = 0x8ac9d5;
   const landingCenterX = 1.05, landingWidth = 11.2;
+  // A sprint impact should not rebound the goat across the narrow landings.
+  const rampRail = { restitution: 0, fixedToPad: true };
   const flights = floorBottoms.map((bottom, i) => ({
     fromFront: i % 2 === 0, x: i % 2 === 0 ? .15 : 4.55,
     base: i === 0 ? -.18 : floorBottoms[i - 1]! + 1.15,
@@ -273,9 +277,9 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
     put('concrete-slab', landingCenterX, landingZ, landingWidth, .38, 3.6,
       { bottom: floor - .40, fixedToPad: true, color: 0x8ba2a5 });
     put('safety-rail', 1.05, landingZ + (fromFront ? -1.7 : 1.7), 10.9, 1.15, .18,
-      { bottom: floor, fixedToPad: true });
+      { ...rampRail, bottom: floor });
     put('safety-rail', 6.52, landingZ, 3.4, 1.15, .18,
-      { bottom: floor, fixedToPad: true, yaw: Math.PI / 2 });
+      { ...rampRail, bottom: floor, yaw: Math.PI / 2 });
     if (fromFront) {
       put('safety-rail', -4.1, -17.1, 4.6, 1.25, .18,
         { bottom: floor, fixedToPad: true, yaw: Math.PI / 2 });
@@ -327,7 +331,7 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
     for (const side of [-1, 1]) {
       put('safety-rail', x + side * (treadWidth + railWidth) / 2, railZ,
         railWidth, railHeight, railLength, {
-          idKind: 'ramp-guard', bottom: railBottom, fixedToPad: true,
+          ...rampRail, idKind: 'ramp-guard', bottom: railBottom,
           yaw: fromFront ? Math.PI : 0, pitch, climbable: false,
         });
     }
@@ -342,7 +346,7 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
     const landingLip = fromFront ? rear - railWidth / 2 : front + railWidth / 2;
     for (const [start, end] of gaps) {
       put('safety-rail', (start + end) / 2, landingLip, end - start, railHeight, railWidth, {
-        idKind: 'ramp-landing-guard', bottom: floor - .02, fixedToPad: true, climbable: false,
+        ...rampRail, idKind: 'ramp-landing-guard', bottom: floor - .02, climbable: false,
       });
     }
   }

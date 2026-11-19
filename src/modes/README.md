@@ -13,7 +13,7 @@ Start with `import { PartyMatch, BotBrain, arenaFromBillyIsle } from './modes';`
 | --- | --- |
 | `PartyMatch({mode, seed?, config?}, arena)` | Authoritative 60 Hz match with lobby → countdown → playing → overtime → results. |
 | `match.join({id,name,teamId?,bot?})` / `setReady(id,ready)` / `start()` | 2–8 ready goats, lobby only. Hay Heist requires 2–4 teams and one non-overlapping barn per team. |
-| `match.step({goats,intents?,contacts?})` | **Exactly one** 1/60-second tick; returns events emitted on this tick. No physics is performed. |
+| `match.step({goats,intents?,contacts?,headbutts?})` | **Exactly one** 1/60-second tick. Returns the events emitted on this tick. |
 | `match.view()` | Defensive player/bale/score copies and readonly arena reference for rendering, bots and HUD. |
 | `match.getEffects(id)` | Whether sprint is permitted, movement speed multiplier, held bale ID, carry stamina drain (per second). |
 | `match.onEvent(callback)` / `match.drainEvents()` | Typed synchronous event stream; ordered `{tick,sequence,type,…}`, bounded pending history (256). An unsubscribed callback never fires again. |
@@ -24,7 +24,7 @@ Start with `import { PartyMatch, BotBrain, arenaFromBillyIsle } from './modes';`
 
 The index also exports the complete type surface: `ModeId`, `Phase`, `Position`,
 `Point`, `PlayerSpec`, `PlayerState`, `ModeArena`, `Barn`, `GoatObservation`,
-`ModeInputIntent`, `GoatContact`, `ModeFrame`, `RulesConfig`, `MatchOptions`,
+`ModeInputIntent`, `GoatContact`, `GoatHeadbutt`, `ModeFrame`, `RulesConfig`, `MatchOptions`,
 `Placement`, `TeamPlacement`, `Bale`, `MatchEvent`, `MatchSnapshot`,
 `MatchView`, `GoatModeEffect`, and `BotSnapshot`.
 
@@ -120,7 +120,8 @@ supplied circles on a custom arena). Each barn starts with three bales. Hold
 tongue near any free bale to pick it up; releasing, pressing `dropHay`,
 running out of stamina or an enemy headbutt drops it. Shoved carriers have
 half a second of pickup lockout so the defender gets a real steal window. Headbutts also punt
-nearby loose bales in the observed direction. A bale only scores at an
+nearby loose bales in front of the goat. Send executed headbutts with their
+facing in `ModeFrame.headbutts` on the action tick. A bale only scores at an
 **opposing** barn when last touched by that barn's team; friendly bales taken
 home are returned, not scored. Bales respawn at their source after scoring.
 The target is five captures, with score ties going to a golden-delivery overtime.

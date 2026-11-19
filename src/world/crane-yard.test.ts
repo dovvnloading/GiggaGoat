@@ -326,6 +326,20 @@ describe('Crane Yard concept-art construction site', () => {
         const ray = new THREE.Raycaster(top.clone().addScaledVector(down, -1), down);
         expect(ray.intersectObject(deck)[0]?.point.y).toBeCloseTo(top.y, 4);
       }
+      const vertices = deck.geometry.getAttribute('position');
+      const top = deck.geometry.boundingBox!.max.y;
+      const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+      let topArea = 0;
+      for (let index = 0; index < vertices.count; index += 3) {
+        a.fromBufferAttribute(vertices, index);
+        b.fromBufferAttribute(vertices, index + 1);
+        c.fromBufferAttribute(vertices, index + 2);
+        if (a.y === top && b.y === top && c.y === top) {
+          topArea += Math.abs(b.sub(a).cross(c.sub(a)).y) / 2;
+        }
+      }
+      const deckSpan = deck.geometry.boundingBox!.getSize(new THREE.Vector3());
+      expect(topArea).toBeCloseTo(deckSpan.x * deckSpan.z, 5);
       const rail = visuals.group.getObjectByName('render-near-safety-rail') as THREE.InstancedMesh;
       expect(rail.count).toBe(1);
       const visual = new THREE.Matrix4();

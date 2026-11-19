@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { forward, V } from '../physics';
+import { heightAt } from '../world';
 import { Game } from './Game';
 
 it('routes Hay Heist tongue to cargo, keeps carry limits and allows a normal headbutt punt', async () => {
@@ -14,7 +15,8 @@ it('routes Hay Heist tongue to cargo, keeps carry limits and allows a normal hea
     const worldTarget = game.physics.createBox(V(head.x, head.y - .23, head.z - 2.5), V(.35, .55, .4), 8);
     game.step();
     game.step({ tongue: true });
-    expect(match.getEffects('player').carryingBaleId).toMatch(/^blue-hay-/);
+    const carriedId = match.getEffects('player').carryingBaleId;
+    expect(carriedId).toMatch(/^blue-hay-/);
     expect(game.goat.interactions.tongueBody).toBeNull();
 
     game.step({ moveZ: -1, cameraYaw: 0, tongue: true, sprint: true });
@@ -28,9 +30,18 @@ it('routes Hay Heist tongue to cargo, keeps carry limits and allows a normal hea
     expect(game.party.latestEvents).toContainEqual(expect.objectContaining({
       type: 'hay.dropped', playerId: 'player', reason: 'released',
     }));
-    game.step({ chargeHeadbutt: true });
+    const released = match.bales.find(bale => bale.id === carriedId)!;
+    const { x, z } = released.position;
+    game.teleport(V(x, heightAt(game.island, x, z + .95), z + .95), 0);
+    for (let i = 0; i < 20; i++) game.step();
+    for (let i = 0; i < 18; i++) {
+      game.step({ chargeHeadbutt: true });
+      expect(game.party.latestEvents.some(event => event.type === 'hay.punted' && event.playerId === 'player'))
+        .toBe(false);
+    }
+    game.step();
     expect(game.party.latestEvents).toContainEqual(expect.objectContaining({
-      type: 'hay.punted', playerId: 'player',
+      type: 'hay.punted', playerId: 'player', baleId: released.id,
     }));
 
     game.party.returnToFreeRoam();

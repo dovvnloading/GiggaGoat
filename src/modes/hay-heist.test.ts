@@ -74,9 +74,10 @@ describe('HAY HEIST — barn scoring and cargo physics contracts', () => {
 
     match.step({ ...frame(red(-5.5), blue(-9.1)), intents: { b: { tongue: true } } });
     expect(redHay().carrierId).toBe('b');
-    const intercepted = match.step({ ...frame(red(-5.5), blue(-5.5)), intents: {
-      a: { tongue: true, chargeHeadbutt: true }, b: { tongue: true },
-    } });
+    const intercepted = match.step({
+      ...frame(red(-5.9), blue(-5.5)), headbutts: [{ attackerId: 'a', facing: { x: 1, z: 0 } }],
+      intents: { a: { tongue: true }, b: { tongue: true } },
+    });
     expect(intercepted).toContainEqual(expect.objectContaining({
       type: 'hay.dropped', playerId: 'b', reason: 'shoved',
     }));
@@ -114,7 +115,7 @@ describe('HAY HEIST — barn scoring and cargo physics contracts', () => {
 
     const punt = heist({ hayKickDistance: 20, hayTargetScore: 1 });
     const events = punt.step({ ...frame(red(10.9, -1), blue(30)),
-      intents: { a: { chargeHeadbutt: true } } });
+      headbutts: [{ attackerId: 'a', facing: { x: -1, z: 0 } }] });
     expect(events).toContainEqual(expect.objectContaining({ type: 'hay.punted', playerId: 'a' }));
     expect(events).toContainEqual(expect.objectContaining({
       type: 'hay.scored', teamId: 'red', playerId: null,
@@ -122,13 +123,20 @@ describe('HAY HEIST — barn scoring and cargo physics contracts', () => {
     expect(punt.phase).toBe('results');
   });
 
-  it('headbutting an opposing carrier dislodges the bale before another pickup', () => {
+  it('uses the executed facing to dislodge a carrier before another pickup', () => {
     const match = heist();
     match.step({ ...frame(red(0), blue(-9.1)), intents: { b: { tongue: true } } });
     expect(match.bales.find(b => b.id === 'red-hay-1')!.carrierId).toBe('b');
-    const events = match.step({ ...frame(red(-9.2), blue(-9.1)), intents: {
-      b: { tongue: true }, a: { chargeHeadbutt: true },
-    } });
+    const nearby = { ...frame(red(-9.9), blue(-9.1)), intents: { b: { tongue: true } } };
+    match.step({ ...nearby, intents: { ...nearby.intents, a: { chargeHeadbutt: true } } });
+    expect(match.getEffects('b').carryingBaleId).toBe('red-hay-1');
+    match.step({ ...nearby, headbutts: [{ attackerId: 'a', facing: { x: -1, z: 0 } }] });
+    expect(match.getEffects('b').carryingBaleId).toBe('red-hay-1');
+    const elevated = { ...blue(-9.1), position: { x: -9.1, y: 20, z: 0 }, headY: 21 };
+    match.step({ ...nearby, goats: [red(-9.9), elevated],
+      headbutts: [{ attackerId: 'a', facing: { x: 1, z: 0 } }] });
+    expect(match.getEffects('b').carryingBaleId).toBe('red-hay-1');
+    const events = match.step({ ...nearby, headbutts: [{ attackerId: 'a', facing: { x: 1, z: 0 } }] });
     expect(events).toContainEqual(expect.objectContaining({
       type: 'hay.dropped', playerId: 'b', reason: 'shoved',
     }));

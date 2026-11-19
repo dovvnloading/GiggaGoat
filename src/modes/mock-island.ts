@@ -1,7 +1,7 @@
 import { BotBrain } from './bots';
 import { PartyMatch } from './match';
 import type {
-  Difficulty, GoatObservation, MatchEvent, ModeArena, ModeInputIntent, Point, Position,
+  Difficulty, GoatHeadbutt, GoatObservation, MatchEvent, ModeArena, ModeInputIntent, Point, Position,
 } from './types';
 import { direction, distanceSquared, TICKS_PER_SECOND, compareIds } from './internal';
 
@@ -86,8 +86,14 @@ export class MockIslandRunner {
       if (radial > 185) { goat.x *= 185 / radial; goat.z *= 185 / radial; }
     }
     const contacts: { attackerId: string; victimId: string }[] = [];
+    const headbutts: GoatHeadbutt[] = [];
     for (const goat of this.goats) {
       if (!intents[goat.id]?.chargeHeadbutt) continue;
+      if (this.match.mode === 'hay-heist') {
+        // The standalone console models a single attack per key press.
+        headbutts.push({ attackerId: goat.id, facing: goat.facing });
+        continue;
+      }
       const victim = this.goats.filter(g => g.id !== goat.id &&
         distanceSquared({ x: goat.x, z: goat.z }, { x: g.x, z: g.z }) < 3.4 ** 2)
         .sort((a, b) => compareIds(a.id, b.id))[0];
@@ -99,6 +105,6 @@ export class MockIslandRunner {
         victim.z += away.z * 5;
       }
     }
-    return this.match.step({ goats: this.observe(), intents, contacts });
+    return this.match.step({ goats: this.observe(), intents, contacts, headbutts });
   }
 }

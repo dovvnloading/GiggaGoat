@@ -1,6 +1,6 @@
 import type {
   GoatModeEffect, GoatObservation, MatchEvent, MatchOptions, MatchSnapshot, MatchView,
-  ModeArena, ModeFrame, Phase, Placement, PlayerSpec, PlayerState, RulesConfig, TeamPlacement,
+  ModeArena, ModeFrame, Phase, Placement, PlayerSpec, PlayerState, Point, RulesConfig, TeamPlacement,
 } from './types';
 import type { Emit, EventPayload, RuleOutcome } from './internal';
 import { clone, distanceSquared, finite, integer, validateArena, TICKS_PER_SECOND, compareIds } from './internal';
@@ -244,6 +244,8 @@ export class PartyMatch {
     // Validate BEFORE advancing any clock: a bad adapter observation must not
     // corrupt replay determinism or silently use one extra game tick.
     const observations = new Map<string, GoatObservation>();
+    const headbutts = this.mode === 'hay-heist' && frame.headbutts?.length
+      ? new Map<string, Point>() : undefined;
     if (this.phase !== 'countdown') {
       for (const goat of frame.goats) {
         if (observations.has(goat.id) || !this.data.players.some(p => p.id === goat.id)) {
@@ -255,6 +257,17 @@ export class PartyMatch {
       }
       for (const player of this.data.players) {
         if (!observations.has(player.id)) throw new Error(`missing observation for ${player.id}`);
+      }
+      if (headbutts && frame.headbutts) {
+        for (const { attackerId, facing } of frame.headbutts) {
+          if (!observations.has(attackerId) || headbutts.has(attackerId)) {
+            throw new Error('unknown or repeated headbutt attacker');
+          }
+          finite(facing.x, 'headbutt facing');
+          finite(facing.z, 'headbutt facing');
+          if (Math.hypot(facing.x, facing.z) <= .0001) throw new Error('headbutt facing is zero');
+          headbutts.set(attackerId, facing);
+        }
       }
     }
     this.data.tick++;
@@ -277,7 +290,7 @@ export class PartyMatch {
         outcome = updateKingOfThePeak(this.data, this.arena, observations, this.emit);
         break;
       case 'hay-heist':
-        outcome = updateHayHeist(this.data, this.arena, observations, frame.intents ?? {}, this.emit);
+        outcome = updateHayHeist(this.data, this.arena, observations, frame.intents ?? {}, headbutts, this.emit);
         break;
     }
     if (outcome === 'finish') this.finish();

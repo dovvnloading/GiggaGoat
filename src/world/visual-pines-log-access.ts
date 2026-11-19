@@ -1,8 +1,59 @@
-import { BoxGeometry, BufferGeometry, Float32BufferAttribute, Matrix4, MathUtils } from 'three';
+import { BoxGeometry, BufferGeometry, Color, Float32BufferAttribute, Matrix4, MathUtils, Vector3, Vector4 } from 'three';
+import type { WebGLProgramParametersWithUniforms } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { sectionCenter } from './access-path';
 import { pinesLogEntries } from './pines-log-access';
 import { accessPathVisual } from './visual-access-path';
 import type { IslandData, PropDescriptor, Vec3 } from './types';
+
+/** Exposed turf at the buried timber ends becomes an earthen approach. */
+export function paintPinesLogAprons(shader: WebGLProgramParametersWithUniforms, island: IslandData): void {
+  const bridge = island.props.find(prop => prop.poiId === 'whispering-pines' && prop.kind === 'log-bridge');
+  if (!bridge) return;
+  const scale = island.size / 600;
+  const aprons = pinesLogEntries(island, bridge).map(({ side, sections: [start, end] }) => {
+    const toe = sectionCenter(start), firstJoint = sectionCenter(end);
+    const dx = firstJoint.x - toe.x, dz = firstJoint.z - toe.z;
+    const length = Math.hypot(dx, dz);
+    const halfWidth = (section: typeof start) =>
+      Math.hypot(section.outer.x - section.inner.x, section.outer.z - section.inner.z) / (2 * scale);
+    // The south bank's crossfall hides timber farther into the approach.
+    const cover = side < 0 ? .82 : .42;
+    return {
+      frame: new Vector4(toe.x, toe.z, dx / length, dz / length),
+      limit: new Vector3(halfWidth(start), MathUtils.lerp(halfWidth(start), halfWidth(end), cover),
+        length * cover / scale),
+    };
+  });
+  shader.uniforms['uPinesApronFrame'] = { value: aprons.map(apron => apron.frame) };
+  shader.uniforms['uPinesApronLimit'] = { value: aprons.map(apron => apron.limit) };
+  shader.uniforms['uPinesApronSoil'] = { value: new Color(0x977b59) };
+  shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+uniform vec4 uPinesApronFrame[${aprons.length}];
+uniform vec3 uPinesApronLimit[${aprons.length}];
+uniform vec3 uPinesApronSoil;
+
+vec3 pinesApronGround(vec3 terrain, vec2 world, float scale) {
+  for (int i = 0; i < ${aprons.length}; i++) {
+    vec4 frame = uPinesApronFrame[i];
+    vec2 delta = (world - frame.xy) / scale;
+    if (max(abs(delta.x), abs(delta.y)) > 2.5) continue;
+    vec3 limit = uPinesApronLimit[i];
+    float along = dot(delta, frame.zw);
+    float across = dot(delta, vec2(-frame.w, frame.z));
+    float width = mix(limit.x, limit.y, clamp(along / limit.z, 0.0, 1.0));
+    float shoulder = 1.0 - smoothstep(width - 0.22, width + 0.03, abs(across));
+    float approach = smoothstep(-1.25, -0.70, along) *
+      (1.0 - smoothstep(limit.z - 0.42, limit.z, along));
+    float blend = shoulder * approach;
+    if (blend <= 0.0) continue;
+    float tone = 0.98 + 0.025 * sin(2.7 * along + across) * sin(3.1 * across - along);
+    return mix(terrain, uPinesApronSoil * tone, blend * 0.94);
+  }
+  return terrain;
+}`).replace('#include <alphamap_fragment>', `diffuseColor.rgb = pinesApronGround(diffuseColor.rgb, vWorld.xz, uTerrainScale);
+#include <alphamap_fragment>`);
+}
 
 /** Add both bank treads to the current log batch, in its instance-local coordinates. */
 export function appendPinesLogEntries(source: BufferGeometry, island: IslandData, bridge: PropDescriptor): BufferGeometry {

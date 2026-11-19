@@ -193,4 +193,33 @@ describe('Crane Yard public access', () => {
       game.dispose();
     }
   });
+
+  it('keeps repeated sprint impacts from bouncing the goat off the opposite roof edge', async () => {
+    const game = await Game.create({ seed: 'billy-isle' });
+    try {
+      game.step();
+      const center = game.island.pois.find(poi => poi.id === 'crane-yard')!.center;
+      const pad = heightAt(game.island, center.x, center.z);
+      const approaches = [
+        [2.35, 5, 11.83, 0], [-2.5, 5, 11.83, 0], [.15, 5, 24.23, 0],
+        [2.35, -12.85, 18.03, Math.PI], [2.68, 5, 24.23, 0], [-4.39, 5, 24.23, 0],
+      ] as const;
+      const driveIntoGuard = ([dx, dz, height, cameraYaw]: typeof approaches[number], sprint: boolean) => {
+        game.teleport({ x: center.x + dx, y: pad + height, z: center.z + dz }, -cameraYaw);
+        for (let tick = 0; tick < 150; tick++) game.step({ cameraYaw });
+        let lowest = Infinity;
+        for (let tick = 0; tick < (sprint ? 180 : 100); tick++) {
+          game.step({ moveZ: 1, sprint, cameraYaw });
+          lowest = Math.min(lowest, game.goat.torso.translation().y);
+        }
+        return lowest;
+      };
+      for (const approach of approaches) driveIntoGuard(approach, false);
+      for (const approach of approaches.slice(0, 2)) driveIntoGuard(approach, true);
+      expect(driveIntoGuard(approaches[2], true)).toBeGreaterThan(pad + 24.20);
+      expect(game.respawns).toBe(0);
+    } finally {
+      game.dispose();
+    }
+  });
 });

@@ -103,6 +103,7 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
     }
     const collider: PropColliderDescriptor = {
       id: prop.id, shape, transform, size, body: prop.body,
+      ...(prop.restitution === undefined ? {} : { restitution: prop.restitution }),
       ...(shape === 'convex' ? { vertices: hull(prop) } : {}),
     };
     colliders.push(collider);
@@ -139,7 +140,8 @@ export function addRapierPropCollider(world: RAPIER.World,
     x: cosYaw * sinPitch, y: sinYaw * cosPitch,
     z: -sinYaw * sinPitch, w: cosYaw * cosPitch,
   };
-  desc.setFriction(0.78).setRestitution(0.12);
+  desc.setFriction(0.78).setRestitution(collider.restitution ?? 0.12);
+  if (collider.restitution !== undefined) desc.setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Min);
   let result: RAPIER.Collider;
   if (collider.body.type === 'dynamic') {
     const body = world.createRigidBody(
