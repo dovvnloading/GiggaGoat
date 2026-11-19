@@ -28,7 +28,7 @@ const cue = (sound: SoundId, extra: Omit<AudioCue, 'sound'> = {}): AudioCue =>
   ({ sound, ...extra });
 
 export const PHYSICS_EVENT_TYPES = [
-  'landed', 'impact', 'flipped', 'airtimeStart', 'airtimeEnd',
+  'jumped', 'landed', 'impact', 'flipped', 'airtimeStart', 'airtimeEnd',
   'wallClingStart', 'wallClingEnd', 'ragdollStart', 'ragdollEnd',
   'tongueAttach', 'tongueDetach', 'knockedBody',
 ] as const satisfies readonly PhysicsEvent['type'][];
@@ -74,7 +74,8 @@ export function mapPhysics(event: PhysicsEvent): AudioCue[] {
         [cue('headbutt-impact', { goatId, intensity: clamp(event.impulse / 60),
           bodyHandle: event.otherBodyHandle ?? undefined })] : [];
     case 'flipped': return [cue('flip-whoosh', { goatId, intensity: clamp(event.rotations / 2) })];
-    case 'airtimeStart': return [cue('jump', { goatId, intensity: .56 })];
+    case 'jumped': return [cue('jump', { goatId, intensity: .56 })];
+    case 'airtimeStart':
     case 'airtimeEnd': return [];
     case 'wallClingStart': return [cue('climb', { goatId, intensity: .45 })];
     case 'wallClingEnd': return [];

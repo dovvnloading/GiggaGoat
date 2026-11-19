@@ -883,6 +883,43 @@ describe('authored Baa-ardwalk model colours and LOD', () => {
 });
 
 describe('authored town and farm prop paint and LOD', () => {
+  it('aligns the loaded Downtown service ramp art to its uphill collision direction', async () => {
+    const bytes = readFileSync(new URL('../../public/' + PROP_LIBRARY_MODELS.ramp, import.meta.url));
+    const asset = await new GLTFLoader().parseAsync(new Uint8Array(bytes).buffer, '');
+    const load = vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockResolvedValue(asset);
+    vi.stubGlobal('document', {});
+    const descriptors = ([
+      ['downtown-bleatsville-ramp-41', -5],
+      ['unrelated-ramp', 5],
+    ] as const).map(([id, x]): PropDescriptor => ({
+      id, kind: 'ramp',
+      transform: { position: { x, y: 2, z: 0 }, rotationY: 0 },
+      size: { x: 4.5, y: 3, z: 9 }, body: { type: 'static' }, shape: 'convex',
+      collidable: true, breakable: false, lickable: true, climbable: true,
+    }));
+    const visuals = buildPropVisuals(descriptors);
+    try {
+      await vi.waitFor(() => expect(visuals.group.userData['libraryReady']).toBe(true));
+      const frustum = { intersectsSphere: () => true } as unknown as THREE.Frustum;
+      visuals.updateCulling(new THREE.Vector3(0, 5, 10), frustum, 500, () => false);
+      const ramp = visuals.group.getObjectByName('render-near-ramp') as THREE.InstancedMesh;
+      expect(ramp.count).toBe(2);
+      const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
+      const treadHeight = (x: number, t: number): number => {
+        ray.ray.origin.set(x, 10, (t - .5) * 9);
+        return ray.intersectObject(ramp)[0]!.point.y;
+      };
+      const low = treadHeight(-5, .25), high = treadHeight(-5, .75);
+      expect(Math.abs(low - 1.25)).toBeLessThan(.16);
+      expect(Math.abs(high - 2.75)).toBeLessThan(.16);
+      expect(treadHeight(5, .25)).toBeGreaterThan(treadHeight(5, .75));
+    } finally {
+      visuals.dispose();
+      load.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('keeps all seven GLB colours untinted and at full near/far detail', async () => {
     const kinds = ['ac-unit', 'planter', 'bench', 'gnome',
       'hay-bale', 'ramp', 'buoy'] as const;

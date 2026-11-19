@@ -1,10 +1,51 @@
-import type { AccessSection } from './access-path';
-import { gridSample } from './terrain';
-import type { IslandData, PropColliderDescriptor, PropDescriptor } from './types';
+import { accessSlabs, type AccessSection } from './access-path';
+import { gridIndex, gridSample } from './terrain';
+import type { IslandData, PropColliderDescriptor, PropDescriptor, Vec3 } from './types';
 
 export const PINES_LOG_ENTRY_ID = 'whispering-pines-log-entry-';
 export const PINES_LOG_ENTRY_LENGTH = 4.7;
 const HALF_MOUTH = 1.22;
+const TOE_BOARDS = 5;
+const TOE_BANDS = 4;
+
+function groundFace(island: IslandData, x: number, z: number): number {
+  const { resolution: n, size, heights } = island;
+  const gx = (x / size + .5) * (n - 1), gz = (z / size + .5) * (n - 1);
+  const ix = Math.floor(gx), iz = Math.floor(gz);
+  const u = gx - ix, v = gz - iz;
+  const a = heights[gridIndex(n, ix, iz)]!, b = heights[gridIndex(n, ix + 1, iz)]!;
+  const c = heights[gridIndex(n, ix, iz + 1)]!, d = heights[gridIndex(n, ix + 1, iz + 1)]!;
+  return u + v <= 1 ? a + u * (b - a) + v * (c - a) : d + (1 - u) * (c - d) + (1 - v) * (b - d);
+}
+
+const mix = (a: number, b: number, t: number): number => a + (b - a) * t;
+
+/** A short crossfall-matched sill blends each lane into the original first joint. */
+function fitSouthToe(island: IslandData, start: AccessSection, joint: AccessSection, scale: number): Vec3[][] {
+  const point = (t: number, across: number) => ({
+    x: mix(mix(start.outer.x, joint.outer.x, t), mix(start.inner.x, joint.inner.x, t), across),
+    z: mix(mix(start.outer.z, joint.outer.z, t), mix(start.inner.z, joint.inner.z, t), across),
+  });
+  const leading = Array.from({ length: TOE_BANDS + 1 }, (_, lane) => {
+    const p = point(0, lane / TOE_BANDS);
+    return groundFace(island, p.x, p.z) + .018 * scale;
+  });
+  return Array.from({ length: TOE_BOARDS + 1 }, (_, board) => leading.map((entry, lane) => {
+    const t = board / TOE_BOARDS;
+    const p = point(t, lane / TOE_BANDS);
+    if (board === TOE_BOARDS) return { ...p, y: joint.outer.y };
+    const floor = groundFace(island, p.x, p.z);
+    const allowance = mix(.018, .09, Math.min(1, t * TOE_BOARDS)) * scale;
+    return { ...p, y: Math.max(mix(entry, joint.outer.y, t), floor + allowance) };
+  }));
+}
+
+/** Both the visible treads and their thin solid backing use these same faces. */
+export function pinesToeBoardFaces(rows: readonly Vec3[][], index: number): Array<readonly [Vec3, Vec3, Vec3]> {
+  const a = rows[index]!, b = rows[index + 1]!;
+  return a.slice(1).flatMap((right, lane) =>
+    [[a[lane]!, right, b[lane + 1]!] as const, [a[lane]!, b[lane + 1]!, b[lane]!] as const]);
+}
 
 /** Check only the added bank footprints in bridge-local coordinates. */
 export function overlapsPinesLogEntry(bridge: PropDescriptor, prop: PropDescriptor, scale: number): boolean {
@@ -62,6 +103,20 @@ export function pinesLogEntries(island: IslandData, bridge: PropDescriptor) {
         size: { x: .32 * scale, y: top - bottom, z: .46 * scale },
       };
     });
-    return { side, sections, supports, thickness };
+    const southToe = side < 0 ? fitSouthToe(island, sections[0], sections[1], scale) : undefined;
+    return { side, sections, southToe, supports, thickness };
+  });
+}
+
+export function pinesLogEntryColliders(island: IslandData, bridge: PropDescriptor): PropColliderDescriptor[] {
+  return pinesLogEntries(island, bridge).flatMap(({ side, sections, southToe, supports, thickness }) => {
+    const prefix = PINES_LOG_ENTRY_ID + side + '-tread-';
+    const panels = accessSlabs(prefix, sections, thickness);
+    if (!southToe) return [...panels, ...supports];
+    const toe = southToe.slice(1).flatMap((_, index) =>
+      pinesToeBoardFaces(southToe, index).flatMap(([a, b, c], face) =>
+        accessSlabs(prefix + '0-' + index + '-' + face + '-',
+          [{ outer: a, inner: b }, { outer: c, inner: c }], thickness)));
+    return [...toe, ...panels.slice(1), ...supports];
   });
 }

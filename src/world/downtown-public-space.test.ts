@@ -105,6 +105,9 @@ describe('Downtown paved corners and service lanes', () => {
     terrain.onBeforeCompile(shader, {} as THREE.WebGLRenderer);
     scene.dispose();
     expect(shader.fragmentShader).toContain('downtownGround(diffuseColor.rgb, (vWorld.xz - uDowntownOrigin) / uTerrainScale)');
+    expect((shader.uniforms['uDowntownServiceCourt']!.value as THREE.Vector3).toArray())
+      .toEqual([-40, -35, 14.8]);
+    expect(shader.fragmentShader).toContain('length(point - uDowntownServiceCourt.xy)');
     const origin = shader.uniforms['uDowntownOrigin']!.value as THREE.Vector2;
     const bounds = shader.uniforms['uDowntownBounds']!.value as THREE.Vector4[];
     const corners = shader.uniforms['uDowntownCorners']!.value as number[];

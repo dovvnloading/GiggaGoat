@@ -1,4 +1,4 @@
-import { Color, Vector2, Vector4 } from 'three';
+import { Color, Vector2, Vector3, Vector4 } from 'three';
 import type { WebGLProgramParametersWithUniforms } from 'three';
 import type { IslandData } from './types';
 
@@ -45,6 +45,10 @@ export function paintDowntownGround(shader: WebGLProgramParametersWithUniforms, 
   const city = downtownCentre(island);
   const spaces = DOWNTOWN_PUBLIC_SPACES;
   shader.uniforms['uDowntownOrigin'] = { value: new Vector2(city.x, city.z) };
+  // The old courtyard mesh bridged the grade with long triangles. Paint its
+  // footprint on the same terrain that supports the service ramp and stock.
+  shader.uniforms['uDowntownServiceCourt'] = { value: new Vector3(-40, -35, 14.8) };
+  shader.uniforms['uDowntownCourtStone'] = { value: new Color(0xc2b6a2) };
   shader.uniforms['uDowntownBounds'] = { value: spaces.map(s =>
     new Vector4(s.left, s.near, s.right, s.far)) };
   shader.uniforms['uDowntownCorners'] = { value: spaces.map(s => s.corner) };
@@ -54,6 +58,8 @@ export function paintDowntownGround(shader: WebGLProgramParametersWithUniforms, 
     '#include <common>',
     `#include <common>
 uniform vec2 uDowntownOrigin;
+uniform vec3 uDowntownServiceCourt;
+uniform vec3 uDowntownCourtStone;
 uniform vec4 uDowntownBounds[${spaces.length}];
 uniform float uDowntownCorners[${spaces.length}];
 uniform vec3 uDowntownPaving[${spaces.length}];
@@ -61,7 +67,7 @@ uniform vec3 uDowntownEdging[${spaces.length}];
 
 vec3 downtownGround(vec3 grass, vec2 point) {
   float aa = clamp(length(fwidth(point)), 0.035, 0.35);
-  if (abs(point.x) > 35.0 || abs(point.y) > 68.0) return grass;
+  if (point.x < -55.2 || point.x > 35.0 || abs(point.y) > 68.0) return grass;
   vec2 tile = point / vec2(1.7, 1.1);
   tile.x += mod(floor(tile.y), 2.0) * 0.5;
   vec2 seam = abs(fract(tile) - 0.5);
@@ -75,7 +81,10 @@ vec3 downtownGround(vec3 grass, vec2 point) {
     vec3 stone = mix(uDowntownEdging[i], uDowntownPaving[i], smoothstep(0.48, 0.65, clearance));
     return mix(grass, stone * tone * (1.0 - grout * 0.11), smoothstep(-aa, aa, clearance));
   }
-  return grass;
+  float courtEdge = uDowntownServiceCourt.z - length(point - uDowntownServiceCourt.xy);
+  float stoneTone = tone * (1.0 - grout * 0.11);
+  vec3 court = uDowntownCourtStone * mix(0.86, stoneTone, smoothstep(0.4, 0.7, courtEdge));
+  return mix(grass, court, smoothstep(-aa, aa, courtEdge));
 }`,
   ).replace('diffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);',
     `diffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);

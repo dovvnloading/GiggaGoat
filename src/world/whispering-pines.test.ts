@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import RAPIER from '@dimforge/rapier3d-compat';
+import { Game } from '../core/Game';
 import { buildRapierColliders, createWorldScene, generateIsland } from './index';
 import { gridSample, riverAt, segmentProjection } from './terrain';
 import type { IslandData, PropDescriptor } from './types';
@@ -150,9 +151,10 @@ it('draws the same supported bank treads with fallback and loaded log art', asyn
   try {
     const placeholder = fallback.group.getObjectByName('props-log-bridge')!;
     expect(placeholder).toBeInstanceOf(THREE.InstancedMesh);
-    const { props: colliders } = buildRapierColliders(world, island);
+    const { props: colliders, terrain } = buildRapierColliders(world, island);
     const entries = pinesLogEntries(island, bridge);
-    for (const { side, sections } of entries) for (const [index, section] of sections.slice(1).entries()) {
+    for (const { side, sections, southToe } of entries) for (const [index, section] of sections.slice(1).entries()) {
+      if (southToe && index === 0) continue;
       const a = sectionCenter(sections[index]!), b = sectionCenter(section);
       for (const across of [-.6, 0, .6]) {
         const x = (a.x + b.x) / 2 + Math.cos(rotationY) * across;
@@ -163,6 +165,30 @@ it('draws the same supported bank treads with fallback and loaded log art', asyn
         expect(hit).toBeCloseTo(2, 4);
         const ray = new THREE.Raycaster(new THREE.Vector3(x, y, z), new THREE.Vector3(0, -1, 0));
         for (const art of [placeholder, loaded]) expect(ray.intersectObject(art)[0]!.distance).toBeCloseTo(hit, 2);
+      }
+    }
+    const toe = entries[0]!.southToe!;
+    const first = toe[0]!, last = toe.at(-1)!;
+    const panels = [...colliders].filter(([id]) => id.startsWith(PINES_LOG_ENTRY_ID + '-1-tread-0-'))
+      .map(([, collider]) => collider);
+    // The previous flat timber disappeared under the real terrain halfway
+    // across this nose. Cast against terrain, both art paths and Rapier.
+    const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
+    const { lerp } = THREE.MathUtils;
+    for (let station = 0; station < 33; station++) for (let lane = 0; lane < 17; lane++) {
+      const t = .003 + station * .994 / 32, u = .004 + lane * .992 / 16;
+      const at = (axis: 'x' | 'z') => lerp(lerp(first[0]![axis], first.at(-1)![axis], u),
+        lerp(last[0]![axis], last.at(-1)![axis], u), t);
+      const x = at('x'), z = at('z'), y = 15;
+      ray.ray.origin.set(x, y, z);
+      const down = new RAPIER.Ray({ x, y, z }, { x: 0, y: -1, z: 0 });
+      const ground = terrain.castRay(down, 20, false);
+      const hits = panels.map(panel => panel.castRay(down, 20, false)).filter(d => d >= 0);
+      const solid = Math.min(...hits);
+      expect(solid).toBeLessThan(ground - .004);
+      if (station === 0) expect(ground - solid).toBeLessThan(.035);
+      for (const art of [placeholder, loaded]) {
+        expect(Math.abs(ray.intersectObject(art)[0]!.distance - solid)).toBeLessThan(.002);
       }
     }
   } finally {
@@ -176,6 +202,40 @@ it('draws the same supported bank treads with fallback and loaded log art', asyn
         for (const coat of Array.isArray(node.material) ? node.material : [node.material]) coat.dispose();
       }
     });
+  }
+});
+
+it('walks on and off both sides of the fitted south landing with normal ground input', async () => {
+  const game = await Game.create();
+  try {
+    const bridge = game.island.props.find(p => p.kind === 'log-bridge' && p.poiId === 'whispering-pines')!;
+    const { position, rotationY } = bridge.transform;
+    const s = Math.sin(rotationY), c = Math.cos(rotationY);
+    const toe = bridge.size.z / 2 + 4.7;
+    const point = (along: number, across: number) =>
+      ({ x: position.x + s * along + c * across, z: position.z + c * along - s * across });
+    for (const lane of [-.62, .62]) {
+      const start = point(-toe - .9, lane);
+      game.teleport({ ...start, y: gridSample(game.island, start.x, start.z) });
+      for (let tick = 0; tick < 24; tick++) game.step();
+      for (const target of [point(-toe + 3.25, lane), start]) {
+        const error = () => {
+          const { x, z } = game.goat.torso.translation();
+          return { dx: target.x - x, dz: target.z - z };
+        };
+        for (let tick = 0; tick < 210; tick++) {
+          const { dx, dz } = error();
+          if (Math.hypot(dx, dz) < .33) break;
+          game.step({ moveZ: 1, cameraYaw: Math.atan2(dx, -dz), climb: false });
+          expect(game.goat.locomotion.isClinging).toBe(false);
+        }
+        const { dx, dz } = error();
+        expect(Math.hypot(dx, dz), 'south toe lane ' + lane).toBeLessThan(.33);
+      }
+    }
+    expect(game.respawns).toBe(0);
+  } finally {
+    game.dispose();
   }
 });
 

@@ -72,21 +72,6 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Gr
     ));
     bucket.indices.push(v[0]!, v[2]!, v[1]!, v[1]!, v[2]!, v[3]!);
   }
-  function disc(x: number, z: number, radius: number,
-    color: THREE.Color, sides = 28, lift = 0): void {
-    const bucket = verticesAt(x, z);
-    const mid = addVertex(bucket, x, z, color, 1.035, lift);
-    const rim: number[] = [];
-    for (let i = 0; i < sides; i++) {
-      const angle = i * Math.PI * 2 / sides;
-      rim.push(addVertex(bucket,
-        x + Math.cos(angle) * radius, z + Math.sin(angle) * radius,
-        color, 0.93 + (i % 4) * 0.015, lift));
-    }
-    for (let i = 0; i < sides; i++) {
-      bucket.indices.push(mid, rim[(i + 1) % sides]!, rim[i]!);
-    }
-  }
   function puddle(x: number, z: number, radius: number, aspect: number, phase: number): void {
     const sides = 32;
     const center = addVertex(water, x, z, YARD_PUDDLE, 1.02, .019);
@@ -205,15 +190,6 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Gr
       quad(city.x + side * 12.7 * scale, city.z + z * scale,
         2.4 * scale, 8 * scale, GRAVEL);
     }
-  }
-  // Off the traffic lane: a stone plaza around the existing collidable
-  // fountain, surrounded by benches and planted beds.
-  disc(city.x - 40 * scale, city.z - 35 * scale, 14.8 * scale, TILE, 36);
-  for (let i = 0; i < 12; i++) {
-    const a = i * Math.PI / 6;
-    const x = city.x + (-40 + Math.cos(a) * 12.4) * scale;
-    const z = city.z + (-35 + Math.sin(a) * 12.4) * scale;
-    quad(x, z, 2.3 * scale, 1.1 * scale, STONE, a);
   }
   // Bare-earth patches behind the shops and at the village farmyard keep
   // distant lawns from reading as empty single-colour carpet.

@@ -131,6 +131,7 @@ const physicsFixtures: readonly PhysicsEvent[] = [
   { type: 'landed', goatId: 'goat', time: 1, airtime: .7, verticalSpeed: -8 },
   { type: 'impact', goatId: 'goat', time: 1, impulse: 22, otherBodyHandle: 9 },
   { type: 'flipped', goatId: 'goat', time: 1, rotations: 1 },
+  { type: 'jumped', goatId: 'goat', time: 1 },
   { type: 'airtimeStart', goatId: 'goat', time: 1, height: 2 },
   { type: 'airtimeEnd', goatId: 'goat', time: 1, duration: 2 },
   { type: 'wallClingStart', goatId: 'goat', time: 1, normal: position },
@@ -232,6 +233,7 @@ describe('exhaustive typed lane mapping', () => {
     }
     expect(mapPhysics(physicsFixtures[0]!)[0]?.sound).toBe('landing');
     expect(mapPhysics(physicsFixtures[3]!)[0]?.sound).toBe('jump');
+    expect(mapPhysics(physicsFixtures[4]!)).toEqual([]);
     expect(mapChaos(chaosFixtures[2]!)[0]?.sound).toBe('splash');
     expect(mapMode(modeFixtures[4]!)[0]?.sound).toBe('tide-warning');
     expect(mapGig(gigFixtures[5]!).map(c => c.sound)).toEqual(['gig-success', 'rating-gold']);

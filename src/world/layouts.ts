@@ -25,6 +25,7 @@ interface AddOptions {
   color?: number;
 }
 const STATIC: PropDescriptor['body'] = { type: 'static' };
+const DOWNTOWN_SERVICE_RAMP = /^downtown-bleatsville-ramp-\d+$/;
 
 export function populateProps(island: IslandData, rng: SeededRandom): PropDescriptor[] {
   const props: PropDescriptor[] = [];
@@ -446,6 +447,37 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   return props;
 }
 
+/** Meet the finished service-yard grade at the ramp mouth and keep the launch lip. */
+export function fitDowntownServiceRamps(island: IslandData): void {
+  const scale = island.size / 600;
+  const ramps = island.props.filter(ramp => DOWNTOWN_SERVICE_RAMP.test(ramp.id));
+  for (const ramp of ramps) {
+    const { position, rotationY } = ramp.transform;
+    const sin = Math.sin(rotationY), cos = Math.cos(rotationY);
+    const halfWidth = ramp.size.x / 2, halfLength = ramp.size.z / 2;
+    const groundAcross = (along: number) => Math.min(...[-halfWidth, 0, halfWidth].map(across =>
+      gridSample(island, position.x + cos * across + sin * along,
+        position.z - sin * across + cos * along)));
+    const crown = position.y + ramp.size.y / 2;
+    const mouth = Math.min(crown - .5 * scale, groundAcross(-halfLength) - .035 * scale);
+    ramp.size.y = crown - mouth;
+    position.y = (crown + mouth) / 2;
+
+    // The lower side of the yard can fall away beyond the ramp's toe.
+    // Fill a visible gap only where the existing ramp footprint needs support.
+    const lowest = Math.min(...[-1, -.5, 0, .5, 1].map(factor => groundAcross(halfLength * factor)));
+    const clearance = mouth - lowest;
+    if (clearance <= .12 * scale) continue;
+    const depth = clearance + .08 * scale;
+    island.props.push({
+      id: ramp.id + '-footing', kind: 'concrete-slab', poiId: 'downtown-bleatsville',
+      transform: { position: { ...position, y: mouth - depth / 2 + .01 * scale }, rotationY },
+      size: { ...ramp.size, y: depth }, shape: 'cuboid', body: STATIC,
+      collidable: true, breakable: false, lickable: false, climbable: false,
+    });
+  }
+}
+
 /** Seat the seeded alley stock once the surrounding scenery and grades are final. */
 export function seatDowntownStock(island: IslandData): void {
   const city = island.pois.find(poi => poi.id === 'downtown-bleatsville')!.center;
@@ -454,7 +486,7 @@ export function seatDowntownStock(island: IslandData): void {
   const nearby = (point: Vec2) => Math.abs(point.x - city.x) <= 65 * scale &&
     Math.abs(point.z - city.z) <= 65 * scale;
   const blockers = island.props.filter(prop => prop.collidable && nearby(prop.transform.position))
-    .map(prop => prop.kind === 'ramp' && prop.id.startsWith('downtown-bleatsville-ramp-')
+    .map(prop => DOWNTOWN_SERVICE_RAMP.test(prop.id)
       // Keep room on both shoulders, including the approach beyond each end.
       ? { ...prop, size: { ...prop.size, x: prop.size.x + scale, z: prop.size.z + 4 * scale } }
       : prop);

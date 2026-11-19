@@ -1,8 +1,8 @@
 import { BoxGeometry, BufferGeometry, Color, Float32BufferAttribute, Matrix4, MathUtils, Vector3, Vector4 } from 'three';
 import type { WebGLProgramParametersWithUniforms } from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { sectionCenter } from './access-path';
-import { pinesLogEntries } from './pines-log-access';
+import { pinesLogEntries, pinesToeBoardFaces } from './pines-log-access';
 import { accessPathVisual } from './visual-access-path';
 import type { IslandData, PropDescriptor, Vec3 } from './types';
 
@@ -55,6 +55,32 @@ vec3 pinesApronGround(vec3 terrain, vec2 world, float scale) {
 #include <alphamap_fragment>`);
 }
 
+function toeBoards(rows: readonly Vec3[][], thickness: number, timber: readonly number[]) {
+  const makePart = (positions: number[], color: number, smooth = false) => {
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+    geometry.computeVertexNormals();
+    return { geometry: smooth ? toCreasedNormals(geometry, Math.PI / 7) : geometry, color };
+  };
+  const top = (p: Vec3): number[] => [p.x, p.y, p.z];
+  const bottom = (p: Vec3): number[] => [p.x, p.y - thickness, p.z];
+  const sides: number[] = [];
+  const treads = rows.slice(1).map((end, index) => {
+    const start = rows[index]!;
+    const a = start[0]!, b = end[0]!, c = start.at(-1)!, d = end.at(-1)!;
+    sides.push(...top(a), ...top(b), ...bottom(b), ...top(a), ...bottom(b), ...bottom(a),
+      ...top(c), ...bottom(d), ...top(d), ...top(c), ...bottom(c), ...bottom(d));
+    return makePart(pinesToeBoardFaces(rows, index).flatMap(face => face.flatMap(top)),
+      timber[index % timber.length]!, true);
+  });
+  const front = rows[0]!;
+  for (let i = 1; i < front.length; i++) {
+    const a = front[i - 1]!, b = front[i]!;
+    sides.push(...top(a), ...bottom(b), ...top(b), ...top(a), ...bottom(a), ...bottom(b));
+  }
+  return [...treads, makePart(sides, 0x6d4c33)];
+}
+
 /** Add both bank treads to the current log batch, in its instance-local coordinates. */
 export function appendPinesLogEntries(source: BufferGeometry, island: IslandData, bridge: PropDescriptor): BufferGeometry {
   const scale = island.size / 600;
@@ -64,8 +90,9 @@ export function appendPinesLogEntries(source: BufferGeometry, island: IslandData
     MathUtils.lerp(start.x, end.x, t), MathUtils.lerp(start.y, end.y, t) + .003 * scale,
     MathUtils.lerp(start.z, end.z, t),
   ];
-  const joinery = entries.flatMap(({ sections, supports }) => {
+  const joinery = entries.flatMap(({ sections, southToe, supports, thickness }) => {
     const planks = sections.slice(1).flatMap((b, segment) => {
+      if (southToe && segment === 0) return toeBoards(southToe, thickness, timber);
       const a = sections[segment]!;
       const length = Math.hypot(b.outer.x - a.outer.x, b.outer.z - a.outer.z);
       const count = Math.max(1, Math.round(length / (.48 * scale)));
@@ -88,7 +115,8 @@ export function appendPinesLogEntries(source: BufferGeometry, island: IslandData
     }));
     return [...planks, ...legs];
   });
-  const tread = accessPathVisual('pines-bank-timber', entries.map(entry => [...entry.sections]), [],
+  const tread = accessPathVisual('pines-bank-timber',
+    entries.map(entry => entry.sections.slice(entry.southToe ? 1 : 0)), [],
     entries[0]!.thickness, scale, 0x6d4c33, 0x6d4c33, joinery);
   const { position, rotationY } = bridge.transform;
   const { x, y, z } = bridge.size;

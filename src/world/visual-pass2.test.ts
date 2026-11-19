@@ -7,7 +7,7 @@ import { makeLocalStreets, MOUNTAIN_SPIRAL_BRIDGE_PREFIX } from './roads';
 import { segmentProjection } from './terrain';
 import { findBookmark } from './viewer/bookmarks';
 import { PINES_GLADE_CASCADE } from './visual-water';
-import { PINES_LOG_ENTRY_LENGTH } from './pines-log-access';
+import { PINES_LOG_ENTRY_LENGTH, pinesLogEntries } from './pines-log-access';
 import { CRANE_RAMP_GUARD_PREFIX, CRANE_SWITCHBACK_PREFIX } from './crane-yard';
 
 describe('World visuals pass 2: geometry, streets and draw budget', () => {
@@ -47,9 +47,16 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
       instances.geometry.computeBoundingBox();
       const bounds = instances.geometry.boundingBox!;
       const span = bounds.getSize(new THREE.Vector3());
-      expect(Math.max(span.x, span.y), kind).toBeLessThanOrEqual(1.001);
-      const logEntries = kind === 'log-bridge' ?
-        2 * PINES_LOG_ENTRY_LENGTH * (island.size / 600) / props[0]!.size.z : 0;
+      const log = kind === 'log-bridge' ? props[0]! : undefined;
+      const logEntries = log ? 2 * PINES_LOG_ENTRY_LENGTH * (island.size / 600) / log.size.z : 0;
+      const toe = log ? pinesLogEntries(island, log).find(entry => entry.southToe)?.southToe : undefined;
+      expect(span.x, kind).toBeLessThanOrEqual(1.001);
+      if (log && toe) {
+        const crest = Math.max(...toe.flat().map(point => point.y));
+        const crestY = (crest - log.transform.position.y) / log.size.y;
+        expect(bounds.max.y, kind).toBeCloseTo(Math.max(.5, crestY), 3);
+        expect(bounds.min.y, kind).toBeGreaterThanOrEqual(-.501);
+      } else expect(span.y, kind).toBeLessThanOrEqual(1.001);
       expect(span.z, kind).toBeLessThanOrEqual(1.001 + logEntries);
       const matrix = new THREE.Matrix4();
       const position = new THREE.Vector3();
