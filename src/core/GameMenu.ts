@@ -10,7 +10,7 @@ import { gigBoardGoal, gigBoardIcon } from './GigBoardPresentation';
 import { MENU_SPRITES, menuSkin, menuSpriteUrl, type MenuSpriteName } from './MenuSprites';
 import titleArt from '../../docs/art/hifi/07_key_art.png?url';
 
-type Screen = 'title' | 'playing' | 'pause' | 'party' | 'settings' |
+type Screen = 'title' | 'playing' | 'pause' | 'party' | 'party-confirm' | 'settings' |
   'board' | 'gig-results' | 'party-results';
 const CSS = `
 /* The frame, stat cards, tabs and action buttons are nine-sliced sprite PNGs.
@@ -455,7 +455,16 @@ export class GameMenu {
       reference?.focus({ preventScroll: true });
       reference?.scrollIntoView({ block: 'start' });
     } else if (key === 'back') this.back(mouseClick);
-    else if (key === 'start-party') {
+    else if (key === 'keep-gig' && this.screen === 'party-confirm') {
+      if (this.partyReturn === 'playing') this.resume(mouseClick);
+      else this.setScreen(this.partyReturn);
+    } else if (key === 'start-party' || key === 'confirm-party') {
+      const confirmed = key === 'confirm-party';
+      if (this.screen !== (confirmed ? 'party-confirm' : 'party')) return;
+      if (!confirmed && this.game.gigs.active?.status === 'running') {
+        this.setScreen('party-confirm');
+        return;
+      }
       try {
         this.game.party.start(this.mode, this.botCount, this.difficulty);
         this.view.alignCameraForPlay();
@@ -497,7 +506,8 @@ export class GameMenu {
   private back(mouseClick = false): void {
     if (this.screen === 'title') return;
     this.audio?.queueCue({ sound: 'ui-back' });
-    if (this.screen === 'party') this.setScreen(this.partyReturn);
+    if (this.screen === 'party-confirm') this.setScreen('party');
+    else if (this.screen === 'party') this.setScreen(this.partyReturn);
     else if (this.screen === 'settings') this.setScreen(this.settingsReturn);
     else if (this.screen === 'board') this.resume(mouseClick);
     else if (this.screen === 'pause') this.resume(mouseClick);
@@ -767,6 +777,14 @@ export class GameMenu {
       <div class="gg-options gg-party-actions">${menuButton('start-party','⚡ LAUNCH ROUND',true)}
       ${menuButton('back','← BACK')}</div>`;
   }
+  private partyConfirmBody(): string {
+    const gig = this.game.gigs.active?.setup.info.title ?? 'your current gig';
+    return `<h2 id="gg-party-confirm-title">LEAVE CURRENT GIG?</h2>
+      <p id="gg-party-confirm-detail">Starting ${esc(PARTY_ROUNDS[this.mode].name)}
+        will abandon ${esc(gig)} and clear this attempt’s progress.</p>
+      <div class="gg-options">${menuButton('keep-gig','← KEEP CURRENT GIG',true)}
+        ${menuButton('confirm-party','⚡ ABANDON &amp; LAUNCH')}</div>`;
+  }
   private settingsBody(): string {
     const s = this.settings;
     const slider = (key: string, label: string, min: number, max: number, step: number,
@@ -981,13 +999,16 @@ export class GameMenu {
          ${this.game.party.match ? '' : menuButton('party','⚡ PARTY MODES')}
          ${menuButton('settings','⚙ CONTROLS &amp; SETTINGS')}${menuButton('title','⌂ QUIT TO TITLE')}</div>` :
       this.screen === 'party' ? this.partyBody() :
+      this.screen === 'party-confirm' ? this.partyConfirmBody() :
       this.screen === 'settings' ? this.settingsBody() :
       this.screen === 'board' ? this.boardBody() :
       this.screen === 'gig-results' ? this.gigResultsBody() : this.partyResultsBody();
     const partyResults = this.screen === 'party-results';
     const panel = this.screen === 'title' ? 'gg-shell-panel gg-title-panel' :
       partyResults ? 'gg-shell-panel gg-party-results-panel' : 'gg-shell-panel';
-    const dialogLabel = partyResults ? ' aria-labelledby="gg-party-result-title"' : '';
+    const dialogLabel = partyResults ? ' aria-labelledby="gg-party-result-title"' :
+      this.screen === 'party-confirm' ?
+        ' aria-labelledby="gg-party-confirm-title" aria-describedby="gg-party-confirm-detail"' : '';
     const footer = partyResults
       ? '<span data-results-scroll-hint hidden>PgUp/PgDn or right stick scroll · </span>Esc or B back'
       :

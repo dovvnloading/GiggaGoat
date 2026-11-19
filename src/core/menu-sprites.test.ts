@@ -190,7 +190,7 @@ function setup() {
   const game = {
     rules: { wallet: { coins: 20 } },
     gigs: { director: { ownedCosmetics: [], board: vi.fn<(poi: PoiId) => GigBoard>() },
-      active: null, catalog: null as GigCatalog | null,
+      active: null as GigRun | null, catalog: null as GigCatalog | null,
       nearBoard: vi.fn<() => PoiId | null>(), accept: vi.fn() },
     party: { match: null as PartyMatch | null, title: 'Rising Tide',
       start: vi.fn(), returnToFreeRoam: vi.fn() },
@@ -379,6 +379,43 @@ describe('sprite-backed menu DOM', () => {
 
       root.querySelector<ButtonStub>('[data-action="start-party"]')!.click();
       expect(game.party.start).toHaveBeenCalledWith('hay-heist', 3, 'normal');
+    } finally { menu.dispose(); }
+  });
+
+  it('protects an active gig before launching a party and keeps setup when going back', () => {
+    const { menu, doc, win, game, root, view } = setup();
+    try {
+      const catalog = new GigCatalog(generateIsland({ resolution: 97 }));
+      const director = new GigDirector(catalog);
+      director.accept(catalog.board('mt-gigga', 0).offers[0]!.id);
+      game.gigs.active = director.active;
+      root.querySelector<ButtonStub>('[data-action="play"]')!.click();
+      const key = (code: string): void => win.dispatch('keydown', {
+        code, repeat: false, preventDefault: vi.fn(), stopPropagation: vi.fn(),
+      });
+      key('KeyP');
+      const select = root.querySelector<SelectStub>('[id="gg-mode"]')!;
+      select.value = 'king-of-the-peak';
+      root.dispatch('change', select);
+
+      const confirm = () => root.querySelector<ButtonStub>('[data-action="start-party"]')!.click();
+      confirm();
+      expect(game.party.start).not.toHaveBeenCalled();
+      expect(root.innerHTML).toContain('SUMMIT SPRINT');
+      expect(root.innerHTML).toContain('King of the Peak');
+      expect(root.innerHTML).toContain('clear this attempt’s progress');
+      expect(doc.activeElement).toBe(root.querySelector('[data-action="keep-gig"]'));
+      key('Escape');
+      expect(root.innerHTML).toContain('<option value="king-of-the-peak" selected>');
+      confirm();
+      root.querySelector<ButtonStub>('[data-action="keep-gig"]')!.click();
+      expect(view.paused).toBe(false);
+      expect(game.gigs.active?.status).toBe('running');
+      expect(game.party.start).not.toHaveBeenCalled();
+      key('KeyP');
+      confirm();
+      root.querySelector<ButtonStub>('[data-action="confirm-party"]')!.click();
+      expect(game.party.start).toHaveBeenCalledExactlyOnceWith('king-of-the-peak', 3, 'normal');
     } finally { menu.dispose(); }
   });
 
