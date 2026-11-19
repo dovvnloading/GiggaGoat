@@ -24,6 +24,7 @@ function cameraFixture(physics: PhysicsWorld) {
     camera, input, currentSettings: { fov: 67 }, titleCamera: false, cameraDistance: Infinity,
     cameraAim: new THREE.Vector3(), cameraTarget: new THREE.Vector3(),
     cameraOffset: new THREE.Vector3(), cameraDirection: new THREE.Vector3(),
+    clearBoom: new THREE.Vector3(), probeBoom: new THREE.Vector3(), obstructionFraming: 0,
     cameraCollisionShape: new RAPIER.Ball(.25), cameraCollisionRotation: Q(),
     cameraCollisionFilter: {},
     game: { physics: Object.assign(Object.create(physics) as PhysicsWorld, {
@@ -46,9 +47,16 @@ describe('free-roam camera / compact HUD reference framing', () => {
       const { view, camera, player } = cameraFixture(physics);
       if (x > 0) expect(physics.raycast(V(), offset, 5)).toBeNull();
       view.updateCamera(0, 1 / 60);
-      expect(camera.position.z).toBeLessThan(.36);
-      expect(camera.position.z).toBeGreaterThan(0);
-      expect(player.visible).toBe(false);
+      expect(camera.position.length()).toBeGreaterThan(2.35);
+      expect(player.visible).toBe(true);
+      const towardsCamera = camera.position.clone().normalize();
+      expect(physics.shapeCast(V(), Q(), towardsCamera, new RAPIER.Ball(.25),
+        camera.position.length())).toBeNull();
+      camera.updateMatrixWorld();
+      for (const y of [-.7, .7]) {
+        const hoofOrHorn = new THREE.Vector3(0, y, 0).project(camera);
+        expect(Math.abs(hoofOrHorn.y)).toBeLessThan(.9);
+      }
 
       physics.removeBody(wall);
       physics.step(physics.fixedDt);
