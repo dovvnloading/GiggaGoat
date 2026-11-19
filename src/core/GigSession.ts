@@ -2,7 +2,8 @@ import type { Collider, CoefficientCombineRule, RigidBody } from '@dimforge/rapi
 import { GigCatalog, GigDirector, GigGameplayBridge, type AbilityFact, type GigEvent,
   type GigOffer, type GigRun, type GigPropSpawn, type GigSetup, type GigSnapshot,
   type PropFact, type StyleFact } from '../gigs';
-import { RAPIER, V, collisionGroups, type PhysicsContact } from '../physics';
+import { RAPIER, V, collisionGroups, type PhysicsContact, type Vec3 } from '../physics';
+import { lerp, distance, Q, slerp } from '../physics/math';
 import { heightAt, type PoiId } from '../world';
 import { ROOFTOP_DECK_PREFIX, ROOFTOP_SPAN_PREFIX, rooftopDecks } from '../world/rooftop-course';
 import type { Game } from './Game';
@@ -16,7 +17,14 @@ export interface GigBodySave {
   broken: boolean;
 }
 interface TemporaryProp { descriptor: GigPropSpawn; body: RigidBody; broken: boolean }
+interface StackLift {
+  body: RigidBody;
+  supportId: string | undefined;
+  waypoints: Vec3[];
+  clearRadius: number;
+}
 const COURIER_SHRINK_SETTLE_TICKS = 24;
+const STACK_LIFT_RANGE = 4;
 
 /** Turns completed Rapier ticks into *observations*, never invented gig actions. */
 export class GigSession {
@@ -26,6 +34,7 @@ export class GigSession {
   private readonly temporary = new Map<string, TemporaryProp>();
   private readonly restockedHayBales = new Map<string, RigidBody>();
   private readonly collectedHay = new Map<string, RigidBody>();
+  private stackLift: StackLift | null = null;
   private towingHay: { collider: Collider; friction: number; combine: CoefficientCombineRule } | null = null;
   private readonly impacts = new Map<number, number>();
   private readonly courierSupports = new Set<number>();
@@ -388,6 +397,97 @@ export class GigSession {
     }
   }
 
+  private getStackLiftTarget(): { body: RigidBody; supportId?: string; drop: Vec3; height: number } | null {
+    const run = this.active;
+    const config = run?.setup.config;
+    const goat = this.game.goat;
+    const body = goat.interactions.tongueBody;
+    if (this.stackLift || run?.status !== 'running' || config?.kind !== 'stack-up' ||
+        !body?.isValid() || !body.isDynamic() || goat.isRagdoll) return null;
+    const id = this.game.physics.bodyData(body.handle)?.owner;
+    if (!id || !config.crateIds.includes(id) || run.finishedIds.includes(id)) return null;
+    const nearby = (point: Vec3) =>
+      Math.hypot(point.x - config.center.x, point.z - config.center.z) <= STACK_LIFT_RANGE;
+    const position = body.translation();
+    if (!nearby(goat.torso.translation()) || !nearby(position)) return null;
+    const supportId = run.finishedIds.at(-1);
+    const support = supportId ? this.temporary.get(supportId)?.body : undefined;
+    if (supportId && !support?.isValid()) return null;
+    const base = support?.translation();
+    const height = config.crateHeight;
+    return {
+      body, supportId, height,
+      drop: V(base?.x ?? config.center.x, base ? base.y + height + .12 :
+        config.groundY + height / 2 + .12, base?.z ?? config.center.z),
+    };
+  }
+
+  get stackLiftCue(): 'ready' | 'moving' | 'clear' | null {
+    const lift = this.stackLift;
+    if (!lift) return this.getStackLiftTarget() ? 'ready' : null;
+    return lift.waypoints.length === 1 && this.underStackLift(lift) ? 'clear' : 'moving';
+  }
+
+  startStackLift(): boolean {
+    const target = this.getStackLiftTarget();
+    if (!target) return false;
+    const { body, supportId, drop, height } = target;
+    const position = body.translation();
+    const clearanceY = Math.max(position.y, drop.y) + height;
+    this.game.goat.interactions.detachTongue('released');
+    this.game.water.untrack(body);
+    body.setLinvel(V(), true);
+    body.setAngvel(V(), true);
+    body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
+    this.stackLift = {
+      body, supportId,
+      waypoints: [V(position.x, clearanceY, position.z), V(drop.x, clearanceY, drop.z), drop],
+      clearRadius: height / 2 + this.game.goat.size * .65,
+    };
+    return true;
+  }
+
+  private underStackLift(lift: StackLift): boolean {
+    const target = lift.waypoints.at(-1)!;
+    const goat = this.game.goat.torso.translation();
+    return Math.hypot(target.x - goat.x, target.z - goat.z) < lift.clearRadius;
+  }
+
+  private moveStackLift(run: GigRun): void {
+    const lift = this.stackLift;
+    if (!lift) return;
+    const { body, supportId, waypoints } = lift;
+    if (!body.isValid()) { this.stackLift = null; return; }
+    const position = body.translation();
+    const target = waypoints[0]!;
+    if (run.finishedIds.at(-1) !== supportId) {
+      this.releaseStackLift(body);
+      return;
+    }
+    if (waypoints.length === 1 && this.underStackLift(lift)) {
+      body.setNextKinematicTranslation(position);
+      return;
+    }
+    const gap = distance(position, target);
+    if (gap <= .01) {
+      waypoints.shift();
+      if (!waypoints.length) this.releaseStackLift(body);
+      return;
+    }
+    // Move in separate vertical and horizontal legs to clear the actual stack.
+    const speed = waypoints.length === 1 ? 2.8 : 4.8;
+    body.setNextKinematicTranslation(lerp(position, target, Math.min(1, speed * this.game.physics.fixedDt / gap)));
+    body.setNextKinematicRotation(slerp(body.rotation(), Q(), .16));
+  }
+
+  private releaseStackLift(body: RigidBody): void {
+    this.stackLift = null;
+    body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
+    body.setLinvel(V(), true);
+    body.setAngvel(V(), true);
+    this.game.water.track(body);
+  }
+
   private gnomeBuried(position: { x: number; y: number; z: number }): boolean {
     const { island, colliders } = this.game;
     const approximate = heightAt(island, position.x, position.z);
@@ -430,6 +530,7 @@ export class GigSession {
       : undefined;
     this.setHayTowCollider(hay ? this.game.colliders.props.get(hay.id) ?? null : null);
     if (run?.status === 'running') {
+      if (run.setup.config.kind === 'stack-up') this.moveStackLift(run);
       if (run.setup.config.kind === 'escort-the-gnome' &&
           abilities.some(action => action.type === 'headbutt' || action.type === 'flop' || action.type === 'bleat')) {
         this.gnomeRiskUntil = this.game.physics.stepCount + 12;
@@ -472,7 +573,8 @@ export class GigSession {
         }
         props.push({ id, position: { ...position }, velocity: { ...body.linvel() },
           tilt: Math.acos(up), impact, heldByTongue: held === body.handle,
-          carried: held === body.handle, broken: !!entry?.broken || this.game.destroyedProps.has(id),
+          carried: held === body.handle || this.stackLift?.body.handle === body.handle,
+          broken: !!entry?.broken || this.game.destroyedProps.has(id),
           ...(gnome && this.gnomeBuried(position) ? { unreachable: true } : {}) });
       }
     }
@@ -495,7 +597,8 @@ export class GigSession {
   }
   saveBodies(): GigBodySave[] {
     const save = (id: string, body: RigidBody, broken: boolean): GigBodySave => ({
-      id, position: { ...body.translation() }, velocity: { ...body.linvel() },
+      id, position: { ...body.translation() },
+      velocity: this.stackLift?.body.handle === body.handle ? V() : { ...body.linvel() },
       rotation: { ...body.rotation() }, broken,
     });
     const bodies = [...this.temporary].map(([id, { body, broken }]) => save(id, body, broken));
@@ -511,6 +614,7 @@ export class GigSession {
   }
   get props(): ReadonlyMap<string, TemporaryProp> { return this.temporary; }
   private clear(): void {
+    this.stackLift = null;
     this.setHayTowCollider(null);
     for (const { body } of this.temporary.values()) {
       this.game.water.untrack(body);

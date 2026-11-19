@@ -794,6 +794,11 @@ export class GameHud {
     // Enter a little inside the interaction radius to avoid blinking at its edge.
     const boardInRange = game.gigs.nearBoard(this.board.hidden ? 8.75 : 9) !== null;
     const carryStamina = carryStaminaForHud(game.party.match, 'player');
+    const stackLiftCue = game.gigs.stackLiftCue;
+    const stackLiftPrompt = stackLiftCue === 'ready' ?
+      (device === 'gamepad' ? 'Press right stick to lift' : 'R · Lift crate') :
+      stackLiftCue === 'moving' ? 'Lifting crate' :
+        stackLiftCue === 'clear' ? 'Step clear of the pad' : undefined;
     const state = deriveHudState({
       tier: rules.style.tier, meter: rules.style.meter, score: rules.style.score,
       combo: rules.style.combo, stamina: carryStamina ?? rules.abilities.stamina,
@@ -806,7 +811,7 @@ export class GameHud {
         title: run.setup.info.title, status: run.status, objective: run.objective,
         elapsedTicks: run.elapsedTicks, maxTicks: run.setup.maxTicks,
         goldTicks: run.setup.goldTicks, silverTicks: run.setup.silverTicks,
-        rating: run.rating, payout: run.payout,
+        rating: run.rating, payout: run.payout, stackLiftPrompt,
       } : null,
     });
 

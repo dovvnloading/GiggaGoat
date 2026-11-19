@@ -405,20 +405,25 @@ export class GigDirector {
       }
       case 'stack-up': {
         const eligible = c.crateIds.map(id => props.get(id)).filter((p): p is PropFact =>
-          !!p && !p.broken && planar(p.position, c.center) <= 1.45 &&
+          !!p && !p.broken && !p.carried && !p.heldByTongue && planar(p.position, c.center) <= 1.45 &&
           (p.tilt ?? 0) <= 0.22 &&
           Math.hypot(p.velocity?.x ?? 0, p.velocity?.y ?? 0, p.velocity?.z ?? 0) <= 0.38);
-        let layers = 0;
-        const used = new Set<string>();
+        let stacks: PropFact[][] = [[]];
         for (let i = 0; i < c.crateIds.length; i++) {
           const expected = c.groundY + c.crateHeight * (i + 0.5);
-          const found = eligible.find(p => !used.has(p.id) && Math.abs(p.position.y - expected) <= 0.33);
-          if (!found) break;
-          used.add(found.id);
-          layers++;
+          const next = stacks.flatMap(stack => {
+            const support = stack.at(-1);
+            return eligible.filter(p => !stack.includes(p) && Math.abs(p.position.y - expected) <= 0.33 &&
+              (!support || planar(p.position, support.position) <= c.crateHeight * 0.65))
+              .map(p => [...stack, p]);
+          });
+          if (!next.length) break;
+          stacks = next;
         }
-        run.metrics.maxLayers = layers;
-        run.stableTicks = layers >= c.requiredLayers ? run.stableTicks + 1 : 0;
+        const stacked = stacks[0]!;
+        run.finishedIds = stacked.map(p => p.id);
+        run.metrics.maxLayers = stacked.length;
+        run.stableTicks = stacked.length >= c.requiredLayers ? run.stableTicks + 1 : 0;
         done = run.stableTicks >= c.holdTicks;
         break;
       }

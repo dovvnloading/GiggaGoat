@@ -864,7 +864,7 @@ export class Game {
           }
         }
       } else if (cmd.action === 'reel') {
-        g.interactions.setReel(-1);
+        if (!player || !this.gigs.startStackLift()) g.interactions.setReel(-1);
       } else if (cmd.action === 'fling') {
         const target = g.interactions.tongueBody;
         if (target?.isDynamic()) {

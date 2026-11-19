@@ -25,6 +25,7 @@ export interface HudInput {
     maxTicks: number;
     goldTicks: number;
     silverTicks: number;
+    stackLiftPrompt?: string;
     rating?: Rating;
     payout?: number;
   } | null;
@@ -95,7 +96,8 @@ function runningGigText(run: NonNullable<HudInput['gig']>): Pick<HudState['gig']
       };
     case 'stack':
       return {
-        task: objective.layers >= objective.required ? 'Keep the stack still' : 'Stack in the marked zone',
+        task: run.stackLiftPrompt ??
+          (objective.layers >= objective.required ? 'Keep the stack still' : 'Tow a crate to the pad'),
         detail: objective.layers >= objective.required
           ? 'HOLD ' + Math.ceil((objective.holdTicks - objective.stableTicks) / 60) + 's MORE · ' + remaining
           : formatHudObjective(objective) + ' · ' + remaining,
