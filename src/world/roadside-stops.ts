@@ -11,23 +11,27 @@ interface StopProp {
   depth: number;
   yaw?: number;
   mass?: number;
+  breakable?: boolean;
   shape?: PropDescriptor['shape'];
 }
 
 interface StopPlan {
   id: string;
-  title: string;
   road: string;
   near: Vec2;
   side: -1 | 1;
+  props: StopProp[];
+}
+
+interface SignedStopPlan extends StopPlan {
+  title: string;
   sign: string;
   gravel: number;
-  props: StopProp[];
 }
 
 const SIGN = { name: 'sign', kind: 'sign', along: -4.8, across: 6.5,
   width: 3, height: 2.35, depth: .5 } as const;
-const STOPS: StopPlan[] = [
+const STOPS: SignedStopPlan[] = [
   {
     id: 'meadow-picnic', title: 'MEADOW PICNIC', road: 'hoofington--baa-ardwalk',
     near: { x: -68, z: 209 }, side: -1, sign: '#355b39', gravel: 0xc3a574,
@@ -70,15 +74,26 @@ const STOPS: StopPlan[] = [
   },
 ];
 
-export interface RoadsideStop {
-  plan: StopPlan;
+const COAST_TURNOUT: StopPlan = {
+  id: 'coast-turnout', road: 'baa-ardwalk--downtown-bleatsville',
+  near: { x: 95.565, z: 211.5 }, side: 1,
+  props: [
+    { name: 'bench', kind: 'bench', along: -2.65, across: 6.15,
+      width: 2.05, height: .92, depth: .78, yaw: Math.PI / 2 },
+    { name: 'gnome', kind: 'gnome', along: 2.1, across: 6.8,
+      width: .65, height: .9, depth: .68, mass: 7, yaw: .2, breakable: false },
+  ],
+};
+
+export interface RoadsideStop<Plan extends StopPlan = SignedStopPlan> {
+  plan: Plan;
   origin: Vec2;
   tangent: Vec2;
   normal: Vec2;
   scale: number;
 }
 
-function pointAt(site: RoadsideStop, along: number, across: number): Vec2 {
+function pointAt(site: RoadsideStop<StopPlan>, along: number, across: number): Vec2 {
   const { origin, tangent, normal, scale } = site;
   return {
     x: origin.x + (tangent.x * along + normal.x * across) * scale,
@@ -86,7 +101,7 @@ function pointAt(site: RoadsideStop, along: number, across: number): Vec2 {
   };
 }
 
-function frame(plan: StopPlan, origin: Vec2, yaw: number, scale: number): RoadsideStop {
+function frame<Plan extends StopPlan>(plan: Plan, origin: Vec2, yaw: number, scale: number): RoadsideStop<Plan> {
   const tangent = { x: Math.sin(yaw), z: Math.cos(yaw) };
   return { plan, origin, tangent, normal: { x: -tangent.z * plan.side, z: tangent.x * plan.side }, scale };
 }
@@ -95,7 +110,7 @@ function propId(plan: StopPlan, name: string): string {
   return 'roadside-' + plan.id + '-' + name;
 }
 
-function makeProp(island: IslandData, site: RoadsideStop, prop: StopProp): PropDescriptor {
+function makeProp(island: IslandData, site: RoadsideStop<StopPlan>, prop: StopProp): PropDescriptor {
   const { scale } = site;
   const point = pointAt(site, prop.along, prop.across);
   const size = { x: prop.width * scale, y: prop.height * scale, z: prop.depth * scale };
@@ -105,7 +120,7 @@ function makeProp(island: IslandData, site: RoadsideStop, prop: StopProp): PropD
       rotationY: Math.atan2(site.tangent.x, site.tangent.z) + (prop.yaw ?? 0) },
     shape: prop.shape ?? 'cuboid',
     body: prop.mass === undefined ? { type: 'static' } : { type: 'dynamic', mass: prop.mass },
-    collidable: true, breakable: prop.mass !== undefined,
+    collidable: true, breakable: prop.breakable ?? (prop.mass !== undefined),
     lickable: prop.kind !== 'flag' && prop.kind !== 'sign',
     climbable: prop.kind === 'ramp' || prop.kind === 'log' || prop.kind === 'rock',
   };
@@ -123,9 +138,9 @@ function propClearance(p: PropDescriptor, point: Vec2): number {
     Math.max(0, Math.abs(s * dx + c * dz) - p.size.z / 2));
 }
 
-function terrainClear(island: IslandData, site: RoadsideStop, nearby: PropDescriptor[]): boolean {
+function terrainClear(island: IslandData, site: RoadsideStop<StopPlan>, nearby: PropDescriptor[], end: number): boolean {
   const { scale } = site;
-  for (let across = 4; across <= 23; across++) {
+  for (let across = 4; across <= end; across++) {
     const prev = pointAt(site, 0, across - 1);
     const current = pointAt(site, 0, across);
     const ground = gridSample(island, current.x, current.z);
@@ -133,6 +148,15 @@ function terrainClear(island: IslandData, site: RoadsideStop, nearby: PropDescri
     if (nearby.some(p => p.collidable && propClearance(p, current) < 1.05 * scale)) return false;
   }
   return true;
+}
+
+function seatCoastBench(island: IslandData, site: RoadsideStop<StopPlan>, bench: PropDescriptor): void {
+  const { along, across, width, depth } = COAST_TURNOUT.props[0]!;
+  const corners = [-.5, .5].flatMap(u => [-.5, .5].map(v => {
+    const p = pointAt(site, along + u * width, across + v * depth);
+    return gridSample(island, p.x, p.z);
+  }));
+  bench.transform.position.y = Math.min(...corners) + bench.size.y / 2 - .02 * site.scale;
 }
 
 function propsClear(island: IslandData, props: PropDescriptor[], nearby: PropDescriptor[], scale: number): boolean {
@@ -152,22 +176,24 @@ function propsClear(island: IslandData, props: PropDescriptor[], nearby: PropDes
 export function makeRoadsideProps(island: IslandData): PropDescriptor[] {
   const scale = island.size / 600;
   const result: PropDescriptor[] = [];
-  for (const plan of STOPS) {
+  for (const plan of [...STOPS, COAST_TURNOUT]) {
     const road = island.roads.find(r => r.id === plan.road);
     if (!road) continue;
+    const signed = 'sign' in plan;
     const target = { x: plan.near.x * scale, z: plan.near.z * scale };
     const candidates = road.points.flatMap((origin, i) => {
       const distance = Math.hypot(origin.x - target.x, origin.z - target.z);
-      if (i === 0 || i === road.points.length - 1 || distance > 47 * scale || origin.bridge) return [];
+      if (i === 0 || i === road.points.length - 1 || distance > (signed ? 47 : 12) * scale || origin.bridge) return [];
       const a = road.points[i - 1]!, b = road.points[i + 1]!;
       return [{ distance, site: frame(plan, origin, Math.atan2(b.x - a.x, b.z - a.z), scale) }];
     }).sort((a, b) => a.distance - b.distance);
 
     for (const { site } of candidates) {
-      const props = [SIGN, ...plan.props].map(prop => makeProp(island, site, prop));
+      const props = (signed ? [SIGN, ...plan.props] : plan.props).map(prop => makeProp(island, site, prop));
+      if (!signed) seatCoastBench(island, site, props[0]!);
       const nearby = island.props.filter(prop => Math.hypot(site.origin.x - prop.transform.position.x,
         site.origin.z - prop.transform.position.z) < 34 * scale + radius(prop));
-      if (!terrainClear(island, site, nearby) || !propsClear(island, props, nearby, scale)) continue;
+      if (!terrainClear(island, site, nearby, signed ? 23 : 7) || !propsClear(island, props, nearby, scale)) continue;
       result.push(...props);
       break;
     }
