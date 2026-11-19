@@ -17,6 +17,7 @@ class NodeStub {
   className = '';
   id = '';
   hidden = false;
+  visibility = 'visible';
   textContent = '';
   tagName = 'DIV';
   type = '';
@@ -60,6 +61,7 @@ class NodeStub {
       const node = tag === 'button' ? new ButtonStub(this.doc) :
         tag === 'select' ? new SelectStub(this.doc) : new InputStub(this.doc);
       node.tagName = tag.toUpperCase();
+      node.tabIndex = 0;
       node.owner = this;
       for (const attr of (match[2] ?? '').matchAll(/([\w:-]+)(?:="([^"]*)")?/g))
         node.setAttribute(attr[1]!, attr[2] ?? '');
@@ -78,6 +80,7 @@ class NodeStub {
     this.attrs.set(name, value);
     if (name === 'id') this.id = value;
     if (name === 'type') this.type = value;
+    if (name === 'tabindex') this.tabIndex = Number(value);
     if (name === 'value') this.value = value;
     if (name === 'min') this.min = value;
     if (name === 'max') this.max = value;
@@ -93,7 +96,8 @@ class NodeStub {
   contains(child: NodeStub | null): boolean {
     return child === this || !!child && this.controls.includes(child);
   }
-  matches(_selector: string): boolean { return false; }
+  matches(selector: string): boolean { return selector === ':disabled' && this.hasAttribute('disabled'); }
+  getClientRects(): unknown[] { return this.hidden ? [] : [{}]; }
   closest<T = NodeStub>(selector: string): T | null {
     if (selector === 'button[data-sprite-normal]')
       return (this.tagName === 'BUTTON' && this.hasAttribute('data-sprite-normal') ? this : null) as T | null;
@@ -109,6 +113,10 @@ class NodeStub {
       return (this.resultScrollHint ? [this.resultScrollHint] : []) as T[];
     if (selector === '#gg-gameplay-controls') return (this.controlReference ? [this.controlReference] : []) as T[];
     if (selector === 'button,select,input') return this.controls as T[];
+    if (selector === 'button,select,input,[tabindex]') return [
+      ...(this.standings ? [this.standings] : []), ...this.controls,
+      ...(this.controlReference ? [this.controlReference] : []),
+    ] as T[];
     if (selector === 'button') return this.controls.filter(n => n.tagName === 'BUTTON') as T[];
     const match = /^\[([\w-]+)(?:(\^?=)"([^"]+)")?\]$/.exec(selector);
     if (match) return [...this.controls, ...this.brief].filter(n => {
@@ -185,6 +193,7 @@ function setup(audio?: ConstructorParameters<typeof GameMenu>[4]) {
   vi.stubGlobal('HTMLButtonElement', ButtonStub);
   vi.stubGlobal('HTMLInputElement', InputStub);
   vi.stubGlobal('HTMLSelectElement', SelectStub);
+  vi.stubGlobal('getComputedStyle', (node: NodeStub) => ({ visibility: node.visibility }));
   vi.stubGlobal('navigator', { getGamepads: () => [] });
   const host = new NodeStub(doc);
   const game = {
@@ -337,6 +346,7 @@ describe('sprite-backed menu DOM', () => {
         for (const tab of tabs()) {
           const active = tab.dataset.tab === selected;
           expect(tab.attrs.get('aria-selected')).toBe(String(active));
+          expect(tab.tabIndex).toBe(active ? 0 : -1);
           expect(tab.dataset.spriteNormal).toBe(active ? MENU_SPRITES.yellowNormal : MENU_SPRITES.purpleNormal);
           expect(tab.dataset.spriteHover).toBe(active ? MENU_SPRITES.yellowHover : MENU_SPRITES.purpleHover);
           expect(tab.dataset.spritePressed).toBe(active ? MENU_SPRITES.yellowPressed : MENU_SPRITES.purplePressed);
@@ -356,6 +366,21 @@ describe('sprite-backed menu DOM', () => {
         preventDefault: vi.fn(), stopPropagation: vi.fn() });
       checkTabs('video');
       expect(doc.activeElement).toBe(tabs()[1]);
+      const tabDefault = vi.fn();
+      win.dispatch('keydown', { code: 'Tab', preventDefault: tabDefault });
+      expect(tabDefault).not.toHaveBeenCalled();
+      const stops = root.querySelectorAll('button,select,input,[tabindex]').filter(node => node.tabIndex >= 0);
+      const fov = stops[stops.indexOf(tabs()[1]!) + 1]!;
+      expect(fov.id).toBe('gg-setting-fov');
+      const graphics = root.querySelector('[id="gg-setting-graphics"]')!;
+      const nativeArrow = vi.fn();
+      for (const control of [fov, graphics]) {
+        control.focus();
+        win.dispatch('keydown', { code: 'ArrowDown', preventDefault: nativeArrow });
+        win.dispatch('keydown', { code: 'ArrowRight', preventDefault: nativeArrow });
+        expect(doc.activeElement).toBe(control);
+      }
+      expect(nativeArrow).not.toHaveBeenCalled();
       tabs()[2]!.click();
       checkTabs('audio');
       expect(root.innerHTML).toMatch(/id="gg-setting-musicVolume"[^>]*step="0.01" value="0.52"/);
@@ -365,6 +390,7 @@ describe('sprite-backed menu DOM', () => {
 
       root.querySelector<ButtonStub>('[data-action="back"]')!.click();
       expect(root.querySelector('[data-action="play"]')).not.toBeNull();
+      expect(doc.activeElement).toBe(root.querySelector('[data-action="settings"]'));
 
       setScreen('pause');
       root.querySelector<ButtonStub>('[data-action="settings"]')!.click();
@@ -374,6 +400,49 @@ describe('sprite-backed menu DOM', () => {
       ] });
       view.onFrame?.();
       expect(root.querySelector('[data-action="resume"]')).not.toBeNull();
+      expect(doc.activeElement).toBe(root.querySelector('[data-action="settings"]'));
+    } finally { menu.dispose(); }
+  });
+
+  it('wraps modal Tab within visible enabled controls and leaves browser shortcuts alone', () => {
+    const { menu, doc, win, root, setScreen } = setup();
+    try {
+      const play = root.querySelector('[data-action="play"]')!;
+      const party = root.querySelector('[data-action="party"]')!;
+      const settings = root.querySelector('[data-action="settings"]')!;
+      const tab = (shiftKey = false, ctrlKey = false): boolean => {
+        const preventDefault = vi.fn();
+        win.dispatch('keydown', { code: 'Tab', shiftKey, ctrlKey, preventDefault });
+        return preventDefault.mock.calls.length > 0;
+      };
+      expect(doc.activeElement).toBe(play);
+      expect(tab()).toBe(false);
+      expect(tab(true)).toBe(true);
+      expect(doc.activeElement).toBe(settings);
+      expect(tab(false, true)).toBe(false);
+      expect(tab()).toBe(true);
+      expect(doc.activeElement).toBe(play);
+
+      party.setAttribute('disabled', '');
+      settings.hidden = true;
+      expect(tab(true)).toBe(true);
+      expect(doc.activeElement).toBe(play);
+      settings.hidden = false;
+      settings.visibility = 'hidden';
+      expect(tab(true)).toBe(true);
+      expect(doc.activeElement).toBe(play);
+      setScreen('playing');
+      expect(tab()).toBe(false);
+    } finally { menu.dispose(); }
+  });
+
+  it.each(['title', 'pause'])('restores the Party launcher when returning to %s', origin => {
+    const { menu, doc, win, root, setScreen } = setup();
+    try {
+      setScreen(origin);
+      root.querySelector<ButtonStub>('[data-action="party"]')!.click();
+      win.dispatch('keydown', { code: 'Escape', preventDefault: vi.fn(), stopPropagation: vi.fn() });
+      expect(doc.activeElement).toBe(root.querySelector('[data-action="party"]'));
     } finally { menu.dispose(); }
   });
 
@@ -448,7 +517,7 @@ describe('sprite-backed menu DOM', () => {
   });
 
   it('protects an active gig before launching a party and keeps setup when going back', () => {
-    const { menu, doc, win, game, root, view } = setup();
+    const { menu, doc, win, game, root, view, setScreen } = setup();
     try {
       const catalog = new GigCatalog(generateIsland({ resolution: 97 }));
       const director = new GigDirector(catalog);
@@ -472,11 +541,23 @@ describe('sprite-backed menu DOM', () => {
       expect(doc.activeElement).toBe(root.querySelector('[data-action="keep-gig"]'));
       key('Escape');
       expect(root.innerHTML).toContain('<option value="king-of-the-peak" selected>');
+      expect(doc.activeElement).toBe(root.querySelector('[data-action="start-party"]'));
       confirm();
       root.querySelector<ButtonStub>('[data-action="keep-gig"]')!.click();
       expect(view.paused).toBe(false);
       expect(game.gigs.active?.status).toBe('running');
       expect(game.party.start).not.toHaveBeenCalled();
+
+      setScreen('pause');
+      root.querySelector<ButtonStub>('[data-action="party"]')!.click();
+      confirm();
+      root.querySelector<ButtonStub>('[data-action="keep-gig"]')!.click();
+      expect(view.paused).toBe(true);
+      expect(doc.activeElement).toBe(root.querySelector('[data-action="party"]'));
+      expect(game.gigs.active?.status).toBe('running');
+      expect(game.party.start).not.toHaveBeenCalled();
+
+      root.querySelector<ButtonStub>('[data-action="resume"]')!.click();
       key('KeyP');
       confirm();
       root.querySelector<ButtonStub>('[data-action="confirm-party"]')!.click();
@@ -531,7 +612,7 @@ describe('sprite-backed menu DOM', () => {
   });
 
   it('reuses the quick-start bindings in the Controls tab and returns directly to pause', () => {
-    const { menu, win, root, view, setScreen } = setup();
+    const { menu, doc, win, root, view, setScreen } = setup();
     try {
       expect(root.innerHTML).toContain('QUICK START');
       for (const action of ['Move', 'Lick', 'Headbutt', 'Toggle Hay-Build']) {
@@ -559,6 +640,7 @@ describe('sprite-backed menu DOM', () => {
       win.dispatch('keydown', { code: 'Escape', repeat: false,
         preventDefault: vi.fn(), stopPropagation: vi.fn() });
       expect(root.querySelector('[data-action="resume"]')).not.toBeNull();
+      expect(doc.activeElement).toBe(root.querySelector('[data-action="settings"]'));
     } finally { menu.dispose(); }
   });
 
@@ -573,7 +655,7 @@ describe('sprite-backed menu DOM', () => {
         .toBeLessThan(root.innerHTML.indexOf('id="gg-setting-mouseSensitivity"'));
       const intoView = vi.spyOn(reference, 'scrollIntoView');
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 2; i++) {
         win.dispatch('keydown', { code: 'ArrowDown', preventDefault: vi.fn() });
       }
       expect(doc.activeElement).toBe(jump);
@@ -583,6 +665,9 @@ describe('sprite-backed menu DOM', () => {
       const preventDefault = vi.fn();
       win.dispatch('keydown', { code: 'ArrowDown', preventDefault });
       expect(preventDefault).not.toHaveBeenCalled();
+      win.dispatch('keydown', { code: 'Tab', preventDefault });
+      expect(preventDefault).toHaveBeenCalledOnce();
+      expect(doc.activeElement).toBe(root.querySelector('[data-action="back"]'));
 
       jump.focus();
       vi.stubGlobal('navigator', { getGamepads: () => [
@@ -744,7 +829,11 @@ describe('sprite-backed menu DOM', () => {
       expect(standings.scrollTop).toBe(7);
       expect(panel.scrollTop).toBe(0);
 
-      standings.focus();
+      title.focus();
+      const tabDefault = vi.fn();
+      win.dispatch('keydown', { code: 'Tab', preventDefault: tabDefault });
+      expect(tabDefault).toHaveBeenCalledOnce();
+      expect(doc.activeElement).toBe(standings);
       standings.clientHeight = standings.scrollHeight;
       resizeStandings();
       expect(hint.hidden).toBe(true);

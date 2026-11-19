@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PartyMatch } from './match';
 import { makeMockIsland } from './mock-island';
 import { frame, goat } from './test-utils';
-import type { GoatObservation, ModeArena } from './types';
+import type { GoatObservation, ModeArena, PlayerSpec } from './types';
 
 function arena(): ModeArena {
   const base = makeMockIsland();
@@ -11,14 +11,19 @@ function arena(): ModeArena {
     { teamId: 'blue', position: { x: 10, y: 15, z: 0 }, radius: 3 },
   ] };
 }
-function heist(config: Partial<ConstructorParameters<typeof PartyMatch>[0]['config']> = {}): PartyMatch {
+function heist(
+  config: Partial<ConstructorParameters<typeof PartyMatch>[0]['config']> = {},
+  players: readonly PlayerSpec[] = [
+    { id: 'a', name: 'a', teamId: 'red' }, { id: 'b', name: 'b', teamId: 'blue' },
+  ],
+): PartyMatch {
   const match = new PartyMatch({ mode: 'hay-heist', config: {
     countdownTicks: 0, durationTicks: 600, hayPerTeam: 1,
     hayTargetScore: 2, hayPickupRadius: 3, ...config,
   } }, arena());
-  for (const [id, teamId] of [['a', 'red'], ['b', 'blue']]) {
-    match.join({ id: id!, teamId: teamId!, name: id! });
-    match.setReady(id!, true);
+  for (const player of players) {
+    match.join(player);
+    match.setReady(player.id, true);
   }
   match.start();
   return match;
@@ -27,6 +32,10 @@ const red = (x: number, facingX = 1): GoatObservation => ({
   ...goat('a', x, 0, 16), facing: { x: facingX, z: 0 },
 });
 const blue = (x: number): GoatObservation => goat('b', x, 0, 16);
+const racers = [
+  { id: 'player', name: 'YOU', teamId: 'red' },
+  { id: 'bot-1', name: 'Rival', teamId: 'blue', bot: true },
+];
 
 describe('HAY HEIST — barn scoring and cargo physics contracts', () => {
   it('steals ONLY enemy hay and scores it at the carrier team barn', () => {
@@ -63,6 +72,47 @@ describe('HAY HEIST — barn scoring and cargo physics contracts', () => {
     }
     expect(blueStock().map(bale => bale.position)).toEqual(initial);
     expect(blueStock().every(bale => bale.carrierId === null && bale.lastTouchedTeam === null)).toBe(true);
+  });
+
+  it.each([
+    { humanDistance: .2, botDistance: 2.85, winner: 'player' },
+    { humanDistance: 2.85, botDistance: .2, winner: 'bot-1' },
+    { humanDistance: .8, botDistance: .8, winner: 'bot-1' },
+  ])('awards contested loose hay to $winner at player $humanDistance m and rival $botDistance m',
+    ({ humanDistance, botDistance, winner }) => {
+      const match = heist({}, racers);
+      const player = (x: number) => goat('player', x, 0, 16);
+      const rival = (x: number) => goat('bot-1', x, 0, 16);
+      match.step({ ...frame(player(10.9), rival(20)), intents: { player: { tongue: true } } });
+      match.step(frame(player(0), rival(20)));
+      // Allow the release cooldown to expire before either goat tries to pick up the loose bale.
+      match.step(frame(player(-5), rival(20)));
+      const loose = match.bales.find(bale => bale.id === 'blue-hay-1')!;
+      expect(loose).toMatchObject({ carrierId: null, position: { x: 0 } });
+
+      const events = match.step({
+        ...frame(goat('player', humanDistance, 0, loose.position.y + 1),
+          goat('bot-1', -botDistance, 0, loose.position.y + 1)),
+        intents: { player: { tongue: true }, 'bot-1': { tongue: true } },
+      });
+      expect(events.filter(event => event.type === 'hay.picked')).toEqual([
+        expect.objectContaining({ baleId: 'blue-hay-1', playerId: winner }),
+      ]);
+    });
+
+  it('lets a second claimant take another bale and assigns one bale per goat', () => {
+    const match = heist({ hayPerTeam: 3 }, [...racers,
+      { id: 'bot-2', name: 'Teammate', teamId: 'red', bot: true },
+    ]);
+    const { x, y, z } = match.bales.find(bale => bale.id === 'blue-hay-1')!.position;
+    const events = match.step({
+      ...frame(goat('player', x + .2, z, y + 1), goat('bot-1', x, z, y + 1), goat('bot-2', x + .8, z, y + 1)),
+      intents: { player: { tongue: true }, 'bot-1': { tongue: true }, 'bot-2': { tongue: true } },
+    });
+    expect(events.filter(event => event.type === 'hay.picked')).toEqual([
+      expect.objectContaining({ baleId: 'blue-hay-1', playerId: 'player' }),
+      expect.objectContaining({ playerId: 'bot-2' }),
+    ]);
   });
 
   it('recovers stolen friendly hay without repeatedly picking it up at home', () => {
