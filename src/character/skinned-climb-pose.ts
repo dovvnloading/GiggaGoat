@@ -43,8 +43,10 @@ export class SkinnedClimbPose {
   private readonly rotation = new THREE.Quaternion();
   private readonly parentRotation = new THREE.Quaternion();
   private readonly delta = new THREE.Quaternion();
+  private readonly neckAnimation = new THREE.Quaternion();
+  private readonly bodyLean = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -.20);
 
-  private constructor(private readonly legs: ClimbingLeg[]) {}
+  private constructor(private readonly legs: ClimbingLeg[], private readonly neck: THREE.Bone | null) {}
 
   static create(model: THREE.Group, variant: GoatVariant,
     soles: readonly (readonly [number, number])[]): SkinnedClimbPose | null {
@@ -68,7 +70,8 @@ export class SkinnedClimbPose {
       legs.push({ hip, knee, toe, sole, toeOffset, hipAnimation: new THREE.Quaternion(),
         kneeAnimation: new THREE.Quaternion(), foothold: new THREE.Vector3(), planted: false });
     }
-    return new SkinnedClimbPose(legs);
+    const neck = model.getObjectByName(variant === 'hero' ? 'joint_17' : 'neck_01');
+    return new SkinnedClimbPose(legs, neck instanceof THREE.Bone ? neck : null);
   }
 
   restore(): void {
@@ -77,6 +80,7 @@ export class SkinnedClimbPose {
       leg.hip.quaternion.copy(leg.hipAnimation);
       leg.knee.quaternion.copy(leg.kneeAnimation);
     }
+    if (this.neck) this.neck.quaternion.copy(this.neckAnimation);
     this.applied = false;
   }
 
@@ -97,7 +101,7 @@ export class SkinnedClimbPose {
     }
     this.down.copy(UP).negate().addScaledVector(this.normal, this.normal.y).normalize();
     this.right.crossVectors(this.normal, this.down);
-    this.rotation.setFromRotationMatrix(this.basis.makeBasis(this.right, this.normal, this.down));
+    this.rotation.setFromRotationMatrix(this.basis.makeBasis(this.right, this.normal, this.down)).multiply(this.bodyLean);
     this.origin.copy(torso).sub(this.planePoint);
     const distance = this.origin.dot(this.normal);
     this.origin.copy(torso).addScaledVector(this.normal, -distance);
@@ -107,6 +111,11 @@ export class SkinnedClimbPose {
     model.quaternion.slerp(this.rotation, this.weight);
     model.updateWorldMatrix(true, true);
     this.applied = true;
+    if (this.neck) {
+      this.neckAnimation.copy(this.neck.quaternion);
+      this.delta.setFromAxisAngle(this.right, -.43);
+      this.rotateBone(this.neck);
+    }
     for (const [i, leg] of this.legs.entries()) {
       const step = climbStep(this.phase, i === 1 || i === 2);
       this.target.copy(this.origin).addScaledVector(this.right, leg.sole.x * size)
@@ -150,6 +159,10 @@ export class SkinnedClimbPose {
     this.from.subVectors(end, pivot).normalize();
     this.to.subVectors(goal, pivot).normalize();
     this.delta.setFromUnitVectors(this.from, this.to);
+    this.rotateBone(bone);
+  }
+
+  private rotateBone(bone: THREE.Bone): void {
     bone.parent!.getWorldQuaternion(this.parentRotation);
     this.rotation.copy(this.parentRotation).invert().multiply(this.delta).multiply(this.parentRotation)
       .multiply(bone.quaternion);
