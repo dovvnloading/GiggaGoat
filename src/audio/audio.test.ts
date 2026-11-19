@@ -276,9 +276,11 @@ class MockOsc extends MockNode {
   frequency = new MockParam();
   onended: ((ev: Event) => void) | null = null;
   started = false;
+  startedAt = -Infinity;
   stopped = false;
-  start(): void { this.started = true; }
-  stop(): void { this.stopped = true; }
+  stopsAt = Infinity;
+  start(at = 0): void { this.started = true; this.startedAt = at; }
+  stop(at = 0): void { this.stopped = true; this.stopsAt = at; }
   finish(): void { this.onended?.(new Event('ended')); }
 }
 class MockSource extends MockOsc { buffer: unknown; loop = false; }
@@ -301,11 +303,12 @@ class MockContext {
     forwardX: new MockParam(), forwardY: new MockParam(), forwardZ: new MockParam(),
     upX: new MockParam(), upY: new MockParam(), upZ: new MockParam(),
   };
+  gains: MockGain[] = [];
   oscillators: MockOsc[] = [];
   sources: MockSource[] = [];
   compressors: MockCompressor[] = [];
   panners: MockPanner[] = [];
-  createGain(): MockGain { return new MockGain(); }
+  createGain(): MockGain { const gain = new MockGain(); this.gains.push(gain); return gain; }
   createOscillator(): MockOsc { const o = new MockOsc(); this.oscillators.push(o); return o; }
   createBufferSource(): MockSource { const s = new MockSource(); this.sources.push(s); return s; }
   createBiquadFilter(): MockFilter { return new MockFilter(); }
@@ -342,6 +345,51 @@ describe('mocked WebAudio integration', () => {
     audio.dispose();
     expect(audio.status.unlocked).toBe(false);
     expect(await audio.unlock()).toBe(false);
+  });
+
+  it.each([
+    { kind: 'gig', gigs: [gigFixtures[5]!], modes: [], sounds: ['gig-success', 'rating-gold'], seconds: 1.588 },
+    { kind: 'gig', gigs: [gigFixtures[3]!], modes: [], sounds: ['gig-fail'], seconds: 1.02 },
+    { kind: 'party', gigs: [], modes: [modeFixtures.at(-1)!], sounds: ['victory'], seconds: 1.99 },
+  ] as const)('keeps $sounds on the effects bus through its result and cancels them on exit', async result => {
+    const ctx = new MockContext();
+    const audio = new AudioEngine({ contextFactory: () => ctx.asAudioContext() });
+    try {
+      expect(audio.beginResultAudio(result.kind)).toBeNull();
+      expect(audio.audioContext).toBeNull();
+      audio.endResultAudio();
+      await audio.unlock();
+      ctx.currentTime = 12;
+      // makeGraph creates the master, duck, music, SFX, UI and ambience gains first.
+      const [master, , music, sfx, , ambience] = ctx.gains;
+      audio.setSettings({ master: .6, music: .4, sfx: .3, ambience: .2 });
+      audio.play('bleat');
+      audio.updateFrame({ dt: 1 / 60, gigs: result.gigs, modes: result.modes });
+      expect(audio.beginResultAudio(result.kind)).toBeCloseTo(12 + result.seconds);
+      expect(audio.voiceTickets.map(ticket => ticket.sound)).toEqual(result.sounds);
+      expect(master!.gain.value).toBe(.6);
+      expect(sfx!.gain.value).toBe(.3);
+      expect(music!.gain.value).toBe(0);
+      expect(ambience!.gain.value).toBe(0);
+
+      const oscillators = ctx.oscillators.length;
+      ctx.currentTime += .25;
+      audio.updateFrame({ dt: .25, gigs: result.gigs, modes: result.modes });
+      expect(ctx.oscillators).toHaveLength(oscillators);
+      const futureMedal = ctx.oscillators.filter(source => source.startedAt >= 12.78);
+      if (result.gigs[0]?.type === 'gig.completed') {
+        expect(futureMedal.some(source => source.startedAt === 12.78)).toBe(true);
+        expect(futureMedal.every(source => source.stopsAt > 12.78)).toBe(true);
+      }
+      audio.endResultAudio();
+      expect(audio.voiceTickets).toEqual([]);
+      expect(futureMedal.every(source => source.stopsAt === 0)).toBe(true);
+      expect(music!.gain.value).toBe(.4);
+      expect(ambience!.gain.value).toBe(.2);
+      expect(audio.play('ui-confirm')).toBe(true);
+    } finally {
+      audio.dispose();
+    }
   });
 
   it('synthesizes every catalog patch with finite duration and scheduled sources', () => {

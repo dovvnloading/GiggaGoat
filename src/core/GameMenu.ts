@@ -415,7 +415,11 @@ export class GameMenu {
       }
     }
     this.view.paused = next !== 'playing';
-    this.audio?.setPaused(this.view.paused || !!document.hidden);
+    if (!document.hidden && (next === 'gig-results' || next === 'party-results')) {
+      this.audio?.playResultAudio(next === 'gig-results' ? 'gig' : 'party');
+    } else {
+      this.audio?.setPaused(this.view.paused || !!document.hidden);
+    }
     this.view.input.setActive(next === 'playing');
     this.view.hud.setVisible(next === 'playing');
     if (next !== 'playing' && document.pointerLockElement === this.view.renderer.domElement) {
