@@ -1,14 +1,14 @@
 import { goatPitch, clamp } from './logic';
 import type { AudioLocation, MusicState, SoundId } from './logic';
 import type { SfxOptions, SoundRender } from './synth';
+import type { RECORDED_EFFECTS } from './recorded-effects';
 
-export type RecordedEffect = 'goat-bleat' | 'hoof-step-stone' | 'headbutt-wood' |
-  'tongue-latch' | 'water-flop-splash' | 'gig-reward';
+export type RecordedEffect = keyof typeof RECORDED_EFFECTS;
 type Track = 'farm' | 'town' | 'coast';
 
 export interface RecordedAssets {
   music: Readonly<Record<Track, string>>;
-  effects: Readonly<Record<RecordedEffect, string>>;
+  effects: Readonly<Partial<Record<RecordedEffect, string>>>;
 }
 
 const TRACKS: Readonly<Record<AudioLocation, Track>> = {
@@ -17,14 +17,24 @@ const TRACKS: Readonly<Record<AudioLocation, Track>> = {
   'old-lighthouse': 'coast', 'mt-gigga': 'coast',
 };
 const EFFECTS: Partial<Record<SoundId, RecordedEffect>> = {
-  bleat: 'goat-bleat', 'footstep-rock': 'hoof-step-stone', 'tongue-stick': 'tongue-latch',
+  bleat: 'goat-bleat',
+  'footstep-grass': 'footstep-grass', 'footstep-sand': 'footstep-sand',
+  'footstep-wood': 'footstep-wood', 'footstep-rock': 'hoof-step-stone',
+  'footstep-metal': 'footstep-metal', 'footstep-water': 'footstep-water',
+  jump: 'jump', 'flip-whoosh': 'flip-whoosh', landing: 'landing',
+  'ragdoll-flop': 'ragdoll-flop', climb: 'climb', 'headbutt-charge': 'headbutt-charge',
+  'tongue-shoot': 'tongue-shoot', 'tongue-stick': 'tongue-latch',
+  'tongue-reel': 'tongue-reel', 'tongue-snap': 'tongue-snap',
+  'build-place': 'build-place', 'build-snap': 'build-snap', 'build-collapse': 'build-collapse',
+  trampoline: 'trampoline', coin: 'coin', 'gig-fail': 'gig-fail', victory: 'victory',
+  'ui-click': 'ui-click', 'ui-back': 'ui-back', 'ui-confirm': 'ui-confirm',
 };
 
 /** Use the same unlocked context, volumes, and voice limits as the synthesized mix. */
 export class RecordedAudio {
   readonly proceduralOutput: GainNode;
   private readonly effects = new Map<RecordedEffect, AudioBuffer>();
-  private readonly failures = new Set<Track>();
+  private loadFailed = false;
   private target: Track | null = null;
   private due = 0;
   private pending: AbortController | null = null;
@@ -76,14 +86,15 @@ export class RecordedAudio {
       this.pending = null;
       this.ready = null;
       this.target = next;
+      this.loadFailed = false;
       this.due = now + (this.playing ? .85 : 0);
-      if (!next || this.failures.has(next)) this.useProcedural();
+      if (!next) this.useProcedural();
     }
     if (!next || this.playing?.track === next || now < this.due) return;
     if (this.ready?.track === next) {
       this.startTrack(next, this.ready.buffer);
       this.ready = null;
-    } else if (!this.pending && !this.failures.has(next)) {
+    } else if (!this.pending && !this.loadFailed) {
       void this.loadTrack(next);
     }
   }
@@ -98,8 +109,8 @@ export class RecordedAudio {
       if (!pending.signal.aborted && !this.disposed) this.ready = { track, buffer };
     } catch {
       if (!pending.signal.aborted && !this.disposed) {
-        this.failures.add(track);
-        if (track === this.target) this.useProcedural();
+        this.loadFailed = true;
+        this.useProcedural();
       }
     } finally {
       if (this.pending === pending) this.pending = null;

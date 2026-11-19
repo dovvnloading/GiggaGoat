@@ -14,7 +14,7 @@ import {
 } from '../gameplay';
 import {
   WaterSystem, BreakableRegistry, ChainReactions, SurfaceSystem,
-  DynamicBodyBudget, applyPhysicsMaterial,
+  DynamicBodyBudget, applyPhysicsMaterial, type DestructionEvent,
 } from '../chaos';
 import { addRapierPropCollider } from '../world/colliders';
 import { BOARDWALK_SHORE_GUARD_ID, BOARDWALK_SHORE_ID, boardwalkFarEnd, boardwalkPierDecks } from '../world/boardwalk';
@@ -77,6 +77,34 @@ export type GameVfxCue =
   | { type: 'headbutt-hit'; position: Vec3; direction: Vec3; power: number }
   | { type: 'crate-break'; position: Vec3; direction: Vec3; size: number };
 
+type KnockedBodyEvent = Extract<PhysicsEvent, { type: 'knockedBody' }>;
+type ImpactAudioMaterial = 'wood' | 'stone' | 'metal';
+type SceneryAudioMaterial = ImpactAudioMaterial | 'hay';
+
+/** Contact material retained when the simulation can remove the body in the same tick. */
+export type MaterialAudioContact =
+  | { type: 'headbutt'; event?: KnockedBodyEvent; material: ImpactAudioMaterial;
+      position: Vec3; goatId: string; intensity: number }
+  | { type: 'break'; event: DestructionEvent; material: SceneryAudioMaterial; position: Vec3 }
+  | { type: 'gnome-break'; position: Vec3 };
+
+function sceneryAudioMaterial(kind: unknown): SceneryAudioMaterial | undefined {
+  switch (kind) {
+    case 'crate': case 'barrel': case 'fence': case 'sign': case 'bench': case 'log':
+    case 'pallet-stack': case 'cable-spool':
+      return 'wood';
+    case 'rock': case 'ledge': case 'dam-wall': case 'planter': case 'gnome':
+    case 'concrete-slab': case 'concrete-column':
+      return 'stone';
+    case 'hay-bale':
+      return 'hay';
+    case 'lamp': case 'ac-unit': case 'container': case 'chain-fence': case 'pipe-stack':
+    case 'water-tower': case 'mailbox':
+      return 'metal';
+    default: return undefined;
+  }
+}
+
 /**
  * The entire game simulation, including collision, chaos, and scoring, is headless.
  * physics.step is the single clock. No DOM, Three, timers, or browser APIs live here.
@@ -106,6 +134,7 @@ export class Game {
   private readonly off: Array<() => void> = [];
   private readonly visualCueListeners = new Set<(cue: GoatVisualCue) => void>();
   private readonly vfxCueListeners = new Set<(cue: GameVfxCue) => void>();
+  private readonly materialAudioListeners = new Set<(contact: MaterialAudioContact) => void>();
   private intent: PlayerIntent = {};
   private pendingSize: GoatSize | null = null;
   private drownSeconds = 0;
@@ -222,6 +251,10 @@ export class Game {
     }));
     this.off.push(this.breakables.events.on(event => {
       const prop = this.propByBody.get(event.bodyHandle);
+      const material = sceneryAudioMaterial(prop?.kind);
+      if (material && event.cause !== 'soda') {
+        this.sendMaterialAudio({ type: 'break', event, material, position: event.position });
+      }
       if (prop?.kind === 'crate') {
         this.sendVfxCue({ type: 'crate-break',
           position: { x: event.position.x,
@@ -920,6 +953,19 @@ export class Game {
     for (const listener of this.vfxCueListeners) listener(cue);
   }
 
+  onMaterialAudio(listener: (contact: MaterialAudioContact) => void): () => void {
+    this.materialAudioListeners.add(listener);
+    return () => { this.materialAudioListeners.delete(listener); };
+  }
+
+  reportGnomeBreak(position: Vec3): void {
+    this.sendMaterialAudio({ type: 'gnome-break', position: { ...position } });
+  }
+
+  private sendMaterialAudio(contact: MaterialAudioContact): void {
+    for (const listener of this.materialAudioListeners) listener(contact);
+  }
+
   private sendVisualCue(goat: GoatRagdoll, action: GoatVisualCue['action']): void {
     const cue = { goatId: goat.id, action };
     for (const listener of this.visualCueListeners) listener(cue);
@@ -955,8 +1001,16 @@ export class Game {
         new RAPIER.Ball(.22 * g.size), range, {
           predicate: collider => !g.ownsBody(collider.parent()),
         });
-      const hit = g.interactions.headbutt(charge);
-      let struck = hit;
+      let knock: KnockedBodyEvent | undefined;
+      const stopCapture = this.materialAudioListeners.size ? g.events.on(event => {
+        if (event.type === 'knockedBody') knock = event;
+      }) : undefined;
+      let struck: RigidBody | null;
+      try {
+        struck = g.interactions.headbutt(charge);
+      } finally {
+        stopCapture?.();
+      }
       if (!struck && preferred?.body?.isDynamic()) {
         const target = preferred.body;
         // Do not reach through solid walls just because a movable target
@@ -968,10 +1022,11 @@ export class Game {
           const impulse = g.mass * (1.1 + 1.9 * charge);
           target.applyImpulseAtPoint(V(facing.x * impulse, impulse * .18,
             facing.z * impulse), preferred.point, true);
-          g.events.emit({ type: 'knockedBody', goatId: g.id, time: this.physics.time,
+          knock = { type: 'knockedBody', goatId: g.id, time: this.physics.time,
             bodyHandle: target.handle, mass: target.mass(), speed: Math.hypot(
               target.linvel().x, target.linvel().y, target.linvel().z),
-            impulse });
+            impulse };
+          g.events.emit(knock);
           struck = target;
         }
       }
@@ -979,12 +1034,28 @@ export class Game {
         const targetId = struck ? this.physics.bodyData(struck.handle)?.owner : undefined;
         this.gigs.noteAbility({ type: 'headbutt', targetId });
       }
+      if (this.materialAudioListeners.size && !g.isRagdoll) {
+        // Sample the wood/metal role while the body still exists. A stopped
+        // headbutt can also reach a solid scenery collider without a knock.
+        const prop = struck ? this.propByBody.get(struck.handle)
+          : contact && !contact.body?.isDynamic() ? this.island.props.find(item =>
+            this.colliders.props.get(item.id)?.handle === contact.collider.handle) : undefined;
+        const role = struck && !prop ? this.physics.bodyData(struck.handle)?.data : undefined;
+        const material = role === 'tower' || role === 'stack-crate' ? 'wood' : sceneryAudioMaterial(prop?.kind);
+        const position = struck?.translation() ?? contact?.point;
+        if (material && material !== 'hay' && position) {
+          this.sendMaterialAudio({ type: 'headbutt', event: knock, material, position: { ...position },
+            goatId: g.id, intensity: Math.min(1, commands.headbutt.impulse / 70) });
+        }
+      }
+      // The preferred body can be removed immediately by the break below.
+      const fixedBuildHandle = preferred?.body && !preferred.body.isDynamic() ? preferred.body.handle : undefined;
       if (struck) this.breakables.hit(struck, commands.headbutt.impulse * .75);
       // Fixed Hay-Build pieces cannot be returned from GoatInteractions.headbutt,
       // so use the same forward query to route impact to logical HP.
       let hitPiece = false;
-      if (preferred?.body && !preferred.body.isDynamic()) {
-        const pieceId = [...this.buildBodies].find(([, body]) => body.handle === preferred.body?.handle)?.[0];
+      if (fixedBuildHandle !== undefined) {
+        const pieceId = [...this.buildBodies].find(([, body]) => body.handle === fixedBuildHandle)?.[0];
         if (pieceId !== undefined) {
           hitPiece = true;
           this.rules.build.damage(pieceId, commands.headbutt.impulse * 3);
@@ -1241,6 +1312,7 @@ export class Game {
     for (const unsub of this.off.splice(0)) unsub();
     this.visualCueListeners.clear();
     this.vfxCueListeners.clear();
+    this.materialAudioListeners.clear();
     this.party.dispose();
     this.gigs.dispose();
     this.goat.dispose();

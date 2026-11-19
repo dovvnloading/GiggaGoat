@@ -6,6 +6,7 @@ import type { MatchEvent } from '../modes';
 import type { GigEvent } from '../gigs';
 import type { SoundId, Vec3 } from './logic';
 import { clamp } from './logic';
+import type { RecordedEffect } from './recordings';
 
 export type ChaosEvent = WaterEvent | DestructionEvent | ChainEvent | SurfaceEvent;
 export type GameplayAudioEvent = {
@@ -24,6 +25,7 @@ export type AudioCue = {
   delay?: number;
   goatId?: string; playerId?: string; bodyHandle?: number; combo?: number;
   pitch?: number;
+  recordedEffect?: RecordedEffect;
   /** Allow this terminal cue to finish while its visible results are open. */
   result?: ResultAudioKind;
 };

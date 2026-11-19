@@ -437,9 +437,10 @@ export class AudioEngine {
         (owner ? frame.positionForGoat?.(owner) : undefined) ??
         observed?.position ?? frame.goatPosition;
       const material = input.bodyHandle === undefined ? undefined : frame.audioKindForBody?.(input.bodyHandle);
-      const recordedEffect = input.sound === 'headbutt-impact' && material === 'wood' ? 'headbutt-wood' :
+      const recordedEffect = input.recordedEffect ?? (
         input.sound === 'splash' && material === 'goat' ? 'water-flop-splash' :
-        input.sound === 'gig-success' && input.result === 'gig' ? 'gig-reward' : undefined;
+        input.sound === 'gig-success' && input.result === 'gig' ? 'gig-reward' : undefined
+      );
       return {
         position: location, intensity: input.intensity, pitch: input.pitch,
         combo: input.combo, result: input.result, recordedEffect,
