@@ -1,11 +1,14 @@
 /** Projected positions remain homogeneous until the triangle has been clipped. */
-export interface ClipVertex { x: number; y: number; w: number; u: number; v: number }
+export interface ClipVertex {
+  x: number; y: number; w: number; u: number; v: number;
+  tint?: number; screen?: ScreenVertex;
+}
 export interface SoftwareTexture {
   pixels: Uint8ClampedArray; width: number; height: number;
   flipY: boolean; repeatU: boolean; repeatV: boolean;
 }
 
-interface ScreenVertex { x: number; y: number; iz: number; uz: number; vz: number }
+interface ScreenVertex { x: number; y: number; iz: number; uz: number; vz: number; r: number; g: number; b: number }
 
 export function pixel(r: number, g: number, b: number): number {
   return (255 << 24) | (b << 16) | (g << 8) | r;
@@ -16,7 +19,7 @@ export class SoftwareFrame {
   readonly pixels: Uint32Array;
   readonly depth: Float32Array;
   private readonly screen: ScreenVertex[] = Array.from({ length: 3 },
-    () => ({ x: 0, y: 0, iz: 0, uz: 0, vz: 0 }));
+    () => ({ x: 0, y: 0, iz: 0, uz: 0, vz: 0, r: 0, g: 0, b: 0 }));
   private readonly clipped: ClipVertex[] = Array.from({ length: 4 },
     () => ({ x: 0, y: 0, w: 1, u: 0, v: 0 }));
 
@@ -52,19 +55,36 @@ export class SoftwareFrame {
     for (const current of [a, b, c]) {
       if ((previous.w < near) !== (current.w < near)) {
         const v = this.clipped[count++]!;
+        v.screen = undefined;
         const t = (near - previous.w) / (current.w - previous.w);
         v.x = previous.x + (current.x - previous.x) * t;
         v.y = previous.y + (current.y - previous.y) * t;
         v.w = near;
         v.u = previous.u + (current.u - previous.u) * t;
         v.v = previous.v + (current.v - previous.v) * t;
+        if (previous.tint !== undefined && current.tint !== undefined) {
+          const from = previous.tint, to = current.tint;
+          v.tint = pixel((from & 255) * (1 - t) + (to & 255) * t,
+            (from >>> 8 & 255) * (1 - t) + (to >>> 8 & 255) * t,
+            (from >>> 16 & 255) * (1 - t) + (to >>> 16 & 255) * t);
+        } else v.tint = undefined;
       }
-      if (current.w >= near) Object.assign(this.clipped[count++]!, current);
+      if (current.w >= near) {
+        const vertex = this.clipped[count++]!;
+        Object.assign(vertex, current);
+        vertex.screen = current.screen;
+        vertex.tint = current.tint;
+      }
       previous = current;
     }
     for (let i = 1; i < count - 1; i++) {
       this.draw(this.clipped[0]!, this.clipped[i]!, this.clipped[i + 1]!, colour, texture, side, bias);
     }
+  }
+
+  prepare(v: ClipVertex): void {
+    const screen = v.screen ?? (v.screen = { x: 0, y: 0, iz: 0, uz: 0, vz: 0, r: 0, g: 0, b: 0 });
+    this.project(v, screen);
   }
 
   private project(v: ClipVertex, target: ScreenVertex): ScreenVertex {
@@ -74,14 +94,17 @@ export class SoftwareFrame {
     target.iz = iz;
     target.uz = v.u * iz;
     target.vz = v.v * iz;
+    if (v.tint !== undefined) {
+      target.r = v.tint & 255; target.g = v.tint >>> 8 & 255; target.b = v.tint >>> 16 & 255;
+    }
     return target;
   }
 
   private draw(a: ClipVertex, b: ClipVertex, c: ClipVertex, colour: number,
     texture: SoftwareTexture | undefined, side: number, bias: number): void {
-    let top = this.project(a, this.screen[0]!);
-    let middle = this.project(b, this.screen[1]!);
-    let bottom = this.project(c, this.screen[2]!);
+    let top = a.screen ?? this.project(a, this.screen[0]!);
+    let middle = b.screen ?? this.project(b, this.screen[1]!);
+    let bottom = c.screen ?? this.project(c, this.screen[2]!);
     const abx = middle.x - top.x, aby = middle.y - top.y;
     const acx = bottom.x - top.x, acy = bottom.y - top.y;
     const det = abx * acy - aby * acx;
@@ -89,6 +112,10 @@ export class SoftwareFrame {
     const dz = ((middle.iz - top.iz) * acy - (bottom.iz - top.iz) * aby) / det;
     const du = ((middle.uz - top.uz) * acy - (bottom.uz - top.uz) * aby) / det;
     const dv = ((middle.vz - top.vz) * acy - (bottom.vz - top.vz) * aby) / det;
+    const smooth = a.tint !== undefined && b.tint !== undefined && c.tint !== undefined;
+    const dr = smooth ? ((middle.r - top.r) * acy - (bottom.r - top.r) * aby) / det : 0;
+    const dg = smooth ? ((middle.g - top.g) * acy - (bottom.g - top.g) * aby) / det : 0;
+    const db = smooth ? ((middle.b - top.b) * acy - (bottom.b - top.b) * aby) / det : 0;
     if (top.y > middle.y) [top, middle] = [middle, top];
     if (middle.y > bottom.y) [middle, bottom] = [bottom, middle];
     if (top.y > middle.y) [top, middle] = [middle, top];
@@ -107,27 +134,40 @@ export class SoftwareFrame {
       const last = Math.min(width, Math.ceil(Math.max(x1, x2) - .5));
       const offset = first + .5 - x1;
       let iz = top.iz + (bottom.iz - top.iz) * t + offset * dz;
+      let i = y * width + first;
+      const endIndex = y * width + last;
+      if (!texture) {
+        const depths = this.depth, pixels = this.pixels, step = dz * bias;
+        if (smooth) {
+          let r = top.r + (bottom.r - top.r) * t + offset * dr;
+          let g = top.g + (bottom.g - top.g) * t + offset * dg;
+          let b = top.b + (bottom.b - top.b) * t + offset * db;
+          for (let depth = iz * bias; i < endIndex; i++, depth += step, r += dr, g += dg, b += db) {
+            if (depth > depths[i]!) { depths[i] = depth; pixels[i] = pixel(r, g, b); }
+          }
+          continue;
+        }
+        for (let depth = iz * bias; i < endIndex; i++, depth += step) {
+          if (depth > depths[i]!) { depths[i] = depth; pixels[i] = colour; }
+        }
+        continue;
+      }
       let uz = top.uz + (bottom.uz - top.uz) * t + offset * du;
       let vz = top.vz + (bottom.vz - top.vz) * t + offset * dv;
-      let i = y * width + first;
-      for (let x = first; x < last; x++, i++, iz += dz, uz += du, vz += dv) {
+      for (; i < endIndex; i++, iz += dz, uz += du, vz += dv) {
         const depth = iz * bias;
         if (depth <= this.depth[i]!) continue;
-        let value = colour;
-        if (texture) {
-          let u = uz / iz, v = vz / iz;
-          u = texture.repeatU ? u - Math.floor(u) : Math.min(1, Math.max(0, u));
-          v = texture.repeatV ? v - Math.floor(v) : Math.min(1, Math.max(0, v));
-          const tx = Math.min(texture.width - 1, Math.floor(u * texture.width));
-          const ty = Math.min(texture.height - 1, Math.floor((texture.flipY ? 1 - v : v) * texture.height));
-          const k = 4 * (ty * texture.width + tx);
-          const texels = texture.pixels;
-          if (texels[k + 3]! < 96) continue;
-          value = pixel(red * texels[k]! / 255, green * texels[k + 1]! / 255,
-            blue * texels[k + 2]! / 255);
-        }
+        let u = uz / iz, v = vz / iz;
+        u = texture.repeatU ? u - Math.floor(u) : Math.min(1, Math.max(0, u));
+        v = texture.repeatV ? v - Math.floor(v) : Math.min(1, Math.max(0, v));
+        const tx = Math.min(texture.width - 1, Math.floor(u * texture.width));
+        const ty = Math.min(texture.height - 1, Math.floor((texture.flipY ? 1 - v : v) * texture.height));
+        const k = 4 * (ty * texture.width + tx);
+        const texels = texture.pixels;
+        if (texels[k + 3]! < 96) continue;
         this.depth[i] = depth;
-        this.pixels[i] = value;
+        this.pixels[i] = pixel(red * texels[k]! / 255, green * texels[k + 1]! / 255,
+          blue * texels[k + 2]! / 255);
       }
     }
   }

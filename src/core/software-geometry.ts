@@ -4,6 +4,8 @@ import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
 export type GeometryDetail = 'full' | 'near' | 'far';
 export interface SoftwareGeometry {
   sources: Uint32Array;
+  positions: Float32Array;
+  uvs?: Float32Array;
   corners: Uint32Array;
   normals: Float32Array;
   colours?: Float32Array;
@@ -57,6 +59,11 @@ export function softwareGeometry(geometry: THREE.BufferGeometry, detail: Geometr
   const sources: number[] = [], corners: number[] = [], normals: number[] = [];
   const colours: number[] = [], materials: number[] = [];
   const remap = new Map<number, number>();
+  const uv = geometry.getAttribute('uv');
+  // Baked scenery commonly repeats all three positions for each flat-shaded
+  // face. Transform coincident corners once while retaining every face's paint.
+  const weld = !geometry.index && !geometry.getAttribute('skinIndex') &&
+    !geometry.morphAttributes.position ? new Map<string, number>() : undefined;
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
   for (const group of groups) {
     const start = Math.max(group.start, geometry.drawRange.start);
@@ -67,7 +74,17 @@ export function softwareGeometry(geometry: THREE.BufferGeometry, detail: Geometr
     for (let k = 0; k < faces.length; k++) {
       const i = faces[k]!;
       let mapped = remap.get(i);
-      if (mapped === undefined) { mapped = sources.length; remap.set(i, mapped); sources.push(i); }
+      if (mapped === undefined) {
+        const key = weld ? [position.getX(i), position.getY(i), position.getZ(i),
+          uv?.getX(i), uv?.getY(i)].join(',') : undefined;
+        mapped = key === undefined ? undefined : weld!.get(key);
+        if (mapped === undefined) {
+          mapped = sources.length;
+          sources.push(i);
+          if (key !== undefined) weld!.set(key, mapped);
+        }
+        remap.set(i, mapped);
+      }
       corners.push(mapped);
     }
     for (let k = 0; k + 2 < faces.length; k += 3) {
@@ -83,7 +100,17 @@ export function softwareGeometry(geometry: THREE.BufferGeometry, detail: Geometr
       materials.push(group.materialIndex ?? 0);
     }
   }
-  const result: SoftwareGeometry = { sources: Uint32Array.from(sources), corners: Uint32Array.from(corners),
+  const positions = new Float32Array(sources.length * 3);
+  const uvs = uv ? new Float32Array(sources.length * 2) : undefined;
+  for (let i = 0; i < sources.length; i++) {
+    const source = sources[i]!;
+    positions[3 * i] = position.getX(source);
+    positions[3 * i + 1] = position.getY(source);
+    positions[3 * i + 2] = position.getZ(source);
+    if (uvs) { uvs[2 * i] = uv.getX(source); uvs[2 * i + 1] = uv.getY(source); }
+  }
+  const result: SoftwareGeometry = { sources: Uint32Array.from(sources), positions, uvs,
+    corners: Uint32Array.from(corners),
     normals: Float32Array.from(normals), colours: colour ? Float32Array.from(colours) : undefined,
     materials: Uint16Array.from(materials) };
   levels.set(detail, result);

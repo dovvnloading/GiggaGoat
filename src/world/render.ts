@@ -256,7 +256,7 @@ function buildTerrain(island: IslandData, segments: number,
   rockMask.generateMipmaps = true;
   rockMask.needsUpdate = true;
   material.addEventListener('dispose', () => rockMask.dispose());
-  const villagePaint = makeVillageGroundPaint(island);
+  const villagePaint = makeVillageGroundPaint(island, material);
   material.addEventListener('dispose', () => villagePaint.map.dispose());
   material.onBeforeCompile = shader => {
     shader.uniforms['uRockStone'] = { value: COLORS.rock };
