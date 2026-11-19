@@ -2,7 +2,7 @@
 
 Billy Isle uses four newly arranged instrumental cues. Gate Latch Reel plays around the farm and forest, Switchyard Shuffle in the yard, city and dam, Glasswater on the coast and summit, and Last Bale Standing in party rounds. The arrangements use the project’s three existing Suno Studio masters for sampled percussion, new written parts, and GeneralUser GS instruments. The original recordings remain available to the offline render scripts. [Instrument library and music-use license](https://github.com/mrbumpy409/GeneralUser-GS/blob/main/documentation/LICENSE.txt)
 
-Each of the eight zones loads its own stereo environment. The farm and forest also have evening mixes. A separate contact bank edits the existing ElevenLabs recordings into three variants per surface for hoofbeats, takeoffs and landings. The sound, instrument and ambience source scripts are in `tools/audio`. Browser playback starts after a user gesture.
+Each of the eight zones loads its own stereo environment. Approaching the farm barn or walking beneath the pines brings in a distinct close environment. A separate contact bank edits the existing ElevenLabs recordings into three variants per surface for hoofbeats, takeoffs and landings. The sound, instrument and ambience source scripts are in `tools/audio`. Browser playback starts after a user gesture.
 
 ## Minimal integration — one call per render frame
 

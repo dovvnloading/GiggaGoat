@@ -1,6 +1,7 @@
 import type { AudioLocation } from './logic';
 
-export type AmbienceKey = AudioLocation | 'meadow-night' | 'pines-night';
+export type Habitat = 'farm-paddock' | 'pines-understory';
+export type AmbienceKey = AudioLocation | Habitat;
 export type AmbienceLibrary = Readonly<Record<AmbienceKey, string>>;
 
 /** A settled listener crosses into a new soundscape while the previous recording keeps playing. */
@@ -14,16 +15,15 @@ export class ZoneAmbience {
   constructor(private readonly context: AudioContext, private readonly output: AudioNode,
     private readonly files: AmbienceLibrary) {}
 
-  update(location: AudioLocation, night: boolean): void {
-    const key = night && location === 'hoofington' ? 'meadow-night' :
-      night && location === 'whispering-pines' ? 'pines-night' : location;
+  update(location: AudioLocation, _night: boolean, habitat?: Habitat): void {
+    const key = habitat ?? location;
     if (this.disposed || this.context.state !== 'running') return;
     const now = this.context.currentTime;
     if (this.target !== key) {
       this.pending?.abort();
       this.pending = undefined;
       this.target = key;
-      this.due = now + (this.playing ? .45 : 0);
+      this.due = now + (this.playing ? .8 : 0);
     }
     if (!this.pending && this.playing?.key !== key && now >= this.due) void this.load(key);
   }

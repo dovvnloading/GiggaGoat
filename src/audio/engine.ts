@@ -8,7 +8,7 @@ import type {
 import { ProceduralSynth } from './synth';
 import type { SfxOptions } from './synth';
 import { AdaptiveMusic, IslandAmbience } from './music';
-import { ZoneAmbience } from './zone-ambience';
+import { ZoneAmbience, type Habitat } from './zone-ambience';
 import { RecordedAudio } from './recordings';
 import type { RecordedAssets, RecordedEffect } from './recordings';
 import { mapLaneEvent } from './events';
@@ -54,6 +54,7 @@ export interface WalkingGoat {
 export interface AudioFrame {
   dt: number;
   camera?: CameraAudioPose;
+  habitat?: Habitat;
   /** Input-only one-shots (charge start, UI or explicit jump) in the same frame call. */
   cues?: readonly AudioCue[];
   /** Partial updates preserve prior music state. Meters are normalized by the adapter. */
@@ -95,6 +96,13 @@ interface Voice {
   remaining: number;
   disposed: boolean;
 }
+function audibleDistance(sound: SoundId, metres: number): number {
+  // Close Foley falls away rapidly after the third-person camera's normal follow distance.
+  const scale = sound.startsWith('footstep-') || sound === 'climb' || sound === 'domino' ? 7 :
+    sound === 'splash' || sound === 'landing' || sound.startsWith('tongue-') ? 4 : 1;
+  return metres + Math.max(0, metres - 8) * (scale - 1);
+}
+
 export class VoiceManager {
   private readonly voices = new Map<number, Voice>();
   private nextId = 1;
@@ -111,7 +119,7 @@ export class VoiceManager {
     const now = this.context.currentTime;
     for (const v of this.voices.values()) {
       if (!v.position) continue;
-      const d = distance(p, v.position);
+      const d = audibleDistance(v.ticket.sound, distance(p, v.position));
       if (d >= CULL_DISTANCE) { this.stop(v.ticket.id, .025); continue; }
       v.gain.gain.setTargetAtTime(v.baseGain * distanceGain(d), now, .06);
     }
@@ -119,7 +127,7 @@ export class VoiceManager {
   play(sound: SoundId, opts: PlayOptions = {}): boolean {
     const ctx = this.context;
     if (ctx.state !== 'running') return false;
-    const d = opts.position ? distance(opts.position, this.listenerPosition) : 0;
+    const d = opts.position ? audibleDistance(sound, distance(opts.position, this.listenerPosition)) : 0;
     const spatial = opts.position ? distanceGain(d) : 1;
     const level = clamp(opts.intensity ?? .7, 0, 1);
     const loudness = spatial * (level * .8 + .2);
@@ -258,7 +266,6 @@ export class AudioEngine {
   private lastDuckAt = -Infinity;
   private readonly stepPhases = new Map<string, { distance: number; seenAt: number; soundedAt: number }>();
   private elapsed = 0;
-  private cameraPosition: Vec3 = { x: 0, y: 0, z: 0 };
   private readonly lastPlayed = new Map<SoundId, number>();
 
   constructor(options: AudioEngineOptions = {}) {
@@ -421,7 +428,7 @@ export class AudioEngine {
     if (result) {
       this.lastPlayed.set(sound, now);
       if (isBigMoment(sound, options.intensity) && (!options.position ||
-        distance(options.position, this.cameraPosition) < 26)) {
+        distance(options.position, this.camera) < 26)) {
         this.lastDuckAt = now - .05; // start on the plateau; ramp by setTarget is click-free.
         this.duck?.gain.setTargetAtTime(.34, now, .022);
       }
@@ -485,7 +492,7 @@ export class AudioEngine {
       (awaitDuckGain(now - this.lastDuckAt)), now, .04);
     this.musicPlayer?.update(this.currentState);
     this.recordings?.updateMusic(this.currentState);
-    this.ambiencePlayer?.update(this.currentState.poi, this.currentState.night);
+    this.ambiencePlayer?.update(this.currentState.poi, this.currentState.night, frame.habitat);
   }
 
   private updateFootsteps(goat: WalkingGoat, dt: number): void {
@@ -513,7 +520,6 @@ export class AudioEngine {
   }
 
   private updateListener(camera: CameraAudioPose): void {
-    this.cameraPosition = camera.position;
     this.camera = camera.position;
     const ctx = this.context;
     if (!ctx) return;

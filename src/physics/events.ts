@@ -12,7 +12,7 @@ export interface PhysicsContact {
 interface BaseEvent { readonly goatId: string; readonly time: number }
 export type PhysicsEvent =
   | (BaseEvent & { type: 'jumped' })
-  | (BaseEvent & { type: 'landed'; airtime: number; verticalSpeed: number })
+  | (BaseEvent & { type: 'landed'; airtime: number; verticalSpeed: number; approachSpeed?: number })
   | (BaseEvent & { type: 'impact'; impulse: number; otherBodyHandle: number | null })
   | (BaseEvent & { type: 'flipped'; rotations: number })
   | (BaseEvent & { type: 'airtimeStart'; height: number })

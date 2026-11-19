@@ -234,6 +234,10 @@ describe('exhaustive typed lane mapping', () => {
     }
     expect(mapPhysics(physicsFixtures[0]!)[0]?.sound).toBe('landing');
     expect(mapPhysics(physicsFixtures[3]!)[0]?.sound).toBe('jump');
+    expect(mapPhysics({type:'landed', goatId:'player', time:1, airtime:.9,
+      verticalSpeed:.25, approachSpeed:6})[0]?.intensity).toBe(.5);
+    expect(mapPhysics({type:'landed', goatId:'player', time:1, airtime:.09,
+      verticalSpeed:4, approachSpeed:.3})).toEqual([]);
     expect(mapPhysics(physicsFixtures[4]!)).toEqual([]);
     expect(mapChaos(chaosFixtures[2]!)[0]?.sound).toBe('splash');
     expect(mapMode(modeFixtures[4]!)[0]?.sound).toBe('tide-warning');
