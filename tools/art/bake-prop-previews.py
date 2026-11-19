@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import runpy
 import struct
+from urllib.parse import unquote
 
 bake = runpy.run_path(str(Path(__file__).with_name('bake-district-collision.py')))['bake']
 root = Path('src/world')
@@ -20,12 +21,32 @@ scenery = {
     'pierLantern': 'kenney/fantasy-town-kit/lantern',
 }
 assets.extend((kind, 'assets/library/' + path + '.glb') for kind, path in scenery.items())
+districts = json.loads((root / 'district-kit-models.json').read_text())
+assets.extend(('district-' + kind, 'assets/library/' + path) for kind, path in districts.items())
+dam = 'assets/library/custom/the-dam/the-dam.glb'
+assets.extend([('damMasonry', dam), ('damWorks', dam)])
+damStone = ('Pier_', 'Dam_Wall', 'Spillway_')
+def dam_works(node):
+    return not node.startswith((*damStone, 'Water_', 'RailFront_', 'RailBack_', 'Abutment_'))
+
+# A missing external atlas silently turns the original glTF white in trimesh.
+# Check all model dependencies before touching the packed output.
+for _, path in assets:
+    model = Path('public') / path
+    raw = model.read_bytes()
+    info = json.loads(raw[20:20 + struct.unpack_from('<I', raw, 12)[0]]) if model.suffix == '.glb' else json.loads(raw)
+    for reference in [*info.get('images', []), *info.get('buffers', [])]:
+        uri = reference.get('uri')
+        if uri and not uri.startswith('data:') and not (model.parent / unquote(uri)).is_file():
+            raise FileNotFoundError(f'{model}: {uri}')
+
 library = {}
 for kind, path in assets:
-    mesh = bake(Path('public') / path, face_budget=65534 if kind in scenery or kind == 'shipwreck' else 640)
+    include = (lambda node: node.startswith(damStone)) if kind == 'damMasonry' else dam_works if kind == 'damWorks' else None
+    mesh = bake(Path('public') / path, graphics='two-sided' if kind.startswith('district-') else True, include=include)
     coords, indices = mesh['vertices'], mesh['indices']
-    # Each record has vertex/face counts, signed xyz, then indexed triangles with RGB.
-    data = bytearray(struct.pack('<HH', len(coords) // 3, len(indices) // 3))
+    # Each record has vertex/face counts, native frame, signed xyz, then indexed triangles with RGB.
+    data = bytearray(struct.pack('<HH4f', len(coords) // 3, len(indices) // 3, *mesh['frame']))
     data.extend(struct.pack('<' + 'h' * len(coords), *coords))
     for face, paint in enumerate(mesh['paint']):
         rgb = mesh['palette'][paint]

@@ -220,12 +220,11 @@ describe('Old Lighthouse painting rebuild', () => {
     for (const name of [
       'lighthouse-winding-dirt-path',
       'lighthouse-keeper-cottage',
-      'keeper-cottage-red-tiled-gable',
+      'keeper-cottage-kit-house',
       'lighthouse-glowing-lantern-room',
       'lighthouse-recessed-sea-cave',
       'lighthouse-golden-goat-relic',
       'lighthouse-pirate-kit-dock',
-      'lighthouse-dock-piles',
       'lighthouse-red-white-life-ring',
       'lighthouse-watercraft-kit-rowboat',
       'lighthouse-pirate-kit-shipwreck',

@@ -220,7 +220,7 @@ describe('The Dam hero POI', () => {
     const loaded = prepareDamModel(source, island);
     const visuals = buildDamVisuals(island);
     try {
-      const fallback = visuals.group.getObjectByName('the-dam-procedural-fallback')!;
+      const fallback = visuals.group.getObjectByName('the-dam-kit-preview')!;
       const { position, scale } = getDamPlacement(island);
       const testRail = (model: THREE.Object3D, origin: { x: number; y: number; z: number },
         modelScale: number): void => {
@@ -251,7 +251,7 @@ describe('The Dam hero POI', () => {
     const island = generateIsland({ seed: 'dam-fallback', resolution: 65 });
     const visuals = buildDamVisuals(island);
     try {
-      const fallback = visuals.group.getObjectByName('the-dam-procedural-fallback');
+      const fallback = visuals.group.getObjectByName('the-dam-kit-preview');
       expect(fallback).toBeInstanceOf(THREE.Group);
       expect(fallback?.getObjectByName('dam-fallback-stone'))
         .toBeInstanceOf(THREE.Mesh);

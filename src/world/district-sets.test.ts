@@ -21,7 +21,7 @@ it('seats kit ensembles in all eight districts and gives every object a scaled t
   expect(visuals.group.children).toHaveLength(24);
   for (const mesh of visuals.group.children as THREE.Mesh[]) {
     expect(mesh.geometry.getAttribute('color').count).toBe(mesh.geometry.getAttribute('position').count);
-    expect(mesh.userData.kitDetail).toBe('distant');
+    expect(mesh.userData.kitDetail).toBe('full');
   }
   const near = new THREE.Vector3().copy(sets.find(s => s.name === 'Tractor yard')!.pieces[0]!.bottom);
   expect(visuals.update(near)).toBe(true);

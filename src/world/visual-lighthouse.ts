@@ -1,10 +1,9 @@
 import * as THREE from 'three';
-import { kitShape } from './kit-preview';
+import { kitShape, kitPreview } from './kit-preview';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData, PropDescriptor, PropKind } from './types';
 import { gridSample } from './terrain';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
-import { buildArchitecture } from './visual-architecture';
 import { TOON_RAMP, BUILDING_RAMP } from './visual-props';
 import type { AccessSection } from './access-path';
 import { LIGHTHOUSE_FOOTPATH, capeSurface, keeperCottagePiers, lighthouseAccess,
@@ -293,6 +292,7 @@ function batchHeroMeshes(root: THREE.Group, name: string,
     if (Array.isArray(source.material)) source.material.forEach(mat => mat.dispose());
     else source.material.dispose();
   });
+  merged.userData.preserveSilhouette = true;
   const mesh = new THREE.Mesh(merged, new THREE.MeshToonMaterial({
     color: 0xffffff, vertexColors: true, gradientMap: TOON_RAMP,
     side: THREE.DoubleSide,
@@ -362,61 +362,15 @@ export function keeperCottageFoundationGeometry(island: IslandData,
 }
 
 function makeCottage(prop: PropDescriptor): THREE.Group {
-  const architecture = buildArchitecture('cottage');
-  // Recolour the cottage's baked roof-vertex colours without changing the
-  // shared Hoofington cottage or compromising the architectural detail mesh.
-  const color = architecture.details.getAttribute('color') as THREE.BufferAttribute;
-  const oldRoof = new THREE.Color(0xcf7056);
-  const oldHighlight = new THREE.Color(0xe5916f);
-  const red = new THREE.Color(0xbc483b), tile = new THREE.Color(0xe36c51);
-  for (let i = 0; i < color.count; i++) {
-    const actual = new THREE.Color(color.getX(i), color.getY(i), color.getZ(i));
-    const roofDelta = Math.abs(actual.r - oldRoof.r) +
-      Math.abs(actual.g - oldRoof.g) + Math.abs(actual.b - oldRoof.b);
-    const tileDelta = Math.abs(actual.r - oldHighlight.r) +
-      Math.abs(actual.g - oldHighlight.g) + Math.abs(actual.b - oldHighlight.b);
-    if (roofDelta < 0.004) color.setXYZ(i, red.r, red.g, red.b);
-    if (tileDelta < 0.004) color.setXYZ(i, tile.r, tile.g, tile.b);
-  }
-  color.needsUpdate = true;
   const cottage = new THREE.Group();
   cottage.name = 'lighthouse-keeper-cottage';
-  cottage.position.set(prop.transform.position.x,
-    prop.transform.position.y, prop.transform.position.z);
+  cottage.position.copy(prop.transform.position);
   cottage.rotation.y = prop.transform.rotationY;
-  cottage.scale.set(prop.size.x, prop.size.y, prop.size.z);
-  const walls = new THREE.Mesh(architecture.shell, new THREE.MeshToonMaterial({
-    color: prop.color ?? CREAM, vertexColors: true, gradientMap: TOON_RAMP,
-  }));
-  const details = new THREE.Mesh(architecture.details, new THREE.MeshToonMaterial({
-    color: 0xffffff, vertexColors: true, gradientMap: TOON_RAMP,
-  }));
-  walls.name = 'keeper-cottage-plaster';
-  details.name = 'keeper-cottage-red-tiled-gable';
-  // The shared instanced cottage already participates in the cached shadow pass.
-  walls.castShadow = false;
-  details.receiveShadow = true;
-  cottage.add(walls, details);
-
-  const door = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.37, 0.033),
-    new THREE.MeshToonMaterial({ color: 0x4382a1 }));
-  door.name = 'keeper-cottage-blue-door';
-  door.position.set(0, -0.305, 0.44);
-  cottage.add(door);
-  // Emissive panes are unlit surfaces, so no expensive point lights or shadows.
-  const windows = new THREE.InstancedMesh(
-    new THREE.BoxGeometry(0.135, 0.19, 0.011),
-    new THREE.MeshBasicMaterial({ color: 0xffd77b }), 2);
-  windows.name = 'keeper-cottage-lit-windows';
-  const dummy = new THREE.Object3D();
-  for (let i = 0; i < 2; i++) {
-    dummy.position.set(i ? 0.286 : -0.286, -0.08, 0.455);
-    dummy.updateMatrix();
-    windows.setMatrixAt(i, dummy.matrix);
-  }
-  windows.instanceMatrix.needsUpdate = true;
-  windows.computeBoundingSphere();
-  cottage.add(windows);
+  const model = new THREE.Mesh(kitPreview('cottage', prop.size),
+    new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: BUILDING_RAMP }));
+  model.scale.copy(prop.size);
+  model.name = 'keeper-cottage-kit-house';
+  cottage.add(model);
   return cottage;
 }
 
@@ -678,23 +632,23 @@ function makeFlowers(island: IslandData, center: { x: number; z: number }): THRE
   const scale = island.size / 600;
   const dummy = new THREE.Object3D();
   const grass = new THREE.InstancedMesh(
-    new THREE.ConeGeometry(0.6, 1.5, 5),
-    new THREE.MeshToonMaterial({ color: 0x619b40, gradientMap: TOON_RAMP }), 32);
+    kitShape('grassClump'),
+    new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_RAMP }), 32);
   const flowers = new THREE.InstancedMesh(
-    new THREE.DodecahedronGeometry(0.28, 0),
-    new THREE.MeshBasicMaterial({ color: 0xffe7c0 }), 32);
+    kitShape('flower'),
+    new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_RAMP }), 32);
   for (let i = 0; i < 32; i++) {
     const angle = i * 2.399963 + 0.2;
     const r = (10 + (i % 4) * 2.9) * scale;
     const x = center.x + Math.cos(angle) * r;
     const z = center.z + Math.sin(angle) * r;
     const ground = gridSample(island, x, z);
-    dummy.position.set(x, ground + 0.45 * scale, z);
+    dummy.position.set(x, ground, z);
     dummy.rotation.set(0, angle, 0);
     dummy.scale.setScalar(0.63 * scale);
     dummy.updateMatrix();
     grass.setMatrixAt(i, dummy.matrix);
-    dummy.position.set(x + 0.4 * scale, ground + 0.7 * scale, z);
+    dummy.position.set(x + 0.4 * scale, gridSample(island, x + 0.4 * scale, z), z);
     dummy.scale.setScalar((i % 3 === 0 ? 1 : 0.7) * scale);
     dummy.updateMatrix();
     flowers.setMatrixAt(i, dummy.matrix);
@@ -857,25 +811,23 @@ export function buildLighthouseVisuals(island: IslandData,
 
   const dock = island.props.filter(prop =>
     prop.poiId === 'old-lighthouse' && prop.kind === 'dock');
-  const pierDetails = makePainter();
-  const docks: Placement[] = [];
-  for (const prop of dock) {
-    const { x, y, z } = prop.transform.position;
-    const { x: sx, y: sy, z: sz } = prop.size;
-    const top = y + sy / 2;
-    docks.push({
-      x, y: y - sy / 2, z, width: sx, height: sy, depth: sz,
-      yaw: prop.transform.rotationY,
-    });
-    for (const side of [-1, 1]) for (const end of [-1, 1]) {
-      const px = x + side * sx * 0.44, pz = z + end * sz * 0.44;
-      pierDetails.box(DARK_WOOD, px, 0.83 * scale, pz,
-        0.65 * scale, 4.3 * scale, 0.65 * scale);
-      pierDetails.box(WOOD, px, top + 0.53 * scale, pz,
-        0.78 * scale, 1.35 * scale, 0.78 * scale);
-    }
+  const dockArt = new THREE.Group();
+  dockArt.name = 'lighthouse-pirate-kit-dock';
+  for (const [index, prop] of dock.entries()) {
+    // The kit includes the piles. Its walking planks are 0.9 m above the feet;
+    // using the collider thickness to fit the whole model left gaps between piers.
+    const boards = kitShape('keeperDock', true);
+    const span = boards.boundingBox!.getSize(new THREE.Vector3());
+    const sx = prop.size.x / span.x, sz = prop.size.z / span.z;
+    const upright = Math.min(sx, sz);
+    boards.scale(sx, upright, sz);
+    const mesh = new THREE.Mesh(boards, new THREE.MeshToonMaterial({ vertexColors: true }));
+    mesh.rotation.y = prop.transform.rotationY;
+    mesh.position.copy(prop.transform.position);
+    mesh.position.y += prop.size.y / 2 - .9 * upright + index * .008 * scale;
+    dockArt.add(mesh);
   }
-  group.add(pierDetails.finish('lighthouse-dock-piles'));
+  group.add(dockArt);
   const bollards = makePainter();
   const lanterns: Placement[] = [];
   for (const [dx, dz] of [[19, 24], [31, 34], [-11, 13]]) {
@@ -972,7 +924,6 @@ export function buildLighthouseVisuals(island: IslandData,
     source.geometry.dispose();
     // The batched output now owns the shared material.
   }
-  kitPlacements('keeperDock', 'lighthouse-pirate-kit-dock', docks);
   kitPlacements('tender', 'lighthouse-watercraft-kit-rowboat', boatPlacement);
   kitPlacements('shipwreck', 'lighthouse-pirate-kit-shipwreck', wreckPlacement);
   kitPlacements('wreckMast', 'lighthouse-broken-ship-mast', mastPlacement);

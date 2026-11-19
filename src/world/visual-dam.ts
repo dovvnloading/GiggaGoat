@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
+import { kitShape } from './kit-preview';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData } from './types';
 import { gridSample } from './terrain';
-import { DAM_ACCESS_ID, DAM_ACCESS_SUPPORT_ID, DAM_BACK_GUARD, DAM_FRONT_GUARD, DAM_PLATFORM_GUARD_ID,
+import { DAM_ACCESS_SUPPORT_ID, DAM_BACK_GUARD, DAM_FRONT_GUARD,
   damAccess, damAccessGuards, getDamPlacement, makeDamColliderDescriptors } from './the-dam';
 import { accessArrows, accessPathVisual, mergePaintedParts } from './visual-access-path';
 import { publicAssetUrl } from './public-assets';
@@ -216,53 +216,9 @@ export function scrollDamWaterfallUVs(maps: readonly THREE.Texture[], seconds: n
 }
 
 /** A collider-aligned stand-in until the GLB loads (or if it fails). */
-function buildProceduralDamFallback(island: IslandData): THREE.Group {
+function buildDamKitPreview(): THREE.Group {
   const fallback = new THREE.Group();
-  fallback.name = 'the-dam-procedural-fallback';
-  const { position, scale } = getDamPlacement(island);
-  const stone = new THREE.MeshToonMaterial({ color: 0xb9c3c7 });
-  const stoneParts: THREE.BufferGeometry[] = [];
-  const deckAndHouse: Array<{ geometry: THREE.BufferGeometry; color: number }> = [];
-
-  for (const collider of makeDamColliderDescriptors(island)) {
-    const platformRail = collider.id === DAM_PLATFORM_GUARD_ID;
-    if (!platformRail && [DAM_FRONT_GUARD.prefix, DAM_BACK_GUARD.prefix, DAM_ACCESS_ID]
-      .some(prefix => collider.id.startsWith(prefix))) continue;
-    let geometry: THREE.BufferGeometry;
-    if (collider.shape === 'convex') {
-      const vertices = collider.vertices!;
-      const points: THREE.Vector3[] = [];
-      for (let i = 0; i < vertices.length; i += 3) {
-        points.push(new THREE.Vector3(vertices[i]! / scale, vertices[i + 1]! / scale, vertices[i + 2]! / scale));
-      }
-      geometry = new ConvexGeometry(points);
-    } else {
-      geometry = new THREE.BoxGeometry(
-        collider.size.x / scale, collider.size.y / scale, collider.size.z / scale,
-      );
-    }
-    geometry.translate(
-      (collider.transform.position.x - position.x) / scale,
-      (collider.transform.position.y - position.y) / scale,
-      (collider.transform.position.z - position.z) / scale,
-    );
-    const color = platformRail ? 0xf2c12e :
-      collider.id === 'the-dam-control-house' || collider.id === 'the-dam-control-house-roof' ? 0xf3eee0 :
-      collider.id === 'the-dam-deck' || collider.id === 'the-dam-control-house-platform' ? 0xd6d6c9 : undefined;
-    if (color === undefined) {
-      // ConvexGeometry contains only unindexed positions and normals.
-      if (geometry.index) {
-        const indexed = geometry;
-        geometry = indexed.toNonIndexed();
-        geometry.deleteAttribute('uv');
-        indexed.dispose();
-      }
-      stoneParts.push(geometry);
-    } else {
-      deckAndHouse.push({ geometry, color });
-    }
-  }
-
+  fallback.name = 'the-dam-kit-preview';
   function addBatch(name: string, material: THREE.Material,
     parts: THREE.BufferGeometry[], castShadow: boolean): void {
     const geometry = mergeGeometries(parts, false);
@@ -275,12 +231,10 @@ function buildProceduralDamFallback(island: IslandData): THREE.Group {
     fallback.add(mesh);
   }
   // Keep the masonry shadow pass separate from the roof and deck.
-  addBatch('dam-fallback-stone', stone, stoneParts, true);
-  const superstructure = new THREE.Mesh(mergePaintedParts(deckAndHouse),
-    new THREE.MeshToonMaterial({ vertexColors: true }));
-  superstructure.name = 'dam-fallback-house-and-deck';
-  superstructure.receiveShadow = true;
-  fallback.add(superstructure);
+  addBatch('dam-fallback-stone', new THREE.MeshToonMaterial({ vertexColors: true }),
+    [kitShape('damMasonry', true)], true);
+  addBatch('dam-fallback-house-and-deck', new THREE.MeshToonMaterial({ vertexColors: true }),
+    [kitShape('damWorks', true)], false);
   fallback.add(buildDamFrontRail(new THREE.MeshToonMaterial({ color: 0xf2c12e })));
 
   const water = new THREE.MeshToonMaterial({
@@ -331,7 +285,7 @@ export function buildDamVisuals(island: IslandData,
   const placement = getDamPlacement(island);
   group.position.set(placement.position.x, placement.position.y, placement.position.z);
   group.scale.setScalar(placement.scale);
-  const fallback = buildProceduralDamFallback(island);
+  const fallback = buildDamKitPreview();
   const paths = damAccess(island);
   const supports = makeDamColliderDescriptors(island)
     .filter(collider => collider.id.startsWith(DAM_ACCESS_SUPPORT_ID))
