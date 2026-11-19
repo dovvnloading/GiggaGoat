@@ -20,7 +20,7 @@ async function createWithPostedTier(tier: Difficulty): Promise<Game> {
   return Game.create({ progress: snapshot });
 }
 
-it('licks a nearby marked Hay Haul bale when the normal ray misses and the mouth has a clear path', async () => {
+it('licks a marked bale in the stationary camera direction with a clear path from the mouth', async () => {
   const game = await createWithPostedTier('medium');
   try {
     const board = game.gigs.boards.find(board => board.poiId === 'hoofington')!;
@@ -33,26 +33,29 @@ it('licks a nearby marked Hay Haul bale when the normal ray misses and the mouth
     const bale = game.colliders.bodies.get(id)!;
     const spot = bale.translation();
     const x = spot.x + 1.9;
-    const heading = -Math.PI / 2 + .66;
-    game.teleport(V(x, heightAt(game.island, x, spot.z), spot.z), -heading);
-    for (let tick = 0; tick < 35; tick++) game.step({ cameraYaw: heading });
+    const cameraYaw = -Math.PI / 2 + .16;
+    game.teleport(V(x, heightAt(game.island, x, spot.z), spot.z));
+    for (let tick = 0; tick < 35; tick++) game.step({ cameraYaw });
 
+    const heading = game.goat.locomotion.heading;
+    expect(Math.cos(cameraYaw - heading)).toBeLessThan(.3);
     const tongue = game.goat.interactions;
     const toBale = () => sub(bale.translation(), tongue.tongueOrigin);
     expect(tongue.raycastTongue()?.body?.handle).not.toBe(bale.handle);
     const post = add(tongue.tongueOrigin, mul(toBale(), .4));
     const blocker = game.physics.raw.createCollider(RAPIER.ColliderDesc.cuboid(.075, .45, .075)
       .setTranslation(post.x, post.y, post.z));
-    game.step({ cameraYaw: heading });
+    game.step({ cameraYaw });
     expect(tongue.raycastTongue(toBale())?.collider.handle).toBe(blocker.handle);
 
-    for (let tick = 0; tick < 5; tick++) game.step({ cameraYaw: heading, tongue: true });
+    for (let tick = 0; tick < 5; tick++) game.step({ cameraYaw, tongue: true });
     expect(tongue.tongueBody?.handle).not.toBe(bale.handle);
     expect(game.gigs.active?.seenIds).not.toContain(id);
 
     game.physics.raw.removeCollider(blocker, false);
-    for (let tick = 0; tick < 30; tick++) game.step({ cameraYaw: heading });
-    for (let tick = 0; tick < 5; tick++) game.step({ cameraYaw: heading, tongue: true });
+    for (let tick = 0; tick < 30; tick++) game.step({ cameraYaw });
+    for (let tick = 0; tick < 5; tick++) game.step({ cameraYaw, tongue: true });
+    expect(game.goat.locomotion.heading).toBeCloseTo(heading);
     expect(tongue.tongueBody?.handle).toBe(bale.handle);
     expect(game.gigs.active?.seenIds).toContain(id);
     const initialLength = tongue.tongueLength!;

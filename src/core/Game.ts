@@ -680,7 +680,7 @@ export class Game {
       courierAim ?? add(forward(goat.locomotion.heading), V(0, -.10, 0)),
       9 * goat.size, { predicate: collider => !goat.ownsBody(collider.parent()) });
     const assistedAim = seekingTongueTarget && !match
-      ? this.gigs.escortGnomeAim(goat, wish) ?? this.hayHaulBaleAim(goat, wish, directHit?.body?.handle)
+      ? this.gigs.escortGnomeAim(goat, wish) ?? this.hayHaulBaleAim(goat, wish, cameraYaw, directHit?.body?.handle)
         ?? (courierAim ? undefined : this.coastGnomeAim(goat, directHit))
       : undefined;
     const hit = assistedAim?.hit ?? directHit;
@@ -776,24 +776,18 @@ export class Game {
     if (hit?.body?.handle === gnome.handle) return { direction, hit };
   }
 
-  /** Give small aiming errors near marked bales the same first-hit check as a normal lick. */
-  private hayHaulBaleAim(goat: GoatRagdoll, wish: Vec3, directBodyHandle: number | undefined):
+  /** Let a stationary player aim at a nearby marked bale by looking toward it. */
+  private hayHaulBaleAim(goat: GoatRagdoll, wish: Vec3, cameraYaw: number,
+    directBodyHandle: number | undefined):
     { direction: Vec3; hit: RayHit } | undefined {
     const run = this.gigs.active;
     if (run?.status !== 'running' || run.setup.config.kind !== 'hay-haul') return;
     const bales = run.setup.config.bales.filter(({ id }) => !run.finishedIds.includes(id));
     const tongue = goat.interactions;
     const origin = tongue.tongueOrigin;
-    const facing = forward(goat.locomotion.heading);
-    if (directBodyHandle !== undefined && bales.some(({ id }) =>
-      this.colliders.bodies.get(id)?.handle === directBodyHandle)) {
-      const direct = tongue.raycastTongue();
-      if (direct?.body?.handle === directBodyHandle) return;
-    }
-
     const torso = goat.torso.translation();
     const movement = Math.hypot(wish.x, wish.z);
-    const aim = movement > .08 ? mul(wish, 1 / movement) : facing;
+    const aim = movement > .08 ? mul(wish, 1 / movement) : forward(cameraYaw);
     let bestDistance = Math.min(4, HAY_HAUL_TAG_RADIUS * goat.size);
     let best: { direction: Vec3; hit: RayHit } | undefined;
     for (const { id } of bales) {
@@ -803,7 +797,9 @@ export class Game {
       const offset = sub(target, torso);
       const distance = Math.hypot(offset.x, offset.y, offset.z);
       const alignment = aim.x * offset.x + aim.z * offset.z;
-      if (distance > bestDistance || alignment < Math.hypot(offset.x, offset.z) * .7) continue;
+      if (alignment < Math.hypot(offset.x, offset.z) * .7) continue;
+      if (body.handle === directBodyHandle && tongue.raycastTongue()?.body?.handle === body.handle) return;
+      if (distance > bestDistance) continue;
       const direction = sub(target, origin);
       const hit = tongue.raycastTongue(direction);
       if (hit?.body?.handle !== body.handle) continue;
