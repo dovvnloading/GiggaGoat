@@ -8,6 +8,8 @@ import { instantiateLibraryModel, makeLighthouseFooting } from './visual-lightho
 import { BUILDING_RAMP, TOON_RAMP } from './visual-props';
 import { bakeLibraryPropGeometry } from './library-props';
 import { gridSample } from './terrain';
+import { lighthouseAccess } from './lighthouse-access';
+import { accessArrows, accessPathVisual } from './visual-access-path';
 
 function renderedCapeSurface(view: ReturnType<typeof createWorldScene>, scale: number) {
   view.group.updateMatrixWorld(true);
@@ -19,6 +21,38 @@ function renderedCapeSurface(view: ReturnType<typeof createWorldScene>, scale: n
 }
 
 describe('Old Lighthouse painting rebuild', () => {
+  it('keeps the full painted chevrons flush across the curved ramp triangles', () => {
+    const island = generateIsland();
+    const scale = island.size / 600;
+    const tower = island.props.find(prop => prop.kind === 'lighthouse')!;
+    const sections = lighthouseAccess(tower, (x, z) => gridSample(island, x, z));
+    const ramp = accessPathVisual('test-ramp', [sections], [], .34 * scale, scale, 0xffffff, 0xffffff);
+    const paint = accessArrows(sections, scale, 0xffffff).geometry;
+    const positions = paint.getAttribute('position');
+    const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0), 0, .5 * scale);
+    const corners = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+    const sampled = new THREE.Vector3();
+    try {
+      expect(positions.count).toBeGreaterThan(30);
+      for (let index = 0; index < positions.count; index += 3) {
+        for (const [i, corner] of corners.entries()) corner.fromBufferAttribute(positions, index + i);
+        for (const weights of [[1, 1, 1], [3, 1, 1]]) {
+          const sum = weights.reduce((total, weight) => total + weight, 0);
+          sampled.set(0, 0, 0);
+          for (const [i, corner] of corners.entries()) sampled.addScaledVector(corner, weights[i]! / sum);
+          ray.ray.origin.copy(sampled).addScaledVector(ray.ray.direction, -.22 * scale);
+          const hit = ray.intersectObject(ramp)[0];
+          expect(hit).toBeDefined();
+          expect(sampled.y - hit!.point.y).toBeCloseTo(.028 * scale, 3);
+        }
+      }
+    } finally {
+      paint.dispose();
+      ramp.geometry.dispose();
+      (ramp.material as THREE.Material).dispose();
+    }
+  });
+
   it('fits a stone base against the actual cliff triangles beneath the tower', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
     const view = createWorldScene(island);
