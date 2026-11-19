@@ -1,4 +1,4 @@
-import type { IslandData, PropColliderDescriptor, PropDescriptor, PropKind } from './types';
+import type { IslandData, PropColliderDescriptor, PropDescriptor, PropKind, Vec3 } from './types';
 import { accessGuard, type AccessSection } from './access-path';
 import { gridSample } from './terrain';
 
@@ -22,6 +22,69 @@ export function boardwalkFarEnd(island: IslandData) {
     prop.kind === 'pier-rail' && prop.collidable && !prop.climbable && prop.body.type === 'static' &&
     Math.abs(prop.transform.position.z - railZ) < .001);
   return { deck, edgeZ, rails };
+}
+
+// Bind the eight supports to the fitted white steel in ferris-wheel.glb.
+const WHEEL_HEIGHT = 29;
+const WHEEL_MODEL_MIN_Y = -.131678;
+const WHEEL_MODEL_DEPTH = 5;
+const WHEEL_MODEL_WIDTH = 29.5;
+const WHEEL_MODEL_CENTER_Y = (WHEEL_HEIGHT + WHEEL_MODEL_MIN_Y) / 2;
+const WHEEL_MODEL_SPAN_Y = WHEEL_HEIGHT - WHEEL_MODEL_MIN_Y;
+
+// Lower ring of the +X/+Z diagonal beam. Its top ring is the same
+// eight points translated towards the hub. The other beams mirror it.
+const WHEEL_BRACE_BASE: readonly (readonly [number, number, number])[] = [
+  [8.152895, -.131678, 2.050416], [8.225565, -.094289, 1.852308],
+  [8.224977, -.091932, 2.248281], [8.400416, -.001666, 1.770005],
+  [8.399584, .001666, 2.329995], [8.575024, .091932, 1.851719],
+  [8.574435, .094289, 2.247692], [8.647104, .131678, 2.049584],
+];
+
+function wheelModelY(y: number, height: number): number {
+  return (y - WHEEL_MODEL_CENTER_Y) * .98 * height / WHEEL_MODEL_SPAN_Y;
+}
+
+export function boardwalkWheelSupports(wheel: PropDescriptor): PropColliderDescriptor[] {
+  const { position, rotationY } = wheel.transform;
+  const xScale = .98 * wheel.size.x / WHEEL_MODEL_WIDTH;
+  const yScale = .98 * wheel.size.y / WHEEL_MODEL_SPAN_Y;
+  const zScale = .98 * wheel.size.z / WHEEL_MODEL_DEPTH;
+  const cos = Math.cos(rotationY), sin = Math.sin(rotationY);
+  function worldPosition(x: number, y: number, z: number): Vec3 {
+    const across = x * xScale, along = z * zScale;
+    return {
+      x: position.x + cos * across + sin * along,
+      y: position.y + wheelModelY(y, wheel.size.y),
+      z: position.z - sin * across + cos * along,
+    };
+  }
+  const supports: PropColliderDescriptor[] = [];
+  for (const [side, across] of [[-1, 'left'], [1, 'right']] as const) {
+    for (const [row, along] of [[-1, 'shore'], [1, 'sea']] as const) {
+      const id = wheel.id + '-' + across + '-' + along;
+      supports.push({
+        id: id + '-pad', shape: 'cuboid', body: wheel.body,
+        transform: { position: worldPosition(side * 8.4, .15, row * 2.05), rotationY },
+        size: { x: xScale, y: .30 * yScale, z: .90 * zScale },
+      });
+      const centreX = 4.35, centreY = 7.6, centreZ = 1.99875;
+      const beam: number[] = [];
+      for (const [dx, dy, dz] of [[0, 0, 0], [-8.10, 15.20, -.1025]] as const) {
+        for (const [x, y, z] of WHEEL_BRACE_BASE) {
+          beam.push(side * (x + dx - centreX) * xScale,
+            (y + dy - centreY) * yScale, row * (z + dz - centreZ) * zScale);
+        }
+      }
+      supports.push({
+        id: id + '-brace', shape: 'convex', body: wheel.body,
+        transform: { position: worldPosition(side * centreX, centreY, row * centreZ), rotationY },
+        size: { x: 8.594209 * xScale, y: 15.463356 * yScale, z: .662490 * zScale },
+        vertices: new Float32Array(beam),
+      });
+    }
+  }
+  return supports;
 }
 
 /** The same sloped tread, guard and pile positions drive art and collision. */
@@ -215,9 +278,11 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
     });
   }
 
-  // Wheel feet rest on the broad terminal platform, not the beach or the sea.
-  place('ferris-wheel', 0.5, 55, 29.5, 29, 4.6, {
-    floor: headY, collidable: false, lickable: false, climbable: false,
+  // The centred fit leaves the actual pads above the box floor. Set
+  // their baked bottom on the terminal deck, including on scaled islands.
+  const padLift = (WHEEL_HEIGHT / 2 + wheelModelY(0, WHEEL_HEIGHT)) * scale;
+  place('ferris-wheel', 0.5, 55, WHEEL_MODEL_WIDTH, WHEEL_HEIGHT, 4.6, {
+    floor: headY - padLift, collidable: false, lickable: false, climbable: false,
   });
   // Lamps and strung triangular pennants echo the illuminated painting.
   for (const z of [-29, -11, 7, 25, 39]) {

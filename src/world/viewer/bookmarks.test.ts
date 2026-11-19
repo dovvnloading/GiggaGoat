@@ -139,8 +139,8 @@ describe('painting bookmark recompositions (default billy-isle)', () => {
       z: 0.6 * wheel.transform.position.z + 0.4 * landEnd,
     }));
     expect(bookmark.camera).toEqual({ x: 50, y: 7, z: 249 });
-    expect(bookmark.target).toEqual({ x: 56.5, y: 19.5, z: 310 });
-    expect(bookmark.fov).toBe(70);
+    expect(bookmark.target).toEqual({ x: 56.5, y: 19, z: 310 });
+    expect(bookmark.fov).toBe(68);
     expect(bookmark.day).toBe(0.29);
 
     const ground = gridSample(island, bookmark.camera.x, bookmark.camera.z);

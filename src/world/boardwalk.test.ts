@@ -236,7 +236,13 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
         expect(ball.size).toEqual({ x: scale, y: scale, z: scale });
       const wheel = wheels[0]!;
       expect(footprintOnDeck(wheel, head, 0.1)).toBe(true);
-      expect(Math.abs(floorOf(wheel) - topOf(head))).toBeLessThan(0.05);
+      const feet = island.colliders.filter(c => c.shape === 'cuboid' &&
+        c.id.startsWith(wheel.id + '-') && c.id.endsWith('-pad'));
+      expect(feet).toHaveLength(4);
+      for (const foot of feet) {
+        if (foot.shape !== 'cuboid') throw new Error('Expected a Ferris wheel foot pad');
+        expect(foot.transform.position.y - foot.size.y / 2).toBeCloseTo(topOf(head), 6);
+      }
       expect(wheel.transform.position.z).toBeGreaterThan(
         shops[shops.length - 1]!.transform.position.z + 15);
       for (const kind of [...kioskKinds, 'bunting', 'lamp', 'pier-rail', ...kioskSigns]) {

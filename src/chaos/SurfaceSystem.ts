@@ -31,6 +31,8 @@ export interface SurfaceOptions {
   material?: MaterialName;
 }
 export interface TrampolineOptions extends SurfaceOptions {
+  /** The visible platform already supplies its own solid collider. */
+  sensorOnly?: boolean;
   bounceSpeed?: number;
   cooldownSeconds?: number;
 }
@@ -77,7 +79,7 @@ export class SurfaceSystem {
   get count(): number { return this.surfaces.size; }
   createTrampoline(options: TrampolineOptions): string {
     return this.create('trampoline', options, V(0,1,0),
-      options.bounceSpeed ?? 10, 0, options.cooldownSeconds ?? .55);
+      options.bounceSpeed ?? 10, 0, options.cooldownSeconds ?? .55, !options.sensorOnly);
   }
   createLaunchPad(options: LaunchPadOptions): string {
     if (!magnitude(options.direction)) throw new RangeError('launch direction cannot be zero');
