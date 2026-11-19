@@ -100,6 +100,7 @@ export async function createDistrictLod<Model extends string>(
       high.setAttribute(name, new THREE.BufferAttribute(buffer, itemSize));
     }
     high.computeBoundingSphere();
+    high.userData.preserveSilhouette = cell.keepSilhouette;
     const low = cell.keepSilhouette ? high : await simplifiedWorldGeometry(high);
     const material = new THREE.MeshToonMaterial({
       color: 0xffffff, vertexColors: true,
