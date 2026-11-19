@@ -15,7 +15,7 @@ export interface LighthouseVisuals {
   group: THREE.Group;
   isFallbackHidden(mesh: THREE.InstancedMesh): boolean;
   setLighting(daylight: number, golden: number): void;
-  updateCulling(position: THREE.Vector3, frustum: THREE.Frustum): void;
+  updateCulling(position: THREE.Vector3): void;
   dispose(): void;
 }
 
@@ -931,8 +931,11 @@ export function buildLighthouseVisuals(island: IslandData,
   kitPlacements('life-ring', 'lighthouse-red-white-life-ring', ringPlacement);
   const harbour = batchHeroMeshes(group, 'lighthouse-static-painted-landmarks', mesh => mesh !== cliffRocks);
   const fullHarbour = harbour.geometry;
-  let farHarbour: THREE.BufferGeometry | undefined;
-  let preparingHarbour = false, disposed = false;
+  let farHarbour = fullHarbour, disposed = false;
+  void simplifiedWorldGeometry(fullHarbour).then(low => {
+    if (disposed && low !== fullHarbour) low.dispose();
+    else farHarbour = low;
+  });
   if (beacon) group.add(beacon.glass, beacon.halo);
   // Add after the hero batch so this stays one named Mesh and one draw call.
   const bridgeRopes = makeRopeBridgeRopes(island);
@@ -950,17 +953,9 @@ export function buildLighthouseVisuals(island: IslandData,
       const kind = mesh.name.replace(/^(?:props-|architecture-details-|outline-)/, '');
       return fullyHidden.has(kind as PropKind);
     },
-    updateCulling(position, frustum) {
+    updateCulling(position) {
       const dx = position.x - center.x, dz = position.z - center.z;
-      const distant = dx * dx + dz * dz > (155 * scale) ** 2;
-      harbour.geometry = distant && farHarbour ? farHarbour : fullHarbour;
-      if (distant && !preparingHarbour && frustum.intersectsObject(harbour)) {
-        preparingHarbour = true;
-        void simplifiedWorldGeometry(fullHarbour).then(low => {
-          if (!disposed) farHarbour = low;
-          else if (low !== fullHarbour) low.dispose();
-        });
-      }
+      harbour.geometry = dx * dx + dz * dz > (155 * scale) ** 2 ? farHarbour : fullHarbour;
     },
     setLighting(daylight: number, golden: number): void {
       beacon?.setLighting(daylight, golden);
@@ -968,7 +963,7 @@ export function buildLighthouseVisuals(island: IslandData,
     dispose(): void {
       disposed = true;
       harbour.geometry = fullHarbour;
-      if (farHarbour && farHarbour !== fullHarbour) farHarbour.dispose();
+      if (farHarbour !== fullHarbour) farHarbour.dispose();
       beacon?.dispose();
       // All geometry/materials are released by WorldScene.dispose's traversal.
     },
