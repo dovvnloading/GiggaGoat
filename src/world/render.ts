@@ -125,7 +125,7 @@ function roadMix(lookup: Map<string, RoadSample[]>, x: number, z: number,
 }
 function terrainGeometry(
   island: IslandData, startX: number, startZ: number, countX: number, countZ: number,
-  lodStep: number, roads: Map<string, RoadSample[]>,
+  lodStep: number, roads: Map<string, RoadSample[]>, nativePatch?: THREE.Box2,
 ): THREE.BufferGeometry {
   const n = island.resolution, metres = island.size / (n - 1);
   const cx = gridCoordinate(island.size, n, startX + countX / 2);
@@ -209,26 +209,43 @@ function terrainGeometry(
 
   const stride = countX + 1;
   const vertex = (x: number, z: number): number => z * stride + x;
+  const native = (x: number, z: number): boolean => {
+    if (!nativePatch) return false;
+    const west = gridCoordinate(island.size, n, startX + x);
+    const north = gridCoordinate(island.size, n, startZ + z);
+    return west <= nativePatch.max.x && west + lodStep * metres >= nativePatch.min.x &&
+      north <= nativePatch.max.y && north + lodStep * metres >= nativePatch.min.y;
+  };
   for (let z = 0; z < countZ; z += lodStep) for (let x = 0; x < countX; x += lodStep) {
     const x1 = Math.min(countX, x + lodStep);
     const z1 = Math.min(countZ, z + lodStep);
+    if (native(x, z)) {
+      for (let row = z; row < z1; row++) for (let col = x; col < x1; col++) {
+        const nw = vertex(col, row), ne = nw + 1;
+        const sw = nw + stride, se = sw + 1;
+        indices.push(nw, sw, ne, ne, sw, se);
+      }
+      continue;
+    }
     const a = vertex(x, z), b = vertex(x1, z);
     const c = vertex(x, z1), d = vertex(x1, z1);
-    const touchesSeam = x === 0 || z === 0 || x1 === countX || z1 === countZ;
-    if (lodStep === 1 || !touchesSeam || x1 - x < 2 || z1 - z < 2) {
+    const left = x === 0 || native(x - lodStep, z);
+    const right = x1 === countX || native(x1, z);
+    const top = z === 0 || native(x, z - lodStep);
+    const bottom = z1 === countZ || native(x, z1);
+    if (lodStep === 1 || !(left || right || top || bottom) || x1 - x < 2 || z1 - z < 2) {
       indices.push(a, c, b, b, c, d);
       continue;
     }
-    // Stitch coarse interiors to high-resolution seam edge vertices by
-    // triangle fans. Adjacent high-LOD chunks share EXACT same edge triangles.
+    // Stitch coarse interiors to native edges at chunk seams and the summit patch.
     const perimeter: number[] = [a];
-    if (x === 0) for (let k = z + 1; k < z1; k++) perimeter.push(vertex(x, k));
+    if (left) for (let k = z + 1; k < z1; k++) perimeter.push(vertex(x, k));
     perimeter.push(c);
-    if (z1 === countZ) for (let k = x + 1; k < x1; k++) perimeter.push(vertex(k, z1));
+    if (bottom) for (let k = x + 1; k < x1; k++) perimeter.push(vertex(k, z1));
     perimeter.push(d);
-    if (x1 === countX) for (let k = z1 - 1; k > z; k--) perimeter.push(vertex(x1, k));
+    if (right) for (let k = z1 - 1; k > z; k--) perimeter.push(vertex(x1, k));
     perimeter.push(b);
-    if (z === 0) for (let k = x1 - 1; k > x; k--) perimeter.push(vertex(k, z));
+    if (top) for (let k = x1 - 1; k > x; k--) perimeter.push(vertex(k, z));
     const centre = vertex(x + Math.floor((x1 - x) / 2),
       z + Math.floor((z1 - z) / 2));
     for (let i = 0; i < perimeter.length; i++) {
@@ -314,6 +331,11 @@ if (rock > 0.0) {
     capeLighting.paint(shader);
   };
   const lookup = roadGrid(island, 22);
+  // The splayed summit entrance is seated in the native ground. Keep its toe
+  // covered at a distance too, with enough room for the widest mitred corner.
+  const summit = island.roads.find(road => road.id === SUMMIT_ASCENT_TRAIL);
+  const summitEntrance = summit && new THREE.Box2().setFromPoints(summit.points.slice(0, 2)
+    .map(point => new THREE.Vector2(point.x, point.z))).expandByScalar(summit.width * 2.1);
   const chunks: Chunk[] = [];
   for (let startZ = 0; startZ < n - 1; startZ += segments) {
     for (let startX = 0; startX < n - 1; startX += segments) {
@@ -322,7 +344,7 @@ if (rock > 0.0) {
       const cx = gridCoordinate(island.size, n, startX + countX / 2);
       const cz = gridCoordinate(island.size, n, startZ + countZ / 2);
       const high = terrainGeometry(island, startX, startZ, countX, countZ, 1, lookup);
-      const low = terrainGeometry(island, startX, startZ, countX, countZ, 2, lookup);
+      const low = terrainGeometry(island, startX, startZ, countX, countZ, 2, lookup, summitEntrance);
       const mesh = new THREE.Mesh(high, material);
       mesh.position.set(cx, 0, cz);
       mesh.receiveShadow = true;
