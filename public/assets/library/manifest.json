@@ -33062,6 +33062,15 @@
   "url": ""
  },
  {
+  "path": "assets/library/custom/hoofington-props/climbable-silo.glb",
+  "name": "Hoofington silo with climbable ladder",
+  "source": "custom",
+  "pack": "hoofington-props",
+  "license": "CC0",
+  "credit": "Quaternius farm buildings (CC0), repainted in Blender for Gigga-Goat, ladder adapted for Gigga-Goat",
+  "url": ""
+ },
+ {
   "path": "assets/library/custom/hoofington-props/windmill.glb",
   "name": "Hoofington windmill",
   "source": "custom",
