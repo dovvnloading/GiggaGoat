@@ -167,37 +167,50 @@ export function renderHudMinimap(island: IslandData, origin: { x: number; z: num
     return '<polygon data-pier-deck points="' + points +
       '" fill="#d6a072" stroke="#775537" stroke-width="2" stroke-linejoin="round"/>';
   }).join('');
+  // Reserve space for destinations first, then buildings, then trees. The
+  // same island and map origin always select the same landmarks.
+  const occupied: { x: number; y: number }[] = [];
+  const reserve = (point: { x: number; y: number }) => {
+    if (occupied.some(p => Math.abs(p.x - point.x) < 21 && Math.abs(p.y - point.y) < 21)) return false;
+    occupied.push(point);
+    return true;
+  };
+  const boards = island.pois.flatMap(poi => {
+    const point = projectHudMap(poi.center, origin);
+    if (point.x < 0 || point.x > 280 || point.y < 0 || point.y > 280) return [];
+    occupied.push(point);
+    return [mapImage(HUD_SPRITES.mapPin, point.x, point.y - 2, 16, 20)];
+  });
   const trees: string[] = [], structures: string[] = [];
+  const treeCandidates: { x: number; y: number; pine: boolean }[] = [];
   let count = 0;
   for (const prop of island.props) {
     const point = projectHudMap({ x: prop.transform.position.x, z: prop.transform.position.z }, origin);
     if (point.x < -18 || point.x > 298 || point.y < -18 || point.y > 298) continue;
     if (prop.kind === 'tree-oak' || prop.kind === 'tree-pine') {
       // The actual forest contains many trees: limit SVG work without random motion.
-      if (++count % 3 === 0 && trees.length < 95) trees.push(tree(point.x, point.y, prop.kind === 'tree-pine'));
+      if (++count % 3 === 0) treeCandidates.push({ ...point, pine: prop.kind === 'tree-pine' });
     } else if (['barn', 'house', 'shop', 'silo', 'windmill', 'cottage'].includes(prop.kind) &&
-      structures.length < 52) {
+      structures.length < 52 && reserve(point)) {
       structures.push(building(prop, point.x, point.y));
     }
   }
-  const boards = island.pois.map(poi => {
-    const point = projectHudMap(poi.center, origin);
-    if (point.x < 0 || point.x > 280 || point.y < 0 || point.y > 280) return '';
-    return mapImage(HUD_SPRITES.mapPin, point.x, point.y - 2, 16, 20);
-  }).join('');
-  return '<defs><clipPath id="gg-hud-map-clip"><circle cx="140" cy="140" r="132"/></clipPath>' +
+  for (const point of treeCandidates) {
+    if (trees.length === 95) break;
+    if (reserve(point)) trees.push(tree(point.x, point.y, point.pine));
+  }
+  return '<defs>' +
     '<radialGradient id="gg-hud-map-clearance"><stop offset=".35" stop-color="#373737"/>' +
     '<stop offset="1" stop-color="white"/></radialGradient>' +
     '<mask id="gg-hud-map-scenery" maskUnits="userSpaceOnUse" x="0" y="0" width="280" height="280">' +
     '<rect width="280" height="280" fill="white"/>' +
     '<circle data-map-player-clearance r="43" fill="url(#gg-hud-map-clearance)"/></mask></defs>' +
-    '<g clip-path="url(#gg-hud-map-clip)">' + terrain.join('') + shorePaths(island, origin) +
-    roads.join('') + decking + '<g data-map-scenery mask="url(#gg-hud-map-scenery)" opacity=".63">' +
-    trees.join('') + structures.join('') + boards + '</g>' +
+    '<g shape-rendering="crispEdges">' + terrain.join('') + '</g>' + shorePaths(island, origin) +
+    roads.join('') + decking + '<g data-map-scenery mask="url(#gg-hud-map-scenery)">' +
+    trees.join('') + structures.join('') + boards.join('') + '</g>' +
     '<g data-map-objectives><path data-map-climb-target visibility="hidden" ' +
     'd="M-8 10v-21h18l-4 5 4 5H-8" stroke="#463227" stroke-width="2.5" ' +
     'stroke-linejoin="round" fill="#ffdf74"/></g>' +
     '<g data-player><path d="M0 -17 L12 14 L0 8 L-12 14Z" fill="#fff7df" stroke="#88411d" stroke-width="6" stroke-linejoin="round"/>' +
-    '<path d="M0 -17 L12 14 L0 8 L-12 14Z" fill="#ff8e28" stroke="#ffe883" stroke-width="2"/></g></g>' +
-    '<circle cx="140" cy="140" r="132" fill="none" stroke="#f6d78d" stroke-width="6"/>';
+    '<path d="M0 -17 L12 14 L0 8 L-12 14Z" fill="#ff8e28" stroke="#ffe883" stroke-width="2"/></g>';
 }
