@@ -194,6 +194,9 @@ describe('The Dam hero POI', () => {
     expect(meshes.length).toBe(3); // two masonry batches and the flowing spillways
     expect(meshes.filter(mesh => mesh.castShadow)).toHaveLength(1);
     expect(meshes.filter(mesh => mesh.name.startsWith('Water_Fall_'))).toHaveLength(1);
+    const spillway = meshes.find(mesh => mesh.name.startsWith('Water_Fall_'))!;
+    expect(spillway.material).toMatchObject({ transparent: true, depthWrite: false, forceSinglePass: true });
+    expect(water.depthWrite).toBe(true);
     expect(prepared.waterfallMaps).toHaveLength(1);
     expect(prepared.waterfallMaps[0]).not.toBe(texture);
     scrollDamWaterfallUVs(prepared.waterfallMaps, 1.5);

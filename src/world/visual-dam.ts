@@ -34,6 +34,20 @@ function namedPart(object: THREE.Object3D, prefix: RegExp): boolean {
   return false;
 }
 
+/** The splash route passes beside the water sheets at arm's length. */
+function softenNearSpillway(material: THREE.Material): void {
+  material.transparent = true;
+  material.depthWrite = false;
+  material.forceSinglePass = true;
+  material.onBeforeCompile = shader => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <opaque_fragment>', [
+      // Perspective clip W is view-space depth in world metres.
+      'diffuseColor.a *= smoothstep(0.65, 2.60, 1.0 / gl_FragCoord.w);',
+      '#include <opaque_fragment>',
+    ].join('\n'));
+  };
+}
+
 /** The authored rocks are only needed where the island has no existing cliff. */
 function needsAbutmentRock(mesh: THREE.Mesh, island: IslandData): boolean {
   const { position, scale } = getDamPlacement(island);
@@ -105,6 +119,7 @@ export function prepareDamModel(root: THREE.Object3D, island: IslandData): DamMe
     const material = original.clone();
     // GLTF's falling-water streaks have a texture. Isolate it before scrolling
     // so any shared reservoir/foam texture stays stationary.
+    softenNearSpillway(material);
     const textured = material as THREE.MeshStandardMaterial;
     if (textured.map) {
       textured.map = textured.map.clone();
@@ -272,6 +287,7 @@ function buildProceduralDamFallback(island: IslandData): THREE.Group {
     color: 0x40c9e6, transparent: true, opacity: 0.88,
     side: THREE.DoubleSide, depthWrite: false,
   });
+  softenNearSpillway(water);
   const { x: outlets, z: impactZ, halfWidth } = DAM_SPILLWAY_IMPACTS;
   const impactY = damChannelAt(impactZ).level + 0.20;
   const lipY = 12.68, lipZ = 3.7;
