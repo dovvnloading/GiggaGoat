@@ -1,5 +1,6 @@
 import { BoxGeometry, Color, InstancedMesh, Matrix4, MeshToonMaterial } from 'three';
 import type { IslandData, PropDescriptor } from './types';
+import { boardwalkShoreEntry } from './boardwalk';
 import { TOON_RAMP } from './visual-props';
 
 // The timber profile and paint from public/assets/library/custom/baaardwalk/pier-rail.glb.
@@ -95,7 +96,58 @@ function appendRail(parts: RailPart[], rails: PropDescriptor[], side: boolean): 
   }
 }
 
-/** All Baa-ardwalk rails share one draw. Only the Ferris platform panels share their posts. */
+function appendShoreEntry(parts: RailPart[], island: IslandData): void {
+  const entry = boardwalkShoreEntry(island);
+  if (!entry) return;
+  const { scale, sections, guards, thickness, piles } = entry;
+  const [start, end] = sections;
+  const { outer, inner } = start;
+  const width = inner.x - outer.x;
+  const cap = end.outer;
+  const timber = [0xa57548, 0xaf8052, 0x986942, 0xac7b4b].map(hex => new Color(hex));
+  const fascia = new Color(0x855832);
+  // Anchor the upper edge of each rectangular piece to the actual sloped plane.
+  const span = (x: number, dx: number, top: number, endTop: number,
+    from: number, to: number, depth: number, colour: Color) => {
+    const theta = Math.atan2(endTop - top, to - from);
+    const sin = Math.sin(theta), cos = Math.cos(theta);
+    const matrix = new Matrix4().makeRotationX(-theta)
+      .multiply(new Matrix4().makeScale(dx, depth, Math.hypot(to - from, endTop - top)));
+    matrix.setPosition(x, (top + endTop) / 2 - cos * depth / 2, (from + to) / 2 + sin * depth / 2);
+    parts.push({ matrix, colour });
+  };
+  span((outer.x + inner.x) / 2, width, outer.y, cap.y, outer.z, cap.z, thickness, fascia);
+  const plankCount = 12;
+  const plank = width / plankCount;
+  for (let index = 0; index < plankCount; index++) {
+    span(outer.x + (index + .5) * plank, plank - .016 * scale, outer.y + .003 * scale,
+      cap.y + .003 * scale, outer.z, cap.z, .035 * scale, timber[index % timber.length]!);
+  }
+  for (const [first, last] of guards) {
+    const a = first!.outer, b = last!.outer;
+    const x = (a.x + first!.inner.x) / 2;
+    for (const [offset, depth, colour] of [[0, .115, RAIL_WHITE], [.62, .095, CAP_SHADE], [1.08, .095, RAIL_WHITE]] as const) {
+      span(x, .135 * scale, a.y - offset * scale, b.y - offset * scale, a.z, b.z, depth * scale, colour);
+    }
+    for (let index = 0; index <= 12; index++) {
+      const t = index / 12;
+      const post = index % 4 === 0;
+      const width = (post ? .19 : .048) * scale;
+      const height = (post ? 1.22 : .49) * scale;
+      const top = a.y + (b.y - a.y) * t - (post ? 0 : .64 * scale);
+      const matrix = new Matrix4().makeScale(width, height, width);
+      matrix.setPosition(x, top - height / 2, a.z + (b.z - a.z) * t);
+      parts.push({ matrix, colour: RAIL_WHITE });
+    }
+  }
+  for (const { size, transform: { position } } of piles) {
+    const matrix = new Matrix4().makeScale(size.x, size.y, size.z);
+    matrix.setPosition(position.x, position.y, position.z);
+    parts.push({ matrix, colour: fascia });
+  }
+}
+
+/** The timber shore entry and Baa-ardwalk railings share one draw. */
 export function buildBoardwalkRailVisuals(island: IslandData) {
   const isBoardwalk = (prop: PropDescriptor) => prop.poiId === 'baa-ardwalk';
   const [deck] = island.props.filter(prop => isBoardwalk(prop) && prop.kind === 'pier')
@@ -130,6 +182,7 @@ export function buildBoardwalkRailVisuals(island: IslandData) {
     appendRail(parts, [rail], Math.abs(Math.cos(rail.transform.rotationY)) < .001);
     replacedIds.add(rail.id);
   }
+  appendShoreEntry(parts, island);
 
   if (!parts.length) return null;
   const mesh = new InstancedMesh(new BoxGeometry(), new MeshToonMaterial({ gradientMap: TOON_RAMP }),

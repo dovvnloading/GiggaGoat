@@ -123,6 +123,16 @@ export interface WaterVisuals {
   setLighting(daylight: number, golden: number): void;
 }
 
+/** Metres at the reference island scale. */
+export const SHALLOW_FLOOD_REVEAL = {
+  tideRise: [.25, 2],
+  inlandHeight: [.15, .85],
+  wetEdge: [.04, .22],
+  depthFade: [.45, 1.55],
+  eyeClearance: [0, .40],
+  opacityReduction: .48,
+} as const;
+
 /** Float height atlas lets the sea shade by actual terrain depth, including rising tide. */
 function seaMaterial(island: IslandData, uLight: LightUniform,
   atmosphere: ReturnType<typeof skyUniforms>): { material: THREE.ShaderMaterial;
@@ -140,6 +150,8 @@ function seaMaterial(island: IslandData, uLight: LightUniform,
     uLevel: { value: island.seaLevel },
     uLight,
   };
+  const reveal = SHALLOW_FLOOD_REVEAL;
+  const edges = (range: readonly [number, number]): string => range.map(v => v.toFixed(2)).join(', ');
   const material = new THREE.ShaderMaterial({
     uniforms: {
       // ShaderMaterial does not inject fog uniforms automatically. Include the
@@ -186,7 +198,8 @@ function seaMaterial(island: IslandData, uLight: LightUniform,
       '  float ground = texture2D(uTerrain, atlasUV).r;',
       '  float depth = uLevel - ground;',
       '  float scale = uSize / 600.0;',
-      '  float flood = smoothstep(8.0, 30.0, (uLevel - uSeaDatum) / scale);',
+      '  float rise = (uLevel - uSeaDatum) / scale;',
+      '  float flood = smoothstep(8.0, 30.0, rise);',
       '  // Taper to deep water outside the height atlas to avoid extending its edge.',
       '  float atlasInterior = 1.0 - smoothstep(0.48, 0.5, max(abs(mapXZ.x), abs(mapXZ.y)));',
       '  float shelf = mix(36.0, 11.0 * scale, flood);',
@@ -227,6 +240,14 @@ function seaMaterial(island: IslandData, uLight: LightUniform,
       '  float pathLength = max(0.0, submergedDepth - 0.7) / max(0.30, viewAngle);',
       '  float transmission = 0.12 * exp(-0.14 * pathLength);',
       '  float alpha = cover * (1.0 - transmission * (1.0 - haze * (1.0 - atlasInterior)));',
+      '  // Leave roads legible under an early flood without changing distant or deep water.',
+      `  float shallowFlood = smoothstep(${edges(reveal.tideRise)}, rise)
+        * smoothstep(${edges(reveal.inlandHeight)}, (ground - uSeaDatum) / scale)
+        * smoothstep(${edges(reveal.wetEdge)}, submergedDepth)
+        * (1.0 - smoothstep(${edges(reveal.depthFade)}, submergedDepth))
+        * smoothstep(${edges(reveal.eyeClearance)}, eye.y / scale)
+        * atlasInterior * (1.0 - flood) * (1.0 - haze);`,
+      `  alpha *= 1.0 - ${reveal.opacityReduction.toFixed(2)} * shallowFlood;`,
       '  gl_FragColor = sRGBTransferEOTF(vec4(litColor, alpha));',
       '  #include <colorspace_fragment>',
       '}',

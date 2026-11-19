@@ -1,12 +1,17 @@
 import { HAY_HAUL_TAG_RADIUS, type GigRun, type Point } from '../gigs';
+import type { PartyMatch } from '../modes';
 import type { Game } from './Game';
 import type { InputDevice } from './GameInput';
 import { projectHudMap } from './GameHudState';
 import { HUD_SPRITES, hudSpriteUrl } from './HudSprites';
 
-export interface HayHaulGuidance {
+export interface HayMapGuidance {
   kind: 'pickup' | 'delivery';
   position: Point;
+  teamId?: string;
+}
+
+export interface HayHaulGuidance extends HayMapGuidance {
   task: string;
 }
 
@@ -51,6 +56,34 @@ export function hayHaulGuidance(game: Game, run: GigRun | null,
   };
 }
 
+/** Point to available rival cargo, then to the player's own goal while carrying. */
+export function hayHeistGuidance(match: Pick<PartyMatch, 'mode' | 'phase' | 'view'>,
+  player: Point, playerId: string): HayMapGuidance | null {
+  if (match.mode !== 'hay-heist' || match.phase === 'lobby' || match.phase === 'results') return null;
+
+  const { players, bales, arena } = match.view();
+  const ownTeam = players.find(goat => goat.id === playerId)?.teamId;
+  if (!ownTeam) return null;
+  if (bales.some(bale => bale.carrierId === playerId)) {
+    const goal = arena.barns.find(barn => barn.teamId === ownTeam);
+    return goal ? { kind: 'delivery', position: goal.position, teamId: ownTeam } : null;
+  }
+
+  let nearest: (typeof bales)[number] | undefined;
+  let nearestDistance = Infinity;
+  for (const bale of bales) {
+    if (bale.homeTeam === ownTeam || bale.carrierId !== null) continue;
+    const distance = Math.hypot(bale.position.x - player.x, bale.position.z - player.z);
+    if (distance < nearestDistance) {
+      nearest = bale;
+      nearestDistance = distance;
+    }
+  }
+  return nearest
+    ? { kind: 'pickup', position: nearest.position, teamId: nearest.homeTeam }
+    : null;
+}
+
 type MapPoint = ReturnType<typeof projectHudMap>;
 const MAP_CENTER = 140;
 const OBJECTIVE_MAP_RADIUS = 108;
@@ -85,10 +118,15 @@ export function separateMapObjective(anchor: MapPoint, player: MapPoint): MapPoi
   return { x: player.x + x * MARKER_SEPARATION, y: player.y + y * MARKER_SEPARATION };
 }
 
-export function createHayHaulMapMarker(kind: HayHaulGuidance['kind']): SVGGElement {
+export function createHayMapMarker({ kind, teamId }: HayMapGuidance): SVGGElement {
   const svg = 'http://www.w3.org/2000/svg';
   const group = document.createElementNS(svg, 'g');
-  group.dataset.hayHaulMarker = kind;
+  if (teamId) {
+    group.dataset.hayHeistMarker = kind;
+    group.dataset.team = teamId;
+  } else {
+    group.dataset.hayHaulMarker = kind;
+  }
   const leader = document.createElementNS(svg, 'line');
   leader.setAttribute('stroke', '#5c3d25');
   leader.setAttribute('stroke-width', '2');
@@ -96,7 +134,9 @@ export function createHayHaulMapMarker(kind: HayHaulGuidance['kind']): SVGGEleme
   leader.setAttribute('stroke-linecap', 'round');
   const ring = document.createElementNS(svg, 'circle');
   ring.setAttribute('r', '16');
-  ring.setAttribute('fill', kind === 'pickup' ? '#ffdf74' : '#a5ffd8');
+  const colour = teamId === 'red' ? '#ff7890' : teamId === 'blue' ? '#68cdff' :
+    kind === 'pickup' ? '#ffdf74' : '#a5ffd8';
+  ring.setAttribute('fill', colour);
   ring.setAttribute('stroke', '#422412');
   ring.setAttribute('stroke-width', '3');
   const image = document.createElementNS(svg, 'image');

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { createWorldScene, generateIsland } from './index';
 import {
   buildWaterVisuals, CASCADE_NATIVE_SIZE, cascadePoolCentre, cascadeWaterLine,
-  makeForestOutflowClearance, PINES_GLADE_CASCADE, waterfallSites,
+  makeForestOutflowClearance, PINES_GLADE_CASCADE, SHALLOW_FLOOD_REVEAL, waterfallSites,
 } from './visual-water';
 import { buildSkyVisuals, skyColorGLSL } from './visual-sky';
 import { getDamHeadwater, isDamHeadwater } from './dam-landscape';
@@ -201,6 +201,83 @@ describe('island sea, shoreline and horizon', () => {
       disposeWaterMeshes(water);
     }
   });
+  it('reveals submerged Hoofington roads at the first rise and preserves deep and offshore opacity', () => {
+    const island = generateIsland();
+    const water = buildWaterVisuals(island);
+    try {
+      const shader = (water.sea.material as THREE.ShaderMaterial).fragmentShader;
+      const reveal = SHALLOW_FLOOD_REVEAL;
+      const edges = (range: readonly [number, number]): string => range.map(v => v.toFixed(2)).join(', ');
+      expect(shader).toContain('smoothstep(' + edges(reveal.tideRise) + ', rise)');
+      expect(shader).toContain('smoothstep(' + edges(reveal.inlandHeight) + ', (ground - uSeaDatum) / scale)');
+      expect(shader).toContain('smoothstep(' + edges(reveal.wetEdge) + ', submergedDepth)');
+      expect(shader).toContain('smoothstep(' + edges(reveal.depthFade) + ', submergedDepth)');
+      expect(shader).toContain('smoothstep(' + edges(reveal.eyeClearance) + ', eye.y / scale)');
+      expect(shader).toContain('* atlasInterior * (1.0 - flood) * (1.0 - haze);');
+      expect(shader).toContain('alpha *= 1.0 - ' + reveal.opacityReduction.toFixed(2) + ' * shallowFlood;');
+
+      function sample(ground: number, tide = 7, eye = tide + 2, atlas = 1, haze = 0) {
+        const scale = island.size / 600;
+        const depth = tide - ground;
+        const submergedDepth = THREE.MathUtils.lerp(36, depth / scale, atlas);
+        const rise = (tide - island.seaLevel) / scale;
+        const flood = THREE.MathUtils.smoothstep(rise, 8, 30);
+        const cover = THREE.MathUtils.lerp(1, THREE.MathUtils.smoothstep(depth, -.24, .48), atlas);
+        // A shallow chase-camera angle reaches the shader's 0.30 cosine floor.
+        const pathLength = Math.max(0, submergedDepth - .7) / .30;
+        const transmission = .12 * Math.exp(-.14 * pathLength);
+        const baseline = cover * (1 - transmission * (1 - haze * (1 - atlas)));
+        const exposed = THREE.MathUtils.smoothstep(rise, ...reveal.tideRise) *
+          THREE.MathUtils.smoothstep((ground - island.seaLevel) / scale, ...reveal.inlandHeight) *
+          THREE.MathUtils.smoothstep(submergedDepth, ...reveal.wetEdge) *
+          (1 - THREE.MathUtils.smoothstep(submergedDepth, ...reveal.depthFade)) *
+          THREE.MathUtils.smoothstep((eye - tide) / scale, ...reveal.eyeClearance) *
+          atlas * (1 - flood) * (1 - haze);
+        const opacity = baseline * (1 - reveal.opacityReduction * exposed);
+        return { opacity, baseline };
+      }
+
+      // Bilinear GPU height atlas samples shift by half a texel at the rims.
+      const texels = island.resolution / (island.resolution - 1);
+      for (const distance of [0, 4, 8, 12, 18]) {
+        const x = -132.93 + Math.sin(1.04) * distance;
+        const z = 123.14 - Math.cos(1.04) * distance;
+        const ground = gridSample(island, x * texels, z * texels);
+        expect(7 - ground).toBeGreaterThan(.35);
+        expect(7 - ground).toBeLessThan(.45);
+        const { opacity, baseline } = sample(ground);
+        expect(baseline).toBeGreaterThan(.82);
+        expect(opacity).toBeGreaterThan(.42);
+        expect(opacity).toBeLessThan(.48);
+        expect(1 - opacity).toBeGreaterThan(3 * (1 - baseline));
+      }
+
+      const nearSurface = sample(6.58, 7, 7.15);
+      expect(nearSurface.opacity).toBeGreaterThan(sample(6.58).opacity);
+      expect(nearSurface.opacity).toBeLessThan(nearSurface.baseline);
+      const depthFade = sample(6.05);
+      expect(depthFade.opacity).toBeGreaterThan(sample(6.58).opacity);
+      expect(depthFade.opacity).toBeLessThan(depthFade.baseline);
+
+      for (const result of [
+        sample(-.42, 0),             // an ordinary sea-level shore
+        sample(.12, .54),            // ground at the sea datum
+        sample(6.98),                // the waterline fades before revealing the road
+        sample(5.4),                 // below the shallow inland mask
+        sample(3),                   // deeply covered land at an early rise
+        sample(48.58, 49),           // the deep-flood bookmark height
+        sample(6.58, 7, 7),          // camera at the water surface
+        sample(6.58, 7, 6.9),        // camera below the water
+        sample(6.58, 7, 9, 0),       // outside the terrain atlas
+        sample(6.58, 7, 9, 1, 1),    // horizon haze
+      ]) {
+        expect(result.opacity).toBe(result.baseline);
+      }
+    } finally {
+      disposeWaterMeshes(water);
+    }
+  });
+
   it.each([400, 600, 900])('joins a coloured 128-angle seabed to the terrain edge at size %i', size => {
     const island = generateIsland({ seed: 'cape-skirt', size, resolution: 97 });
     const { sea, update } = buildWaterVisuals(island);

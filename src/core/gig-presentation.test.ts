@@ -1,7 +1,35 @@
 import { describe, expect, it } from 'vitest';
 import { V } from '../physics';
 import { Game } from './Game';
-import { hayHaulGuidance, gigMapPoint, separateMapObjective } from './GigPresentation';
+import { frame, goat, readyMatch } from '../modes/test-utils';
+import { hayHaulGuidance, hayHeistGuidance, gigMapPoint, separateMapObjective } from './GigPresentation';
+
+describe('Hay Heist wayfinding', () => {
+  it('points to the nearest available rival bale, then the team goal during a real delivery', () => {
+    const match = readyMatch({ mode: 'hay-heist', config: { hayPerTeam: 2, hayTargetScore: 1 } },
+      ['player', 'rival', 'teammate']);
+    const [closest, other] = match.bales.filter(bale => bale.homeTeam === 'blue');
+    const ownGoal = match.view().arena.barns.find(barn => barn.teamId === 'red')!.position;
+    const position = closest!.position;
+    const waypoint = () => hayHeistGuidance(match, position, 'player');
+    const at = (id: string, point: typeof position) => goat(id, point.x, point.z, point.y + 1);
+    const teammate = at('teammate', position);
+    const rival = goat('rival');
+
+    expect(waypoint()).toEqual({ kind: 'pickup', position, teamId: 'blue' });
+    match.step({ ...frame(at('player', position), rival, teammate),
+      intents: { teammate: { tongue: true } } });
+    expect(waypoint()).toEqual({ kind: 'pickup', position: other!.position, teamId: 'blue' });
+
+    const intents = { player: { tongue: true }, teammate: { tongue: true } };
+    match.step({ ...frame(at('player', other!.position), rival, teammate), intents });
+    expect(waypoint()).toEqual({ kind: 'delivery', position: ownGoal, teamId: 'red' });
+
+    match.step({ ...frame(at('player', ownGoal), rival, teammate), intents });
+    expect(match.phase).toBe('results');
+    expect(waypoint()).toBeNull();
+  });
+});
 
 describe('Hay Haul wayfinding', () => {
   it('tracks moved bales, gives the pickup input, and switches to the barn only for a tagged bale', async () => {

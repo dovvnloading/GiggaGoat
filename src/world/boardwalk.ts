@@ -1,11 +1,51 @@
-import type { IslandData, PropDescriptor, PropKind } from './types';
+import type { IslandData, PropColliderDescriptor, PropDescriptor, PropKind } from './types';
+import { accessGuard, type AccessSection } from './access-path';
 import { gridSample } from './terrain';
 
 export const SPLASH_DIVE_BOARD_ID = 'baa-ardwalk-splash-dive-board';
+export const BOARDWALK_SHORE_ID = 'baa-ardwalk-shore-entry-';
+export const BOARDWALK_SHORE_GUARD_ID = BOARDWALK_SHORE_ID + 'guard-';
 
 export function boardwalkPierDecks(island: IslandData): PropDescriptor[] {
   return island.props.filter(prop =>
     prop.poiId === 'baa-ardwalk' && (prop.kind === 'pier' || prop.id === SPLASH_DIVE_BOARD_ID) && prop.collidable);
+}
+
+/** The same sloped tread, guard and pile positions drive art and collision. */
+export function boardwalkShoreEntry(island: IslandData) {
+  const pier = boardwalkPierDecks(island).find(prop => prop.kind === 'pier');
+  if (!pier) return null;
+  const scale = island.size / 600;
+  const { x, y, z } = pier.transform.position;
+  const shore = z - pier.size.z / 2;
+  const halfWidth = 5 * scale;
+  const start = shore - 7.5 * scale;
+  const end = shore + 1.05 * scale;
+  // Bury the leading sill where the beach is still firm across the entire mouth.
+  const startY = Math.min(...[-halfWidth, 0, halfWidth].map(dx =>
+    gridSample(island, x + dx, start))) - .045 * scale;
+  const endY = y + pier.size.y / 2 - .02 * scale;
+  const section = (at: number): AccessSection => {
+    const height = startY + (endY - startY) * (at - start) / (end - start);
+    return { outer: { x: x - halfWidth, y: height, z: at }, inner: { x: x + halfWidth, y: height, z: at } };
+  };
+  const sections = [section(start), section(end)] as const;
+  const guarded = [section(shore - 4.1 * scale), sections[1]];
+  const guards = [accessGuard(guarded, 'outer', scale), accessGuard(guarded, 'inner', scale)];
+  const thickness = .26 * scale;
+  const piles: PropColliderDescriptor[] = [-1, 1].map((side, index) => {
+    const pileZ = shore - .9 * scale;
+    const pileX = x + side * (halfWidth - .54 * scale);
+    const top = section(pileZ).outer.y - thickness * .75;
+    const bottom = Math.min(top - .08 * scale, gridSample(island, pileX, pileZ) - .23 * scale);
+    return {
+      id: BOARDWALK_SHORE_ID + 'pile-' + index,
+      shape: 'cuboid', body: { type: 'static' },
+      transform: { position: { x: pileX, y: (top + bottom) / 2, z: pileZ }, rotationY: 0 },
+      size: { x: .38 * scale, y: top - bottom, z: .38 * scale },
+    };
+  });
+  return { sections, guards, thickness, piles, scale };
 }
 
 interface Detail {

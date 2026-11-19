@@ -17,7 +17,7 @@ import {
   DynamicBodyBudget, applyPhysicsMaterial,
 } from '../chaos';
 import { addRapierPropCollider } from '../world/colliders';
-import { boardwalkPierDecks } from '../world/boardwalk';
+import { BOARDWALK_SHORE_GUARD_ID, boardwalkPierDecks } from '../world/boardwalk';
 import { HOOFINGTON_HAUL_BALE_PREFIX } from '../world/hoofington-entrances';
 import { getDamHeadwater, isDamHeadwater } from '../world/dam-landscape';
 import { DAM_ACCESS_GUARD_ID, DAM_BACK_GUARD, DAM_FRONT_GUARD } from '../world/the-dam';
@@ -134,7 +134,7 @@ export class Game {
     this.island = island;
     this.colliders = colliders;
     const noClimbGuardPrefixes = [DAM_FRONT_GUARD.prefix, DAM_BACK_GUARD.prefix,
-      DAM_ACCESS_GUARD_ID, LIGHTHOUSE_ACCESS_GUARD_ID];
+      DAM_ACCESS_GUARD_ID, LIGHTHOUSE_ACCESS_GUARD_ID, BOARDWALK_SHORE_GUARD_ID];
     for (const [id, collider] of colliders.props) {
       if (noClimbGuardPrefixes.some(prefix => id.startsWith(prefix))) {
         this.blockedClimbHandles.add(collider.handle);
