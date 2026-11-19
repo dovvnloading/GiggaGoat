@@ -5,6 +5,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { loadLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import { appendPinesLogEntries } from './visual-pines-log-access';
+import { fitPinesDeckStilt, isPinesDeckStilt, type TerrainHeight } from './visual-pines-deck-stilts';
 import type { PropDescriptor, PropKind } from './types';
 import { buildArchitecture, isArchitecturalKind } from './visual-architecture';
 import { CRANE_RAMP_GUARD_PREFIX, CRANE_SWITCHBACK_PREFIX } from './crane-yard';
@@ -710,7 +711,7 @@ function poseSummitLandmark(prop: PropDescriptor, art: THREE.Object3D): void {
 
 /** Spatially batched instancing; LOD/culling works without per-object draw calls. */
 export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 96,
-  island?: IslandData, replacedPropIds?: ReadonlySet<string>): PropVisuals {
+  island?: IslandData, replacedPropIds?: ReadonlySet<string>, distantPinesGround?: TerrainHeight): PropVisuals {
   const group = new THREE.Group();
   group.name = 'handcrafted-props';
   // A full-detail far batch uses the near mesh. Preserve existing far-name
@@ -756,6 +757,9 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     occluded: boolean[];
   }
   const jobs: Job[] = [];
+  // Local terrain changes each Pine support's silhouette, so both stay on
+  // their own fitted geometry at every distance, with the same shared paint.
+  const pinesStilts: THREE.Mesh[] = [];
   // One BatchedMesh can draw the two different cascade GLBs in a single
   // material pass. The remaining waterfall foam is already one draw.
   let cascadeBatch: { mesh: THREE.BatchedMesh; ids: Map<Job, number[]> } | undefined;
@@ -829,6 +833,19 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       if (switchMember && switchbackSpan) dummy.scale.divide(switchbackSpan);
       if (summitLandmark(prop)) poseSummitLandmark(prop, dummy);
       dummy.updateMatrix();
+      if (island && isPinesDeckStilt(prop) && !replacedPropIds?.has(prop.id)) {
+        const timber = new THREE.Mesh(fitPinesDeckStilt(geometry, island, dummy.matrix, distantPinesGround), material);
+        timber.name = 'render-' + prop.id;
+        timber.matrixAutoUpdate = false;
+        timber.matrix.copy(dummy.matrix);
+        timber.castShadow = mesh.castShadow;
+        timber.receiveShadow = mesh.receiveShadow;
+        pinesStilts.push(timber);
+        group.add(timber);
+        // The fitted render replaces this static, noncollidable instance.
+        // Reserve its slot so every other stilt retains its descriptor index.
+        dummy.matrix.makeScale(0, 0, 0);
+      }
       mesh.setMatrixAt(i, dummy.matrix);
       const authoredPaint = kind === 'log-bridge' || foliage.has(kind) ||
         authoredKioskKinds.has(kind) || authoredKioskSignKinds.has(kind);
@@ -962,6 +979,11 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
               ? new THREE.Matrix4().makeScale(span.x, span.y, span.z) : new THREE.Matrix4());
           }
           job.mesh.geometry = libraryGeometry;
+          if (island && job.kind === 'deck-stilts') for (const timber of pinesStilts) {
+            const fallback = timber.geometry;
+            timber.geometry = fitPinesDeckStilt(libraryGeometry, island, timber.matrix, distantPinesGround);
+            fallback.dispose();
+          }
           // Keep authored paint while tinting the marked access and its supports.
           for (let i = 0; i < job.entries.length; i++) {
             const prop = job.entries[i]!;
@@ -1087,6 +1109,13 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       const colour = new THREE.Color();
       const same = (a: readonly number[], b: readonly number[]): boolean =>
         a.length === b.length && a.every((value, i) => value === b[i]);
+      for (const timber of pinesStilts) {
+        test.copy(timber.geometry.boundingSphere!).applyMatrix4(timber.matrix);
+        const visible = test.center.distanceTo(position) - test.radius <= maxDistance &&
+          frustum.intersectsSphere(test);
+        if (timber.castShadow && timber.visible !== visible) changes = true;
+        timber.visible = visible;
+      }
       for (const job of jobs) {
         const suppressed = hidden(job.mesh);
         const fallIds = cascadeBatch?.ids.get(job);
