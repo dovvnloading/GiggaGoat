@@ -134,12 +134,18 @@ describe('Hay-Build placement preview', () => {
   it.each([0, 1, 2, 3] as const)('launches along the built arrow at quarter turn %i', async rotation => {
     const game = await Game.create();
     try {
-      const x = 210, z = -91.5;
-      game.teleport(V(x, heightAt(game.island, x, z), z), 0);
-      for (let i = 0; i < 40; i++) game.step();
-      game.advance(0, { toggleBuild: true, buildPiece: 'launch-pad', cameraYaw: 0 });
-      const preview = game.buildPreview()!;
-      const piece = game.rules.build.place({ ...preview.placement, rotation }).piece!;
+      const cameraYaw = -rotation * Math.PI / 2;
+      // Aim at the same unobstructed cell from each side.
+      const x = 210 - Math.sin(cameraYaw) * 4.5, z = -96 + Math.cos(cameraYaw) * 4.5;
+      game.teleport(V(x, heightAt(game.island, x, z), z), -cameraYaw);
+      for (let i = 0; i < 40; i++) game.step({ cameraYaw });
+      game.advance(0, { toggleBuild: true, buildPiece: 'launch-pad', cameraYaw });
+      const preview = game.buildPreview(cameraYaw)!;
+      expect(preview.placement.rotation).toBe(rotation);
+      expect(preview.validation.valid).toBe(true);
+      game.advance(0, { placeBuild: true, cameraYaw });
+      const piece = game.rules.build.pieces.at(-1)!;
+      expect(piece).toMatchObject(preview.placement);
       const p = game.buildPosition(piece);
       game.teleport(V(p.x, p.y + 1.2, p.z), 0);
       let velocity: { x: number; z: number } | undefined;

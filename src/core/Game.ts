@@ -682,7 +682,10 @@ export class Game {
     const grid = TUNING.build.gridSize;
     const origin = this.buildOrigin;
     const x = torso.x + dir.x * 4.5, z = torso.z + dir.z * 4.5;
-    const snap = this.rules.build.snap(V(x - origin.x, 0, z - origin.z));
+    // Camera heading turns clockwise from -Z. Build rotations use the
+    // opposite yaw, and the ramp's ascending tread points toward local +Z.
+    const degrees = -cameraYaw * 180 / Math.PI + (this.buildPiece === 'ramp' ? 180 : 0);
+    const snap = this.rules.build.snap(V(x - origin.x, 0, z - origin.z), degrees);
     const ground = this.buildGround(origin.x + snap.cell.x * grid, origin.z + snap.cell.z * grid, feet);
     let placement: Placement = { ...snap, type: this.buildPiece, foundationOffset: (ground ?? feet) - origin.y };
     let validation: Validation = ground === undefined ? { valid: false, reason: 'no-support' } :
