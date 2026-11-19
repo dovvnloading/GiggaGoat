@@ -5,6 +5,7 @@ import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { describe, expect, it, vi } from 'vitest';
 import { forward } from '../physics/math';
 import { GOAT_SIZES } from '../physics/GoatRagdoll';
+import { RAPIER } from '../physics';
 import { Game } from '../core/Game';
 import { heightAt } from '../world';
 import { GoatCharacter } from './GoatCharacter';
@@ -13,6 +14,13 @@ import {
   GOAT_CLIPS, GOAT_GLB_FILES, GOAT_VARIANTS, clipForAction,
   locomotionBlend, selectGoatVariant, type GoatVariant,
 } from './rigged';
+
+async function attachCheckedInRig(art: GoatCharacter): Promise<void> {
+  const bytes = readFileSync(resolve(process.cwd(), 'public/assets/characters/goat',
+    GOAT_GLB_FILES[art.variant]));
+  const gltf = await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, '');
+  (art as unknown as { attachRig(gltf: GLTF): void }).attachRig(gltf);
+}
 
 describe('GLB variant selection', () => {
   it('reserves the hero for the player, with an explicit override when requested', () => {
@@ -144,10 +152,7 @@ describe('rigged GLB heading matches physical forward', () => {
         // Parse the real skin and clips in Node. Only embedded texture decoding is stubbed.
         vi.stubGlobal('self', globalThis);
         vi.stubGlobal('createImageBitmap', async () => ({ width: 1, height: 1, close() {} }));
-        const bytes = readFileSync(resolve(process.cwd(), 'public/assets/characters/goat',
-          GOAT_GLB_FILES[variant]));
-        const gltf = await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, '');
-        (art as unknown as { attachRig(gltf: GLTF): void }).attachRig(gltf);
+        await attachCheckedInRig(art);
         expect(art.isReady).toBe(true);
 
         const muzzle = art.root.getObjectByName(FACING_BONES[variant].muzzle);
@@ -185,10 +190,7 @@ it('seats all four rendered idle soles and their marks on the live asphalt at ev
     vi.stubGlobal('self', globalThis);
     vi.stubGlobal('createImageBitmap', async () => ({ width: 1, height: 1, close() {} }));
     const rigs = await Promise.all(art.map(async character => {
-      const bytes = readFileSync(resolve(process.cwd(), 'public/assets/characters/goat',
-        GOAT_GLB_FILES[character.variant]));
-      const gltf = await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, '');
-      (character as unknown as { attachRig(gltf: GLTF): void }).attachRig(gltf);
+      await attachCheckedInRig(character);
       let skin: THREE.SkinnedMesh | undefined;
       character.root.traverse(object => {
         if (object instanceof THREE.SkinnedMesh) skin = object;
@@ -262,3 +264,108 @@ it('seats all four rendered idle soles and their marks on the live asphalt at ev
     vi.unstubAllGlobals();
   }
 });
+
+it('seats the real flopping skin on asphalt and a slope through Q and impact recovery', async () => {
+  const game = await Game.create({ seed: 'billy-isle' });
+  const goat = game.goat;
+  const art = GOAT_VARIANTS.map(variant => new GoatCharacter(goat, { variant }));
+  try {
+    vi.stubGlobal('self', globalThis);
+    vi.stubGlobal('createImageBitmap', async () => ({ width: 1, height: 1, close() {} }));
+    const rigs = await Promise.all(art.map(async character => {
+      await attachCheckedInRig(character);
+      let skin: THREE.SkinnedMesh | undefined;
+      character.root.traverse(node => { if (node instanceof THREE.SkinnedMesh) skin = node; });
+      if (!skin) throw new Error('Missing goat skin: ' + character.variant);
+      const positions = skin.geometry.getAttribute('position');
+      const feet = Array.from({ length: 4 }, () => [] as number[]);
+      const body: number[] = [];
+      for (let i = 0; i < positions.count; i++) {
+        const x = positions.getX(i), y = positions.getY(i), z = positions.getZ(i);
+        if (y <= .022 && Math.abs(x) >= .08 && Math.abs(z) >= .12) {
+          feet[Number(x > 0) + 2 * Number(z > 0)]!.push(i);
+        } else if (y >= .44) {
+          body.push(i);
+        }
+      }
+      expect(feet.every(group => group.length > 10)).toBe(true);
+      return { character, skin, feet, body };
+    }));
+    const ray = new RAPIER.Ray({ x: 0, y: 65, z: 0 }, { x: 0, y: -1, z: 0 });
+    const surfaces = [game.colliders.terrain, ...game.colliders.paths];
+    const floor = (x: number, z: number): number => {
+      ray.origin.x = x;
+      ray.origin.z = z;
+      const hits = surfaces.map(collider => collider.castRay(ray, 72, false)).filter(hit => hit >= 0);
+      return 65 - Math.min(...hits);
+    };
+    const point = new THREE.Vector3();
+    const trace = (size: typeof GOAT_SIZES[number], site: 'road' | 'slope', drop = 0) => {
+      if (goat.size !== size) {
+        game.water.untrack(goat.torso);
+        goat.resize(size);
+        game.water.track(goat.torso, { buoyancyScale: .7, paddleSpeed: 2.6 });
+      }
+      const [x, z, yaw] = site === 'road' ? [143.6, 126.26, Math.PI / 2] : [99, 219, 2.69];
+      const y = floor(x, z);
+      game.teleport({ x, y, z }, -yaw);
+      const step = (flop = false) => {
+        game.step({ cameraYaw: yaw, flop });
+        for (const character of art) character.update(1 / 60, 1);
+      };
+      for (let tick = 0; tick < 145; tick++) step();
+      expect(goat.locomotion.grounded, site + ' / ' + size).toBe(true);
+      const normal = goat.locomotion.groundHit!.normal.y;
+      expect(normal).toBeGreaterThan(.87);
+      if (site === 'slope') expect(normal).toBeLessThan(.98);
+      const causes: string[] = [];
+      const stop = goat.events.on(event => {
+        if (event.type === 'ragdollStart') causes.push(event.reason);
+      });
+      if (drop > 0) game.teleport({ x, y: y + drop, z }, -yaw);
+      let fallen = 0;
+      let recovered = false;
+      try {
+        for (let tick = 0; tick < (drop > 0 ? 250 : 116); tick++) {
+          step(drop === 0 && tick === 0);
+          if (goat.isRagdoll) fallen++;
+          else if (fallen > 0) recovered = true;
+          if (fallen < 10 || tick % 5 !== 0) continue;
+          for (const { character, skin, feet, body } of rigs) {
+            // Measure the skinned geometry at the actual road/terrain surface,
+            // including the few recovery frames before the gait is fully back.
+            character.root.updateMatrixWorld(true);
+            const lowest = (indices: readonly number[]): number => {
+              let clearance = Infinity;
+              for (const i of indices) {
+                skin.getVertexPosition(i, point).applyMatrix4(skin.matrixWorld);
+                clearance = Math.min(clearance, point.y - floor(point.x, point.z));
+              }
+              return clearance;
+            };
+            const context = character.variant + ' / ' + size + ' / ' + site + ' / tick ' + tick;
+            expect(Math.min(...feet.map(lowest)), context).toBeGreaterThan(-.045 * size);
+            if (goat.isRagdoll && fallen >= 20 && tick % 20 === 0) {
+              expect(lowest(body), context + ' torso').toBeGreaterThan(-.075 * size);
+            }
+          }
+        }
+        expect(causes).toEqual([drop > 0 ? 'impact' : 'flop']);
+        expect(fallen).toBeGreaterThan(65);
+        expect(recovered).toBe(true);
+        expect(goat.size).toBe(size);
+      } finally { stop(); }
+    };
+    for (let tick = 0; tick < 145; tick++) game.step();
+    for (const size of GOAT_SIZES) {
+      trace(size, 'road');
+      trace(size, 'slope');
+    }
+    trace(.6, 'road', 14);
+    expect(game.respawns).toBe(0);
+  } finally {
+    for (const character of art) character.dispose();
+    game.dispose();
+    vi.unstubAllGlobals();
+  }
+}, 90_000);
