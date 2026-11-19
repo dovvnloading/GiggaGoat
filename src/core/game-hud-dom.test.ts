@@ -3,6 +3,8 @@ import { GameHud } from './GameHud';
 import type { Game } from './Game';
 import type { Vec3 } from '../world';
 import { fitGigCardText } from './GigCardLayout';
+import type { HayHaulGuidance } from './GigPresentation';
+import { frame, goat, readyMatch } from '../modes/test-utils';
 
 /**
  * Vitest runs in Node without a browser DOM. This small DOM stub indexes the
@@ -15,9 +17,12 @@ class ElementStub {
   hidden = false;
   readonly children: ElementStub[] = [];
   readonly dataset: Record<string, string> = {};
+  readonly attributes = new Map<string, string>();
   private readonly dataAttributes = new Set<string>();
   private nodes: ElementStub[] = [];
   private html = '';
+
+  constructor(private readonly tagName = '') {}
 
   set innerHTML(html: string) {
     this.html = html;
@@ -35,8 +40,9 @@ class ElementStub {
 
   get innerHTML(): string { return this.html; }
   appendChild(child: ElementStub): ElementStub { this.children.push(child); return child; }
+  append(...children: ElementStub[]): void { this.children.push(...children); }
   remove(): void { /* detached test node */ }
-  setAttribute(_name: string, _value: string): void {}
+  setAttribute(name: string, value: string): void { this.attributes.set(name, value); }
 
   querySelector<T = ElementStub>(selector: string): T | null {
     return this.querySelectorAll<T>(selector)[0] ?? null;
@@ -51,7 +57,7 @@ class ElementStub {
       const name = selector.slice(1, -1);
       return this.nodes.filter(node => node.dataAttributes.has(name)) as T[];
     }
-    throw new Error('Unsupported HUD test selector: ' + selector);
+    return this.children.filter(node => node.tagName === selector) as T[];
   }
 }
 
@@ -79,7 +85,7 @@ describe('live free-roam HUD DOM', () => {
     }, {
       mapOrigin: origin, mapZone: 'open-island',
       mapObjectives: { querySelector: vi.fn(() => flag) },
-      updateHayHaulMap: vi.fn(),
+      updateHayMap: vi.fn(),
     });
     const match = { mode: 'rising-tide', phase: 'playing' };
     const party = { match: match as typeof match | null };
@@ -100,7 +106,7 @@ describe('live free-roam HUD DOM', () => {
     update();
     expect(flag.setAttribute).toHaveBeenLastCalledWith('visibility', 'hidden');
 
-    match.mode = 'hay-heist';
+    match.mode = 'king-of-the-peak';
     match.phase = 'playing';
     update();
     expect(flag.setAttribute).toHaveBeenLastCalledWith('visibility', 'hidden');
@@ -109,6 +115,52 @@ describe('live free-roam HUD DOM', () => {
     update();
     expect(flag.setAttribute).toHaveBeenNthCalledWith(5, 'visibility', 'visible');
     expect(flag.setAttribute).toHaveBeenNthCalledWith(6, 'transform', 'translate(140.0 150.5)');
+  });
+
+  it('uses one minimap badge for heist pickup and delivery, then restores the free-roam badge', () => {
+    vi.stubGlobal('document', { createElementNS: (_ns: string, name: string) => new ElementStub(name) });
+    const objectives = new ElementStub('g');
+    const hud = Object.assign(Object.create(GameHud.prototype) as {
+      updateMap(game: Game, location: string, hayHaul: HayHaulGuidance | null): void;
+    }, {
+      mapOrigin: { x: 0, z: 0 }, mapZone: 'open-island', mapObjectives: objectives,
+    });
+    const match = readyMatch({ mode: 'hay-heist', config: { hayPerTeam: 1 } }, ['player', 'rival']);
+    const position = match.bales.find(bale => bale.homeTeam === 'blue')!.position;
+    const party = { match: match as typeof match | null };
+    const game = {
+      island: { pois: [] },
+      goat: { torso: { translation: () => position }, locomotion: { heading: 0 } },
+      gigs: { active: null },
+      party,
+    } as unknown as Game;
+    const hayHaul: HayHaulGuidance = { kind: 'pickup', position, task: 'Find a bale on the map' };
+    const update = (): void => hud.updateMap(game, 'BILLY ISLE', hayHaul);
+    update();
+    update();
+    expect(objectives.children).toHaveLength(1);
+    const pickup = objectives.children[0]!;
+    const removePickup = vi.spyOn(pickup, 'remove');
+    expect(pickup.dataset).toEqual({ hayHeistMarker: 'pickup', team: 'blue' });
+    expect(pickup.querySelector('circle')?.attributes.get('fill')).toBe('#68cdff');
+    // At contact the badge moves off the player arrow and points back to the bale.
+    const leader = pickup.querySelector('line')!;
+    expect(Math.hypot(Number(leader.attributes.get('x2')), Number(leader.attributes.get('y2'))))
+      .toBeCloseTo(40, 1);
+
+    match.step({ ...frame(goat('player', position.x, position.z, position.y + 1), goat('rival')),
+      intents: { player: { tongue: true } } });
+    update();
+    expect(removePickup).toHaveBeenCalledOnce();
+    const delivery = objectives.children[1]!;
+    const removeDelivery = vi.spyOn(delivery, 'remove');
+    expect(delivery.dataset).toEqual({ hayHeistMarker: 'delivery', team: 'red' });
+    expect(delivery.querySelector('circle')?.attributes.get('fill')).toBe('#ff7890');
+
+    party.match = null;
+    update();
+    expect(removeDelivery).toHaveBeenCalledOnce();
+    expect(objectives.children[2]!.dataset).toEqual({ hayHaulMarker: 'pickup' });
   });
 
   it('reserves the numbered shortcuts for build pieces and separates the Supplies totals', () => {

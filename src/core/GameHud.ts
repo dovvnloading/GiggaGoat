@@ -5,8 +5,8 @@ import { HUD_PIECES, deriveHudState, projectHudMap } from './GameHudState';
 import { PAD_BUILD_BINDINGS, type InputDevice } from './GameInput';
 import { buildArtwork, goatArtwork, renderHudMinimap } from './HudArtwork';
 import { fitGigCardText } from './GigCardLayout';
-import { createHayHaulMapMarker, gigMapPoint, separateMapObjective,
-  type HayHaulGuidance } from './GigPresentation';
+import { createHayMapMarker, gigMapPoint, hayHeistGuidance, separateMapObjective,
+  type HayHaulGuidance, type HayMapGuidance } from './GigPresentation';
 import { HUD_SPRITES, hudSpriteImage, hudSpriteVariables } from './HudSprites';
 import { carryStaminaForHud, derivePartyHudState } from './PartyHudState';
 
@@ -522,7 +522,7 @@ export class GameHud {
   private mapObjectives: SVGGElement | null = null;
   private mapOrigin: { x: number; z: number } | null = null;
   private mapZone = '';
-  private hayHaulMapMarker: SVGGElement | null = null;
+  private hayMapMarker: SVGGElement | null = null;
   private readonly stamina: HTMLElement;
   private readonly staminaNumber: HTMLElement;
   private readonly staminaLabel: HTMLElement;
@@ -693,7 +693,7 @@ export class GameHud {
       }
       this.mapZone = zone;
       this.mapCanvas.innerHTML = renderHudMinimap(game.island, this.mapOrigin);
-      this.hayHaulMapMarker = null;
+      this.hayMapMarker = null;
       this.playerArrow = this.mapCanvas.querySelector('[data-player]');
       this.mapSceneryClearance = this.mapCanvas.querySelector('[data-map-player-clearance]');
       this.mapObjectives = this.mapCanvas.querySelector('[data-map-objectives]');
@@ -705,9 +705,9 @@ export class GameHud {
     if (this.mapSceneryClearance && this.mapSceneryClearance.getAttribute('transform') !== translate) {
       this.mapSceneryClearance.setAttribute('transform', translate);
     }
-    this.updateHayHaulMap(hayHaul, point);
-    const run = game.gigs.active;
     const match = game.party.match;
+    this.updateHayMap(match ? hayHeistGuidance(match, position, 'player') : hayHaul, point);
+    const run = game.gigs.active;
     const contractTarget = !match && run?.status === 'running' && run.objective.kind === 'summit'
       ? run.objective.next : undefined;
     const target = match?.mode === 'rising-tide' && match.phase !== 'results' ? tideTarget : contractTarget;
@@ -721,23 +721,25 @@ export class GameHud {
     }
   }
 
-  private updateHayHaulMap(hayHaul: HayHaulGuidance | null,
+  private updateHayMap(target: HayMapGuidance | null,
     player: ReturnType<typeof projectHudMap>): void {
-    if (this.hayHaulMapMarker && this.hayHaulMapMarker.dataset.hayHaulMarker !== hayHaul?.kind) {
-      this.hayHaulMapMarker.remove();
-      this.hayHaulMapMarker = null;
+    const marker = this.hayMapMarker;
+    const kind = marker?.dataset.hayHeistMarker ?? marker?.dataset.hayHaulMarker;
+    if (marker && (kind !== target?.kind || marker.dataset.team !== target?.teamId)) {
+      marker.remove();
+      this.hayMapMarker = null;
     }
-    if (!hayHaul || !this.mapOrigin || !this.mapObjectives) return;
-    if (!this.hayHaulMapMarker) {
-      this.hayHaulMapMarker = createHayHaulMapMarker(hayHaul.kind);
-      this.mapObjectives.append(this.hayHaulMapMarker);
+    if (!target || !this.mapOrigin || !this.mapObjectives) return;
+    if (!this.hayMapMarker) {
+      this.hayMapMarker = createHayMapMarker(target);
+      this.mapObjectives.append(this.hayMapMarker);
     }
-    const anchor = gigMapPoint(hayHaul.position, this.mapOrigin);
+    const anchor = gigMapPoint(target.position, this.mapOrigin);
     const badge = separateMapObjective(anchor, player);
-    const leader = this.hayHaulMapMarker.querySelector('line');
+    const leader = this.hayMapMarker.querySelector('line');
     leader?.setAttribute('x2', (anchor.x - badge.x).toFixed(1));
     leader?.setAttribute('y2', (anchor.y - badge.y).toFixed(1));
-    this.hayHaulMapMarker.setAttribute('transform', 'translate(' + badge.x.toFixed(1) + ' ' +
+    this.hayMapMarker.setAttribute('transform', 'translate(' + badge.x.toFixed(1) + ' ' +
       badge.y.toFixed(1) + ')');
   }
 
