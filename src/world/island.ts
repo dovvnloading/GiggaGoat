@@ -7,7 +7,7 @@ import {
   assignBiomes, carveWater, clearTerrainUnderBridge, gridCoordinate, gridIndex, gridSample, makeTerrain,
   preserveLighthouseChannel, sculptLighthouseSeaCave, sculptMountainCaveLanding, stampPlot,
 } from './terrain';
-import { makeRoads, makeBridgeDecks, MOUNTAIN_SPIRAL_TRAIL } from './roads';
+import { makeRoads, makeBridgeDecks, MOUNTAIN_SPIRAL_TRAIL, separateLighthouseFork } from './roads';
 import { makeRoadsideProps } from './roadside-stops';
 import { clearPavedRoadScenery } from './road-scenery';
 import { fitDowntownServiceRamps, populateProps, seatDowntownStock } from './layouts';
@@ -170,7 +170,11 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   const dressed = dressIsland(island, rng);
   gradeBuildingFootprints(island, dressed);
   gradeDowntownMarket(island);
-  island.props.push(...dressed, ...makeBridgeDecks(island));
+  island.props.push(...dressed);
+  // Keep the seeded scenery and the Lighthouse deck on their original plan.
+  // Fit the shared coastal lane before the final bridge and terrain passes.
+  separateLighthouseFork(island);
+  island.props.push(...makeBridgeDecks(island));
   const spiral = island.roads.find(road => road.id === MOUNTAIN_SPIRAL_TRAIL);
   if (spiral) {
     const northwest = spiral.points.findIndex(point => point.bridge && point.x < 0 &&
