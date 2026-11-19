@@ -132,8 +132,13 @@ export function addRapierPropCollider(world: RAPIER.World,
     if (!hullDesc) throw new Error('Invalid convex collider for ' + collider.id);
     desc = hullDesc;
   }
-  const { position, rotationY } = collider.transform;
-  const rotation = { x: 0, y: Math.sin(rotationY / 2), z: 0, w: Math.cos(rotationY / 2) };
+  const { position, rotationY, rotationX = 0 } = collider.transform;
+  const sinYaw = Math.sin(rotationY / 2), cosYaw = Math.cos(rotationY / 2);
+  const sinPitch = Math.sin(rotationX / 2), cosPitch = Math.cos(rotationX / 2);
+  const rotation = {
+    x: cosYaw * sinPitch, y: sinYaw * cosPitch,
+    z: -sinYaw * sinPitch, w: cosYaw * cosPitch,
+  };
   desc.setFriction(0.78).setRestitution(0.12);
   let result: RAPIER.Collider;
   if (collider.body.type === 'dynamic') {

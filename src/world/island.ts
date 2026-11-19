@@ -294,6 +294,7 @@ export function hashIsland(island: IslandData): string {
     updateText(prop.id); updateText(prop.kind);
     update(prop.transform.position.x); update(prop.transform.position.y);
     update(prop.transform.position.z); update(prop.transform.rotationY);
+    if (prop.transform.rotationX !== undefined) update(prop.transform.rotationX);
     update(prop.size.x); update(prop.size.y); update(prop.size.z);
     update(prop.body.type === 'dynamic' ? prop.body.mass : 0);
   }

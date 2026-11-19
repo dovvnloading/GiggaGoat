@@ -121,11 +121,12 @@ describe('Billy Isle deterministic world generation', () => {
     const downtown = ramps.filter(p => p.poiId === 'downtown-bleatsville');
     expect(downtown.filter(p => p.id.startsWith(ROOFTOP_SPAN_PREFIX))).toHaveLength(4);
     expect(downtown.filter(p => !p.id.startsWith(ROOFTOP_SPAN_PREFIX))).toHaveLength(4);
-    expect(ramps.filter(p => p.poiId === 'crane-yard')).toHaveLength(4);
+    expect(island.props.filter(p => p.kind === 'concrete-slab' &&
+      /^crane-yard-ramp-\d+$/.test(p.id))).toHaveLength(4);
     expect(ramps.filter(p => !p.poiId)).toMatchObject([
       { id: 'roadside-yard-layby-runup-ramp' },
     ]);
-    expect(ramps).toHaveLength(13);
+    expect(ramps).toHaveLength(9);
     expect(island.colliders.some(p => p.shape === 'convex')).toBe(true);
     expect(island.props.filter(p => p.kind.startsWith('tree-')).length).toBeGreaterThan(70);
   });

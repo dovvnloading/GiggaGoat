@@ -7,6 +7,7 @@ import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import { appendPinesLogEntries } from './visual-pines-log-access';
 import type { PropDescriptor, PropKind } from './types';
 import { buildArchitecture, isArchitecturalKind } from './visual-architecture';
+import { CRANE_SWITCHBACK_PREFIX } from './crane-yard';
 import type { IslandData } from './types';
 import { WORLD_LOD, completelyOccluded, isSmallWorldModel,
   simplifiedWorldGeometry } from './lod';
@@ -808,19 +809,25 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     mesh.castShadow = SHADOW_KINDS.has(kind);
     mesh.receiveShadow = SHADOW_KINDS.has(kind);
     mesh.frustumCulled = true;
+    const switchback = entries.some(prop => prop.id.startsWith(CRANE_SWITCHBACK_PREFIX));
+    const switchbackSpan = switchback ? geometry.boundingBox!.getSize(new THREE.Vector3()) : null;
     for (let i = 0; i < entries.length; i++) {
       const prop = entries[i]!;
       const p = prop.transform.position;
       dummy.position.set(p.x, p.y, p.z);
-      dummy.rotation.set(0, prop.transform.rotationY, 0);
+      dummy.rotation.set(prop.transform.rotationX ?? 0, prop.transform.rotationY, 0, 'YXZ');
+      const switchMember = prop.id.startsWith(CRANE_SWITCHBACK_PREFIX);
       // Preserve the stable instance slot when connected scenery draws this prop.
       if (replacedPropIds?.has(prop.id)) dummy.scale.setScalar(0);
       else dummy.scale.set(prop.size.x, prop.size.y, prop.size.z);
+      // The access slabs meet end to end, so fit their art to the collider edges.
+      if (switchMember && switchbackSpan) dummy.scale.divide(switchbackSpan);
       if (summitLandmark(prop)) poseSummitLandmark(prop, dummy);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
-      mesh.setColorAt(i, new THREE.Color(kind === 'log-bridge' || foliage.has(kind) || authoredKioskKinds.has(kind) ||
-        authoredKioskSignKinds.has(kind)
+      const authoredPaint = kind === 'log-bridge' || foliage.has(kind) ||
+        authoredKioskKinds.has(kind) || authoredKioskSignKinds.has(kind);
+      mesh.setColorAt(i, new THREE.Color(authoredPaint && !switchMember
         ? 0xffffff : (prop.color ?? COLORS[kind] ?? 0xc6c0a5)));
     }
     mesh.instanceMatrix.needsUpdate = true;
@@ -938,12 +945,21 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
                 ? treeArtCenterY(island, anchor, prop.size.y, base) : anchor.y;
               return new THREE.Matrix4().makeTranslation(0, (y - anchor.y) / prop.size.y, 0);
             });
+          } else if (job.entries.some(prop => prop.id.startsWith(CRANE_SWITCHBACK_PREFIX))) {
+            const span = original.boundingBox!.getSize(new THREE.Vector3())
+              .divide(libraryGeometry.boundingBox!.getSize(new THREE.Vector3()));
+            job.adjustments = job.entries.map(prop => prop.id.startsWith(CRANE_SWITCHBACK_PREFIX)
+              ? new THREE.Matrix4().makeScale(span.x, span.y, span.z) : new THREE.Matrix4());
           }
           job.mesh.geometry = libraryGeometry;
-          // Preserve the new themed kiosks and other authored boardwalk paint.
-          // Only legacy white booths and Crane Yard containers take descriptor tint.
+          // Keep authored paint while tinting the marked access and its supports.
           for (let i = 0; i < job.entries.length; i++) {
-            const color = job.entries[i]!.color;
+            const prop = job.entries[i]!;
+            const color = prop.color;
+            if (color !== undefined && prop.id.startsWith(CRANE_SWITCHBACK_PREFIX)) {
+              job.mesh.setColorAt(i, tint.setHex(color));
+              continue;
+            }
             job.mesh.setColorAt(i,
               job.kind === 'grass-tuft' || job.kind === 'tree-pine' ||
                 authoredCraneYardKinds.has(job.kind) ||

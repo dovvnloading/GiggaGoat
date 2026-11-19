@@ -145,6 +145,53 @@ describe('Walkable roads and coastal routes', () => {
     } finally { game.dispose(); }
   });
 
+  it('walks all four Crane Yard flights and landings up and back without a jump or climb', async () => {
+    const game = await Game.create();
+    try {
+      const pad = game.island.pois.find(poi => poi.id === 'crane-yard')!.center;
+      const west = pad.x + .15, east = pad.x + 4.55;
+      const front = pad.z + 5.2, rear = pad.z - 13;
+      const route = [
+        { x: west, z: front, y: 0 },
+        { x: west, z: rear, y: 5.63 }, { x: east, z: rear, y: 5.63 },
+        { x: east, z: front, y: 11.83 }, { x: west, z: front, y: 11.83 },
+        { x: west, z: rear, y: 18.03 }, { x: east, z: rear, y: 18.03 },
+        { x: east, z: front, y: 24.23 },
+      ];
+      const floor = heightAt(game.island, west, front);
+      game.teleport(V(west, floor, front), 0);
+      ticks(game, 30);
+      for (const target of [...route.slice(1), ...route.slice(0, -1).reverse()]) {
+        const leg = 'movement toward ' + JSON.stringify(target);
+        for (let tick = 0; tick < 480; tick++) {
+          const { x, z } = game.goat.torso.translation();
+          const dx = target.x - x, dz = target.z - z;
+          if (Math.hypot(dx, dz) < .55) break;
+          game.step({ moveZ: 1, cameraYaw: Math.atan2(dx, -dz), climb: false });
+          expect(game.goat.isRagdoll, leg).toBe(false);
+          expect(game.goat.locomotion.isClinging).toBe(false);
+          // The motor may classify fast downhill movement as airborne even
+          // while it follows the sloped surface. Check the actual support ray.
+          const ground = game.goat.locomotion.groundHit;
+          expect(ground?.distance ?? Infinity, leg).toBeLessThan(1.15);
+          const nearJoin = Math.min(Math.abs(z - (pad.z + 3.6)), Math.abs(z - (pad.z - 11.4))) < .20;
+          if (!nearJoin) {
+            expect(ground?.normal.y ?? 0, leg + ' at local Z ' + (z - pad.z).toFixed(2))
+              .toBeGreaterThan(.90);
+          }
+        }
+        const { x, y, z } = game.goat.torso.translation();
+        const label = 'landing at ' + JSON.stringify(target);
+        expect(Math.hypot(target.x - x, target.z - z), label).toBeLessThan(.56);
+        expect(y - pad.y, label).toBeGreaterThan(target.y + .2);
+        expect(y - pad.y, label).toBeLessThan(target.y + 1.2);
+        ticks(game, 10);
+        expect(game.goat.locomotion.grounded, label).toBe(true);
+      }
+      expect(game.respawns).toBe(0);
+    } finally { game.dispose(); }
+  }, 35_000);
+
   it('walks across both Whispering Pines log banks without climbing or jumping', async () => {
     const game = await Game.create();
     try {

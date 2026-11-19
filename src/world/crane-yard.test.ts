@@ -1,7 +1,12 @@
+import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
-import { describe, expect, it } from 'vitest';
-import { createWorldScene, generateIsland, heightAt } from './index';
-import { CRANE_YARD_PLAN } from './crane-yard';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import RAPIER from '@dimforge/rapier3d-compat';
+import { describe, expect, it, vi } from 'vitest';
+import { buildRapierColliders, createWorldScene, generateIsland, heightAt } from './index';
+import { CRANE_SWITCHBACK_PREFIX, CRANE_YARD_PLAN } from './crane-yard';
+import { buildPropVisuals } from './visual-props';
+import { PROP_LIBRARY_MODELS } from './library-props';
 import type { IslandData, PropDescriptor } from './types';
 
 function yardProps(island: IslandData): PropDescriptor[] {
@@ -22,7 +27,8 @@ describe('Crane Yard concept-art construction site', () => {
     const props = yardProps(island);
     const slabs = props.filter(p => p.kind === 'concrete-slab' &&
       p.size.x > 20 * island.size / 600);
-    const columns = props.filter(p => p.kind === 'concrete-column');
+    const columns = props.filter(p => p.kind === 'concrete-column' &&
+      !p.id.startsWith(CRANE_SWITCHBACK_PREFIX));
     expect(slabs).toHaveLength(4);
     expect(columns).toHaveLength(9);
     expect(slabs.every(p => p.collidable && p.climbable && p.body.type === 'static'))
@@ -194,6 +200,135 @@ describe('Crane Yard concept-art construction site', () => {
         expect(prop.climbable).toBe(false);
         expect(prop.color).toBe(0xff8e21);
       }
+    }
+  });
+
+  it('keeps the original flight planes with thin batched treads and an open bay below each', async () => {
+    await RAPIER.init();
+    const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
+    const pad = island.pois.find(poi => poi.id === 'crane-yard')!.center;
+    const padHeight = heightAt(island, pad.x, pad.z);
+    const slabs = island.props.filter(p => p.kind === 'concrete-slab');
+    const columns = island.props.filter(p => p.kind === 'concrete-column');
+    const props = yardProps(island);
+    const flights = props.filter(p => /^crane-yard-ramp-\d+$/.test(p.id));
+    const supports = props.filter(p => p.id.startsWith(CRANE_SWITCHBACK_PREFIX + 'frame-'));
+    expect(flights.map(p => p.id)).toEqual([142, 147, 151, 156].map(i => CRANE_SWITCHBACK_PREFIX + i));
+    expect(supports.filter(p => p.kind === 'concrete-slab')).toHaveLength(8);
+    expect(supports.filter(p => p.kind === 'concrete-column' && p.transform.rotationX === undefined))
+      .toHaveLength(8);
+    expect(supports.filter(p => p.kind === 'concrete-column' && p.transform.rotationX !== undefined))
+      .toHaveLength(8);
+    expect(supports.every(p => p.collidable && p.body.type === 'static')).toBe(true);
+
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    const scene = createWorldScene(island);
+    try {
+      const physics = buildRapierColliders(world, island);
+      world.step();
+      const slabBatch = scene.group.getObjectByName('props-concrete-slab') as THREE.InstancedMesh;
+      const supportBatch = scene.group.getObjectByName('props-concrete-column') as THREE.InstancedMesh;
+      expect(slabBatch.count).toBe(slabs.length);
+      expect(supportBatch.count).toBe(columns.length);
+      const ray = new THREE.Raycaster();
+      const down = new THREE.Vector3(0, -1, 0);
+      const silhouette = new THREE.Mesh(slabBatch.geometry, slabBatch.material);
+      silhouette.matrixAutoUpdate = false;
+      const sideways = new THREE.Vector3(-1, 0, 0);
+      const frameMember = new THREE.Mesh(supportBatch.geometry, supportBatch.material);
+      frameMember.matrixAutoUpdate = false;
+      for (const post of supports.filter(p => p.kind === 'concrete-column')) {
+        const { x, y, z } = post.transform.position;
+        supportBatch.getMatrixAt(columns.indexOf(post), frameMember.matrix);
+        frameMember.updateMatrixWorld(true);
+        const origin = new THREE.Vector3(x + .5, y, z);
+        const hit = physics.props.get(post.id)!.castRay(new RAPIER.Ray(origin, sideways), 1, true);
+        expect(hit, post.id).toBeCloseTo(.5 - post.size.x / 2, 4);
+        ray.set(origin, sideways);
+        const art = ray.intersectObject(frameMember)[0]?.distance ?? Infinity;
+        expect(Math.abs(hit - art), post.id).toBeLessThan(.045);
+      }
+
+      const landings = [-.18, 5.65, 11.85, 18.05, 24.25];
+      for (const [i, flight] of flights.entries()) {
+        const x = pad.x + (i % 2 === 0 ? .15 : 4.55);
+        const fromZ = pad.z + (i % 2 === 0 ? 3.6 : -11.4);
+        const toZ = pad.z + (i % 2 === 0 ? -11.4 : 3.6);
+        const lowY = padHeight + landings[i]!;
+        const rise = landings[i + 1]! - landings[i]!;
+        expect(flight.size.y).toBe(.26);
+        const collider = physics.props.get(flight.id)!;
+        slabBatch.getMatrixAt(slabs.indexOf(flight), silhouette.matrix);
+        silhouette.updateMatrixWorld(true);
+
+        for (const t of [.001, .25, .5, .75, .999]) {
+          const z = fromZ + (toZ - fromZ) * t;
+          const y = lowY + rise * t;
+          const shot = new RAPIER.Ray({ x, y: y + 1, z }, down);
+          expect(collider.castRay(shot, 2, true), flight.id).toBeCloseTo(1, 4);
+          ray.set(new THREE.Vector3(x, y + 1, z), down);
+          const artY = ray.intersectObject(silhouette)[0]?.point.y;
+          expect(Math.abs((artY ?? Infinity) - y), flight.id).toBeLessThan(.004);
+        }
+
+        // Cross the lane a metre below its midpoint. The old solid wedge
+        // occupied this entire span. A clear bay between the braces stays open.
+        const z = (fromZ + toZ) / 2, y = lowY + rise / 2 - 1;
+        const origin = new THREE.Vector3(x + 2.2, y, z);
+        const across = new RAPIER.Ray(origin, sideways);
+        expect(collider.castRay(across, 4.4, true)).toBe(-1);
+        for (const support of supports) {
+          expect(physics.props.get(support.id)!.castRay(across, 4.4, true), support.id).toBe(-1);
+        }
+        ray.far = 4.4;
+        ray.set(origin, sideways);
+        expect(ray.intersectObject(silhouette)).toHaveLength(0);
+      }
+    } finally {
+      scene.dispose();
+      world.free();
+    }
+  });
+
+  it('fits the loaded concrete flight at its actual slope and keeps the access tint in the shared draw', async () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 65 });
+    const flight = yardProps(island).find(p => p.id === CRANE_SWITCHBACK_PREFIX + '147')!;
+    const file = Uint8Array.from(readFileSync('public/' + PROP_LIBRARY_MODELS['concrete-slab']));
+    const model = await new GLTFLoader().parseAsync(file.buffer, '');
+    const load = vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockResolvedValue(model);
+    vi.stubGlobal('document', {});
+    const visuals = buildPropVisuals([flight]);
+    try {
+      await vi.waitFor(() => expect(visuals.group.userData.libraryReady).toBe(true));
+      expect(visuals.group.userData.libraryFailed).toBe(0);
+      const { position: { x, y, z }, rotationX, rotationY } = flight.transform;
+      const camera = new THREE.PerspectiveCamera(80, 1, .1, 50);
+      camera.position.set(x + 8, y + 4, z);
+      camera.lookAt(x, y, z);
+      camera.updateMatrixWorld(true);
+      const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4()
+        .multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+      visuals.updateCulling(camera.position, frustum, 50, () => false);
+      const deck = visuals.group.getObjectByName('render-near-concrete-slab') as THREE.InstancedMesh;
+      expect(deck.count).toBe(1);
+      const color = new THREE.Color();
+      deck.getColorAt(0, color);
+      expect(color.getHex()).toBe(flight.color);
+      const pose = new THREE.Euler(rotationX, rotationY, 0, 'YXZ');
+      const down = new THREE.Vector3(0, -1, 0);
+      for (const t of [-.499, 0, .499]) {
+        const top = new THREE.Vector3(0, flight.size.y / 2, flight.size.z * t)
+          .applyEuler(pose).add(new THREE.Vector3(x, y, z));
+        const ray = new THREE.Raycaster(top.clone().addScaledVector(down, -1), down);
+        expect(ray.intersectObject(deck)[0]?.point.y).toBeCloseTo(top.y, 4);
+      }
+    } finally {
+      const original = visuals.group.getObjectByName('props-concrete-slab') as THREE.InstancedMesh;
+      original.geometry.dispose();
+      (original.material as THREE.Material).dispose();
+      visuals.dispose();
+      load.mockRestore();
+      vi.unstubAllGlobals();
     }
   });
 
