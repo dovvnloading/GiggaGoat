@@ -397,6 +397,45 @@ describe('mocked WebAudio integration', () => {
     expect(await firstBleatPitch(.6)).toBeGreaterThan(await firstBleatPitch(3));
   });
 
+  it('plays one flop cue, skips get-up contact noise, and keeps deliberate jumps and landings', async () => {
+    const ctx = new MockContext();
+    const audio = new AudioEngine({ contextFactory: () => ctx.asAudioContext() });
+    await audio.unlock();
+    try {
+      const goatId = 'player';
+      audio.updateFrame({
+        dt: 1 / 60,
+        physics: [{ type: 'ragdollStart', goatId, time: 1, reason: 'flop' }],
+        gameplay: [
+          { type: 'balance:knockdown', data: { reason: 'flop' } },
+          { type: 'ability:used', data: { name: 'flop' } },
+        ],
+      });
+      audio.updateFrame({
+        dt: 1 / 60,
+        physics: [
+          { type: 'ragdollEnd', goatId, time: 2.33 },
+          { type: 'landed', goatId, time: 2.48, airtime: .15, verticalSpeed: 1.49 },
+          { type: 'landed', goatId, time: 2.53, airtime: .03, verticalSpeed: 1.59 },
+        ],
+        gameplay: [{ type: 'balance:recovered', data: { balance: 45 } }],
+      });
+      expect(audio.voiceTickets.map(t => t.sound)).toEqual(['ragdoll-flop']);
+
+      audio.updateFrame({
+        dt: 1 / 60,
+        physics: [
+          { type: 'jumped', goatId, time: 3 },
+          { type: 'landed', goatId, time: 3.75, airtime: .75, verticalSpeed: 1.6 },
+          { type: 'landed', goatId, time: 4, airtime: .1, verticalSpeed: 3.1 },
+        ],
+      });
+      expect(audio.voiceTickets.map(t => t.sound)).toEqual(['ragdoll-flop', 'jump', 'landing', 'landing']);
+    } finally {
+      audio.dispose();
+    }
+  });
+
   it('follows camera orientation, schedules music and accepts typed frame events', async () => {
     const ctx = new MockContext();
     const audio = new AudioEngine({ seed: 3, contextFactory: () => ctx.asAudioContext() });
