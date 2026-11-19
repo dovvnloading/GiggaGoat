@@ -3,11 +3,11 @@ import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Game } from '../core/Game';
-import { V } from '../physics';
-import { generateIsland } from './island';
+import { add, forward, mul, RAPIER, sub, V } from '../physics';
+import { generateIsland, heightAt } from './island';
 import { bakeLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
 import { roadRibbonData } from './road-ribbons';
-import { roadsideGravelAt, roadsideStops } from './roadside-stops';
+import { COAST_TURNOUT_GNOME_ID, roadsideGravelAt, roadsideStops } from './roadside-stops';
 import { gridSample } from './terrain';
 import type { PropColliderDescriptor, Vec2 } from './types';
 import { paintRoadsideGravel } from './visual-roadside-stops';
@@ -221,9 +221,9 @@ describe('Billy Isle roadside stops', () => {
       walk(0, 6.5);
       walk(0, 4.0);
       walk(2.1, 4.0);
-      const body = game.colliders.bodies.get('roadside-coast-turnout-gnome')!;
+      const body = game.colliders.bodies.get(COAST_TURNOUT_GNOME_ID)!;
       const gnome = body.translation();
-      const originalProp = game.island.props.find(p => p.id === 'roadside-coast-turnout-gnome')!;
+      const originalProp = game.island.props.find(p => p.id === COAST_TURNOUT_GNOME_ID)!;
       expect(Math.hypot(gnome.x - originalProp.transform.position.x, gnome.z - originalProp.transform.position.z))
         .toBeLessThan(.4);
       for (let tick = 0; tick < 6; tick++) {
@@ -238,6 +238,101 @@ describe('Billy Isle roadside stops', () => {
       walk(0, 6.5);
       walk(5, 0);
       walk(10, 0);
+    } finally {
+      game.dispose();
+    }
+  });
+
+  it('reacquires the coast gnome after walking it downhill and respects intervening scenery', async () => {
+    const game = await Game.create();
+    try {
+      const { goat } = game;
+      const body = game.colliders.bodies.get(COAST_TURNOUT_GNOME_ID)!;
+      const ticks = (count: number, input: Parameters<Game['step']>[0] = {}) => {
+        for (let tick = 0; tick < count; tick++) game.step(input);
+      };
+      const faceGnome = (x: number, z: number) => {
+        const target = body.translation();
+        const cameraYaw = Math.atan2(target.x - x, z - target.z);
+        game.teleport(V(x, heightAt(game.island, x, z), z), -cameraYaw);
+        ticks(24, { cameraYaw });
+        expect(goat.locomotion.grounded).toBe(true);
+        return cameraYaw;
+      };
+
+      ticks(88);
+      const startingGnome = body.translation();
+      const approach = faceGnome(98.4, 215.45);
+      ticks(38, { moveZ: 1, cameraYaw: approach });
+      ticks(45, { cameraYaw: approach });
+      expect(body.translation().y).toBeLessThan(startingGnome.y - .15);
+
+      const cameraYaw = faceGnome(101.215, 215.246);
+      const tongue = goat.interactions;
+      const origin = tongue.tongueOrigin;
+      const directionToGnome = () => sub(body.translation(), tongue.tongueOrigin);
+      expect(tongue.raycastTongue()).toBeNull();
+      expect(tongue.raycastTongue(directionToGnome())?.body?.handle).toBe(body.handle);
+
+      // A small solid object can occlude the gnome below the ordinary tongue ray.
+      const blockPoint = add(origin, mul(directionToGnome(), .55));
+      const blocker = game.physics.raw.createCollider(
+        RAPIER.ColliderDesc.ball(.12).setTranslation(blockPoint.x, blockPoint.y, blockPoint.z),
+      );
+      game.step();
+      expect(tongue.raycastTongue(directionToGnome())?.collider.handle).toBe(blocker.handle);
+      expect(tongue.raycastTongue()).toBeNull();
+      game.step({ tongue: true, cameraYaw });
+      expect(tongue.isTongueAttached).toBe(false);
+      game.physics.raw.removeCollider(blocker, true);
+      game.step();
+
+      // Scenery on the ordinary ray still gets the tether when the gnome is visible below it.
+      const facing = forward(goat.locomotion.heading);
+      const sceneryPoint = add(tongue.tongueOrigin, add(mul(facing, .9), V(0, -.08, 0)));
+      const scenery = game.physics.raw.createRigidBody(
+        RAPIER.RigidBodyDesc.fixed().setTranslation(sceneryPoint.x, sceneryPoint.y, sceneryPoint.z),
+      );
+      game.physics.raw.createCollider(RAPIER.ColliderDesc.ball(.14), scenery);
+      game.step();
+      expect(tongue.raycastTongue(directionToGnome())?.body?.handle).toBe(body.handle);
+      game.step({ tongue: true, cameraYaw });
+      expect(tongue.tongueBody?.handle).toBe(scenery.handle);
+      game.step();
+      game.physics.raw.removeRigidBody(scenery);
+      ticks(24);
+
+      game.step({ tongue: true, cameraYaw });
+      expect(tongue.tongueBody?.handle).toBe(body.handle);
+      const beforeTow = body.translation();
+      ticks(34, { tongue: true, moveZ: -1, cameraYaw });
+      const towed = body.translation();
+      expect(Math.hypot(towed.x - beforeTow.x, towed.z - beforeTow.z)).toBeGreaterThan(.25);
+      game.step();
+      expect(tongue.isTongueAttached).toBe(false);
+    } finally {
+      game.dispose();
+    }
+  });
+
+  it('keeps terrain latches when aiming away from the gnome on the lower slope', async () => {
+    const game = await Game.create();
+    try {
+      for (let tick = 0; tick < 88; tick++) game.step();
+      const { goat } = game;
+      const body = game.colliders.bodies.get(COAST_TURNOUT_GNOME_ID)!;
+      const x = 103, z = 219;
+      const target = body.translation();
+      const gnomeYaw = Math.atan2(target.x - x, z - target.z);
+      for (const [aim, expectsGnome] of [[gnomeYaw - .5, false], [gnomeYaw, true]] as const) {
+        game.teleport(V(x, heightAt(game.island, x, z), z), -aim);
+        for (let tick = 0; tick < 25; tick++) game.step({ cameraYaw: aim });
+        expect(goat.interactions.raycastTongue()?.collider.handle).toBe(game.colliders.terrain.handle);
+        game.step({ tongue: true, cameraYaw: aim });
+        expect(goat.interactions.isTongueAttached).toBe(true);
+        expect(goat.interactions.tongueBody?.handle === body.handle).toBe(expectsGnome);
+        game.step();
+      }
     } finally {
       game.dispose();
     }

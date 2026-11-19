@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { createWorldScene, generateIsland } from './index';
-import { roadRibbonRuns } from './road-ribbons';
+import { roadRibbonData, roadRibbonRuns, SUMMIT_ASCENT_TRAIL } from './road-ribbons';
 import { getDamPlacement } from './the-dam';
 import type { IslandData, RoadPoint } from './types';
 import { TOON_RAMP } from './visual-props';
@@ -35,6 +35,7 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
   expect(positions.count).toBe(6 * runs.reduce((sum, run) => sum + run.points.length, 0));
   const lift = type === 'road' ? 0.2 : 0.19;
   const damTrailEnd = island.roads.find(road => road.id === 'mt-gigga--the-dam')?.points.at(-1);
+  const summitStart = island.roads.find(road => road.id === SUMMIT_ASCENT_TRAIL)?.points[0];
   let vertex = 0, index = 0;
 
   for (const run of runs) {
@@ -55,7 +56,9 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
         if (damTerminal) expect(top).toBeLessThanOrEqual(point.y + lift + .0001);
         else expect(top).toBeCloseTo(point.y + lift, 4);
         expect(positions.getY(vertex + side + 2)).toBe(top);
-        expect(positions.getY(vertex + side + 4)).toBeCloseTo(top - lift - .15, 4);
+        const toe = positions.getY(vertex + side + 4);
+        if (run.points[0] === summitStart) expect(toe).toBeLessThanOrEqual(top - lift - .15 + .0001);
+        else expect(toe).toBeCloseTo(top - lift - .15, 4);
       }
       // Skirt top coordinates coincide with the asphalt edge, but have
       // independent normals so no side-facing normal leaks into the top.
@@ -205,6 +208,67 @@ describe('IS-6 joined road/trail visual ribbons', () => {
       // Original live reproduction was more than a metre inside the painted street.
       expect(sample(trail, 145.39, 77.29)).toHaveLength(0);
       expect(sample(road, 140.67, 77.29)).toHaveLength(1);
+    } finally {
+      view.dispose();
+    }
+  });
+
+  it('seats the Summit trail side panels in both drawn terrain LODs without changing the walk or bridge profiles', () => {
+    const island = generateIsland();
+    const summit = island.roads.find(road => road.id === SUMMIT_ASCENT_TRAIL)!;
+    const runs = roadRibbonRuns(island, 'trail');
+    const index = runs.findIndex(run => run.points[0] === summit.points[0]);
+    const first = runs.slice(0, index).reduce((count, run) => count + run.points.length * 6, 0);
+    const points = runs[index]!.points;
+    const base = roadRibbonData(island, 'trail');
+    const view = createWorldScene(island);
+    try {
+      view.group.updateMatrixWorld(true);
+      const mesh = view.group.getObjectByName('paths-trail') as THREE.Mesh;
+      const position = mesh.geometry.getAttribute('position');
+      const previous = Float32Array.from(base.positions);
+      expect(Array.from(mesh.geometry.index!.array)).toEqual(base.indices);
+      const moved = [];
+      for (let component = 0; component < previous.length; component++) {
+        if (position.array[component] === previous[component]) continue;
+        const vertex = (component - 1) / 3 - first;
+        const point = Math.floor(vertex / 6);
+        expect(component % 3).toBe(1);
+        expect(point).toBeGreaterThanOrEqual(0);
+        expect(point).toBeLessThan(points.length);
+        expect(vertex % 6).toBeGreaterThanOrEqual(4);
+        expect(points.slice(Math.max(0, point - 1), point + 2).some(p => p.bridge)).toBe(false);
+        moved.push(component);
+      }
+      expect(moved.length).toBeGreaterThan(50);
+
+      const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
+      const camera = new THREE.PerspectiveCamera(113, 1.6, .05, 2000);
+      const near = view.chunks.map(chunk => chunk.geometry);
+      for (const low of [false, true]) {
+        if (low) {
+          camera.position.set(0, 510, 0);
+          camera.up.set(0, 0, -1);
+          camera.lookAt(0, 55, 0);
+          view.updateCulling(camera);
+          expect(view.chunks.some((mesh, i) => mesh.geometry !== near[i])).toBe(true);
+        }
+        // Include both visible sides between Hard flags 2 and 3 and a
+        // midmountain joint where the far terrain's seam fan changes grade.
+        for (const span of [8, 29, 32, 37, 42, 58, 108, 163]) for (const side of [4, 5]) {
+          const a = first + span * 6 + side, b = a + 6;
+          for (const t of [.15, .5, .85]) {
+            ray.ray.origin.set(
+              THREE.MathUtils.lerp(position.getX(a), position.getX(b), t), 140,
+              THREE.MathUtils.lerp(position.getZ(a), position.getZ(b), t),
+            );
+            const terrain = ray.intersectObjects(view.chunks, false)[0]!.point.y;
+            const bottom = THREE.MathUtils.lerp(position.getY(a), position.getY(b), t);
+            expect(bottom, 'side panel ' + span + '/' + side + ', coarse=' + low)
+              .toBeLessThan(terrain - .04);
+          }
+        }
+      }
     } finally {
       view.dispose();
     }

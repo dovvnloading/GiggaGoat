@@ -3,6 +3,7 @@ import type { IslandData, RoadDescriptor, RoadPoint } from './types';
 import { makeLocalStreets, MOUNTAIN_SPIRAL_TRAIL } from './roads';
 
 const SURFACE_LIFT = { road: .2, trail: .19 } as const;
+export const SUMMIT_ASCENT_TRAIL = 'mt-gigga--hoofington';
 
 /**
  * The POI road network and the authored Downtown high street both terminate
@@ -192,12 +193,38 @@ function pavementAt(positions: readonly number[], faces: readonly number[], x: n
   return height;
 }
 
+/** Extend only existing side panels; their top edge and road support stay put. */
+function fitSummitEarth(
+  points: readonly RoadPoint[], positions: number[], first: number, scale: number,
+  ground: (x: number, z: number) => number,
+): void {
+  for (let i = 1; i < points.length; i++) {
+    // Leave the whole bridge opening and its adjoining abutment panels alone.
+    if (points[i - 2]?.bridge || points[i - 1]!.bridge || points[i]!.bridge || points[i + 1]?.bridge) continue;
+    for (const side of [4, 5]) {
+      const a = (first + (i - 1) * 6 + side) * 3, b = a + 18;
+      const x = positions[a]!, z = positions[a + 2]!;
+      const dx = positions[b]! - x, dz = positions[b + 2]! - z;
+      const steps = Math.max(2, Math.ceil(Math.hypot(dx, dz) / (.30 * scale)));
+      let toe = Infinity;
+      for (let step = 0; step <= steps; step++) {
+        const t = step / steps;
+        const floor = ground(x + dx * t, z + dz * t);
+        if (Number.isFinite(floor)) toe = Math.min(toe, floor - .12 * scale);
+      }
+      positions[a + 1] = Math.min(positions[a + 1]!, toe);
+      positions[b + 1] = Math.min(positions[b + 1]!, toe);
+    }
+  }
+}
+
 /**
  * Every kept polyline run gets one joined strip, but all runs of a surface
  * type share a single indexed geometry. A point has two top vertices and
  * separate skirt vertices so side normals cannot tilt the asphalt normals.
  */
-export function roadRibbonData(island: IslandData, type: RoadDescriptor['type']): {
+export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
+  summitGround?: (x: number, z: number) => number): {
   positions: number[]; indices: number[]; supportIndices: number[]; segments: RibbonSegment[];
   crossSections: number[];
 } {
@@ -211,6 +238,8 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'])
   const damTrailEnd = type === 'trail'
     ? island.roads.find(road => road.id === 'mt-gigga--the-dam')?.points.at(-1) : undefined;
   const pavement = damTrailEnd ? roadRibbonData(island, 'road') : undefined;
+  const summitStart = summitGround && type === 'trail'
+    ? island.roads.find(road => road.id === SUMMIT_ASCENT_TRAIL)?.points[0] : undefined;
 
   for (const { points, width, widths, squareNorthStart } of runs) {
     const firstVertex = positions.length / 3;
@@ -266,6 +295,9 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'])
       // Signed width coordinates are shared by the asphalt top and its skirts.
       if (type === 'road') crossSections.push(-1, halfWidth, 1, halfWidth,
         -1, halfWidth, 1, halfWidth, -1, halfWidth, 1, halfWidth);
+    }
+    if (summitGround && points[0] === summitStart) {
+      fitSummitEarth(points, positions, firstVertex, island.size / 600, summitGround);
     }
 
     for (let i = 0; i < points.length - 1; i++) {

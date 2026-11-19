@@ -83,7 +83,7 @@ interface Surface {
 }
 
 /** Look up the same top triangles the renderer draws, without raycasting the whole island. */
-function surfaceHeight(surfaces: readonly Surface[], scale: number): (x: number, z: number) => number {
+export function meshSurfaceHeight(surfaces: readonly Surface[], scale: number): (x: number, z: number) => number {
   const cell = 8 * scale;
   const bins = new Map<string, GroundTriangle[]>();
   for (const surface of surfaces) {
@@ -149,8 +149,8 @@ export function buildTideRouteCues(island: IslandData, roads: THREE.Group,
       const path = roads.getObjectByName(name);
       return path instanceof THREE.Mesh ? [{ geometry: path.geometry, x: 0, z: 0 }] : [];
     });
-    const roadsAt = surfaceHeight(roadSurfaces, scale);
-    const coarseTerrainAt = surfaceHeight(lowTerrain, scale);
+    const roadsAt = meshSurfaceHeight(roadSurfaces, scale);
+    const coarseTerrainAt = meshSurfaceHeight(lowTerrain, scale);
     const floorAt = (x: number, z: number): number =>
       Math.max(terrainFloor(island, x, z), roadsAt(x, z));
     for (const marker of trailMarkers(island, floorAt)) {

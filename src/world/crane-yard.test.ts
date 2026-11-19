@@ -4,7 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { describe, expect, it, vi } from 'vitest';
 import { buildRapierColliders, createWorldScene, generateIsland, heightAt } from './index';
-import { CRANE_SWITCHBACK_PREFIX, CRANE_YARD_PLAN } from './crane-yard';
+import { CRANE_RAMP_GUARD_PREFIX, CRANE_SWITCHBACK_PREFIX, CRANE_YARD_PLAN } from './crane-yard';
 import { buildPropVisuals } from './visual-props';
 import { PROP_LIBRARY_MODELS } from './library-props';
 import type { IslandData, PropDescriptor } from './types';
@@ -290,14 +290,18 @@ describe('Crane Yard concept-art construction site', () => {
     }
   });
 
-  it('fits the loaded concrete flight at its actual slope and keeps the access tint in the shared draw', async () => {
+  it('fits the loaded flight and guard art to the sloped collision envelopes', async () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 65 });
-    const flight = yardProps(island).find(p => p.id === CRANE_SWITCHBACK_PREFIX + '147')!;
-    const file = Uint8Array.from(readFileSync('public/' + PROP_LIBRARY_MODELS['concrete-slab']));
-    const model = await new GLTFLoader().parseAsync(file.buffer, '');
-    const load = vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockResolvedValue(model);
+    const props = yardProps(island);
+    const flight = props.find(p => p.id === CRANE_SWITCHBACK_PREFIX + '142')!;
+    const guard = props.find(p => p.id.startsWith(CRANE_RAMP_GUARD_PREFIX))!;
+    const load = vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockImplementation(async url => {
+      const kind = url.endsWith(PROP_LIBRARY_MODELS['safety-rail']) ? 'safety-rail' : 'concrete-slab';
+      const file = Uint8Array.from(readFileSync('public/' + PROP_LIBRARY_MODELS[kind]));
+      return new GLTFLoader().parseAsync(file.buffer, '');
+    });
     vi.stubGlobal('document', {});
-    const visuals = buildPropVisuals([flight]);
+    const visuals = buildPropVisuals([flight, guard]);
     try {
       await vi.waitFor(() => expect(visuals.group.userData.libraryReady).toBe(true));
       expect(visuals.group.userData.libraryFailed).toBe(0);
@@ -322,10 +326,24 @@ describe('Crane Yard concept-art construction site', () => {
         const ray = new THREE.Raycaster(top.clone().addScaledVector(down, -1), down);
         expect(ray.intersectObject(deck)[0]?.point.y).toBeCloseTo(top.y, 4);
       }
+      const rail = visuals.group.getObjectByName('render-near-safety-rail') as THREE.InstancedMesh;
+      expect(rail.count).toBe(1);
+      const visual = new THREE.Matrix4();
+      rail.getMatrixAt(0, visual);
+      const guardPose = guard.transform;
+      const position = new THREE.Vector3().copy(guardPose.position);
+      const rotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+        guardPose.rotationX, guardPose.rotationY, 0, 'YXZ'));
+      const collider = new THREE.Matrix4().compose(position, rotation, new THREE.Vector3(1, 1, 1));
+      const box = rail.geometry.boundingBox!.clone().applyMatrix4(collider.invert().multiply(visual));
+      expect(box.min.distanceTo(new THREE.Vector3().copy(guard.size).multiplyScalar(-.5))).toBeLessThan(.005);
+      expect(box.max.distanceTo(new THREE.Vector3().copy(guard.size).multiplyScalar(.5))).toBeLessThan(.005);
     } finally {
-      const original = visuals.group.getObjectByName('props-concrete-slab') as THREE.InstancedMesh;
-      original.geometry.dispose();
-      (original.material as THREE.Material).dispose();
+      for (const name of ['props-concrete-slab', 'props-safety-rail']) {
+        const original = visuals.group.getObjectByName(name) as THREE.InstancedMesh;
+        original.geometry.dispose();
+        (original.material as THREE.Material).dispose();
+      }
       visuals.dispose();
       load.mockRestore();
       vi.unstubAllGlobals();

@@ -23,6 +23,7 @@ import { HOOFINGTON_HAUL_BALE_PREFIX } from '../world/hoofington-entrances';
 import { getDamHeadwater, isDamHeadwater } from '../world/dam-landscape';
 import { DAM_ACCESS_GUARD_ID, DAM_BACK_GUARD, DAM_FRONT_GUARD } from '../world/the-dam';
 import { LIGHTHOUSE_ACCESS_GUARD_ID } from '../world/lighthouse-access';
+import { COAST_TURNOUT_GNOME_ID } from '../world/roadside-stops';
 import { HAY_HAUL_TAG_RADIUS } from '../gigs';
 import { GigSession } from './GigSession';
 import { PartySession } from './PartySession';
@@ -662,10 +663,11 @@ export class Game {
     const directHit = hayHeist ? null : this.physics.raycast(courierAim ? goat.interactions.tongueOrigin : head,
       courierAim ?? add(forward(goat.locomotion.heading), V(0, -.10, 0)),
       9 * goat.size, { predicate: collider => !goat.ownsBody(collider.parent()) });
-    const contractAim = seekingTongueTarget && !match
+    const assistedAim = seekingTongueTarget && !match
       ? this.gigs.escortGnomeAim(goat, wish) ?? this.hayHaulBaleAim(goat, wish, directHit?.body?.handle)
+        ?? (courierAim ? undefined : this.coastGnomeAim(goat, directHit))
       : undefined;
-    const hit = contractAim?.hit ?? directHit;
+    const hit = assistedAim?.hit ?? directHit;
     const prop = hit ? [...this.colliders.props].find(([, c]) => c.handle === hit.collider.handle) : undefined;
     const lickable = !!hit && (!prop || this.island.props.find(p => p.id === prop[0])?.lickable !== false);
     const facts: GoatPhysicsFacts = {
@@ -695,7 +697,7 @@ export class Game {
       acceptForwardSupport: parcelHeld ? this.gigs.isCourierRamp : undefined,
     });
     this.water.setPaddle(goat.torso, wish);
-    this.executeCommands(commands, goat, player, contractAim?.direction ?? courierAim);
+    this.executeCommands(commands, goat, player, assistedAim?.direction ?? courierAim);
     if (player && input.graze && this.canGraze() &&
         this.gigs.active?.setup.config.kind === 'mow-down') {
       this.gigs.noteAbility({ type: 'eat' });
@@ -716,6 +718,28 @@ export class Game {
     const facing = forward(goat.locomotion.heading);
     if (facing.x * offset.x + facing.z * offset.z < Math.hypot(offset.x, offset.z) * .7) return;
     return sub(target, goat.interactions.tongueOrigin);
+  }
+
+  /** The loose gnome can roll above or below the normal tongue ray on the turnout slope. */
+  private coastGnomeAim(goat: GoatRagdoll, directHit: RayHit | null):
+    { direction: Vec3; hit: RayHit } | undefined {
+    const gnome = this.colliders.bodies.get(COAST_TURNOUT_GNOME_ID);
+    if (!gnome?.isValid() || !gnome.isEnabled()) return;
+    const target = gnome.translation();
+    const offset = sub(target, goat.torso.translation());
+    if (Math.hypot(offset.x, offset.y, offset.z) > 3.5) return;
+    const facing = forward(goat.locomotion.heading);
+    if (facing.x * offset.x + facing.z * offset.z < Math.hypot(offset.x, offset.z) * Math.cos(Math.PI / 9)) return;
+
+    // Keep an ordinary prop or scenery hit, even if only one of the two rays sees it.
+    const terrain = this.colliders.terrain.handle;
+    const hitsOtherScenery = (hit: RayHit | null): boolean =>
+      hit !== null && hit.collider.handle !== terrain && hit.body?.handle !== gnome.handle;
+    const tongue = goat.interactions;
+    if (hitsOtherScenery(directHit) || hitsOtherScenery(tongue.raycastTongue())) return;
+    const direction = sub(target, tongue.tongueOrigin);
+    const hit = tongue.raycastTongue(direction);
+    if (hit?.body?.handle === gnome.handle) return { direction, hit };
   }
 
   /** Give small aiming errors near marked bales the same first-hit check as a normal lick. */
