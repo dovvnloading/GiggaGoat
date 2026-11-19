@@ -86,8 +86,8 @@ vec3 downtownGround(vec3 grass, vec2 point) {
   vec3 court = uDowntownCourtStone * mix(0.86, stoneTone, smoothstep(0.4, 0.7, courtEdge));
   return mix(grass, court, smoothstep(-aa, aa, courtEdge));
 }`,
-  ).replace('diffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);',
-    `diffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);
-diffuseColor.rgb = downtownGround(diffuseColor.rgb, (vWorld.xz - uDowntownOrigin) / uTerrainScale);`,
+  ).replace('#include <alphamap_fragment>',
+    `diffuseColor.rgb = downtownGround(diffuseColor.rgb, (vWorld.xz - uDowntownOrigin) / uTerrainScale);
+#include <alphamap_fragment>`,
   );
 }

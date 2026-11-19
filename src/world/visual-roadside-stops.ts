@@ -32,9 +32,9 @@ vec3 roadsideGravel(vec3 ground, vec2 world, float scale) {
     return mix(ground, uRoadsideGravel[i] * grain, mask * 0.91);
   }
   return ground;
-}`).replace('diffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);',
-    `diffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);
-diffuseColor.rgb = roadsideGravel(diffuseColor.rgb, vWorld.xz, uTerrainScale);`);
+}`).replace('#include <alphamap_fragment>',
+    `diffuseColor.rgb = roadsideGravel(diffuseColor.rgb, vWorld.xz, uTerrainScale);
+#include <alphamap_fragment>`);
 }
 
 function drawArrow(ctx: CanvasRenderingContext2D, x: number, y: number, direction: number): void {
