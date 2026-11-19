@@ -19,7 +19,7 @@ interface RigLeg {
   supportHandle?: number;
 }
 
-type Contact = Pick<RayHit, 'point' | 'normal'>;
+type Contact = Pick<RayHit, 'point' | 'normal'> & Partial<Pick<RayHit, 'collider'>>;
 const UP = new THREE.Vector3(0, 1, 0);
 const DOWN = { x: 0, y: -1, z: 0 };
 const TROT_PHASE = [0, .5, .5, 0] as const;
@@ -123,7 +123,7 @@ export class SkinnedLegPose {
     const distance = this.origin.dot(this.normal);
     this.origin.copy(torso).addScaledVector(this.normal, -distance);
     // Bend the knees slightly even in stance so each planted leg has room to push.
-    this.target.copy(this.origin).addScaledVector(this.normal, -.13 * size);
+    this.target.copy(this.origin).addScaledVector(this.normal, -.16 * size);
     model.position.lerp(this.target, this.weight);
     model.quaternion.slerp(this.rotation, this.weight);
     model.updateWorldMatrix(true, true);
@@ -136,8 +136,14 @@ export class SkinnedLegPose {
     for (const [i, leg] of this.legs.entries()) {
       const step = climbStep(this.phase, i === 1 || i === 2);
       this.target.copy(this.origin).addScaledVector(this.right, leg.sole.x * size)
-        .addScaledVector(this.down, (leg.sole.z + step.down) * size)
-        .addScaledVector(this.normal, (.018 + step.lift) * size);
+        .addScaledVector(this.down, (leg.sole.z + step.down) * size);
+      // A silo's face curves away on either side of the shoulder contact.
+      // Find the surface under this hoof, including raised seams.
+      const surface = wall?.collider?.projectPoint(this.target, false);
+      if (surface && this.target.distanceToSquared(surface.point) < (.28 * size) ** 2) {
+        this.target.copy(surface.point);
+      }
+      this.target.addScaledVector(this.normal, (.024 + step.lift) * size);
       const plant = !!wall && step.lift === 0;
       if (plant) {
         if (!leg.planted || leg.foothold.distanceToSquared(this.target) > (.28 * size) ** 2) {
@@ -185,11 +191,12 @@ export class SkinnedLegPose {
     const tuck = glide ? .45 : loco.isFlipping ? 1 : gathered * (loco.jumpedFromSupport ? 1 : .4);
     const reach = THREE.MathUtils.smoothstep(-vy, .08, .75);
     const gallop = goat.pose === 'gallop';
-    const length = gallop ? 2.85 : 1.75;
+    const length = gallop ? 1.95 : 1.50;
     const stance = gallop ? .34 : .52;
-    const weight = flight ? this.airWeight : stride ? THREE.MathUtils.smoothstep(speed / size, .12, 1.4) :
-      Math.min(1, compress * 12);
-    if (weight <= 0) return;
+    // At low speed shorten the step, rather than blending a planted hoof back
+    // into the baked leg swing. The latter pulls it through its own support.
+    const stepAmount = THREE.MathUtils.smoothstep(speed / size ** .16, 0, 2.0);
+    const weight = flight ? this.airWeight : 1;
     if (flight) {
       this.target.set(0, .92 * size, 0).applyQuaternion(model.quaternion);
       model.position.add(this.target);
@@ -198,12 +205,18 @@ export class SkinnedLegPose {
     } else if (floor) {
       const n = floor.normal, p = floor.point;
       const floorY = p.y - ((model.position.x - p.x) * n.x + (model.position.z - p.z) * n.z) / n.y;
-      this.stride = (this.stride + dt * speed / (length * size)) % 1;
+      // Follow the support's bank while keeping some of the body's physical
+      // lean. On a sharp turn the outside hip otherwise lifts beyond reach.
+      this.direction.copy(UP).applyQuaternion(model.quaternion);
+      this.delta.setFromUnitVectors(this.direction, this.normal.copy(n).normalize());
+      model.quaternion.premultiply(this.rotation.identity().slerp(this.delta, .65));
+      // The outer legs also travel when the body pivots around a planted foot.
+      const turnSpeed = Math.min(8, Math.abs(goat.torso.angvel().y)) * .38 * size;
+      this.stride = (this.stride + dt * (speed + turnSpeed) / (length * size)) % 1;
       // Flex the supporting legs enough to reach ahead of the shoulder or
       // behind the hip without straightening the knee and skidding.
-      const stanceFlex = stride ? (gallop ? .14 : .075) : 0;
-      model.position.y = THREE.MathUtils.lerp(model.position.y,
-        floorY + size * (.005 - stanceFlex - compress * .27), weight);
+      const stanceFlex = stride ? (gallop ? .19 : .10) * stepAmount : 0;
+      model.position.y = floorY + size * (.005 - stanceFlex - compress * .27);
     }
     model.updateWorldMatrix(true, true);
     this.applied = true;
@@ -227,24 +240,22 @@ export class SkinnedLegPose {
         const step = plant ? phase / stance : 1 - THREE.MathUtils.smoothstep(swing, 0, 1);
         model.localToWorld(this.target);
         if (stride && speed > .001) {
-          const travel = (.5 - step) * stance * length * size / speed;
+          const travel = (.5 - step) * stance * length * size * stepAmount / speed;
           this.target.x += velocity.x * travel;
           this.target.z += velocity.z * travel;
         }
         const n = floor.normal, p = floor.point;
-        this.target.y = p.y - ((this.target.x - p.x) * n.x + (this.target.z - p.z) * n.z) / n.y +
-          size * (.009 + (plant ? 0 : (gallop ? .34 : .23) * Math.sin(Math.PI * swing)));
+        this.target.y = p.y - ((this.target.x - p.x) * n.x + (this.target.z - p.z) * n.z) / n.y;
+        this.origin.copy(this.target).y += .38 * size;
+        const hit = goat.world.raycast(this.origin, DOWN, .82 * size, { groups: GROUND_QUERY_GROUPS });
+        if (hit && hit.normal.y >= .65) this.target.y = hit.point.y;
+        this.target.y += size * (.014 + (plant ? 0 : stepAmount * (gallop ? .34 : .23) * Math.sin(Math.PI * swing)));
         if (plant) {
-          if (this.groundedGait && leg.planted && leg.supportHandle === floor.collider.handle &&
+          if (!hit || hit.normal.y < .65) { leg.planted = false; continue; }
+          if (this.groundedGait && leg.planted && leg.supportHandle === hit.collider.handle &&
               leg.foothold.distanceTo(this.target) < size * .42 &&
-              (floor.body === null || floor.body.isFixed())) this.target.copy(leg.foothold);
-          else {
-            this.origin.copy(this.target).y += .32 * size;
-            const hit = goat.world.raycast(this.origin, DOWN, .68 * size, { groups: GROUND_QUERY_GROUPS });
-            if (!hit || hit.normal.y < .65) { leg.planted = false; continue; }
-            this.target.y = hit.point.y + .009 * size;
-            leg.supportHandle = hit.collider.handle;
-          }
+              (hit.body === null || hit.body.isFixed())) this.target.copy(leg.foothold);
+          leg.supportHandle = hit.collider.handle;
         }
         leg.foothold.copy(this.target);
         leg.planted = plant;
