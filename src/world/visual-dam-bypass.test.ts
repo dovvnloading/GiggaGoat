@@ -4,25 +4,32 @@ import { Game } from '../core/Game';
 import { V } from '../physics';
 import { createWorldScene, generateIsland } from './index';
 import { damAccess } from './the-dam';
+import { DAM_BYPASS_PAINT_COLOR } from './visual-dam-bypass';
 
 it('paints the lower Dam fork on the visible asphalt outside the upper ramp', () => {
   const island = generateIsland({ seed: 'billy-isle' });
   const view = createWorldScene(island);
   try {
     view.group.updateMatrixWorld(true);
-    const guide = view.group.getObjectByName('dam-lower-road-guide') as THREE.Mesh;
+    const guide = view.group.getObjectByName('dam-board-access-ramp') as THREE.Mesh;
     const pavement = view.group.getObjectByName('paths-road')!;
     const [ramp] = damAccess(island);
     const toe = ramp[0]!.outer;
-    const paint = guide.geometry.getAttribute('position');
-    expect(paint.count).toBeGreaterThanOrEqual(100);
+    const positions = guide.geometry.getAttribute('position');
+    const colors = guide.geometry.getAttribute('color');
+    const cream = new THREE.Color(DAM_BYPASS_PAINT_COLOR);
+    const paint = new THREE.Vector3(cream.r, cream.g, cream.b);
+    const color = new THREE.Vector3();
 
     const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
     const triangle = new THREE.Triangle();
     const centre = new THREE.Vector3();
-    for (let i = 0; i < paint.count; i += 3) {
+    let paintTriangles = 0;
+    for (let i = 0; i < positions.count; i += 3) {
+      if (color.fromBufferAttribute(colors, i).distanceToSquared(paint) > 1e-10) continue;
+      paintTriangles++;
       for (const [offset, point] of [triangle.a, triangle.b, triangle.c].entries()) {
-        point.fromBufferAttribute(paint, i + offset).applyMatrix4(guide.matrixWorld);
+        point.fromBufferAttribute(positions, i + offset).applyMatrix4(guide.matrixWorld);
         // At the ramp's western side, the guide stays south of its rails.
         if (point.x <= toe.x) expect(point.z).toBeLessThan(toe.z - .28);
       }
@@ -33,6 +40,7 @@ it('paints the lower Dam fork on the visible asphalt outside the upper ramp', ()
       expect(centre.y - road.point.y).toBeLessThan(.04);
       expect(ray.intersectObject(guide)[0]!.point.y).toBeCloseTo(centre.y, 4);
     }
+    expect(paintTriangles).toBeGreaterThanOrEqual(34);
   } finally {
     view.dispose();
   }

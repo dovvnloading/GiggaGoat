@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { roadRibbonData } from './road-ribbons';
 import { gridSample } from './terrain';
-import type { DamPlacement } from './the-dam';
 import type { IslandData, Vec3 } from './types';
+
+export const DAM_BYPASS_PAINT_COLOR = 0xffedc5;
 
 // A two-way guide from the board side, around the ramp toe and back to the
 // open road. Coordinates are local to the outer corner of the ramp.
@@ -11,13 +12,13 @@ const LOWER_ROAD_BENDS = [
 ] as const;
 
 /** Paint the lower branch on the same triangles that support walking. */
-export function buildDamBypassPaint(island: IslandData, rampToe: Vec3,
-  { position: origin, scale }: DamPlacement): THREE.Mesh | undefined {
+export function buildDamBypassPaint(island: IslandData, rampToe: Vec3, scale: number):
+  { geometry: THREE.BufferGeometry; color: number } | undefined {
   const ribbon = roadRibbonData(island, 'road');
   const pavement = new THREE.BufferGeometry();
   pavement.setAttribute('position', new THREE.Float32BufferAttribute(ribbon.positions, 3));
   pavement.setIndex(ribbon.supportIndices);
-  const material = new THREE.MeshBasicMaterial({ color: 0xffedc5 });
+  const material = new THREE.MeshBasicMaterial();
   const road = new THREE.Mesh(pavement, material);
   const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
   const bends = LOWER_ROAD_BENDS.map(([x, z]) => new THREE.Vector2(rampToe.x + x * scale, rampToe.z + z * scale));
@@ -38,11 +39,7 @@ export function buildDamBypassPaint(island: IslandData, rampToe: Vec3,
       ray.ray.origin.set(x, rampToe.y + 30 * scale, z);
       const hit = ray.intersectObject(road)[0];
       fits &&= hit !== undefined && hit.point.y >= gridSample(island, x, z);
-      return [
-        (x - origin.x) / scale,
-        ((hit?.point.y ?? rampToe.y) - origin.y) / scale + .024,
-        (z - origin.z) / scale,
-      ];
+      return [x, (hit?.point.y ?? rampToe.y) + .024 * scale, z];
     };
     for (let dash = Math.floor(distance / spacing) * spacing;
       dash < distance + segmentLength; dash += spacing) {
@@ -64,14 +61,11 @@ export function buildDamBypassPaint(island: IslandData, rampToe: Vec3,
     distance += segmentLength;
   }
   pavement.dispose();
+  material.dispose();
   // Omit the guide if a different island seed places the lane off pavement.
-  if (!fits) {
-    material.dispose();
-    return;
-  }
+  if (!fits) return;
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  const paint = new THREE.Mesh(geometry, material);
-  paint.name = 'dam-lower-road-guide';
-  return paint;
+  geometry.computeVertexNormals();
+  return { geometry, color: DAM_BYPASS_PAINT_COLOR };
 }

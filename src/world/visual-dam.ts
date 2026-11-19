@@ -310,18 +310,18 @@ export function buildDamVisuals(island: IslandData,
   const landingGuide = [{ outer: { ...turn.outer, z: turnZ },
     inner: { ...turn.inner, z: turnZ } }, ...transfer];
   const paint = 0x72512e;
+  const bypassPaint = buildDamBypassPaint(island, ramp[0]!.outer, scale);
   // The same static batch stays visible when the authored model replaces the fallback.
   const approach = accessPathVisual('dam-board-access-ramp', paths, damAccessGuards(paths, scale),
     .38 * scale, scale, 0xdeb665, 0xd69d28, [
       ...supports, { geometry: backRail, color: 0xf2c12e },
       accessArrows(ramp.slice(0, 2), scale, paint),
       accessArrows(landingGuide, scale, paint),
+      ...(bypassPaint ? [bypassPaint] : []),
     ]);
   approach.position.copy(group.position).multiplyScalar(-1 / placement.scale);
   approach.scale.setScalar(1 / placement.scale);
   group.add(fallback, approach);
-  const bypassPaint = buildDamBypassPaint(island, ramp[0]!.outer, placement);
-  if (bypassPaint) group.add(bypassPaint);
   let waterfallMaps: THREE.Texture[] = [];
   let shadowChange = false;
   let disposed = false;
