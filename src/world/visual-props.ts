@@ -695,9 +695,6 @@ function poseSummitLandmark(prop: PropDescriptor, art: THREE.Object3D): void {
   if (prop.kind === 'satellite-dish') {
     art.scale.set(x * 1.37, y * 1.44, z * 1.18);
     art.rotation.y += 0.64;
-    // The fixture was authored with a 1 m pedestal lift. Lower the art's
-    // foot into that gap and leave the actual cylinder at its existing pose.
-    art.position.y -= 0.09 * y;
   } else {
     art.scale.set(x * 1.56, y * 1.25, z);
     art.rotation.y += 0.48;

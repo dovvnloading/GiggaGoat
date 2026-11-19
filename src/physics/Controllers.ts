@@ -157,11 +157,13 @@ export class BalanceController {
     const slopeSpeed = normal.y >= g.locomotion.minWalkingNormalY
       ? Math.min(0, -(normal.x * velocity.x + normal.z * velocity.z) / normal.y)
       : 0;
-    // Follow a walkable grade through a short loss of contact as the slope rolls away.
-    // Require recent support within reach so a jump or ledge fall keeps its momentum.
+    // Damping against world Y on a long descent holds the torso above the
+    // descending ground. Allow the same grade velocity to settle the goat
+    // back onto a nearby slope after a missed stride. Faster falls keep their
+    // original landing response.
     const downhillTerrain = (layers & CollisionLayer.terrain) !== 0 &&
-      normal.y < .995 && slopeSpeed < -.2 && velocity.y >= -3 &&
-      g.locomotion.groundSupportAge <= .18 && height <= (this.tuning.rideHeight + .26) * g.size;
+      slopeSpeed < -.2 && velocity.y >= -3 &&
+      height <= (this.tuning.rideHeight + .46) * g.size;
     const downhillSpeed = fixed && (deck || downhillTerrain) ? slopeSpeed : 0;
     const yError = this.tuning.rideHeight*g.size - height + downhillSpeed * dt;
     const relativeSpeed = velocity.y - downhillSpeed;

@@ -187,7 +187,7 @@ it('walks through the bridge after the northwest shortcut and renders its real d
     game.step();
     world.group.updateMatrixWorld(true);
     const road = game.island.roads.find(r => r.id === 'downtown-bleatsville--mt-gigga')!;
-    const span = road.points.slice(95, 102);
+    const span = road.points.slice(95, 107);
     const mesh = world.group.getObjectByName('mountain-wayfinding-batched') as THREE.Mesh;
     const flatDecks = world.group.getObjectByName('props-bridge')!;
     expect(mesh).toBeInstanceOf(THREE.Mesh);
@@ -231,6 +231,27 @@ it('walks through the bridge after the northwest shortcut and renders its real d
         predicate: collider => deckHandles.has(collider.handle),
       });
       expect(terrain!.point.y).toBeLessThan(deck!.point.y);
+    }
+
+    // Beyond the wood-to-dirt handoff, the authored trail must carry
+    // the goat across the original terrain intrusion on all three lanes.
+    const ribbon = game.colliders.paths[1]!;
+    const ground = game.colliders.terrain;
+    for (let i = 101; i <= 103; i++) {
+      const a = road.points[i]!, b = road.points[i + 1]!;
+      const heading = new THREE.Vector3(b.x - a.x, 0, b.z - a.z).normalize();
+      const lateral = new THREE.Vector3(-heading.z, 0, heading.x);
+      for (const offset of [-1.4, 0, 1.4]) for (const t of [.15, .35, .55, .75, .95]) {
+        const origin = new THREE.Vector3(THREE.MathUtils.lerp(a.x, b.x, t), 65,
+          THREE.MathUtils.lerp(a.z, b.z, t)).addScaledVector(lateral, offset);
+        const down = new THREE.Vector3(0, -1, 0);
+        const surface = game.physics.raycast(origin, down, 60,
+          { predicate: collider => collider.handle === ribbon.handle });
+        const terrain = game.physics.raycast(origin, down, 60,
+          { predicate: collider => collider.handle === ground.handle });
+        expect(surface!.point.y - terrain!.point.y, 'landing at span ' + i + ', lane ' + offset)
+          .toBeGreaterThan(.09);
+      }
     }
 
     const start = span[0]!;

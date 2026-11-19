@@ -4,13 +4,14 @@ import type {
 import { BIOMES, POI_IDS } from './types';
 import { hashString, SeededRandom } from './random';
 import {
-  assignBiomes, carveWater, clearTerrainUnderBridge, gridCoordinate, gridIndex, gridSample, makeTerrain,
+  assignBiomes, carveWater, clearTerrainUnderBridge, clearTerrainUnderTrailLanding,
+  gridCoordinate, gridIndex, gridSample, makeTerrain,
   preserveLighthouseChannel, sculptLighthouseSeaCave, sculptMountainCaveLanding, stampPlot,
 } from './terrain';
 import { makeRoads, makeBridgeDecks, MOUNTAIN_SPIRAL_TRAIL, separateLighthouseFork } from './roads';
 import { makeRoadsideProps } from './roadside-stops';
 import { clearPavedRoadScenery } from './road-scenery';
-import { fitDowntownServiceRamps, populateProps, seatDowntownStock } from './layouts';
+import { fitDowntownServiceRamps, populateProps, seatDowntownStock, seatSummitDish } from './layouts';
 import { dressIsland } from './dressing';
 import { makeRelics, makeSpawns } from './collectibles';
 import { clearMountainLedges } from './mountain-ledges';
@@ -188,6 +189,7 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
       // approach panel so the lower span keeps the adjacent planted terrace.
       clearTerrainUnderBridge(island, { ...spiral, points: spiral.points.slice(Math.max(last - 1, 0), last + 3) },
         spiral.width + 1);
+      clearTerrainUnderTrailLanding(island, spiral, last + 1);
     }
   }
   // Restore the full water gap after footings have feathered toward the bridge.
@@ -222,6 +224,7 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   });
   sculptDamHeadwater(island);
   island.legacySummitLedgePositions = clearMountainLedges(island);
+  seatSummitDish(island);
   clearMountainRocks(island);
   assignBiomes(island);
   island.spawns = makeSpawns(island);

@@ -19,12 +19,14 @@ const INFILL_SCENERY_KINDS = new Set<PropKind>([
 ]);
 
 interface DetailOptions {
+  id?: string;
   yaw?: number;
   lift?: number;
   /** Absolute centre, useful for rooftop items and floating props. */
   y?: number;
   shape?: PropDescriptor['shape'];
   mass?: number;
+  breakable?: boolean;
   color?: number;
 }
 
@@ -50,11 +52,11 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     const nonInteractive = kind === 'fern' || kind === 'lily-pads' ||
       kind === 'cascade' || kind === 'cascade-tall';
     const prop: PropDescriptor = {
-      id: 'detail-' + (poiId ?? 'island') + '-' + kind + '-' + serial++,
+      id: options.id ?? ('detail-' + (poiId ?? 'island') + '-' + kind + '-' + serial++),
       kind, ...(poiId ? { poiId } : {}),
       transform: { position: { x, y, z }, rotationY: options.yaw ?? 0 },
       size, body, shape: options.shape ?? 'cuboid',
-      collidable: !nonInteractive, breakable: options.mass !== undefined,
+      collidable: !nonInteractive, breakable: options.breakable ?? (options.mass !== undefined),
       lickable: !nonInteractive && kind !== 'flower' && kind !== 'grass-tuft',
       climbable: !nonInteractive && options.mass === undefined && sy > 1.5,
       ...(options.color === undefined ? {} : { color: options.color }),
@@ -537,7 +539,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   }
   // The fitted cave mesh spans 98% of its box. Align its floor with the landing.
   at(peak, 'cave-mouth', MOUNTAIN_CAVE_ANCHOR.x, MOUNTAIN_CAVE_ANCHOR.z,
-    11, 8, 6, { lift: -.06, color: 0x555b6a });
+    11, 8, 6, { yaw: MOUNTAIN_CAVE_ANCHOR.yaw, lift: -.06, color: 0x555b6a });
   for (let i = 0; i < 20; i++) {
     const a = turn(), r = rand(42, 97);
     at(peak, 'rock', Math.cos(a) * r, Math.sin(a) * r, rand(2, 5), rand(2, 4.5), rand(2, 5),
@@ -1058,6 +1060,44 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
         step.id = 'whispering-pines-glade-lip-' + rock.id;
       }
     }
+  }
+
+  // The farm's large shade trees use the same visual instances, now with trunk support.
+  for (const [name, x, z, width, height] of [
+    ['west', -52, 35, 12, 17], ['east', 53, -10, 12, 18], ['south-east', 49, 42, 11, 15],
+  ] as const) {
+    at(farm, 'tree-oak', x, z, width, height, width,
+      { id: 'hoofington-shade-oak-' + name, shape: 'cylinder' });
+  }
+
+  // Find solid seats for the art bales while keeping the west towing gate clear.
+  // Static breakables become movable in Game, outside Hay Haul's seeded supply.
+  const farmObstacles = [...island.props, ...result].filter(prop => prop.collidable &&
+    Math.hypot(prop.transform.position.x - farmCenter.x, prop.transform.position.z - farmCenter.z) < 70 * scale);
+  const baleSpots = [
+    [-41, -16, .2], [-39, -14, 1.1], [-42, -13, -.3], [-39, -10, .5], [-37, -14, 1.3],
+  ] as const;
+  for (const [index, [dx, dz, yaw]] of baleSpots.entries()) {
+    const origin = { x: farmCenter.x + dx * scale, z: farmCenter.z + dz * scale };
+    const width = 2.5 * scale;
+    const clear = (x: number, z: number): boolean => {
+      if (x > farmCenter.x - 36.5 * scale || z > farmCenter.z - 4 * scale ||
+        gridSample(island, x, z) <= island.seaLevel + .6 * scale || inFarmEntrance(x, z, width, yaw)) return false;
+      const footprint = { x, z, sx: width, sz: width, yaw };
+      if (hoofRoads.some(road => footprintOverlaps(footprint, road))) return false;
+      return farmObstacles.every(prop => {
+        const at = prop.transform.position;
+        const trunk = prop.kind === 'tree-oak' || prop.kind === 'tree-pine'
+          ? Math.min(1.8, prop.size.x * .4) : undefined;
+        const sx = trunk ?? prop.size.x, sz = trunk ?? prop.size.z;
+        if (Math.hypot(x - at.x, z - at.z) > (Math.SQRT2 * width + Math.hypot(sx, sz)) / 2) return true;
+        return !footprintOverlaps(footprint, { x: at.x, z: at.z, sx, sz, yaw: prop.transform.rotationY });
+      });
+    };
+    const site = clear(origin.x, origin.z) ? origin : nearbyFoliageSpot(origin, clear, 16);
+    if (!site) continue;
+    farmObstacles.push(place('hay-bale', site.x, site.z, 2.15, 1.45, 2.2, farm,
+      { id: 'hoofington-field-art-bale-' + (index + 1), yaw, shape: 'cylinder', breakable: true }));
   }
 
   // generateIsland makes one more grading pass for the dressed farmhouse and

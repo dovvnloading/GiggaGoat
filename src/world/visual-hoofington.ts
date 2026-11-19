@@ -150,9 +150,6 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
   // The painting reads from +Z along the street toward the mountain:
   // large shady trees at the edges, flowers against front windows,
   // livestock and hay behind the white fence.
-  scatter(OAK_VARIANTS[oakIndex++ % OAK_VARIANTS.length]!, -52, 35, 12, 17, 12);
-  scatter(OAK_VARIANTS[oakIndex++ % OAK_VARIANTS.length]!, 53, -10, 12, 18, 12);
-  scatter(OAK_VARIANTS[oakIndex++ % OAK_VARIANTS.length]!, 49, 42, 11, 15, 11);
   scatter(BUSH_VARIANTS[bushIndex++ % BUSH_VARIANTS.length]!, -16, 30, 3, 2, 3);
   scatter(BUSH_VARIANTS[bushIndex++ % BUSH_VARIANTS.length]!, 15.45, 30, 3, 2, 3);
   for (const side of [-1, 1]) {
@@ -168,10 +165,6 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
       }
     }
   }
-  for (const [dx, dz, yaw] of [
-    [-41, -16, 0.2], [-39, -14, 1.1], [-42, -13, -0.3],
-    [-39, -10, 0.5], [-37, -14, 1.3],
-  ] as const) scatter('hay', dx, dz, 2.15, 1.45, 2.2, yaw);
   scatter('cow', -43, 12, 2, 2.8, 4, -0.8);
   scatter('sheep', -40, 26, 1.65, 1.9, 2.5, 0.9);
   scatter('sheep', 43, -20, 1.6, 1.9, 2.4, -1.2);
