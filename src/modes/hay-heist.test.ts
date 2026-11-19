@@ -50,6 +50,21 @@ describe('HAY HEIST — barn scoring and cargo physics contracts', () => {
     expect(match.bales.find(b => b.id === 'blue-hay-1')!.carrierId).toBeNull();
   });
 
+  it('returns distinct delivered bales to their original barn slots', () => {
+    const match = heist({ hayPerTeam: 3, hayTargetScore: 5 });
+    const blueStock = () => match.bales.filter(bale => bale.homeTeam === 'blue');
+    const initial = blueStock().map(bale => bale.position);
+    for (const [index, { x, z }] of initial.entries()) {
+      const pick = { ...red(x), position: { x, y: 16, z } };
+      expect(match.step({ ...frame(pick, blue(20)), intents: { a: { tongue: true } } }))
+        .toContainEqual(expect.objectContaining({ type: 'hay.picked', baleId: 'blue-hay-' + (index + 1) }));
+      expect(match.step({ ...frame(red(-10), blue(20)), intents: { a: { tongue: true } } }))
+        .toContainEqual(expect.objectContaining({ type: 'hay.scored', teamId: 'red', score: index + 1 }));
+    }
+    expect(blueStock().map(bale => bale.position)).toEqual(initial);
+    expect(blueStock().every(bale => bale.carrierId === null && bale.lastTouchedTeam === null)).toBe(true);
+  });
+
   it('recovers stolen friendly hay without repeatedly picking it up at home', () => {
     const match = heist();
     const redHay = () => match.bales.find(b => b.id === 'red-hay-1')!;

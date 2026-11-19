@@ -1,11 +1,18 @@
 import type {
-  Bale, Barn, GoatObservation, HeistState, MatchSnapshot, ModeArena, ModeInputIntent, PlayerState,
+  Bale, Barn, GoatObservation, HeistState, MatchSnapshot, ModeArena, ModeInputIntent, PlayerState, Position,
 } from './types';
 import type { Emit, RuleOutcome } from './internal';
 import { direction, distanceSquared, TICKS_PER_SECOND, compareIds } from './internal';
 
 const KICK_COOLDOWN = 24;
 const STAMINA_RECOVERY_PER_SECOND = 7;
+
+function baleHomeSlot(barn: Barn, index: number, count: number): Position {
+  const angle = Math.PI * 2 * index / count;
+  const distance = Math.min(2, barn.radius * 0.3);
+  return { x: barn.position.x + Math.cos(angle) * distance,
+    y: barn.position.y + 0.7, z: barn.position.z + Math.sin(angle) * distance };
+}
 
 export function makeHeistState(players: readonly PlayerState[], arena: ModeArena, hayPerTeam: number): HeistState {
   const teams = [...new Set(players.map(p => p.teamId).filter((id): id is string => id !== null))].sort();
@@ -15,12 +22,9 @@ export function makeHeistState(players: readonly PlayerState[], arena: ModeArena
     const barn = arena.barns.find(b => b.teamId === team)!;
     scores[team] = 0;
     for (let i = 0; i < hayPerTeam; i++) {
-      const angle = Math.PI * 2 * i / hayPerTeam;
-      const distance = Math.min(2, barn.radius * 0.3);
       bales.push({
         id: `${team}-hay-${i + 1}`, homeTeam: team,
-        position: { x: barn.position.x + Math.cos(angle) * distance,
-          y: barn.position.y + 0.7, z: barn.position.z + Math.sin(angle) * distance },
+        position: baleHomeSlot(barn, i, hayPerTeam),
         carrierId: null, lastTouchedTeam: null,
       });
     }
@@ -33,9 +37,11 @@ export function makeHeistState(players: readonly PlayerState[], arena: ModeArena
   };
 }
 
-function setBaleAtBarn(bale: Bale, arena: ModeArena): void {
+function setBaleAtBarn(bale: Bale, arena: ModeArena, bales: readonly Bale[]): void {
   const barn = arena.barns.find(b => b.teamId === bale.homeTeam)!;
-  bale.position = { x: barn.position.x, y: barn.position.y + 0.7, z: barn.position.z };
+  const stock = bales.filter(item => item.homeTeam === bale.homeTeam);
+  bale.position = stock.length === 1 ? { ...barn.position, y: barn.position.y + 0.7 }
+    : baleHomeSlot(barn, stock.indexOf(bale), stock.length);
   bale.carrierId = null;
   bale.lastTouchedTeam = null;
 }
@@ -143,7 +149,7 @@ export function updateHayHeist(
     if (!barn || !isBaleInsideBarn(bale, barn)) continue;
     if (bale.homeTeam === barn.teamId) {
       // Leave rescued hay on the tongue until it is deposited in its home ring.
-      if (bale.carrierId === null) setBaleAtBarn(bale, arena);
+      if (bale.carrierId === null) setBaleAtBarn(bale, arena, heist.bales);
       continue;
     }
     const scoringPlayer = bale.carrierId;
@@ -151,7 +157,7 @@ export function updateHayHeist(
     if (scoringPlayer) state.players.find(p => p.id === scoringPlayer)!.score++;
     emit({ type: 'hay.scored', baleId: bale.id, teamId: barn.teamId, playerId: scoringPlayer,
       score: heist.scores[barn.teamId]! });
-    setBaleAtBarn(bale, arena);
+    setBaleAtBarn(bale, arena, heist.bales);
     if (state.phase === 'overtime') heist.overtimeScore = true;
   }
   if (heist.overtimeScore || Object.values(heist.scores).some(score => score >= state.config.hayTargetScore)) {
