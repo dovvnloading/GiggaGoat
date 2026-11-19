@@ -3,7 +3,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { BUILD_RAMP_VERTICES, BUILD_RAMP_TRIANGLES } from '../gameplay';
 import { PROP_LIBRARY_MODELS, bakeLibraryPropGeometry } from '../world/library-props';
 import { fitLibraryModel, isAuthoredLibraryAsset } from '../world/library-fit';
-import { buildProceduralPropGeometry, TOON_RAMP } from '../world/visual-props';
+import { kitPreview } from '../world/kit-preview';
+import { TOON_RAMP } from '../world/visual-props';
 
 /**
  * Visuals only: callers still own their Rapier bodies and update these roots'
@@ -23,11 +24,7 @@ interface WorldArtFit {
   treadElevations: readonly [toe: number, crest: number];
 }
 
-/** Same descriptor colours as the World Lab's procedural loading placeholders. */
-const WORLD_PROP_COLORS: Readonly<Record<WorldLibraryPropKind, number>> = {
-  crate: 0xc4915f, barrel: 0xe67d5d, 'hay-bale': 0xf2c14f,
-  fence: 0xe5c587, ramp: 0xe5b974, trampoline: 0x7960d9, gnome: 0xd84f3d,
-};
+
 
 export const BUILD_PIECE_SIZES: Readonly<Record<BuildPieceType, Readonly<Size3>>> = {
   floor: { x: 2, y: .46, z: 2 },
@@ -259,6 +256,14 @@ export class PropFactory {
     return material;
   }
 
+  private worldPaint(kind: WorldLibraryPropKind, color?: number): THREE.MeshToonMaterial {
+    const tint = new THREE.Color(0xffffff);
+    if (!isAuthoredLibraryAsset(PROP_LIBRARY_MODELS[kind]) && color !== undefined) {
+      tint.setHex(color).lerp(new THREE.Color(0xffffff), .82);
+    }
+    return this.worldMaterial(tint.getHex(), true);
+  }
+
   private fittedWorld(prototype: THREE.Object3D, kind: WorldLibraryPropKind,
     size: Size3, color: number | undefined, artFit?: WorldArtFit): THREE.Group | null {
     let geometry = this.worldGeometries.get(kind);
@@ -275,13 +280,7 @@ export class PropFactory {
     const path = PROP_LIBRARY_MODELS[kind];
     const fit = fitLibraryModel(nativeBounds.getSize(new THREE.Vector3()),
       new THREE.Vector3(size.x, size.y, size.z), path);
-    // Authored paint is not recoloured. Kenney props use the Lab's subtle
-    // descriptor tint (18% descriptor colour, 82% white).
-    const tint = new THREE.Color(0xffffff);
-    if (!isAuthoredLibraryAsset(path) && color !== undefined) {
-      tint.setHex(color).lerp(new THREE.Color(0xffffff), .82);
-    }
-    const mesh = new THREE.Mesh(geometry, this.worldMaterial(tint.getHex(), true));
+    const mesh = new THREE.Mesh(geometry, this.worldPaint(kind, color));
     mesh.name = 'world-library-model';
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -311,21 +310,22 @@ export class PropFactory {
 
   /** Draw one placeholder, then swap in the exact World Lab GLB. */
   createWorldProp(kind: WorldLibraryPropKind, size: Size3, color: number | undefined,
-    legacyFallback?: () => THREE.Group, artFit?: WorldArtFit): THREE.Group {
+    artFit?: WorldArtFit): THREE.Group {
     const root = this.root('world-' + kind, size);
     const slot = new THREE.Group();
     slot.name = 'library-slot';
     root.add(slot);
-    const proceduralKind = kind === 'fence' || kind === 'gnome' ? kind : null;
-    const placeholder = proceduralKind
-      ? this.cachedGeometry('world-shape:' + proceduralKind, () => buildProceduralPropGeometry(proceduralKind))
-      : this.cachedGeometry(`box:${size.x}:${size.y}:${size.z}`,
-        () => new THREE.BoxGeometry(size.x, size.y, size.z));
-    const proxy = new THREE.Mesh(placeholder,
-      this.worldMaterial(proceduralKind ? 0xffffff : color ?? WORLD_PROP_COLORS[kind], proceduralKind !== null));
-    if (proceduralKind) {
-      proxy.name = proceduralKind === 'fence' ? 'world-picket-fence' : 'gig-gnome-placeholder';
-      proxy.scale.set(size.x, size.y, size.z);
+    const preview = this.cachedGeometry(`kit-preview:${kind}:${size.x}:${size.y}:${size.z}`,
+      () => kitPreview(kind, size));
+    const proxy = new THREE.Mesh(preview, this.worldPaint(kind, color));
+    proxy.name = kind === 'fence' ? 'world-picket-fence' : kind === 'gnome' ? 'gig-gnome-placeholder' : 'kit-preview-' + kind;
+    proxy.scale.set(size.x, size.y, size.z);
+    if (artFit) {
+      const [toe, crest] = artFit.treadElevations;
+      const height = size.y / (crest - toe);
+      proxy.rotation.y = artFit.yaw;
+      proxy.scale.y = height;
+      proxy.position.y = -size.y / 2 + (.5 - toe) * height;
     }
     proxy.castShadow = true;
     proxy.receiveShadow = true;
@@ -345,24 +345,7 @@ export class PropFactory {
         slot.add(model);
         slot.userData.assetPath = path;
         root.userData.assetStatus = 'ready';
-      } else if (proceduralKind || !legacyFallback) {
-        root.userData.assetStatus = 'fallback';
       } else {
-        // Keep the existing PropFactory toy shape only when the Lab GLB fails.
-        try {
-          const fallback = legacyFallback();
-          slot.clear();
-          slot.add(fallback);
-          // The legacy shape has its own async slots: rebuild its batch if
-          // those requests finish after the failed world-model request.
-          void this.whenReady().then(() => {
-            if (this.instances.has(root)) {
-              root.userData.assetRevision = (root.userData.assetRevision as number) + 1;
-            }
-          });
-        } catch {
-          // The descriptor-coloured box is still safe to draw.
-        }
         root.userData.assetStatus = 'fallback';
       }
       root.userData.assetRevision = (root.userData.assetRevision as number) + 1;

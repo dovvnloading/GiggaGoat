@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { createWorldScene, generateIsland } from './index';
 import { gridIndex, gridSample, segmentProjection } from './terrain';
+import { groundGrain } from './ground-kit-grain';
 import { mountainCuts } from './visual-mountain';
 import { MOUNTAIN_SPIRAL_BRIDGE_PREFIX } from './roads';
 import { Game } from '../core/Game';
@@ -11,6 +12,7 @@ describe('Mt. Gigga grassy tiers and fragment stone (MG-7 / IS-15)', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
     // Test the mountain palette independently of the unchanged trail paint.
     island.roads = [];
+    island.districtSets = [];
     const scene = createWorldScene(island, { chunkSegments: 32 });
     const scale = island.size / 600;
     const cell = island.size / (island.resolution - 1);
@@ -45,11 +47,11 @@ describe('Mt. Gigga grassy tiers and fragment stone (MG-7 / IS-15)', () => {
             heights(ix + 1, iz) + heights(ix - 1, iz) +
             heights(ix, iz + 1) + heights(ix, iz - 1)) * 0.25 - h);
           const ambient = 1 - Math.min(0.16, depression * 0.07);
-          const broad = Math.sin(x * 0.071 + Math.cos(z * 0.039) * 1.4) *
-            Math.cos(z * 0.092 - Math.sin(x * 0.047));
-          const fine = Math.sin(x * 0.36 + z * 0.17) *
-            Math.cos(z * 0.29 - x * 0.21);
-          const variation = 0.968 + broad * 0.038 + fine * 0.022;
+          const weights = chunk.geometry.getAttribute('kitGroundWeights');
+          const channel = weights.getZ(i) > .5 ? 2 : 0;
+          const broad = groundGrain(x / (4 * scale), z / (4 * scale), channel);
+          const fine = groundGrain(-z / scale, x / scale, channel);
+          const variation = .98 + broad * .15 + fine * .065;
           // Even vertical faces retain grass in vertex colour: fragment
           // normals, not 3.1 m-spaced vertices, now select visible stone.
           const expected = grass.clone().multiplyScalar(ambient * variation);

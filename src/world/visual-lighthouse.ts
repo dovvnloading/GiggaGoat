@@ -1,9 +1,8 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { kitShape } from './kit-preview';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData, PropDescriptor, PropKind } from './types';
 import { gridSample } from './terrain';
-import { publicAssetUrl } from './public-assets';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import { buildArchitecture } from './visual-architecture';
 import { TOON_RAMP, BUILDING_RAMP } from './visual-props';
@@ -582,9 +581,8 @@ export function makeLighthouseFooting(island: IslandData, tower: PropDescriptor)
 
 function makeCliffRocks(island: IslandData, placements: readonly Placement[],
   lighting: ReturnType<typeof makeCapeLighting>): THREE.InstancedMesh {
-  const geometry = new THREE.DodecahedronGeometry(1, 0);
-  geometry.computeVertexNormals();
-  geometry.computeBoundingBox();
+  const geometry = kitShape('rock');
+  geometry.center();
   const geometrySize = geometry.boundingBox!.getSize(new THREE.Vector3());
   geometry.scale(1 / geometrySize.x, 1 / geometrySize.y, 1 / geometrySize.z);
   const positions = geometry.getAttribute('position');
@@ -859,7 +857,6 @@ export function buildLighthouseVisuals(island: IslandData,
 
   const dock = island.props.filter(prop =>
     prop.poiId === 'old-lighthouse' && prop.kind === 'dock');
-  const dockFallback = makePainter();
   const pierDetails = makePainter();
   const docks: Placement[] = [];
   for (const prop of dock) {
@@ -870,12 +867,6 @@ export function buildLighthouseVisuals(island: IslandData,
       x, y: y - sy / 2, z, width: sx, height: sy, depth: sz,
       yaw: prop.transform.rotationY,
     });
-    dockFallback.box(WOOD, x, y, z, sx, sy * 0.72, sz);
-    for (let i = 0; i < 8; i++) {
-      dockFallback.box(i % 3 ? WOOD : 0xb58057,
-        x - sx * 0.42 + i * sx * 0.12, top + 0.08 * scale, z,
-        sx * 0.11, 0.14 * scale, sz * 0.97);
-    }
     for (const side of [-1, 1]) for (const end of [-1, 1]) {
       const px = x + side * sx * 0.44, pz = z + end * sz * 0.44;
       pierDetails.box(DARK_WOOD, px, 0.83 * scale, pz,
@@ -884,8 +875,7 @@ export function buildLighthouseVisuals(island: IslandData,
         0.78 * scale, 1.35 * scale, 0.78 * scale);
     }
   }
-  const pierFallbackGroup = dockFallback.finish('lighthouse-planked-dock-fallback');
-  group.add(pierFallbackGroup, pierDetails.finish('lighthouse-dock-piles'));
+  group.add(pierDetails.finish('lighthouse-dock-piles'));
   const bollards = makePainter();
   const lanterns: Placement[] = [];
   for (const [dx, dz] of [[19, 24], [31, 34], [-11, 13]]) {
@@ -894,10 +884,6 @@ export function buildLighthouseVisuals(island: IslandData,
     const ground = onDock ? 2.7 * scale : gridSample(island, p.x, p.z);
     bollards.box(DARK_WOOD, p.x, ground + 1.25 * scale, p.z,
       0.26 * scale, 2.5 * scale, 0.26 * scale);
-    bollards.box(0xffd989, p.x, ground + 2.67 * scale, p.z,
-      0.76 * scale, 0.84 * scale, 0.76 * scale);
-    bollards.box(DARK_WOOD, p.x, ground + 3.11 * scale, p.z,
-      1.0 * scale, 0.15 * scale, 1.0 * scale);
     lanterns.push({
       x: p.x, y: ground + 2.20 * scale, z: p.z,
       width: 1.25 * scale, height: 1.5 * scale, depth: 1.25 * scale,
@@ -907,22 +893,8 @@ export function buildLighthouseVisuals(island: IslandData,
 
   // The life ring is a separate silhouette mounted to the outer pier rail.
   const ringPos = local(32, 32);
-  const ring = new THREE.Group();
-  ring.name = 'lighthouse-red-white-life-ring';
-  ring.position.set(ringPos.x, 3.95 * scale, ringPos.z);
-  ring.rotation.y = 0.45;
-  const redMat = new THREE.MeshToonMaterial({ color: 0xcf554a });
-  ring.add(new THREE.Mesh(new THREE.TorusGeometry(0.65 * scale, 0.13 * scale, 8, 28), redMat));
-  const striped = makePainter();
-  for (let i = 0; i < 4; i++) {
-    const angle = i * Math.PI / 2;
-    const arc = new THREE.TorusGeometry(0.65 * scale, 0.145 * scale,
-      6, 5, Math.PI / 5);
-    arc.rotateZ(angle - Math.PI / 10);
-    striped.add(arc, CREAM, { x: 0, y: 0, z: 0, width: 1, height: 1, depth: 1 });
-  }
-  ring.add(striped.finish('lighthouse-life-ring-white-stripes'));
-  group.add(ring);
+  const ringPlacement = [{ x: ringPos.x, y: 3.17 * scale, z: ringPos.z, width: 1.56 * scale,
+    height: 1.56 * scale, depth: .32 * scale, yaw: .45 }];
 
   const row = local(37, 37);
   const rowY = -0.30 * scale;
@@ -931,16 +903,7 @@ export function buildLighthouseVisuals(island: IslandData,
     width: 7.5 * scale, height: 2.3 * scale, depth: 3.8 * scale,
     yaw: -0.55,
   }];
-  const boatFallback = makePainter();
-  boatFallback.box(WOOD, row.x, rowY + 0.55 * scale, row.z,
-    6.6 * scale, 1.2 * scale, 3.3 * scale, -0.55);
-  boatFallback.box(DARK_WOOD, row.x, rowY + 1.16 * scale, row.z,
-    6.3 * scale, 0.16 * scale, 3.4 * scale, -0.55);
-  const boatFallbackGroup = boatFallback.finish('lighthouse-rowboat-fallback');
-  group.add(boatFallbackGroup);
-
   const wreck = get('shipwreck');
-  const wreckFallback = makePainter();
   const wreckPlacement: Placement[] = [];
   const mastPlacement: Placement[] = [];
   if (wreck) {
@@ -952,31 +915,13 @@ export function buildLighthouseVisuals(island: IslandData,
       depth: wreck.size.z, yaw: wreck.transform.rotationY,
       roll: -0.22,
     });
-    wreckFallback.box(DARK_WOOD, p.x, base + 1.0 * scale, p.z,
-      19 * scale, 2.5 * scale, 6.9 * scale, wreck.transform.rotationY, -0.16);
-    for (let i = 0; i < 7; i++) {
-      const xx = p.x + (i - 3) * 2.3 * scale;
-      wreckFallback.box(i % 2 ? WOOD : 0xba8658, xx, base + 2.0 * scale,
-        p.z, 0.25 * scale, 3.5 * scale, 7.3 * scale,
-        wreck.transform.rotationY, -0.12);
-    }
     const mast = local(-35, 7);
     mastPlacement.push({
       x: mast.x + 2.8 * scale, y: base + 2 * scale, z: mast.z,
       width: 2.7 * scale, height: 15 * scale, depth: 2.7 * scale,
       yaw: -0.18, roll: 0.44,
     });
-    wreckFallback.beam(DARK_WOOD,
-      new THREE.Vector3(p.x + 3 * scale, base + 1.8 * scale, p.z),
-      new THREE.Vector3(p.x - 1 * scale, base + 15 * scale, p.z + 0.7 * scale),
-      0.25 * scale);
-    wreckFallback.add(new THREE.PlaneGeometry(6.2 * scale, 6.6 * scale), CREAM, {
-      x: p.x + 0.7 * scale, y: base + 9 * scale, z: p.z,
-      width: 1, height: 1, depth: 1, roll: -0.34,
-    });
   }
-  const wreckFallbackGroup = wreckFallback.finish('lighthouse-leaning-shipwreck-fallback');
-  group.add(wreckFallbackGroup);
 
   // The ordinary rock batch already draws the collidable cape rocks.
   const rocks: Placement[] = [];
@@ -1018,17 +963,22 @@ export function buildLighthouseVisuals(island: IslandData,
   const cliffRocks = makeCliffRocks(island, rocks, lighting);
   group.add(cliffRocks);
 
-  const fallbackSections = [pierFallbackGroup, boatFallbackGroup, wreckFallbackGroup];
-  const isModelFallback = (mesh: THREE.Mesh): boolean => {
-    for (let parent: THREE.Object3D | null = mesh; parent; parent = parent.parent) {
-      if (fallbackSections.includes(parent as THREE.Group)) return true;
-    }
-    return false;
-  };
-  const fallbackPaint = batchHeroMeshes(group,
-    'lighthouse-shared-ship-dock-rowboat-fallback', isModelFallback);
-  batchHeroMeshes(group, 'lighthouse-static-painted-landmarks',
-    mesh => mesh !== cliffRocks && mesh !== fallbackPaint && !isModelFallback(mesh));
+  // Bake the full kit ships, dock furniture and rigging into the static cape draw.
+  function kitPlacements(kind: Parameters<typeof kitShape>[0], name: string, placements: Placement[]) {
+    if (!placements.length) return;
+    const source = new THREE.Mesh(kitShape(kind), new THREE.MeshLambertMaterial({ vertexColors: true }));
+    const batch = instantiateLibraryModel(source, placements, name, false, '');
+    group.add(batch);
+    source.geometry.dispose();
+    // The batched output now owns the shared material.
+  }
+  kitPlacements('keeperDock', 'lighthouse-pirate-kit-dock', docks);
+  kitPlacements('tender', 'lighthouse-watercraft-kit-rowboat', boatPlacement);
+  kitPlacements('shipwreck', 'lighthouse-pirate-kit-shipwreck', wreckPlacement);
+  kitPlacements('wreckMast', 'lighthouse-broken-ship-mast', mastPlacement);
+  kitPlacements('pierLantern', 'lighthouse-library-lanterns', lanterns);
+  kitPlacements('life-ring', 'lighthouse-red-white-life-ring', ringPlacement);
+  batchHeroMeshes(group, 'lighthouse-static-painted-landmarks', mesh => mesh !== cliffRocks);
   if (beacon) group.add(beacon.glass, beacon.halo);
   // Add after the hero batch so this stays one named Mesh and one draw call.
   const bridgeRopes = makeRopeBridgeRopes(island);
@@ -1039,57 +989,6 @@ export function buildLighthouseVisuals(island: IslandData,
   const caveAnchor = group.getObjectByName('lighthouse-recessed-sea-cave');
   if (caveAnchor) caveAnchor.add(new THREE.Object3D());
 
-  let disposed = false;
-  let heroSectionsLoaded = 0;
-  const importedTextures = new Set<THREE.Texture>();
-  function load(path: string, placements: readonly Placement[], name: string,
-    hide?: THREE.Object3D): void {
-    if (typeof document === 'undefined' || placements.length === 0) return;
-    const url = publicAssetUrl('assets/library/' + path);
-    try {
-      new GLTFLoader().load(url, gltf => {
-        if (disposed) return;
-        try {
-          const model = instantiateLibraryModel(gltf.scene, placements, name, false,
-            'assets/library/' + path);
-          if (model.children.length === 0) throw new Error('Empty GLB');
-          model.traverse(object => {
-            if (!(object instanceof THREE.Mesh)) return;
-            const mats = Array.isArray(object.material) ? object.material : [object.material];
-            for (const mat of mats) {
-              const textured = mat as THREE.MeshStandardMaterial;
-              if (textured.map) importedTextures.add(textured.map);
-            }
-          });
-          group.add(model);
-          if (hide && ++heroSectionsLoaded === 3) {
-            // All three model-dependent fallbacks share one draw and can now
-            // be hidden together without exposing a missing pier/hull/boat.
-            fallbackPaint.visible = false;
-          }
-        } catch (error) {
-          console.warn('Lighthouse asset could not be prepared: ' + url, error);
-        }
-      }, undefined, error => {
-        if (!disposed) console.warn('Lighthouse asset unavailable, using fallback: ' + url, error);
-      });
-    } catch (error) {
-      console.warn('Lighthouse asset unavailable, using fallback: ' + url, error);
-    }
-  }
-
-  // Use the packs named in the library README. Instancing prevents a draw call
-  // for each pier segment, pile or lantern across the hero composition.
-  load('kenney/pirate-kit/ship-wreck.glb', wreckPlacement,
-    'lighthouse-pirate-kit-shipwreck', wreckFallbackGroup);
-  load('kenney/pirate-kit/mast-ropes.glb', mastPlacement,
-    'lighthouse-broken-ship-mast');
-  load('kenney/pirate-kit/structure-platform-dock.glb', docks,
-    'lighthouse-pirate-kit-dock', pierFallbackGroup);
-  load('kenney/watercraft-kit/boat-row-small.glb', boatPlacement,
-    'lighthouse-watercraft-kit-rowboat', boatFallbackGroup);
-  load('kenney/fantasy-town-kit/lantern.glb', lanterns,
-    'lighthouse-library-lanterns');
   suppressOldArt(island, oldProps, fullyHidden);
   return {
     group,
@@ -1101,9 +1000,7 @@ export function buildLighthouseVisuals(island: IslandData,
       beacon?.setLighting(daylight, golden);
     },
     dispose(): void {
-      disposed = true;
       beacon?.dispose();
-      importedTextures.forEach(texture => texture.dispose());
       // All geometry/materials are released by WorldScene.dispose's traversal.
     },
   };

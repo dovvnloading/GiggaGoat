@@ -30,5 +30,16 @@
   "skiff": "kenney/pirate-kit/boat-row-small.glb",
   "fishStand": "kenney/survival-kit/campfire-fishing-stand.glb",
   "barrel": "kenney/pirate-kit/barrel.glb",
-  "bucket": "kenney/survival-kit/bucket.glb"
+  "bucket": "kenney/survival-kit/bucket.glb",
+  "seedSack": "kenney/food-kit/bag.glb",
+  "pottingBench": "kenney/survival-kit/workbench.glb",
+  "parasol": "kenney/city-kit-commercial/detail-parasol-a.glb",
+  "conveyor": "kenney/factory-kit/conveyor-long-stripe-sides.glb",
+  "oreBin": "kenney/factory-kit/hopper-square.glb",
+  "campCot": "kenney/survival-kit/bedroll-frame.glb",
+  "openChest": "kenney/survival-kit/box-large-open.glb",
+  "valve": "kenney/factory-kit/pipe-large-valve.glb",
+  "controls": "kenney/factory-kit/screen-panel-wide.glb",
+  "fishBasket": "kenney/survival-kit/barrel-open.glb",
+  "serviceBin": "kenney/city-kit-roads/dumpster.glb"
 }

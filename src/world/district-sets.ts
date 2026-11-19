@@ -93,8 +93,37 @@ const layouts: Layout[] = [
   },
   {
     district: 'old-lighthouse', name: 'Fish landing', x: 7.42, z: 11.093, degrees: -38, items: [
-      ['fishStand', 0, 0, 2.8], ['barrel', 2.25, .7, 1.35], ['bucket', 1.7, -.8, .7], ['bottles', -1.8, -.2, .9]]
+      ['fishStand', 0, 0, 2.8], ['fishBasket', 2.25, .7, 1.35], ['bucket', 1.7, -.8, .7], ['bottles', -1.8, -.2, .9]]
   },
+  {
+    district: 'hoofington', name: 'Seed packing bench', x: -23.2817, z: 3.0987, degrees: -30, items: [
+      ['pottingBench', 0, 0, 2.45], ['seedSack', 1.7, .42, .86], ['seedSack', 1.85, -.53, .72]]
+  },
+  {
+    district: 'baa-ardwalk', name: 'Promenade parasols', x: 9, z: -17, degrees: 25, items: [
+      ['parasol', 0, 0, 3.25], ['cafeChair', -2.05, .22, 1.16, -65], ['cafeChair', 2.1, -.12, 1.16, 75]]
+  },
+  {
+    district: 'crane-yard', name: 'Aggregate loading line', x: 12.3292, z: -3.9085, degrees: 90, items: [
+      ['conveyor', 0, 0, 4.8], ['oreBin', 3.9, .35, 2.65], ['pallet', -2.4, 2, 1.5, 10]]
+  },
+  {
+    district: 'downtown-bleatsville', name: 'Delivery alley', x: -23, z: -49, degrees: -90, items: [
+      ['serviceBin', 0, 0, 2.25], ['pallet', 1.9, .1, 1.55, -8], ['openChest', 1.92, 1.65, 1.18, 14]]
+  },
+  {
+    district: 'mt-gigga', name: 'Climbers rest', x: -62.6592, z: 22.1191, degrees: -40, items: [
+      ['campCot', 0, 0, 1.85], ['pack', 1.1, .1, .65]]
+  },
+  {
+    district: 'whispering-pines', name: 'Woodcutters bench', x: 17.0439, z: 16.5579, degrees: 15, items: [
+      ['pottingBench', 0, 0, 2.55], ['logs', 2.85, -.45, 2.45, 10], ['openChest', -2.08, -.05, 1.35]]
+  },
+  {
+    district: 'the-dam', name: 'Valve inspection bay', x: 11.3418, z: -15.1857, degrees: 89, items: [
+      ['valve', 0, 0, 3.45], ['controls', 2.94, .16, 1.93, -12], ['fieldBox', 2.7, 2.14, 1.4, 5]]
+  },
+
 ];
 
 type Footprint = { x: number; z: number; halfX: number; halfZ: number; yaw: number };
@@ -187,6 +216,9 @@ export function districtSets(island: IslandData): DistrictSet[] {
         for (let i = 0; clear && i <= steps; i++) {
           const x = start.x + dx * length * i / steps, z = start.z + dz * length * i / steps;
           const y = gridSample(island, x, z);
+          if (site.district === 'downtown-bleatsville' && isInsideDowntownInfillFootprint(island, x, z)) {
+            clear = false; break;
+          }
           if (y < island.seaLevel + .5 * scale || wet(x, z, y, 0) ||
             zoneAt(island, x, z) !== site.district ||
             blocks.some(b => b.top > y + .2 * scale && b.bottom < y + 2 * scale && clearance(b, x, z) < .95 * scale)) {
@@ -268,11 +300,23 @@ export function districtSets(island: IslandData): DistrictSet[] {
   return result;
 }
 
+const surfaces = {
+  tractor: 'metal', harvestCart: 'wood', produceStall: 'wood', pumpkin: 'soft', chickenCoop: 'wood',
+  drinks: 'wood', iceTable: 'wood', cafeChair: 'wood', picnicBench: 'wood', snack: 'wood',
+  loader: 'metal', truck: 'metal', timber: 'wood', pallet: 'wood', delivery: 'metal', market: 'wood',
+  bottles: 'wood', expedition: 'soft', bedroll: 'soft', radio: 'metal', fieldBox: 'wood', canoe: 'wood',
+  logs: 'wood', fire: 'stone', pack: 'soft', mill: 'metal', pump: 'metal', grinder: 'stone',
+  skiff: 'wood', fishStand: 'wood', barrel: 'wood', bucket: 'metal', seedSack: 'soft',
+  pottingBench: 'wood', parasol: 'soft', conveyor: 'metal', oreBin: 'metal', serviceBin: 'metal',
+  campCot: 'soft', openChest: 'wood', valve: 'metal', controls: 'metal',
+  fishBasket: 'wood',
+} as const satisfies Record<DistrictModel, NonNullable<PropColliderDescriptor['surface']>>;
+
 export function districtSetColliders(sets: DistrictSet[]): PropColliderDescriptor[] {
   return sets.flatMap(set => set.pieces.map((p, i) => {
     const model = collision[p.model], length = p.length;
     return {
-      id: 'kit-' + set.district + '-' + set.name + '-' + i, shape: 'trimesh' as const,
+      id: 'kit-' + set.district + '-' + set.name + '-' + i, shape: 'trimesh' as const, surface: surfaces[p.model],
       transform: { position: p.bottom, rotationY: p.yaw }, body: { type: 'static' as const },
       size: { x: model.span[0]! * length, y: model.span[1]! * length, z: model.span[2]! * length },
       vertices: Float32Array.from(model.vertices, n => n * length / 4096), indices: Uint32Array.from(model.indices)

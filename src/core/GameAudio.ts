@@ -16,7 +16,10 @@ export type AudioSink = Pick<AudioEngine, 'updateFrame' | 'setSettings' | 'audio
 type MenuSound = Extract<SoundId, `ui-${string}`>;
 
 function surfaceAt(game: Game, position: Vec3, goat: GoatRagdoll): Surface {
-  const body = goat.locomotion.groundHit?.body;
+  const hit = goat.locomotion.groundHit;
+  const surface = hit && game.scenerySurfaces.get(hit.collider.handle);
+  if (surface) return surface === 'stone' ? 'rock' : surface === 'soft' ? 'grass' : surface;
+  const body = hit?.body;
   const support = body && game.physics.bodyData(body.handle);
   if (support?.kind === 'build-piece') return 'wood';
   switch (support?.data) {
@@ -128,7 +131,7 @@ export class GameAudio {
       return;
     }
     if (contact.type === 'headbutt') {
-      const recordedEffect = `headbutt-${contact.material}` as const;
+      const recordedEffect = contact.material === 'soft' ? 'ragdoll-flop' : `headbutt-${contact.material}` as const;
       if (contact.event) this.materialContacts.set(contact.event, { position, recordedEffect });
       else this.cues.push({ sound: 'headbutt-impact', position, recordedEffect,
         goatId: contact.goatId, intensity: contact.intensity });

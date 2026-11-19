@@ -233,8 +233,10 @@ describe('world props use World Lab art rather than gig/build toys', () => {
       })!;
       const placeholder = root.children[0]!.children[0] as THREE.Mesh;
       const material = placeholder.material as THREE.MeshToonMaterial;
-      expect(material.color.getHex()).toBe(kind === 'fence' ? 0xffffff : 0x728f43);
-      expect(material.vertexColors).toBe(kind === 'fence');
+      expect(material.vertexColors).toBe(true);
+      expect(placeholder.geometry.userData.sourceKit).toBe(PROP_LIBRARY_MODELS[kind]);
+      const tint = new THREE.Color(0x728f43).lerp(new THREE.Color(0xffffff), .82);
+      expect(material.color.getHex()).toBe(PROP_LIBRARY_MODELS[kind].includes('/kenney/') ? tint.getHex() : 0xffffff);
       expect(root.userData.assetStatus).toBe('loading');
     }
     await f.whenReady();

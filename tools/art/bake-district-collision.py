@@ -11,7 +11,7 @@ import trimesh
 from scipy.spatial import cKDTree
 
 
-def bake(model):
+def bake(model, face_budget=192):
     scene = trimesh.load_scene(model)
     components = []
     colours = []
@@ -44,8 +44,8 @@ def bake(model):
     normals = mesh.face_normals.copy()
     paint = np.concatenate(colours)
     mesh.merge_vertices(merge_tex=True, merge_norm=True)
-    if len(mesh.faces) > 192:
-        mesh = mesh.simplify_quadric_decimation(face_count=192, aggression=4)
+    if len(mesh.faces) > face_budget:
+        mesh = mesh.simplify_quadric_decimation(face_count=face_budget, aggression=4)
     mesh.update_faces(mesh.nondegenerate_faces() & mesh.unique_faces())
     mesh.remove_unreferenced_vertices()
     # Map simplified triangles back to nearby authored faces facing the same way.

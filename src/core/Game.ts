@@ -85,8 +85,8 @@ export type GameVfxCue =
   | { type: 'crate-break'; position: Vec3; direction: Vec3; size: number };
 
 type KnockedBodyEvent = Extract<PhysicsEvent, { type: 'knockedBody' }>;
-type ImpactAudioMaterial = 'wood' | 'stone' | 'metal';
-type SceneryAudioMaterial = ImpactAudioMaterial | 'hay';
+type ImpactAudioMaterial = import('../world/types').ScenerySurface;
+type SceneryAudioMaterial = Exclude<ImpactAudioMaterial, 'soft'> | 'hay';
 
 /** Contact material retained when the simulation can remove the body in the same tick. */
 export type MaterialAudioContact =
@@ -157,6 +157,7 @@ export class Game {
   private lastStyle = new Map<string, number>();
   private readonly buildOrigin: Vec3;
   private readonly pierDecks: readonly PropDescriptor[];
+  readonly scenerySurfaces = new Map<number, ImpactAudioMaterial>();
   private readonly blockedClimbHandles = new Set<number>();
   private readonly safetyRailHandles = new Set<number>();
   private readonly boardwalkEnd: ReturnType<typeof boardwalkFarEnd>;
@@ -190,6 +191,11 @@ export class Game {
       if (noClimbGuardPrefixes.some(prefix => id.startsWith(prefix))) {
         this.blockedClimbHandles.add(collider.handle);
       }
+    }
+    for (const descriptor of island.colliders) {
+      if (descriptor.shape === 'heightfield' || !descriptor.surface) continue;
+      const collider = colliders.props.get(descriptor.id);
+      if (collider) this.scenerySurfaces.set(collider.handle, descriptor.surface);
     }
     this.pierDecks = boardwalkPierDecks(island);
     this.boardwalkEnd = boardwalkFarEnd(island);
@@ -1071,11 +1077,13 @@ export class Game {
       if (this.materialAudioListeners.size && !g.isRagdoll) {
         // Sample the wood/metal role while the body still exists. A stopped
         // headbutt can also reach a solid scenery collider without a knock.
+        const kitSurface = contact && (!struck || contact.body?.handle === struck.handle)
+          ? this.scenerySurfaces.get(contact.collider.handle) : undefined;
         const prop = struck ? this.propByBody.get(struck.handle)
-          : contact && !contact.body?.isDynamic() ? this.island.props.find(item =>
+          : contact && !kitSurface && !contact.body?.isDynamic() ? this.island.props.find(item =>
             this.colliders.props.get(item.id)?.handle === contact.collider.handle) : undefined;
         const role = struck && !prop ? this.physics.bodyData(struck.handle)?.data : undefined;
-        const material = role === 'tower' || role === 'stack-crate' ? 'wood' : sceneryAudioMaterial(prop);
+        const material = role === 'tower' || role === 'stack-crate' ? 'wood' : kitSurface ?? sceneryAudioMaterial(prop);
         const position = struck?.translation() ?? contact?.point;
         if (material && material !== 'hay' && position) {
           this.sendMaterialAudio({ type: 'headbutt', event: knock, material, position: { ...position },

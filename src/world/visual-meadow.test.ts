@@ -76,23 +76,20 @@ describe('island meadow painted clumps and paved-area exclusions (IS-19)', () =>
       const fallback = tuft.geometry;
       const material = tuft.material as THREE.MeshToonMaterial;
       const materialVersion = material.version;
-      expect(triangleCount(fallback)).toBe(12);
+      expect(triangleCount(fallback)).toBe(27);
+      expect(Math.abs(fallback.boundingBox!.getSize(new THREE.Vector3()).y - .4)).toBeLessThan(.01);
       expect(tuft.instanceColor).toBeNull();
       expect(material.vertexColors).toBe(true);
       const positions = fallback.getAttribute('position');
       const colors = fallback.getAttribute('color');
       expect(colors.count).toBe(positions.count);
-      for (let i = 0; i < positions.count; i += 3) {
-        const heights = [positions.getY(i), positions.getY(i + 1), positions.getY(i + 2)];
-        expect(Math.max(...heights) - Math.min(...heights)).toBeGreaterThan(.2);
-        expect(colors.getY(i)).toBeGreaterThan(.4);
-      }
+      expect(new Set(Array.from(colors.array)).size).toBeGreaterThan(3);
       expect(group.children).toHaveLength(2);
       expect(flowers).toBeInstanceOf(THREE.InstancedMesh);
       expect(flowers.count).toBeGreaterThan(100);
       expect(flowers.geometry.getAttribute('color')).toBeDefined();
 
-      await vi.waitFor(() => expect(triangleCount(tuft.geometry)).toBe(27));
+      await vi.waitFor(() => expect(tuft.geometry).not.toBe(fallback));
       expect(load).toHaveBeenCalledTimes(2);
       expect(load.mock.calls[1]![0]).toContain('flower_yellowA.glb');
       expect(load.mock.calls[0]![0]).toContain(GRASS_CLUMP_PATH);
@@ -218,7 +215,7 @@ describe('island meadow painted clumps and paved-area exclusions (IS-19)', () =>
       await Promise.resolve();
       for (const group of [offline, invalid]) {
         const tuft = grass(group);
-        expect(triangleCount(tuft.geometry)).toBe(12);
+        expect(triangleCount(tuft.geometry)).toBe(27);
         expect(tuft.instanceColor).toBeNull();
         expect((tuft.material as THREE.MeshToonMaterial).vertexColors).toBe(true);
         expect(group.children).toHaveLength(2);
