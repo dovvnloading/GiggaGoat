@@ -475,6 +475,16 @@ const CSS = `
  border:1px solid #eebf76;border-radius:9px;background:#3b231eea;color:#fff3d8;
  font-size:clamp(9px,1.7vw,12px);line-height:1.16;letter-spacing:.1px;text-shadow:none;text-align:center
 }
+.gg-toy-info{display:inline-flex;align-items:center;gap:6px;text-align:left;border-left:1px solid #ad8255;padding-left:7px}
+.gg-toy-info[hidden],.gg-toy-hint[hidden]{display:none}
+.gg-toy-info i{width:32px;height:32px;flex:none;border:1px solid #ddac64;border-radius:7px;background:url('${toyIcons}') 0 0/300% 200%}
+.gg-toy-info meter{display:block;appearance:none;height:4px;width:100%;margin-top:2px;border:0;background:#1b160e;border-radius:4px}
+.gg-toy-info meter[hidden]{display:none}.gg-toy-info meter::-webkit-meter-bar{height:4px;border:0;background:#1b160e}
+.gg-toy-info meter::-webkit-meter-optimum-value{background:linear-gradient(90deg,#6fc934,#dfed42)}
+.gg-toy-info b,.gg-toy-info small{display:block}.gg-toy-info b{font-size:12px;color:#ffe59f}.gg-toy-info small{font-size:9px;letter-spacing:.06em;color:#fbf0dd}
+.gg-toy-hint{position:absolute;bottom:calc(100% + 3px);left:50%;transform:translateX(-50%);width:max-content;max-width:min(55vw,300px);padding:4px 8px;border-radius:6px;background:#312437ee;color:white}
+@media(max-width:570px){.gg-toy-info i{width:23px;height:23px}.gg-toy-info b{font-size:10px}.gg-toy-info small{font-size:8px}.gg-toy-info{gap:3px;padding-left:4px}}
+@media(max-width:420px){.gg-toy-info i{display:none}}
 .gg-build-placement{color:#ffc0b4}
 .gg-build-placement[data-ready="true"]{color:#c4ffdf}
 .gg-hotbar[data-active="false"]{width:max-content;height:auto;aspect-ratio:auto;background:none}
@@ -493,6 +503,8 @@ export interface FramePerformance {
   textures: number;
   pixelRatio: number;
 }
+
+import toyIcons from './assets/toybox.webp?url';
 
 export class GameHud {
   private readonly root = document.createElement('div');
@@ -529,6 +541,12 @@ export class GameHud {
   private readonly mode: HTMLElement;
   private readonly buildStatus: HTMLElement;
   private readonly buildPlacement: HTMLElement;
+  private readonly toyInfo: HTMLElement;
+  private readonly toyName: HTMLElement;
+  private readonly toyState: HTMLElement;
+  private readonly toyHint: HTMLElement;
+  private readonly toyIcon: HTMLElement;
+  private readonly gasDial: HTMLMeterElement;
   private buildControlsKey = '';
   private readonly slots: HTMLElement[];
   private readonly buildKeys: HTMLElement[];
@@ -622,6 +640,8 @@ export class GameHud {
       '<section class="gg-hotbar" data-sprite="' + HUD_SPRITES.hotbarTray +
       '" data-hotbar data-active="false" aria-label="Hay-Build hotbar">' +
       '<div class="gg-build-controls"><span data-build-status>B · BUILD</span>' +
+      '<span class="gg-toy-info" data-toy-info hidden><i data-toy-icon></i><span><b data-toy-name></b><small data-toy-state></small><meter data-gas-dial min="0" max="100" aria-label="Fart pressure"></meter></span></span>' +
+      '<small class="gg-toy-hint" data-toy-hint hidden></small>' +
       '<strong class="gg-build-placement" data-build-placement hidden></strong></div>' +
       '<div class="gg-hotbar-header">HAY-BUILD</div>' +
       '<div class="gg-hotbar-slots">' + hotbar +
@@ -661,6 +681,9 @@ export class GameHud {
     this.stamina = get('stamina'); this.staminaNumber = get('stamina-number');
     this.staminaLabel = get('stamina-label');
     this.charge = get('charge'); this.mode = get('mode');
+    this.toyInfo = get('toy-info'); this.toyName = get('toy-name');
+    this.toyState = get('toy-state'); this.toyHint = get('toy-hint'); this.toyIcon = get('toy-icon');
+    this.gasDial = get('gas-dial') as HTMLMeterElement;
     this.buildStatus = get('build-status'); this.buildPlacement = get('build-placement');
     this.slots = Array.from(this.root.querySelectorAll<HTMLElement>('[data-slot]'));
     this.buildKeys = Array.from(this.root.querySelectorAll<HTMLElement>('[data-build-key]'));
@@ -793,6 +816,18 @@ export class GameHud {
     device: InputDevice = 'keyboard-mouse', pointerLockUnavailable = false, tideTarget?: Vec3,
     lookHintNeeded = true): void {
     const rules = game.rules;
+    const toys = game.toys;
+    this.toyInfo.hidden = !toys?.available || game.buildMode;
+    this.toyHint.hidden = this.toyInfo.hidden || game.physics.time >= toys.messageUntil;
+    if (!this.toyInfo.hidden) {
+      const pad = device === 'gamepad';
+      this.gasDial.hidden = toys.selected.id !== 'gas';
+      if (!this.gasDial.hidden) this.gasDial.value = toys.gas;
+      this.toyName.textContent = toys.selected.name + ' · ' + toys.status();
+      this.toyState.textContent = pad ? '↑ USE   ↔ SWAP' : 'X USE   V SWAP   T TOYS';
+      this.toyIcon.style.backgroundPosition = (toys.index % 3 * 50) + '% ' + (Math.floor(toys.index / 3) * 100) + '%';
+      if (!this.toyHint.hidden) this.toyHint.textContent = toys.message;
+    }
     const inventory = rules.inventory.all;
     const activeGig = game.gigs.active;
     const run = activeGig?.status === 'running' ? activeGig : game.pendingGigResult;

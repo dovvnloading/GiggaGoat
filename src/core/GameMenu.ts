@@ -11,7 +11,10 @@ import { gigBoardGoal, gigBoardIcon } from './GigBoardPresentation';
 import { MENU_SPRITES, menuSkin, menuSpriteUrl, type MenuSpriteName } from './MenuSprites';
 import titleArt from '../../docs/art/hifi/07_key_art.png?url';
 
-type Screen = 'title' | 'playing' | 'pause' | 'party' | 'party-confirm' | 'settings' |
+import { TOYS } from './Toybox';
+import toyIcons from './assets/toybox.webp?url';
+
+type Screen = 'toybox' | 'title' | 'playing' | 'pause' | 'party' | 'party-confirm' | 'settings' |
   'board' | 'gig-results' | 'party-results';
 const CSS = `
 /* The frame, stat cards, tabs and action buttons are nine-sliced sprite PNGs.
@@ -36,6 +39,14 @@ const CSS = `
   margin:7px 0 13px;letter-spacing:-.6px;text-shadow:2px 3px #673884}
 .gg-shell p{margin:7px 0 15px;font-size:14px;line-height:1.44;color:#fff0e6}
 .gg-shell .gg-options{display:grid;gap:7px}
+.gg-toy-catalog{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.gg-toy-card{display:grid;grid-template-columns:46px 1fr;align-items:center;gap:8px;padding:7px;text-align:left;color:#fff1d6;font:inherit;cursor:pointer;border:1px solid #8862a2;border-radius:9px;background:#33204c}
+.gg-toy-card:hover,.gg-toy-card:focus-visible{outline:2px solid #ffda66;background:#583269}
+.gg-toy-card[aria-pressed=true]{border-color:#ffd766}
+.gg-toy-card i{width:46px;height:46px;border-radius:7px;background:var(--toy-icons) 0 0/300% 200%}
+.gg-toy-card strong,.gg-toy-card small{display:block}.gg-toy-card strong{color:#ffe494}.gg-toy-card small{font-size:12px;line-height:1.28;font-weight:500;margin-top:3px}
+@media(max-width:540px){.gg-toy-card{grid-template-columns:30px 1fr;padding:5px;gap:4px}.gg-toy-card i{width:30px;height:30px}.gg-toy-card small{font-size:10px}}
+@media(max-width:380px){.gg-toy-catalog{grid-template-columns:1fr}}
 .gg-shell button,.gg-shell select,.gg-shell input{font:inherit}
 .gg-shell button{cursor:pointer;font-weight:1000;touch-action:manipulation}
 .gg-shell .gg-art-button{display:flex;align-items:center;width:100%;min-height:68px;
@@ -273,6 +284,8 @@ const GAMEPLAY_BINDINGS: readonly {
   { action: 'Reel tongue', keyboard: 'R', gamepad: 'Press right stick' },
   { action: 'Fling', keyboard: 'F', gamepad: 'Press left stick' },
   { action: 'Bleat / open gig board', keyboard: 'E', gamepad: 'X' },
+  { action: 'Cycle free-roam toy', keyboard: 'V / Shift+V', gamepad: 'D-pad right / left' },
+  { action: 'Use equipped toy', keyboard: 'X', gamepad: 'D-pad up' },
   { action: 'Graze in Mow-Down', keyboard: 'G', gamepad: 'X' },
   { action: 'Flop', keyboard: 'Q', gamepad: 'B' },
   { action: 'Capture mouse', keyboard: 'C', gamepad: '—' },
@@ -467,6 +480,19 @@ export class GameMenu {
   }
   private action(key: string, mouseClick = false): void {
     if (key !== 'back' && key !== 'pause') this.audio?.playMenuCue('ui-confirm');
+    if (key === 'toybox' && this.game.toys?.available) {
+      this.setScreen('toybox', '[data-action="toy-' + this.game.toys.index + '"]');
+      return;
+    }
+    if (key.startsWith('toy-') && this.screen === 'toybox') {
+      const i = Number(key.slice(4));
+      if (TOYS[i] && this.game.toys.available) {
+        this.game.toys.index = i;
+        this.game.buildMode = false;
+        this.resume(mouseClick);
+      }
+      return;
+    }
     if (key === 'play') {
       this.view.alignCameraForPlay();
       this.resume(mouseClick);
@@ -551,7 +577,7 @@ export class GameMenu {
     if (this.screen === 'party-confirm') this.setScreen('party', '[data-action="start-party"]');
     else if (this.screen === 'party') this.setScreen(this.partyReturn, '[data-action="party"]');
     else if (this.screen === 'settings') this.setScreen(this.settingsReturn, '[data-action="settings"]');
-    else if (this.screen === 'board') this.resume(mouseClick);
+    else if (this.screen === 'board' || this.screen === 'toybox') this.resume(mouseClick);
     else if (this.screen === 'pause') this.resume(mouseClick);
     else if (this.screen === 'gig-results') this.resume(mouseClick);
     else this.setScreen('title');
@@ -569,6 +595,9 @@ export class GameMenu {
       return;
     }
     if (this.screen === 'playing') {
+      if (event.code === 'KeyT' && this.game.toys?.available && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault(); this.action('toybox'); return;
+      }
       if (event.code === 'KeyP' && !this.game.party.match) {
         event.preventDefault(); this.action('party');
       }
@@ -1068,11 +1097,17 @@ export class GameMenu {
           ${this.game.rules.wallet.coins} CUD COINS</p>
          <div class="gg-options">${menuButton('resume','▶ RESUME',true)}
          ${this.game.gigs.active?.status === 'running' ? menuButton('abandon-gig','✕ ABANDON GIG') : ''}
+         ${this.game.toys?.available ? menuButton('toybox','TOY BOX') : ''}
          ${this.game.party.match ? '' : menuButton('party','⚡ PARTY MODES')}
          ${!this.game.party.match && !this.game.rules.unlocks.isUnlocked('glide') &&
            this.game.rules.wallet.coins >= TUNING.progression.unlockCosts.glide ?
            menuButton('unlock-glide', 'UNLOCK GLIDE · ' + TUNING.progression.unlockCosts.glide + ' CUD COINS') : ''}
          ${menuButton('settings','⚙ CONTROLS &amp; SETTINGS')}${menuButton('title','⌂ QUIT TO TITLE')}</div>` :
+      this.screen === 'toybox' ? `<h2>TOY BOX</h2><p>Pick a toy to equip it. Use X or D-pad up in free roam.</p>
+        <div class="gg-toy-catalog" style="--toy-icons:url('${toyIcons}')">${TOYS.map((toy,i) =>
+          `<button class="gg-toy-card" data-action="toy-${i}" aria-pressed="${this.game.toys.index===i}">
+          <i aria-hidden="true" style="background-position:${(i%3)*50}% ${Math.floor(i/3)*100}%"></i>
+          <span><strong>${toy.name}</strong><small>${toy.hint}</small></span></button>`).join('')}</div>` :
       this.screen === 'party' ? this.partyBody() :
       this.screen === 'party-confirm' ? this.partyConfirmBody() :
       this.screen === 'settings' ? this.settingsBody() :

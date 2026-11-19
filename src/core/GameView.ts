@@ -52,7 +52,10 @@ const CAMERA_ESCAPE_ANGLES = [
 const PAUSED_SCENE_INTERVAL_MS = 1000 / 12;
 
 /** All graphics, time sampling, DOM and input live outside the headless Game. */
+import { ToyEffects } from './ToyEffects';
+
 export class GameView {
+  private readonly toyEffects: ToyEffects;
   readonly camera = new THREE.PerspectiveCamera(67, 1, .07, 2200);
   readonly scene = new THREE.Scene();
   readonly world: WorldScene;
@@ -170,6 +173,8 @@ export class GameView {
       game.goat.locomotion.heading + SPAWN_CAMERA_YAW_OFFSET);
     this.input.pitch = SPAWN_CAMERA_PITCH;
     this.hud = new GameHud(host);
+    this.toyEffects = new ToyEffects(game.toys);
+    this.scene.add(this.toyEffects.root);
     this.characters = new GameCharacters(this.scene, game);
     this.vfx = new GameVfx(this.scene, game,
       this.characters.player.root, this.characters.player.mounts.neck);
@@ -944,6 +949,7 @@ export class GameView {
     const range = GRAPHICS_PRESETS[this.currentSettings.graphics].drawDistance;
     this.characters.update(sceneDt, alpha, this.camera, range);
     this.vfx.frame(sceneDt, this.camera, range);
+    this.toyEffects.update(this.game.physics.time, this.game.goat.torso.translation());
     this.updatePartyVisuals(alpha);
     this.updateBoardMarkers();
     this.updateGigVisuals(alpha);
@@ -1014,6 +1020,7 @@ export class GameView {
     this.input.dispose();
     this.hud.dispose();
     this.buildGhost.dispose();
+    this.toyEffects.dispose();
     this.vfx.dispose();
     this.characters.dispose();
     this.clearGroup(this.boardMarkers);
