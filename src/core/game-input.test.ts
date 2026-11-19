@@ -43,6 +43,38 @@ function setup() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('game camera input', () => {
+  it('dismisses each device look hint after steering and teaches edge look after a denial', async () => {
+    const { requestPointerLock, input, move, key, getGamepads } = setup();
+    key('keydown', 'KeyL');
+    input.sample(.05, false);
+    expect(input.lookHintNeeded).toBe(true);
+    input.sample(.10, false);
+    key('keyup', 'KeyL');
+    expect(input.lookHintNeeded).toBe(false);
+
+    getGamepads.mockReturnValue([{ connected: true, axes: [1, 0, 0, 0], buttons: [] }]);
+    input.sample(.1, false);
+    expect(input.device).toBe('gamepad');
+    expect(input.lookHintNeeded).toBe(true);
+    getGamepads.mockReturnValue([{ connected: true, axes: [1, 0, 1, 0], buttons: [] }]);
+    input.sample(.2, false);
+    expect(input.lookHintNeeded).toBe(false);
+
+    getGamepads.mockReturnValue([]);
+    input.sample(.1, false);
+    expect(input.lookHintNeeded).toBe(false);
+    requestPointerLock.mockRejectedValue(new DOMException('Wrong document', 'WrongDocumentError'));
+    await input.requestPointerLock();
+    expect(input.lookHintNeeded).toBe(true);
+    move(100, 100);
+    move(103, 100);
+    expect(input.lookHintNeeded).toBe(true);
+    move(270, 100);
+    expect(input.lookHintNeeded).toBe(false);
+    await input.requestPointerLock();
+    expect(input.lookHintNeeded).toBe(false);
+  });
+
   it('orbits on ordinary mouse movement after pointer lock is rejected', async () => {
     const { requestPointerLock, input, move } = setup();
     requestPointerLock.mockRejectedValue(new DOMException('Wrong document', 'WrongDocumentError'));

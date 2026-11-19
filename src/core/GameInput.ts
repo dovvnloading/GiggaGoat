@@ -12,6 +12,7 @@ const KEYBOARD_CONTROLS = new Set([
 const STICK_ACTION_DELTA = .2;
 const STICK_REST_MAGNITUDE = .12;
 const MOUSE_LOOK_ACTION_PIXELS = 4;
+const LOOK_HINT_RADIANS = .4;
 const UNLOCKED_EDGE_WIDTH = 18;
 const UNLOCKED_EDGE_PIXELS_PER_SECOND = 720;
 
@@ -72,6 +73,7 @@ export class GameInput {
   private pendingInteract = false;
   private readonly unsubscribers: Array<() => void> = [];
   private currentDevice: InputDevice = 'keyboard-mouse';
+  private readonly lookTravel: Record<InputDevice, number> = { 'keyboard-mouse': 0, gamepad: 0 };
   private padPromptButtons = 0;
   private readonly padPromptMove = { x: 0, y: 0 };
   private readonly padPromptLook = { x: 0, y: 0 };
@@ -124,11 +126,7 @@ export class GameInput {
       if (document.pointerLockElement === canvas) this.pointerLockUnavailable = false;
       clearMouseAnchor();
     });
-    const reportLockUnavailable = () => {
-      this.pointerLockUnavailable = true;
-      clearMouseAnchor();
-    };
-    listen(document, 'pointerlockerror', reportLockUnavailable);
+    listen(document, 'pointerlockerror', () => this.reportLockUnavailable());
     listen(canvas, 'mousedown', event => {
       if (!this.active) return;
       if (event.button === 0 || event.button === 2) this.recordDevice('keyboard-mouse');
@@ -185,6 +183,7 @@ export class GameInput {
   }
 
   get device(): InputDevice { return this.currentDevice; }
+  get lookHintNeeded(): boolean { return this.lookTravel[this.device] < LOOK_HINT_RADIANS; }
 
   private recordDevice(device: InputDevice): void {
     this.currentDevice = device;
@@ -222,6 +221,12 @@ export class GameInput {
     } catch {
       // Keep the same edge-look path in browsers that deny pointer lock.
     }
+    this.reportLockUnavailable();
+  }
+
+  private reportLockUnavailable(): void {
+    // Teach the browser's edge controls the first time capture is denied.
+    if (!this.pointerLockUnavailable) this.lookTravel['keyboard-mouse'] = 0;
     this.pointerLockUnavailable = true;
     this.clearMouseAnchor();
   }
@@ -231,10 +236,18 @@ export class GameInput {
     this.reset();
   }
 
+  private applyLook(device: InputDevice, yaw: number, pitch: number): void {
+    const previousPitch = this.pitch;
+    this.yaw += yaw;
+    this.pitch = clampCameraPitch(previousPitch + pitch);
+    if (this.lookTravel[device] < LOOK_HINT_RADIANS) {
+      this.lookTravel[device] += Math.hypot(yaw, this.pitch - previousPitch);
+    }
+  }
+
   private look(dx: number, dy: number): void {
-    this.yaw += dx * .0026 * this.sensitivity;
-    this.pitch = clampCameraPitch(
-      this.pitch + dy * .0021 * this.sensitivity * (this.invertY ? -1 : 1));
+    this.applyLook('keyboard-mouse', dx * .0026 * this.sensitivity,
+      dy * .0021 * this.sensitivity * (this.invertY ? -1 : 1));
     if (this.device === 'gamepad') {
       this.pointerPromptX += dx;
       this.pointerPromptY += dy;
@@ -256,8 +269,7 @@ export class GameInput {
     const pressed = (code: string): boolean => this.keys.has(code);
     const lookX = Number(pressed('KeyL')) - Number(pressed('KeyJ'));
     const lookY = Number(pressed('KeyK')) - Number(pressed('KeyI'));
-    this.yaw += lookX * dt * 2.8;
-    this.pitch = clampCameraPitch(this.pitch + lookY * dt * 1.9);
+    this.applyLook('keyboard-mouse', lookX * dt * 2.8, lookY * dt * 1.9);
     let moveX = Number(pressed('KeyD') || pressed('ArrowRight')) -
       Number(pressed('KeyA') || pressed('ArrowLeft'));
     let moveZ = Number(pressed('KeyW') || pressed('ArrowUp')) -
@@ -284,8 +296,8 @@ export class GameInput {
       if (Math.hypot(px, pz) > Math.hypot(moveX, moveZ) * .7) {
         moveX = px; moveZ = pz;
       }
-      this.yaw += rx * dt * 2.8 * this.sensitivity;
-      this.pitch = clampCameraPitch(this.pitch + ry * dt * 1.9 * (this.invertY ? -1 : 1));
+      this.applyLook('gamepad', rx * dt * 2.8 * this.sensitivity,
+        ry * dt * 1.9 * (this.invertY ? -1 : 1));
       sprint ||= down(pad, 5);
       const padJump = down(pad, 0);
       jump ||= padJump;

@@ -253,6 +253,7 @@ const GAMEPLAY_BINDINGS: readonly {
   { action: 'Graze in Mow-Down', keyboard: 'G', gamepad: 'X' },
   { action: 'Flop', keyboard: 'Q', gamepad: 'B' },
   { action: 'Capture mouse', keyboard: 'C', gamepad: '—' },
+  { action: 'Turn without mouse capture', keyboard: 'Hold cursor at window edge', gamepad: '—' },
   { action: 'Open party picker', keyboard: 'P', gamepad: 'Pause → Party Modes' },
   { action: 'Pause', keyboard: 'Esc', gamepad: 'Start' },
   { action: 'Performance overlay', keyboard: 'F3', gamepad: '—' },

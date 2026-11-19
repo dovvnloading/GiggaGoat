@@ -13,6 +13,8 @@ export interface GoatIntent {
 /** Observations from a physics engine, never Rapier types. Distances are in metres. */
 export interface GoatPhysicsFacts {
   grounded: boolean; airborneTime: number; touchingSteepWall: boolean;
+  /** The physics controller can still consume the ordinary jump after losing support. */
+  canCoyoteJump?: boolean;
   speed: number; size: SizeTier; tongueTarget?: string | null;
   impact?: number; climbDistance?: number;
 }
@@ -65,6 +67,7 @@ function checkFacts(facts: GoatPhysicsFacts): void {
   if (typeof facts.grounded !== 'boolean' || typeof facts.touchingSteepWall !== 'boolean') {
     throw new TypeError('grounded and touchingSteepWall must be booleans');
   }
+  if (facts.canCoyoteJump !== undefined) requireBoolean(facts.canCoyoteJump, 'canCoyoteJump');
   nonNegative(facts.speed, 'speed'); nonNegative(facts.airborneTime, 'airborneTime');
   if (!(facts.size in TUNING.size)) throw new RangeError('invalid size tier');
   if (facts.impact !== undefined) nonNegative(facts.impact, 'impact');
@@ -175,7 +178,7 @@ export class GoatAbilities {
         commands.jump = { kind: 'wall-kick' };
         commands.setClimb = false;
         this.bus.emit('ability:used', { name: 'wall-kick' });
-      } else if (facts.grounded) {
+      } else if (facts.grounded || facts.canCoyoteJump) {
         commands.jump = { kind: 'jump' };
       } else if (facts.airborneTime >= 0.12 && !s.flippedThisAir) {
         s.flippedThisAir = true;

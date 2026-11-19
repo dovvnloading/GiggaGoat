@@ -793,7 +793,7 @@ export class GameView {
       ? this.world.tideRouteTarget(this.game.goat.torso.translation()) : undefined;
     this.hud.update(this.game, this.fps, this.simMs, this.input.debugVisible,
       document.pointerLockElement === this.renderer.domElement, this.perfStats, this.hayHaul,
-      this.input.device, this.input.pointerLockUnavailable, tideTarget);
+      this.input.device, this.input.pointerLockUnavailable, tideTarget, this.input.lookHintNeeded);
   }
 
   private updateCamera(alpha: number, dt: number): void {

@@ -353,6 +353,10 @@ describe('live free-roam HUD DOM', () => {
       expect(hint.hidden).toBe(false);
       expect(boardKey.textContent).toBe('E');
       expect(copy.textContent).toBe('MOUSE / IJKL LOOK · C CAPTURE MOUSE');
+      hud.setPointerLockHint(false, false, 'keyboard-mouse', true, false, false);
+      expect(hint.hidden).toBe(true);
+      hud.setPointerLockHint(false, false, 'gamepad');
+      expect(hint.hidden).toBe(false);
       expect(head.children[0]!.textContent).toContain('.gg-ui [hidden]{display:none!important}');
       hud.setVisible(false);
       expect(root.style.display).toBe('none');

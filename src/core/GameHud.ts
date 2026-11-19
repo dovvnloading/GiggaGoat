@@ -806,7 +806,8 @@ export class GameHud {
 
   update(game: Game, fps: number, stepMilliseconds: number, debugVisible: boolean,
     pointerLocked: boolean, perf?: FramePerformance, hayHaul: HayHaulGuidance | null = null,
-    device: InputDevice = 'keyboard-mouse', pointerLockUnavailable = false, tideTarget?: Vec3): void {
+    device: InputDevice = 'keyboard-mouse', pointerLockUnavailable = false, tideTarget?: Vec3,
+    lookHintNeeded = true): void {
     const rules = game.rules;
     const inventory = rules.inventory.all;
     const activeGig = game.gigs.active;
@@ -895,7 +896,7 @@ export class GameHud {
       this.gigLayoutKey = gigLayoutKey;
     }
     this.board.hidden = !boardInRange;
-    this.setPointerLockHint(pointerLocked, boardInRange, device, pointerLockUnavailable, runningGig);
+    this.setPointerLockHint(pointerLocked, boardInRange, device, pointerLockUnavailable, runningGig, lookHintNeeded);
     this.debug.hidden = !debugVisible;
     if (debugVisible) this.debug.textContent = 'F3 · PERFORMANCE\n' +
       'FPS: ' + (perf?.fps ?? fps).toFixed(0) + '\n' +
@@ -939,7 +940,8 @@ export class GameHud {
   }
 
   setPointerLockHint(pointerLocked: boolean, boardInRange = false,
-    device: InputDevice = 'keyboard-mouse', pointerLockUnavailable = false, activeGig = false): void {
+    device: InputDevice = 'keyboard-mouse', pointerLockUnavailable = false, activeGig = false,
+    lookHintNeeded = true): void {
     const gamepad = device === 'gamepad';
     if (device !== this.inputDevice) {
       this.inputDevice = device;
@@ -950,7 +952,7 @@ export class GameHud {
     const copy = gamepad ? 'RIGHT STICK TO LOOK' : pointerLockUnavailable
       ? 'MOUSE / IJKL LOOK · HOLD EDGE TO TURN' : 'MOUSE / IJKL LOOK · C CAPTURE MOUSE';
     if (this.hintCopy.textContent !== copy) this.hintCopy.textContent = copy;
-    const hideLookHint = activeGig || boardInRange || (pointerLocked && !gamepad);
+    const hideLookHint = !lookHintNeeded || activeGig || boardInRange || (pointerLocked && !gamepad);
     if (this.hint.hidden !== hideLookHint) this.hint.hidden = hideLookHint;
   }
 

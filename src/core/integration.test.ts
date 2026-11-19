@@ -3,8 +3,10 @@ import { Raycaster, Vector3 } from 'three';
 import { Game, FIXED_DT } from './Game';
 import { renderHudMinimap } from './HudArtwork';
 import { V, forward, RAPIER, collisionGroups } from '../physics';
-import { createWorldScene, heightAt } from '../world';
-import { boardwalkFarEnd, boardwalkPierDecks } from '../world/boardwalk';
+import { GameSimulation } from '../gameplay';
+import { GigCatalog, GigDirector } from '../gigs';
+import { createWorldScene, generateIsland, heightAt } from '../world';
+import { boardwalkFarEnd, boardwalkPierDecks, SPLASH_DIVE_BOARD_ID } from '../world/boardwalk';
 import { DAM_DECK_HEIGHT, getDamPlacement } from '../world/the-dam';
 
 const create = (): Promise<Game> => Game.create({ seed: 'first-playable-test', resolution: 97 });
@@ -450,6 +452,60 @@ describe('Walkable roads and coastal routes', () => {
 });
 
 describe('First playable — real Billy Isle with Rapier, gameplay and chaos', () => {
+  it.each([
+    { tier: 'Kid', scale: .6, meter: 0, wait: 0, inGrace: true },
+    { tier: 'Kid', scale: .6, meter: 0, wait: 7, inGrace: true },
+    { tier: 'Kid', scale: .6, meter: 0, wait: 9, inGrace: false },
+    { tier: 'Big', scale: 1.6, meter: 70, wait: 0, inGrace: true },
+    { tier: 'GIGGA', scale: 3, meter: 100, wait: 0, inGrace: true },
+  ])('respects the $tier jump grace after $wait extra ticks',
+    async ({ tier, scale, meter, wait, inGrace }) => {
+      const gameplay = new GameSimulation().toJSON();
+      Object.assign(gameplay.style, { tier, scale, meter });
+      const island = generateIsland({ seed: 'billy-isle' });
+      const gigs = new GigDirector(new GigCatalog(island, island.seed)).toJSON();
+      const game = await Game.create({ seed: island.seed, progress: { gameplay, gigs, gigBodies: [] } });
+      try {
+        const { goat } = game;
+        const board = game.island.props.find(prop => prop.id === SPLASH_DIVE_BOARD_ID)!;
+        const { x, y, z } = board.transform.position;
+        const edge = x + board.size.x / 2;
+        const cameraYaw = Math.PI / 2;
+        const walking = { moveZ: 1, cameraYaw };
+        game.step();
+        game.teleport(V(edge - 2, y + board.size.y / 2, z), -cameraYaw);
+        ticks(game, 30, { cameraYaw });
+        expect(goat.locomotion.grounded).toBe(true);
+
+        const events: string[] = [];
+        goat.events.on(({ type }) => {
+          if (type === 'airtimeStart' || type === 'jumped' || type === 'flipped') events.push(type);
+        });
+        for (let tick = 0; tick < 70 && goat.locomotion.grounded; tick++) game.step(walking);
+        expect(goat.torso.translation().x).toBeGreaterThan(edge);
+        expect(goat.locomotion.grounded).toBe(false);
+        ticks(game, wait, walking);
+        expect(events).toEqual(['airtimeStart']);
+        game.step({ ...walking, jump: true });
+        if (!inGrace) {
+          expect(goat.torso.linvel().y).toBeLessThan(0);
+          expect(events).toEqual(['airtimeStart']);
+          return;
+        }
+        expect(goat.torso.linvel().y).toBeGreaterThan(3);
+        expect(goat.locomotion.airborneSeconds).toBe(0);
+        expect(events).toEqual(['airtimeStart', 'jumped']);
+        game.step(walking);
+        game.step({ ...walking, jump: true });
+        expect(goat.locomotion.isFlipping).toBe(false);
+        ticks(game, 8, walking);
+        game.step({ ...walking, jump: true });
+        expect(goat.locomotion.isFlipping).toBe(true);
+        ticks(game, 32, walking);
+        expect(events).toEqual(['airtimeStart', 'jumped', 'flipped']);
+      } finally { game.dispose(); }
+    });
+
   it('simulates ten real seconds on land without a fallen or submerged goat', async () => {
     const game = await create();
     try {

@@ -688,6 +688,7 @@ export class Game {
     const lickable = !!hit && (!prop || this.island.props.find(p => p.id === prop[0])?.lickable !== false);
     const facts: GoatPhysicsFacts = {
       grounded: goat.locomotion.grounded && climbContact === null,
+      canCoyoteJump: goat.locomotion.canCoyoteJump,
       airborneTime: goat.locomotion.airborneSeconds,
       touchingSteepWall: !blockedClimb && (climbContact !== null || goat.locomotion.isClinging),
       speed: Math.hypot(velocity.x, velocity.z),

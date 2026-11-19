@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
+import RAPIER from '@dimforge/rapier3d-compat';
+import { buildRapierColliders } from './colliders';
 import { generateIsland } from './island';
 import { gridSample } from './terrain';
 import type { IslandData } from './types';
@@ -199,6 +201,74 @@ describe('Crane Yard CY-11 ground apron', () => {
       expect(result.vertices.every(v =>
         Object.values(v).every(Number.isFinite))).toBe(true);
     }
+  });
+});
+
+describe('Downtown service court and ramps', () => {
+  it('keeps the visible service court at terrain level beneath the settled stock', async () => {
+    await RAPIER.init();
+    const island = generateIsland({ seed: 'billy-isle' });
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    const groundDetails = buildGroundDetails(island);
+    const { terrain } = buildRapierColliders(world, island);
+    const down = new THREE.Vector3(0, -1, 0);
+    const ray = new THREE.Raycaster(new THREE.Vector3(), down);
+    try {
+      const stock = island.props.filter(prop => /^downtown-bleatsville-(crate|barrel)-\d+$/.test(prop.id));
+      expect(stock).toHaveLength(14);
+      groundDetails.updateMatrixWorld(true);
+      for (const prop of stock) {
+        const { x, z } = prop.transform.position;
+        for (const [dx, dz] of [[0, 0], [-.6, -.6], [-.6, .6], [.6, -.6], [.6, .6]]) {
+          ray.ray.origin.set(x + dx!, 30, z + dz!);
+          const floor = 30 - terrain.castRay(new RAPIER.Ray(ray.ray.origin, down), 40, false);
+          const detail = ray.intersectObject(groundDetails, true)[0];
+          expect(detail?.point.y ?? floor, prop.id).toBeLessThan(floor + .10);
+        }
+      }
+    } finally {
+      world.free();
+      groundDetails.traverse(node => {
+        if (node instanceof THREE.Mesh) node.geometry.dispose();
+      });
+    }
+  });
+
+  it('seats the service ramp toes on the final ground and preserves their launch lips', async () => {
+    await RAPIER.init();
+    const island = generateIsland({ seed: 'billy-isle' });
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    const { terrain, props } = buildRapierColliders(world, island);
+    try {
+      for (const [id, crown] of [[41, 10.5483], [43, 9.3652], [51, 8.6942], [53, 8.0295]]) {
+        const ramp = island.props.find(prop => prop.id === 'downtown-bleatsville-ramp-' + id)!;
+        const { position, rotationY } = ramp.transform;
+        const sin = Math.sin(rotationY), cos = Math.cos(rotationY);
+        const base = position.y - ramp.size.y / 2;
+        const mesh = props.get(ramp.id)!;
+        const rayAt = (across: number, along: number) => new RAPIER.Ray({
+          x: position.x + cos * across + sin * along,
+          y: 30,
+          z: position.z - sin * across + cos * along,
+        }, { x: 0, y: -1, z: 0 });
+        expect(position.y + ramp.size.y / 2, ramp.id).toBeCloseTo(crown!, 4);
+        for (const across of [-2.2, 0, 2.2]) {
+          const ray = rayAt(across, -4.48);
+          const toeGap = terrain.castRay(ray, 40, false) - mesh.castRay(ray, 40, false);
+          expect(toeGap, ramp.id).toBeLessThan(.08);
+          expect(toeGap, ramp.id).toBeGreaterThan(-.5);
+          for (const along of [0, 2.2, 4.48]) {
+            const under = rayAt(across, along);
+            const foot = props.get(ramp.id + '-footing');
+            const ground = 30 - terrain.castRay(under, 40, false);
+            if (base - ground > .12) {
+              expect(foot, ramp.id).toBeDefined();
+              expect(30 - foot!.castRay(under, 40, false)).toBeCloseTo(base, 1);
+            }
+          }
+        }
+      }
+    } finally { world.free(); }
   });
 });
 

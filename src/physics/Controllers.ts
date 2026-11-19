@@ -205,7 +205,16 @@ export class LocomotionController {
     this.input.z = clamp(this.input.z,-1,1);
   }
   get groundSupportAge(): number { return this.clock - this.lastGroundAt; }
+  get canCoyoteJump(): boolean {
+    return !this.grounded && !this.isClinging && !this.goat.isRagdoll &&
+      this.canGroundJumpAt(this.clock + this.goat.world.fixedDt);
+  }
   get isFlipping(): boolean { return this.airFlipActive && !this.flipScored; }
+
+  private canGroundJumpAt(time: number): boolean {
+    return this.grounded ||
+      (!this.jumpConsumed && time - this.lastGroundAt <= this.tuning.coyoteSeconds + 1e-9);
+  }
 
   private get airFlipActive(): boolean {
     return this.flipAxis !== null && this.clock <= this.flipEndsAt &&
@@ -401,8 +410,7 @@ export class LocomotionController {
     if (this.flightStarted !== null) this.airborneSeconds = this.clock-this.flightStarted;
     if (g.isRagdoll) return;
 
-    if (this.jumpBufferUntil >= this.clock &&
-        (this.grounded || this.clock - this.lastGroundAt <= this.tuning.coyoteSeconds)) {
+    if (this.jumpBufferUntil >= this.clock && this.canGroundJumpAt(this.clock)) {
       const impulseSpeed = Math.sqrt(2*9.81*this.tuning.jumpHeight*s);
       const v = torso.linvel();
       // Impulse for the whole linked body, counteracting any downward velocity.
@@ -413,8 +421,13 @@ export class LocomotionController {
       this.grounded = false;
       this.jumpConsumed = true;
       this.lastGrounded = false;
+      const startedFromGround = this.flightStarted === null;
       this.flightStarted = this.clock;
-      g.events.emit({type:'airtimeStart',goatId:g.id,time:g.world.time,height:torso.translation().y});
+      this.airborneSeconds = 0;
+      if (startedFromGround) {
+        g.events.emit({type:'airtimeStart',goatId:g.id,time:g.world.time,height:torso.translation().y});
+      }
+      g.events.emit({type:'jumped',goatId:g.id,time:g.world.time});
     }
 
     if (this.isClinging) {
