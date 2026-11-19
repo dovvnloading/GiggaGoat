@@ -2,7 +2,7 @@ import type { IslandData, RoadPoint } from './types';
 import { gridCoordinate, gridIndex, gridSample, segmentProjection } from './terrain';
 import { lerp, smoothstep } from './random';
 import { getDamPlacement } from './the-dam';
-import { DAM_MOUNTAIN_TRAIL, damMountainTrailDirt } from './roads';
+import { DAM_MOUNTAIN_TRAIL, damMountainTrailDirt, fitDamMountainTrail } from './roads';
 
 /** Metres in the Dam model's +Z (downstream) coordinates, at island size 600. */
 export interface DamChannelSection {
@@ -108,6 +108,7 @@ function headwaterBankDistance(x: number, z: number): number {
 
 /** Regrade the rear service road above the new lake on its existing centerline. */
 export function sculptDamHeadwater(island: IslandData): void {
+  fitDamMountainTrail(island);
   const basin = getDamHeadwater(island);
   const { position, scale, level } = basin;
   const { heights, size, resolution: n } = island;

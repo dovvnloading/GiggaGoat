@@ -290,9 +290,8 @@ describe('The Dam downstream scenery', () => {
     const wallBounds = json.accessors[json.meshes[wall.mesh]!.primitives[0]!.attributes.POSITION]!;
     const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
     const origin = getDamPlacement(island).position;
-    const oak = island.props.find(prop => prop.poiId === 'the-dam' && prop.kind === 'tree-oak' &&
-      prop.transform.position.x > origin.x + 45 && prop.transform.position.z > origin.z + 11)!;
-    expect(oak).toBeDefined();
+    const oak = island.props.find(prop => prop.id === 'detail-the-dam-tree-oak-845')!;
+    expect(oak.kind).toBe('tree-oak');
     const p = oak.transform.position;
     expect(p.x - origin.x - oak.size.x / 2).toBeGreaterThan(max[0]);
     expect(p.z - origin.z - oak.size.z / 2).toBeGreaterThan(max[2]);
