@@ -107,14 +107,13 @@ describe('Hoofington art / building slicing regressions', () => {
     expect(farm.width).toBeCloseTo(6.8, 2);
     expect(farm.width).toBeLessThan(7.2);
     const view = createWorldScene(island);
-    for (const name of ['paved-village-sidewalks', 'raised-stone-curbs',
-      'two-lane-edge-stripes', 'hoofington-and-city-crosswalks']) {
+    for (const name of ['paved-village-sidewalks', 'raised-stone-curbs', 'two-lane-edge-stripes']) {
       const mesh = view.group.getObjectByName(name);
-      expect(mesh, name).toBeInstanceOf(THREE.InstancedMesh);
+      expect(mesh, name).toBeInstanceOf(THREE.Mesh);
+      expect(mesh, name).not.toBeInstanceOf(THREE.InstancedMesh);
     }
-    const walks = view.group.getObjectByName('paved-village-sidewalks') as THREE.InstancedMesh;
     const crossings = view.group.getObjectByName('hoofington-and-city-crosswalks') as THREE.InstancedMesh;
-    expect(walks.count).toBe(44);
+    expect(crossings).toBeInstanceOf(THREE.InstancedMesh);
     expect(crossings.count).toBe(21);
     const verge = view.group.getObjectByName('hoofington-street-verge') as THREE.Mesh;
     expect(verge).toBeInstanceOf(THREE.Mesh);
