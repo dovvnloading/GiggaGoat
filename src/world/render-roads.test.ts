@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { buildRapierColliders, createWorldScene, generateIsland } from './index';
-import { DAM_PINES_BRIDGE_PREFIX, DAM_PINES_ROAD } from './roads';
+import { DAM_EAST_ROAD, DAM_MOUNTAIN_TRAIL, DAM_PINES_BRIDGE_PREFIX, DAM_PINES_ROAD,
+  damMountainTrailDirt } from './roads';
 import { roadRibbonData, roadRibbonRuns, SUMMIT_ASCENT_TRAIL } from './road-ribbons';
+import { damChannelAt, isDamHeadwater } from './dam-landscape';
 import { getDamPlacement } from './the-dam';
 import type { IslandData, RoadPoint } from './types';
 import { TOON_RAMP } from './visual-props';
@@ -48,7 +50,8 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
   expect(indices.count / 3).toBe(6 * segments + 2 * pavedSpans.length);
   expect(positions.count).toBe(6 * runs.reduce((sum, run) => sum + run.points.length, 0));
   const lift = type === 'road' ? 0.2 : 0.19;
-  const damTrailEnd = island.roads.find(road => road.id === 'mt-gigga--the-dam')?.points.at(-1);
+  const damTrail = island.roads.find(road => road.id === DAM_MOUNTAIN_TRAIL);
+  const damTrailEnd = damTrail ? damMountainTrailDirt(island, damTrail).at(-1) : undefined;
   const summitStart = island.roads.find(road => road.id === SUMMIT_ASCENT_TRAIL)?.points[0];
   let vertex = 0, index = 0;
 
@@ -65,8 +68,8 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
       const mitre = Math.hypot(lx - point.x, lz - point.z) / halfWidth;
       expect(mitre).toBeGreaterThanOrEqual(0.999);
       expect(mitre).toBeLessThanOrEqual(2.001);
-      const damTerminal = type === 'trail' && run.points.at(-1) === damTrailEnd &&
-        pointIndex >= run.points.length - 2;
+      const damTerminal = type === 'trail' && damTrailEnd && run.points.at(-1) === damTrailEnd &&
+        Math.hypot(point.x - damTrailEnd.x, point.z - damTrailEnd.z) < 9 * island.size / 600;
       for (const side of [0, 1]) {
         const top = positions.getY(vertex + side);
         if (damTerminal) expect(top).toBeLessThanOrEqual(point.y + lift + .0001);
@@ -216,35 +219,99 @@ describe('IS-6 joined road/trail visual ribbons', () => {
     }
   });
 
-  it('fills the shared Dam road joint and keeps the terminal trail under the pavement', () => {
-    const island = generateIsland();
-    const east = island.roads.find(road => road.id === 'downtown-bleatsville--the-dam')!;
-    const west = island.roads.find(road => road.id === 'the-dam--whispering-pines')!;
-    const joined = roadRibbonRuns(island, 'road').find(run =>
+  it.each([
+    { seed: 'billy-isle', size: 600, resolution: 193 },
+    { seed: 'billy-isle', size: 400, resolution: 97 },
+    { seed: 9137, size: 900, resolution: 97 },
+  ])('joins the dry mountain trail onto the existing Dam road ($size m)', async options => {
+    await RAPIER.init();
+    const island = generateIsland(options);
+    const east = island.roads.find(road => road.id === DAM_EAST_ROAD)!;
+    const west = island.roads.find(road => road.id === DAM_PINES_ROAD)!;
+    const mountain = island.roads.find(road => road.id === DAM_MOUNTAIN_TRAIL)!;
+    const dirtPoints = damMountainTrailDirt(island, mountain);
+    const junction = dirtPoints.at(-1)!;
+    const asphaltTail = east.points.slice(east.points.indexOf(junction));
+    expect(asphaltTail.length).toBeGreaterThan(2);
+    for (const [index, point] of asphaltTail.entries()) {
+      expect(mountain.points[dirtPoints.length - 1 + index]).toBe(point);
+    }
+    const paved = roadRibbonRuns(island, 'road').find(run =>
       run.points.includes(east.points.at(-2)!) && run.points.includes(west.points[1]!))!;
-    const junction = joined.points.indexOf(east.points.at(-1)!);
-    expect(joined.points[junction + 1]).toBe(west.points[1]);
+    expect(paved.points[paved.points.indexOf(east.points.at(-1)!) + 1]).toBe(west.points[1]);
+    const trailRun = roadRibbonRuns(island, 'trail').find(run => run.points.includes(junction))!;
+    expect(trailRun.points.at(-1)).toBe(junction);
+    expect(trailRun.points).not.toContain(east.points.at(-1));
 
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
     const view = createWorldScene(island);
     try {
-      const road = view.group.getObjectByName('paths-road')!;
-      const trail = view.group.getObjectByName('paths-trail')!;
-      const { position } = getDamPlacement(island);
-      const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
-      for (const [x, z] of [[14.43, -4.35], [15.26, -6.99], [14.84, -5.42], [15.16, -6.53]]) {
-        ray.ray.origin.set(position.x + x!, position.y + 35, position.z + z!);
-        const asphalt = ray.intersectObject(road)[0];
-        const dirt = ray.intersectObject(trail)[0];
-        expect(asphalt).toBeDefined();
-        expect(dirt).toBeDefined();
-        expect(asphalt!.point.y - dirt!.point.y).toBeGreaterThan(.02);
+      const { paths } = buildRapierColliders(world, island);
+      const meshes = ['paths-road', 'paths-trail'].map(name => view.group.getObjectByName(name)!);
+      const { position, scale } = getDamPlacement(island);
+      const { reservoir } = island;
+      const down = new THREE.Vector3(0, -1, 0);
+      const ray = new THREE.Raycaster(new THREE.Vector3(), down);
+      const label = (x: number, z: number) => x.toFixed(2) + ', ' + z.toFixed(2);
+      let pavedOverlap = 0;
+      let openTrail = 0;
+      const foothillPoint = [...dirtPoints].reverse().find(point => point.z > position.z + 71 * scale)!;
+      const foothill = dirtPoints.indexOf(foothillPoint);
+      expect(foothill).toBeGreaterThan(0);
+      for (let i = foothill; i + 1 < dirtPoints.length; i++) {
+        const a = dirtPoints[i]!, b = dirtPoints[i + 1]!;
+        const dx = b.x - a.x, dz = b.z - a.z, length = Math.hypot(dx, dz);
+        const steps = Math.ceil(length / (.6 * scale));
+        for (let j = 0; j < steps; j++) {
+          const progress = (j + .5) / steps;
+          for (const across of [-1.5 * scale, 0, 1.5 * scale]) {
+            const x = a.x + dx * progress - dz * across / length;
+            const z = a.z + dz * progress + dx * across / length;
+            const note = label(x, z);
+            expect(isDamHeadwater(island, x, z), note).toBe(false);
+            if (Math.abs(z - reservoir.center.z) < reservoir.radiusZ + .35 * scale) {
+              expect(x, note).toBeGreaterThan(reservoir.center.x + reservoir.radiusX + .35 * scale);
+            }
+            const localZ = (z - position.z) / scale;
+            if (localZ >= 5 && localZ <= 110) {
+              const channel = damChannelAt(localZ);
+              expect((x - position.x) / scale, note).toBeGreaterThan(channel.x + channel.halfWidth);
+            }
+            ray.ray.origin.set(x, Math.max(a.y, b.y) + 10, z);
+            const rapierRay = new RAPIER.Ray(ray.ray.origin, down);
+            const [asphalt, dirt] = meshes.map((mesh, index) => {
+              const renderHit = ray.intersectObject(mesh)[0]?.distance;
+              const solidHit = paths[index]!.castRay(rapierRay, 20, false);
+              if (renderHit === undefined) expect(solidHit, note).toBeLessThan(0);
+              else expect(solidHit, note).toBeCloseTo(renderHit, 4);
+              return renderHit;
+            });
+            expect(dirt, note).toBeDefined();
+            if (asphalt === undefined) openTrail++;
+            else {
+              pavedOverlap++;
+              expect(dirt! - asphalt, note).toBeGreaterThan(.002);
+              expect(dirt! - asphalt, note).toBeLessThan(.25 * scale);
+            }
+          }
+        }
       }
-      const approach = island.roads.find(road => road.id === 'mt-gigga--the-dam')!.points.at(-4)!;
-      ray.ray.origin.set(approach.x, approach.y + 10, approach.z);
-      expect(ray.intersectObject(road)).toHaveLength(0);
-      expect(ray.intersectObject(trail)[0]?.point.y).toBeCloseTo(approach.y + .19, 4);
+      expect(openTrail).toBeGreaterThan(50);
+      expect(pavedOverlap).toBeGreaterThan(3);
+
+      const board = east.points.at(-1)!;
+      ray.ray.origin.set(board.x, board.y + 10, board.z);
+      expect(ray.intersectObject(meshes[0]!).length).toBeGreaterThan(0);
+      expect(ray.intersectObject(meshes[1]!)).toHaveLength(0);
+      if (options.size === 600) {
+        // The old approach ran through the wall below the entrance.
+        ray.ray.origin.set(-17.56, 16, -199.05);
+        expect(ray.intersectObject(meshes[1]!)).toHaveLength(0);
+        expect(paths[1]!.castRay(new RAPIER.Ray(ray.ray.origin, down), 16, false)).toBeLessThan(0);
+      }
     } finally {
       view.dispose();
+      world.free();
     }
   });
 

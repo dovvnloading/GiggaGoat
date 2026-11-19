@@ -2,6 +2,7 @@ import type { IslandData, PoiId, PropColliderDescriptor, RoadDescriptor, RoadPoi
 import { clamp, lerp, SeededRandom, smoothstep } from './random';
 import { gridSample, riverAt, stampRoad } from './terrain';
 import { CRANE_YARD_PLAN } from './crane-yard';
+import { getDamPlacement } from './the-dam';
 
 interface Link { from: PoiId; to: PoiId; type: 'road' | 'trail'; via?: Vec2[] }
 /** Main asphalt loop traces the coastal settlements; dirt spurs access the summit and islet. */
@@ -19,8 +20,7 @@ const LINKS: Link[] = [
   { from: 'whispering-pines', to: 'old-lighthouse', type: 'trail',
     via: [{ x: -185, z: -93 }, { x: -211, z: -18 }, { x: -244, z: -18 }] },
   { from: 'mt-gigga', to: 'hoofington', type: 'trail' },
-  { from: 'mt-gigga', to: 'the-dam', type: 'trail',
-    via: [{ x: 73, z: -92 }, { x: 58, z: -161 }] },
+  { from: 'mt-gigga', to: 'the-dam', type: 'trail' },
   { from: 'downtown-bleatsville', to: 'mt-gigga', type: 'trail',
     via: [{ x: 145, z: 40 }, { x: 88, z: 28 }, { x: 62, z: 54 }] },
 ];
@@ -46,15 +46,18 @@ function catmullRom(controls: Vec2[], step: number): Vec2[] {
 }
 
 /** A two-turn ascending mountain track: grade stays goat-traversable without bulldozing cliffs. */
-function mountainSwitchbacks(island: IslandData, destination: PoiId): Vec2[] {
+function mountainSwitchbacks(island: IslandData, destination: PoiId,
+  damJunction?: RoadPoint): Vec2[] {
   const summit = island.pois.find(p => p.id === 'mt-gigga')!.center;
   const farm = island.pois.find(p => p.id === destination)!.center;
   const endAngle = Math.atan2(farm.z - summit.z, farm.x - summit.x);
   const points: Vec2[] = [{ x: summit.x, z: summit.z }];
   const steps = 220;
+  // On smaller islands the fixed-radius outer turn reaches the reservoir.
+  const radiusScale = damJunction ? Math.min(1, island.size / 530) : 1;
   for (let i = 1; i <= steps; i++) {
     const t = i / steps;
-    const radius = 5 + 102 * t;
+    const radius = 5 + 102 * t * radiusScale;
     const angle = endAngle + (1 - t) * 4 * Math.PI;
     points.push({
       x: summit.x + radius * Math.cos(angle),
@@ -62,12 +65,23 @@ function mountainSwitchbacks(island: IslandData, destination: PoiId): Vec2[] {
     });
   }
   const outer = points[points.length - 1]!;
+  const scale = island.size / 600;
+  if (damJunction) {
+    const { position } = getDamPlacement(island);
+    const at = (x: number, z: number): Vec2 => ({
+      x: position.x + x * scale, z: position.z + z * scale,
+    });
+    // Stay on the east bank until we are past the rectangular reservoir
+    // volume. The last point hands off to the existing paved service road.
+    return points.concat(catmullRom([
+      outer, at(20, 61), at(44, 59), at(49, 49), at(48, 2), at(48, -5), damJunction,
+    ], 3.25 * scale).slice(1));
+  }
   if (destination === 'downtown-bleatsville') {
     // The original spiral's final straight diagonal crossed the west side
     // of Downtown, making several main-street shops face AWAY from their
     // nearest road. Approach the district from the south and join the
     // centreline before reaching the storefront rows.
-    const scale = island.size / 600;
     const approach = { x: farm.x, z: farm.z - 66 * scale };
     return points.concat(catmullRom([
       outer,
@@ -79,10 +93,7 @@ function mountainSwitchbacks(island: IslandData, destination: PoiId): Vec2[] {
   }
   // Enter the farm along the same axial street as the ring-road approaches,
   // instead of feeding three diagonal slabs into the village crossroads.
-  const scale = island.size / 600;
-  const approach = destination === 'hoofington'
-    ? { x: farm.x, z: farm.z - 45 * scale }
-    : { x: lerp(outer.x, farm.x, 0.58), z: lerp(outer.z, farm.z, 0.58) };
+  const approach = { x: farm.x, z: farm.z - 45 * scale };
   return points.concat(catmullRom([outer,
     { x: lerp(outer.x, approach.x, 0.58), z: lerp(outer.z, approach.z, 0.58) },
     approach,
@@ -198,6 +209,18 @@ export function makeRoads(island: IslandData, rng: SeededRandom): RoadDescriptor
     }
     // Re-project after bridge lifts (both gradients and pads remain constrained).
     gradeRoad(points, link.type === 'trail' ? 0.24 : 0.17);
+    if (id === DAM_MOUNTAIN_TRAIL) {
+      // Flatten the dirt approach before it crosses the asphalt, then
+      // carry the grade limit uphill from that apron.
+      let distance = 0;
+      for (let i = points.length - 2; i > 0; i--) {
+        const a = points[i]!, b = points[i + 1]!;
+        const run = Math.hypot(b.x - a.x, b.z - a.z);
+        distance += run;
+        const height = distance <= 10 * scale ? endY - .06 * scale : a.y;
+        a.y = clamp(height, b.y - .24 * run, b.y + .24 * run);
+      }
+    }
     for (let i = 0; i < points.length - 1; i++) {
       // Decks span the sea channel without filling it with a terrain causeway.
       if (!((link.from === 'old-lighthouse' || link.to === 'old-lighthouse') &&
@@ -215,6 +238,19 @@ export function makeRoads(island: IslandData, rng: SeededRandom): RoadDescriptor
   for (const link of LINKS) {
     const from = byId.get(link.from)!, to = byId.get(link.to)!;
     let waypoints: Vec2[];
+    if (link.from === 'mt-gigga' && link.to === 'the-dam') {
+      const paved = roads.find(road => road.id === DAM_EAST_ROAD)!;
+      const { position } = getDamPlacement(island);
+      const branchX = position.x + 48 * scale;
+      const junction = paved.points.reduce((best, point) =>
+        point.z < position.z - 7 * scale && Math.abs(point.x - branchX) < Math.abs(best.x - branchX)
+          ? point : best);
+      const trail = addRoad(link, mountainSwitchbacks(island, link.to, junction), from.center.y, junction.y);
+      // The graph still extends to the board. Share the pavement points so it
+      // retains exactly one grade, one terrain stamp and one support ribbon.
+      trail.points.splice(trail.points.length - 1, 1, ...paved.points.slice(paved.points.indexOf(junction)));
+      continue;
+    }
     if (link.from === 'downtown-bleatsville' && link.to === 'the-dam') {
       // The old two road links used six jittered controls. Consume the same
       // twelve random draws so downstream roads and seeded props do not move.
@@ -339,8 +375,17 @@ export function makeBridgeDecks(island: IslandData): import('./types').PropDescr
   return decks;
 }
 
+export const DAM_EAST_ROAD = 'downtown-bleatsville--the-dam';
+export const DAM_MOUNTAIN_TRAIL = 'mt-gigga--the-dam';
 export const DAM_PINES_ROAD = 'the-dam--whispering-pines';
 export const DAM_PINES_BRIDGE_PREFIX = 'bridge-' + DAM_PINES_ROAD + '-';
+
+/** The new dirt and its shared junction, before the existing asphalt to the board. */
+export function damMountainTrailDirt(island: IslandData, trail: RoadDescriptor): readonly RoadPoint[] {
+  const pavement = island.roads.find(road => road.id === DAM_EAST_ROAD);
+  const junction = trail.points.findIndex(point => pavement?.points.includes(point));
+  return junction < 0 ? trail.points : trail.points.slice(0, junction + 1);
+}
 
 export const MOUNTAIN_SPIRAL_TRAIL = 'downtown-bleatsville--mt-gigga';
 export const MOUNTAIN_SPIRAL_BRIDGE_PREFIX = 'bridge-' + MOUNTAIN_SPIRAL_TRAIL + '-';

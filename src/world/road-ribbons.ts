@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { IslandData, PropColliderDescriptor, RoadDescriptor, RoadPoint } from './types';
-import { DAM_PINES_BRIDGE_PREFIX, DAM_PINES_ROAD, makeLocalStreets, MOUNTAIN_SPIRAL_TRAIL } from './roads';
+import { DAM_EAST_ROAD, DAM_MOUNTAIN_TRAIL, DAM_PINES_BRIDGE_PREFIX, DAM_PINES_ROAD,
+  damMountainTrailDirt, makeLocalStreets, MOUNTAIN_SPIRAL_TRAIL } from './roads';
 
 const SURFACE_LIFT = { road: .2, trail: .19 } as const;
 const PAVED_DECK_THICKNESS = .7;
@@ -138,7 +139,7 @@ export function roadRibbonRuns(island: IslandData, type: RoadDescriptor['type'])
   if (throughStreet) runs.push(throughStreet.run);
   // The two raised causeway approaches meet at the same Dam junction.
   // A shared mitre covers the little wedge left by their separate end caps.
-  const damEast = type === 'road' ? allRoads.find(road => road.id === 'downtown-bleatsville--the-dam') : undefined;
+  const damEast = type === 'road' ? allRoads.find(road => road.id === DAM_EAST_ROAD) : undefined;
   const damWest = type === 'road' ? allRoads.find(road => road.id === DAM_PINES_ROAD) : undefined;
   const damEntry = damEast?.points.at(-1), damExit = damWest?.points[0];
   const joinedDamRoad = damEast && damWest && damEast.width === damWest.width && damEntry && damExit &&
@@ -148,8 +149,9 @@ export function roadRibbonRuns(island: IslandData, type: RoadDescriptor['type'])
   for (const road of allRoads) {
     if (road.type !== type || throughStreet?.replaced.has(road.id)) continue;
     if (joinedDamRoad && road === damWest) continue;
-    const original = joinedDamRoad && road === damEast ? joinedDamRoad : road.points;
-    const approach = road.id === MOUNTAIN_SPIRAL_TRAIL || road.id === 'downtown-bleatsville--the-dam' ?
+    const original = road.id === DAM_MOUNTAIN_TRAIL ? damMountainTrailDirt(island, road) :
+      joinedDamRoad && road === damEast ? joinedDamRoad : road.points;
+    const approach = road.id === MOUNTAIN_SPIRAL_TRAIL || road.id === DAM_EAST_ROAD ?
       downtownNorthApproach(road, original, downtown, scale) : null;
     const points = approach ? [approach.point, ...original.slice(approach.rest)] : original;
     let kept: RoadPoint[] = [];
@@ -274,8 +276,8 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
     bridgePoints.add(q);
     bridgeSpans.set(p, { end: q, index });
   }
-  const damTrailEnd = type === 'trail'
-    ? island.roads.find(road => road.id === 'mt-gigga--the-dam')?.points.at(-1) : undefined;
+  const damTrail = type === 'trail' ? island.roads.find(road => road.id === DAM_MOUNTAIN_TRAIL) : undefined;
+  const damTrailEnd = damTrail ? damMountainTrailDirt(island, damTrail).at(-1) : undefined;
   const pavement = damTrailEnd ? roadRibbonData(island, 'road') : undefined;
   const summitStart = summitGround && type === 'trail'
     ? island.roads.find(road => road.id === SUMMIT_ASCENT_TRAIL)?.points[0] : undefined;
@@ -318,7 +320,8 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
       let leftTop = top, rightTop = top;
       // The flat trail cross section overlaps a sloping road here. Match the
       // terminal corners that land on asphalt and keep the outer trail grade.
-      if (pavement && points.at(-1) === damTrailEnd && i >= points.length - 2) {
+      if (pavement && damTrailEnd && points.at(-1) === damTrailEnd &&
+          Math.hypot(point.x - damTrailEnd.x, point.z - damTrailEnd.z) < 9 * scale) {
         leftTop = Math.min(top, pavementAt(pavement.positions, pavement.supportIndices,
           point.x + x, point.z + z) - .02);
         rightTop = Math.min(top, pavementAt(pavement.positions, pavement.supportIndices,
