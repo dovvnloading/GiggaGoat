@@ -1,3 +1,4 @@
+import { islandWeather, weatherCaption } from '../world/island-weather';
 import type { Game } from './Game';
 import type { GameView } from './GameView';
 import type { GameAudio } from './GameAudio';
@@ -1101,7 +1102,7 @@ export class GameMenu {
       this.screen === 'pause' ?
         `<div class="gg-shell-eyebrow">TAKE FIVE</div><h2>PAUSED</h2>
          <p>${this.game.party.match ? esc(this.game.party.title) : 'BILLY ISLE'} ·
-          ${this.game.rules.wallet.coins} CUD COINS</p>
+          ${weatherCaption(islandWeather(this.game.physics.time))} · ${this.game.rules.wallet.coins} CUD COINS</p>
          <div class="gg-options">${menuButton('resume','▶ RESUME',true)}
          ${this.game.gigs.active?.status === 'running' ? menuButton('abandon-gig','✕ ABANDON GIG') : ''}
          ${this.game.toys?.available ? menuButton('toybox','TOY BOX') : ''}

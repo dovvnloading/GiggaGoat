@@ -3,6 +3,8 @@ import {
   createWorldScene, heightAt, type PropDescriptor, type WorldScene,
 } from '../world';
 import { Q, RAPIER, type Vec3 } from '../physics';
+import { islandWeather } from '../world/island-weather';
+import { IslandAtmosphere } from './IslandAtmosphere';
 import { SKY_HORIZON_COLOR } from '../world/visual-sky';
 import { DEFAULT_SETTINGS, type GameSettings } from './Persistence';
 import { AdaptiveResolution } from './AdaptiveResolution';
@@ -55,6 +57,8 @@ const PAUSED_SCENE_INTERVAL_MS = 1000 / 12;
 import { ToyEffects } from './ToyEffects';
 
 export class GameView {
+  private readonly atmosphere: IslandAtmosphere;
+  private clearFogDensity = .0016;
   private readonly toyEffects: ToyEffects;
   readonly camera = new THREE.PerspectiveCamera(67, 1, .07, 2200);
   readonly scene = new THREE.Scene();
@@ -154,7 +158,8 @@ export class GameView {
       cullingDistance: 340,
       externallyRenderedPropKinds: WORLD_LIBRARY_KINDS,
     });
-    this.scene.add(this.world.group);
+    this.atmosphere = new IslandAtmosphere(game);
+    this.scene.add(this.world.group, this.atmosphere.group);
     if (this.scene.fog) this.scene.fog.color.copy(this.world.fogColor);
     this.renderer.setClearColor(this.world.fogColor);
     this.world.sun.castShadow = this.renderer.shadowMap.enabled;
@@ -679,7 +684,7 @@ export class GameView {
     this.world.sun.shadow.bias = -0.0005;
     this.world.sun.shadow.radius = 1;
     if (this.scene.fog instanceof THREE.FogExp2) {
-      this.scene.fog.density = settings.graphics === 'low' ? .0032 :
+      this.clearFogDensity = settings.graphics === 'low' ? .0032 :
         settings.graphics === 'medium' ? .0023 : .0016;
     }
     this.shadowTimer = 1;
@@ -902,8 +907,7 @@ export class GameView {
       this.camera.fov = nextFov;
       this.camera.updateProjectionMatrix();
     }
-    this.world.sun.position.set(this.cameraTarget.x + 70, this.cameraTarget.y + 125,
-      this.cameraTarget.z - 65);
+    this.world.sun.position.setLength(145).add(this.cameraTarget);
     this.world.sun.target.position.copy(this.cameraTarget);
     this.world.sun.target.updateMatrixWorld();
   }
@@ -932,7 +936,8 @@ export class GameView {
         this.simMs += (performance.now() - start - this.simMs) * lerpAlpha(5, dt);
       }
     }
-    const dayPhase = .5 + Math.sin(this.game.physics.time / 150) * .035;
+    const weather = islandWeather(this.game.physics.time);
+    const dayPhase = weather.phase;
     const night = dayPhase < .25 || dayPhase > .75;
     const throttleScene = this.paused && !this.titleCamera;
     if (throttleScene && timestamp < this.nextPausedRender) {
@@ -965,11 +970,18 @@ export class GameView {
       this.world.setTideLevel(this.lastTide, showTideRoutes);
     }
     this.world.update(this.game.physics.time);
-    this.world.setDayNight(dayPhase);
+    this.world.setDayNight(dayPhase, weather);
+    if (this.scene.fog instanceof THREE.FogExp2) {
+      this.scene.fog.density = this.clearFogDensity + weather.mist * .0062 + weather.cloud * .0009;
+    }
     if (this.scene.fog) this.scene.fog.color.copy(this.world.fogColor);
     this.renderer.setClearColor(this.world.fogColor);
     this.updateCamera(alpha, sceneDt);
     this.updateCameraFraming(sceneDt);
+    this.atmosphere.update(weather, this.camera.position, this.currentSettings.graphics === 'low');
+    if ('isSoftwareRenderer' in this.renderer) {
+      this.renderer.setEnvironment(weather, this.world.sun.position, this.world.sun.target.position);
+    }
     // Keep live HUD text and counters current without rebuilding them every frame.
     this.hudTimer += sceneDt;
     if (this.hudTimer >= .05) {
@@ -1021,6 +1033,7 @@ export class GameView {
     this.input.dispose();
     this.hud.dispose();
     this.buildGhost.dispose();
+    this.atmosphere.dispose();
     this.toyEffects.dispose();
     this.vfx.dispose();
     this.characters.dispose();
