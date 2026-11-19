@@ -9,6 +9,7 @@ import { buildRoadsideSigns, paintRoadsideGravel } from './visual-roadside-stops
 import { makeVillageGroundPaint, paintAsphalt } from './surface-paint';
 import { roadRibbonData } from './road-ribbons';
 import { buildPropVisuals, TOON_RAMP } from './visual-props';
+import { buildBoardwalkRailVisuals } from './visual-boardwalk-rails';
 import { createEnvironmentLod } from './environment-lod';
 import { buildGroundDetails } from './visual-ground';
 import { buildStreetDetails } from './visual-streets';
@@ -421,11 +422,16 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     : island;
   const sky = buildSkyVisuals();
   const waterVisuals = buildWaterVisuals(island, sky.atmosphere);
+  const boardwalkRails = buildBoardwalkRailVisuals(scenery);
+  if (boardwalkRails) group.add(boardwalkRails.mesh);
   const replacedProps = new Set(waterVisuals.replacedCascadeIds);
   for (const deck of island.colliders) {
     if (deck.shape === 'convex' && deck.id.startsWith(MOUNTAIN_SPIRAL_BRIDGE_PREFIX)) replacedProps.add(deck.id);
   }
-  const props = buildPropVisuals(scenery.props, options.propChunkSize ?? 96, scenery, replacedProps);
+  const instancedProps = boardwalkRails
+    ? scenery.props.filter(prop => !boardwalkRails.replacedIds.has(prop.id))
+    : scenery.props;
+  const props = buildPropVisuals(instancedProps, options.propChunkSize ?? 96, scenery, replacedProps);
   group.add(props.group);
   const hoofington = buildHoofingtonVisuals(scenery, props.group);
   group.add(hoofington.group);
@@ -514,6 +520,11 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
       const lod = dist > island.size * 0.45 ? chunk.low : chunk.high;
       if (chunk.mesh.geometry !== lod) chunk.mesh.geometry = lod;
     }
+    const railBounds = boardwalkRails?.mesh.boundingSphere;
+    if (boardwalkRails && railBounds) {
+      boardwalkRails.mesh.visible = railBounds.center.distanceTo(pos) <= cullingDistance + railBounds.radius &&
+        frustum.intersectsSphere(railBounds);
+    }
     if (props.updateCulling(pos, frustum, cullingDistance,
       mesh => hoofington.isFallbackHidden(mesh) || downtown.isFallbackHidden(mesh) ||
         lighthouse.isFallbackHidden(mesh)))
@@ -530,6 +541,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   function dispose(): void {
     environmentLod.dispose();
     props.dispose();
+    boardwalkRails?.mesh.dispose();
     hoofington.dispose();
     downtown.dispose();
     dam.dispose();

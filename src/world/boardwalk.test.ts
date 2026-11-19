@@ -6,6 +6,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { buildRapierColliders, createWorldScene, generateIsland, heightAt } from './index';
 import type { PropDescriptor } from './types';
 import { ART_BOOKMARKS } from './viewer/bookmarks';
+import { SPLASH_DIVE_BOARD_ID } from './boardwalk';
 import { paintingAssetUrl } from './viewer/reference-art';
 import { gridSample } from './terrain';
 
@@ -380,7 +381,10 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
     expect(boardwalkCamera.camera.z).toBeLessThan(boardwalkCamera.target.z);
     const island = generateIsland({ seed: 'billy-isle', resolution: 65 });
     const visuals = createWorldScene(island);
-    for (const kind of ['pier', 'pier-rail', 'ferris-wheel', 'bunting']) {
+    const rails = visuals.group.getObjectByName('baaardwalk-painted-rails');
+    expect(rails).toBeInstanceOf(THREE.Mesh);
+    expect(visuals.group.getObjectByName('props-pier-rail')).toBeUndefined();
+    for (const kind of ['pier', 'ferris-wheel', 'bunting']) {
       const mesh = visuals.group.getObjectByName('props-' + kind);
       expect(mesh, kind).toBeInstanceOf(THREE.InstancedMesh);
       expect((mesh as THREE.InstancedMesh).count, kind).toBeGreaterThan(0);
@@ -388,6 +392,67 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
     const pier = visuals.group.getObjectByName('props-pier') as THREE.InstancedMesh;
     expect(pier.count).toBe(2);
     visuals.dispose();
+  });
+
+  it('draws each Ferris rail join around one post and keeps both open corners and the dive entrance', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 65 });
+    const scale = island.size / 600;
+    const rails = island.props.filter(prop => prop.kind === 'pier-rail' && prop.poiId === 'baa-ardwalk');
+    const launch = island.props.find(prop => prop.id === SPLASH_DIVE_BOARD_ID)!;
+    const head = island.props.filter(prop => prop.poiId === 'baa-ardwalk' && prop.kind === 'pier')[1]!;
+    const headCentre = head.transform.position;
+    const far = rails.filter(prop => prop.transform.rotationY === 0)
+      .sort((a, b) => a.transform.position.x - b.transform.position.x);
+    const visuals = createWorldScene(island);
+    try {
+      const mesh = visuals.group.getObjectByName('baaardwalk-painted-rails') as THREE.InstancedMesh;
+      expect(mesh.geometry.index!.count / 3 * mesh.count).toBeLessThan(rails.length * 504);
+      const farZ = far[0]!.transform.position.z;
+      const caster = new THREE.Raycaster();
+      const hit = (x: number, y: number, z: number, dx: number, dz: number) => {
+        caster.set(new THREE.Vector3(x, y, z), new THREE.Vector3(dx, 0, dz));
+        caster.far = 2 * scale;
+        return caster.intersectObject(mesh, false).length > 0;
+      };
+      const post = topOf(head) + .85 * scale;
+      const beam = topOf(head) + 1.19 * scale;
+      for (const [i, rail] of far.slice(1).entries()) {
+        const x = (far[i]!.transform.position.x + rail.transform.position.x) / 2;
+        expect(hit(x, post, farZ + scale, 0, -1)).toBe(true);
+        for (const offset of [-.17, .17]) {
+          expect(hit(x + offset * scale, post, farZ + scale, 0, -1)).toBe(false);
+          expect(hit(x + offset * scale, beam, farZ + scale, 0, -1)).toBe(true);
+        }
+      }
+
+      for (const side of [-1, 1]) {
+        const leg = rails.filter(prop => prop.transform.position.z > headCentre.z - head.size.z / 2 &&
+          prop.transform.rotationY !== 0 && Math.sign(prop.transform.position.x - headCentre.x) === side)
+          .sort((a, b) => a.transform.position.z - b.transform.position.z);
+        expect(leg).toHaveLength(3);
+        const x = leg[0]!.transform.position.x + side * scale;
+        for (const [i, rail] of leg.slice(1).entries()) {
+          const z = (leg[i]!.transform.position.z + rail.transform.position.z) / 2;
+          expect(hit(x, post, z, -side, 0)).toBe(true);
+          for (const offset of [-.17, .17]) {
+            expect(hit(x, post, z + offset * scale, -side, 0)).toBe(false);
+            expect(hit(x, beam, z + offset * scale, -side, 0)).toBe(true);
+          }
+        }
+        const last = leg.at(-1)!;
+        const cornerZ = (last.transform.position.z + last.size.x / 2 + farZ) / 2;
+        expect(hit(x, beam, cornerZ, -side, 0)).toBe(false);
+      }
+
+      const { x, z } = launch.transform.position;
+      const deck = island.props.filter(prop => prop.poiId === 'baa-ardwalk' && prop.kind === 'pier')[0]!;
+      const launchBeam = topOf(deck) + 1.19 * scale;
+      expect(hit(x - scale, launchBeam, z, -1, 0)).toBe(false);
+      for (const side of [-1, 1])
+        expect(hit(x - scale, launchBeam, z + side * 3.1 * scale, -1, 0)).toBe(true);
+    } finally {
+      visuals.dispose();
+    }
   });
 
   it('keeps the Baa-ardwalk buoys at their authored 1.0 x 1.8 x 1.0 size', () => {
