@@ -7,6 +7,7 @@ import {
   TIER_PROFILES, type CharacterAction, type GoatTier, type MotionFrame,
 } from './motion';
 import { LegacyGoatCharacter } from './LegacyGoatCharacter';
+import { SkinnedRagdollPose } from './skinned-ragdoll-pose';
 import {
   GOAT_CLIPS, GOAT_GLB_FILES, clipForAction, goatPublicAssetUrl,
   locomotionBlend, selectGoatVariant, type GoatCharacterOptions,
@@ -43,6 +44,7 @@ type Rig = {
   actions: Record<GoatClip, THREE.AnimationAction>;
   weights: { Idle: number; Walk: number; Run: number };
   shot: Shot | null;
+  ragdoll: SkinnedRagdollPose | null;
   previewing: boolean;
 };
 
@@ -258,6 +260,7 @@ export class GoatCharacter {
     }
 
     const rig = this.rig;
+    const interpolation = goat ? (alpha === undefined ? goat.world.alpha : clamp01(alpha)) : 0;
     let selected = goat ? actionFromPhysics({
       ragdoll: goat.isRagdoll,
       tongueAttached: goat.interactions.isTongueAttached,
@@ -270,7 +273,6 @@ export class GoatCharacter {
     if (goat) {
       // Carry locomotion, jumps and flops with the interpolated torso. For
       // idle, the support plane below supplies the render rig's foot frame.
-      const interpolation = alpha === undefined ? goat.world.alpha : clamp01(alpha);
       const transform = goat.world.getInterpolatedTransform(goat.torso, interpolation);
       rig.model.quaternion.set(transform.rotation.x, transform.rotation.y,
         transform.rotation.z, transform.rotation.w);
@@ -279,7 +281,7 @@ export class GoatCharacter {
           .applyQuaternion(rig.model.quaternion));
       rig.model.scale.setScalar(goat.size);
       if (!goat.locomotion.grounded && this.lastGrounded && goat.pose === 'jumpTuck' &&
-          !rig.shot) this.startShot(rig, 'Jump', 1);
+          !rig.shot && !rig.ragdoll?.weight) this.startShot(rig, 'Jump', 1);
       this.lastGrounded = goat.locomotion.grounded;
     } else {
       rig.model.position.set(0, 0, 0);
@@ -329,19 +331,24 @@ export class GoatCharacter {
       rig.actions[this.previewClip].setEffectiveWeight(1);
     }
 
+    rig.ragdoll?.restore();
+    rig.ragdoll?.blend(goat, frameDt);
     rig.mixer.update(frameDt);
-    if (goat && selected === 'stand') this.settleIdleRig(rig, goat);
+    if (goat) {
+      if (selected === 'stand') this.settleIdleRig(rig, goat, 1 - (rig.ragdoll?.weight ?? 0));
+      rig.ragdoll?.apply(rig.model, goat, interpolation);
+    }
     return sampleMotion(selected, this.clock);
   }
 
-  private settleIdleRig(rig: Rig, goat: GoatRagdoll): void {
+  private settleIdleRig(rig: Rig, goat: GoatRagdoll, weight: number): void {
     const { grounded, groundHit } = goat.locomotion;
     if (!grounded || !groundHit || groundHit.normal.y < .65 || goat.isRagdoll ||
         (goat.pose !== 'stand' && goat.pose !== 'walk')) return;
     // Blend out with the idle clip as walking starts. The physics suspension
     // deliberately rides above the support: directly following its torso
     // leaves all four skinned hooves hovering, even on level ground.
-    const idle = THREE.MathUtils.smoothstep(rig.weights.Idle, .76, 1);
+    const idle = THREE.MathUtils.smoothstep(rig.weights.Idle, .76, 1) * weight;
     if (idle === 0) return;
     const { point, normal } = groundHit;
     const { position, quaternion } = rig.model;
@@ -359,7 +366,7 @@ export class GoatCharacter {
       (position.z - point.z) * normal.z) / normal.y;
     // An offset of 6 mm at Billy scale clears the lowest frame of the baked idle.
     position.y = THREE.MathUtils.lerp(position.y, floor + .006 * goat.size, idle);
-    this.idleSolesGrounded = true;
+    this.idleSolesGrounded = weight === 1;
     rig.model.updateWorldMatrix(true, false);
   }
 
@@ -425,6 +432,7 @@ export class GoatCharacter {
       }
       this.rig = {
         model, skeleton, mixer, actions, shot: null, previewing: !this.bound,
+        ragdoll: SkinnedRagdollPose.create(model, this.variantValue),
         weights: { Idle: 1, Walk: 0, Run: 0 },
       };
       this.configureActions(this.rig);
@@ -445,6 +453,7 @@ export class GoatCharacter {
   }
 
   private configureActions(rig: Rig): void {
+    rig.ragdoll?.reset();
     rig.mixer.stopAllAction();
     rig.shot = null;
     rig.previewing = !this.bound;
