@@ -582,7 +582,7 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
 
       const modes = [
         ['rising-tide', 'RISING TIDE', 'Last goat standing', ['GOATS LEFT', 'SEA LEVEL']],
-        ['king-of-the-peak', 'KING OF THE PEAK', 'Hold the center to score', ['YOUR POINTS', 'WIN TARGET']],
+        ['king-of-the-peak', 'KING OF THE PEAK', 'Hold the center · first to 90', ['YOUR POINTS', 'TOP RIVAL']],
         ['hay-heist', 'HAY HEIST', 'First to ', ['RED · YOU', 'BLUE']],
       ] as const;
       const partyHudIssues = (title: string, goal: string, metrics: readonly string[]) => {
