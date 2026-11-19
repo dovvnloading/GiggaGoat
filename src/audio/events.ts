@@ -17,12 +17,15 @@ export type LaneAudioEvent =
   | { lane: 'chaos'; event: ChaosEvent }
   | { lane: 'modes'; event: MatchEvent }
   | { lane: 'gigs'; event: GigEvent };
+export type ResultAudioKind = 'gig' | 'party';
 export type AudioCue = {
   sound: SoundId; intensity?: number; size?: number; position?: Vec3;
   /** Optional musical delay in seconds from the current audio clock. */
   delay?: number;
   goatId?: string; playerId?: string; bodyHandle?: number; combo?: number;
   pitch?: number;
+  /** Allow this terminal cue to finish while its visible results are open. */
+  result?: ResultAudioKind;
 };
 const cue = (sound: SoundId, extra: Omit<AudioCue, 'sound'> = {}): AudioCue =>
   ({ sound, ...extra });
@@ -181,7 +184,7 @@ export function mapMode(event: MatchEvent): AudioCue[] {
     case 'hay.dropped': return [cue('tongue-snap', { playerId: event.playerId })];
     case 'hay.punted': return [cue('headbutt-impact', { playerId: event.playerId, intensity: .5 })];
     case 'hay.scored': return [cue('coin', { playerId: event.playerId ?? undefined, intensity: .9 })];
-    case 'match.finished': return [cue('victory', { intensity: 1 })];
+    case 'match.finished': return [cue('victory', { intensity: 1, result: 'party' })];
   }
 }
 export function mapGig(event: GigEvent): AudioCue[] {
@@ -189,12 +192,12 @@ export function mapGig(event: GigEvent): AudioCue[] {
     case 'board.rotated': return [cue('ui-click', { intensity: .22 })];
     case 'gig.accepted': return [cue('ui-confirm')];
     case 'objective.progress': return [cue('ui-click', { intensity: .22 })];
-    case 'gig.failed': return [cue('gig-fail')];
+    case 'gig.failed': return [cue('gig-fail', { result: 'gig' })];
     case 'gig.abandoned': return [cue('gig-fail', { intensity: .3 })];
     case 'gig.completed': return [
-      cue('gig-success', { intensity: 1 }),
+      cue('gig-success', { intensity: 1, result: 'gig' }),
       cue(event.award.rating === 'gold' ? 'rating-gold' :
-        event.award.rating === 'silver' ? 'rating-silver' : 'rating-bronze', { intensity: .8, delay: .78 }),
+        event.award.rating === 'silver' ? 'rating-silver' : 'rating-bronze', { intensity: .8, delay: .78, result: 'gig' }),
     ];
     case 'cosmetic.unlocked': return [cue('ui-confirm', { intensity: .75 })];
   }

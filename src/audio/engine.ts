@@ -10,7 +10,7 @@ import type { SfxOptions } from './synth';
 import { AdaptiveMusic, IslandAmbience } from './music';
 import { mapLaneEvent } from './events';
 import type {
-  AudioCue, ChaosEvent, GameplayAudioEvent, LaneAudioEvent,
+  AudioCue, ChaosEvent, GameplayAudioEvent, LaneAudioEvent, ResultAudioKind,
 } from './events';
 import type { PhysicsEvent } from '../physics';
 import type { MatchEvent } from '../modes';
@@ -69,6 +69,7 @@ export interface PlayOptions extends SfxOptions {
   position?: Vec3;
   bus?: AudioBus;
   priority?: number;
+  result?: ResultAudioKind;
 }
 export interface AudioStatus {
   unlocked: boolean;
@@ -82,6 +83,8 @@ interface Voice {
   panner: PannerNode | null;
   sources: AudioScheduledSourceNode[];
   position: Vec3 | null;
+  result?: ResultAudioKind;
+  endsAt: number;
   baseGain: number;
   remaining: number;
   disposed: boolean;
@@ -151,6 +154,7 @@ export class VoiceManager {
       ticket: { id, sound, priority, loudness, started: ctx.currentTime },
       gain: voiceGain, panner, sources: render.sources,
       remaining: render.sources.length, position: opts.position ?? null, baseGain,
+      result: opts.result, endsAt: Math.max(ctx.currentTime, opts.when ?? 0) + render.duration,
       disposed: false,
     };
     this.voices.set(id, voice);
@@ -183,13 +187,31 @@ export class VoiceManager {
     this.voices.delete(v.ticket.id);
     v.gain.disconnect(); v.panner?.disconnect();
   }
-  dispose(): void {
-    for (const v of [...this.voices.values()]) {
-      for (const src of v.sources) {
-        try { src.stop(); } catch { /* stopped already */ }
-      }
-      this.release(v);
+  retainResultVoices(result: ResultAudioKind): number | null {
+    let end = this.context.currentTime;
+    for (const voice of this.voices.values()) {
+      if (voice.result === result) end = Math.max(end, voice.endsAt);
+      else this.stop(voice.ticket.id);
     }
+    return end > this.context.currentTime ? end : null;
+  }
+
+  cancelResultVoices(): void {
+    for (const voice of this.voices.values()) {
+      if (voice.result) this.stopNow(voice);
+    }
+  }
+
+  private stopNow(voice: Voice): void {
+    // Disconnect now so a stopped or delayed cue cannot return after context resume.
+    this.release(voice);
+    for (const source of voice.sources) {
+      try { source.stop(); } catch { /* stopped already */ }
+    }
+  }
+
+  dispose(): void {
+    for (const voice of this.voices.values()) this.stopNow(voice);
   }
 }
 
@@ -212,6 +234,7 @@ export class AudioEngine {
   private readonly unbinders = new Set<() => void>();
   private unlocking: Promise<boolean> | null = null;
   private disposed = false;
+  private resultTail = false;
   private currentState: MusicState = { ...DEFAULT_MUSIC_STATE };
   private camera: Vec3 = { x: 0, y: 0, z: 0 };
   private lastDuckAt = -Infinity;
@@ -251,8 +274,24 @@ export class AudioEngine {
     const now = this.context.currentTime, s = this.settingsValue;
     this.master.gain.setTargetAtTime(s.muted ? 0 : s.master, now, .03);
     for (const name of ['music', 'sfx', 'ui', 'ambience'] as const) {
-      this.buses[name].gain.setTargetAtTime(s[name], now, .03);
+      const quiet = this.resultTail && (name === 'music' || name === 'ambience');
+      this.buses[name].gain.setTargetAtTime(quiet ? 0 : s[name], now, .03);
     }
+  }
+
+  /** Let admitted result cues finish without continuing the live scene mix. */
+  beginResultAudio(result: ResultAudioKind): number | null {
+    this.resultTail = true;
+    this.applySettings();
+    return this.context?.state === 'running'
+      ? this.voiceManager?.retainResultVoices(result) ?? null : null;
+  }
+
+  endResultAudio(): void {
+    this.voiceManager?.cancelResultVoices();
+    if (!this.resultTail) return;
+    this.resultTail = false;
+    this.applySettings();
   }
 
   /** Must be called in a genuine pointer/key/touch event to satisfy autoplay rules. */
@@ -328,7 +367,7 @@ export class AudioEngine {
 
   /** Direct UI or scripted one-shot. World-space positional SFX use metres, Y up. */
   play(sound: SoundId, options: PlayOptions = {}): boolean {
-    if (this.disposed || !this.voiceManager) return false;
+    if (this.disposed || this.resultTail || !this.voiceManager) return false;
     const now = this.context?.currentTime ?? 0;
     const cooldown = sound === 'climb' || sound.startsWith('footstep-') ? .085 :
       sound === 'domino' ? .028 : sound === 'ui-click' ? .035 : 0;
@@ -351,7 +390,7 @@ export class AudioEngine {
     this.elapsed += Math.min(frame.dt, .25);
     if (frame.state) this.currentState = { ...this.currentState, ...frame.state };
     if (frame.camera) this.updateListener(frame.camera);
-    if (!this.context || this.context.state !== 'running') return;
+    if (this.resultTail || !this.context || this.context.state !== 'running') return;
     const audioNow = this.context.currentTime;
     const resolve = (input: AudioCue): PlayOptions => {
       // Physics/mode events carry goat IDs. Keyed gameplay events don't, so the
@@ -364,7 +403,7 @@ export class AudioEngine {
         observed?.position ?? frame.goatPosition;
       return {
         position: location, intensity: input.intensity, pitch: input.pitch,
-        combo: input.combo,
+        combo: input.combo, result: input.result,
         when: input.delay === undefined ? undefined : audioNow + Math.max(0, input.delay),
         size: input.size ??
           (owner ? frame.sizeForGoat?.(owner) : undefined) ?? observed?.size,

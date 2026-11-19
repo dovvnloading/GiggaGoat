@@ -1,6 +1,6 @@
 import { GAMEPLAY_EVENT_TYPES } from '../audio';
 import type {
-  AudioCue, AudioEngine, CameraAudioPose, GameplayAudioEvent, Surface, WalkingGoat,
+  AudioCue, AudioEngine, CameraAudioPose, GameplayAudioEvent, ResultAudioKind, Surface, WalkingGoat,
 } from '../audio';
 import { biomeAt, zoneAt } from '../world';
 import type { GoatRagdoll, Vec3 } from '../physics';
@@ -8,7 +8,8 @@ import type { Game, PlayerIntent } from './Game';
 import type { GameSettings } from './Persistence';
 
 /** The narrow audio interface allows a fake AudioEngine in headless core tests. */
-export type AudioSink = Pick<AudioEngine, 'updateFrame' | 'setSettings' | 'audioContext'>;
+export type AudioSink = Pick<AudioEngine, 'updateFrame' | 'setSettings' | 'audioContext' |
+  'beginResultAudio' | 'endResultAudio'>;
 
 function surfaceAt(game: Game, position: Vec3): Surface {
   if (position.y <= game.water.seaLevel + .25) return 'water';
@@ -53,6 +54,7 @@ export class GameAudio {
   };
   private charging = false;
   private paused = true;
+  private resultAudioUntil: number | null = null;
   private wasUnlocked = false;
   private transition: Promise<void> | null = null;
 
@@ -82,7 +84,16 @@ export class GameAudio {
   /** Pause the actual AudioContext, not just the game rules or music scheduler. */
   setPaused(paused: boolean): void {
     this.paused = paused;
+    this.resultAudioUntil = null;
+    this.audio.endResultAudio();
     if (paused) this.charging = false;
+    this.syncContext();
+  }
+
+  playResultAudio(result: ResultAudioKind): void {
+    this.paused = true;
+    this.charging = false;
+    this.resultAudioUntil = this.audio.beginResultAudio(result);
     this.syncContext();
   }
 
@@ -90,14 +101,15 @@ export class GameAudio {
     const context = this.audio.audioContext;
     if (!context || this.transition) return;
     if (context.state === 'running') this.wasUnlocked = true;
-    const suspending = this.paused && context.state === 'running';
+    const finishingResult = this.resultAudioUntil !== null && context.currentTime < this.resultAudioUntil;
+    const suspending = this.paused && !finishingResult && context.state === 'running';
     const resuming = !this.paused && this.wasUnlocked && context.state === 'suspended';
     if (!suspending && !resuming) return;
     const action = suspending ? context.suspend() : context.resume();
     this.transition = action.then(() => {
       this.transition = null;
       // A visibility/menu transition may have occurred during the async operation.
-      if (this.paused !== suspending) this.syncContext();
+      this.syncContext();
     }, () => { this.transition = null; });
   }
 

@@ -25,5 +25,5 @@ export {
   mapGameplay, mapChaos, mapMode, mapGig,
 } from './events';
 export type {
-  AudioCue, ChaosEvent, GameplayAudioEvent, LaneAudioEvent,
+  AudioCue, ChaosEvent, GameplayAudioEvent, LaneAudioEvent, ResultAudioKind,
 } from './events';
