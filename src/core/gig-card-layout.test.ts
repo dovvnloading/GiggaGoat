@@ -183,7 +183,7 @@ function measurePartyResults(width: number, height: number): PartyGeometry {
   const placements = players.map(({ id }, index) =>
     ({ playerId: id, rank: index === 2 ? 2 : index + 1 }));
   const game = {
-    rules: { wallet: { coins: 0 } }, gigs: { director: { ownedCosmetics: [] } },
+    rules: { unlocks: { isUnlocked: () => false }, wallet: { coins: 0 } }, gigs: { director: { ownedCosmetics: [] } },
     party: { title: 'Rising Tide', match: { tideLevel: 12, toJSON: () => ({
       mode: 'rising-tide', players, placements, tick: 3500, playTicks: 3330,
     }) } },

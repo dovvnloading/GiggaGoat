@@ -320,12 +320,11 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         const title = document.querySelector('.gg-meter-label')!.getBoundingClientRect();
         const portraits = document.querySelectorAll('.gg-meter-stage img');
         const names = document.querySelectorAll('.gg-meter-stage-labels span');
-        const needle = document.querySelector('.gg-meter-arrow')!.getBoundingClientRect();
         portraits.forEach((portrait, i) => {
           const art = portrait.getBoundingClientRect(), name = names[i]!.getBoundingClientRect();
-          if (art.top < title.bottom || art.bottom > track.top || needle.bottom > name.top + 1 ||
+          if (art.top < title.bottom || art.bottom > track.top || track.bottom > name.top + 1 ||
               Math.abs((art.left + art.right - name.left - name.right) / 2) > 1) {
-            issues.push('growth portrait, marker or name misaligned in column ' + i);
+            issues.push('growth portrait, track or name misaligned in column ' + i);
           }
         });
         try {
@@ -349,7 +348,7 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
               issues.push('stamina icon and readings overlap or are off centre');
             }
             const warning = getComputedStyle(label, '::after').content.includes('LOW');
-            const warningColor = getComputedStyle(progress).backgroundImage.includes('255, 146, 111');
+            const warningColor = getComputedStyle(progress).filter.includes('hue-rotate');
             if (warning !== low || warningColor !== low || !inside(label.getBoundingClientRect(), staminaBounds)) {
               issues.push('stamina warning is misplaced or does not follow the low state');
             }
