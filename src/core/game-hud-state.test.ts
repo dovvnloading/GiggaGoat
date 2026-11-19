@@ -251,7 +251,7 @@ describe('in-game HUD state projection', () => {
     expect(deriveHudState(state).gig).toMatchObject({
       task: 'Headbutt from board side', detail: '0/40 kg MOVED · 60s LEFT',
     });
-    state.gig.objective = { ...state.gig.objective, movedMass: 14.5, headbutts: 4 };
+    state.gig.objective = { kind: 'displace', label: '', movedMass: 14.5, requiredMass: 39.6, headbutts: 4 };
     expect(deriveHudState(state).gig).toMatchObject({
       task: 'Headbutt from board side', detail: '15/40 kg MOVED · 60s LEFT',
     });
