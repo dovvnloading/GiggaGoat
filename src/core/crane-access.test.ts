@@ -9,11 +9,13 @@ describe('Crane Yard public access', () => {
     try {
       const board = game.gigs.boards.find(item => item.poiId === 'crane-yard')!.position;
       const accept = (id: string) => {
-        const x = board.x + 7.6, z = board.z + 2;
-        // Start on the open apron beside the board, clear of the ramps.
-        game.teleport({ x, y: heightAt(game.island, x, z), z }, 0);
+        game.teleport(board, 0);
         for (let tick = 0; tick < 45; tick++) game.step();
         expect(game.goat.locomotion.grounded).toBe(true);
+        const at = game.goat.torso.translation();
+        expect(Math.hypot(at.x - board.x, at.z - board.z)).toBeLessThan(.3);
+        expect(at.y).toBeGreaterThan(board.y + .35);
+        expect(game.gigs.nearBoard()).toBe('crane-yard');
         const offer = game.gigs.board('crane-yard').find(item => item.gigId === id)!;
         game.gigs.accept(offer.id);
         return game.gigs.active!.setup;

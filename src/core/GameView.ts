@@ -300,22 +300,24 @@ export class GameView {
       const root = createBoardLibraryProp(this.propFactory);
       const mountain = board.poiId === 'mt-gigga';
       const lighthouse = board.poiId === 'old-lighthouse';
+      const craneYard = board.poiId === 'crane-yard';
+      const smallBadge = mountain || craneYard;
       const compact = board.poiId === 'hoofington' || board.poiId === 'downtown-bleatsville' ||
-        lighthouse || mountain;
+        lighthouse || smallBadge;
       if (compact) {
         root.scale.multiplyScalar(.58);
         // The summit notice faces the last climb from Hoofington.
-        root.rotation.y = mountain ? 2.67 : lighthouse ? Math.PI / 2 : -Math.PI / 2;
+        if (!craneYard) root.rotation.y = mountain ? 2.67 : lighthouse ? Math.PI / 2 : -Math.PI / 2;
       }
-      const base = mountain || lighthouse ? 0 : .15;
+      const base = smallBadge || lighthouse ? 0 : .15;
       root.position.set(board.position.x, board.position.y + base, board.position.z);
       this.instancedProps.add(root);
       this.boardRoots.push(root);
-      if (compact && !mountain) continue;
+      if (compact && !smallBadge) continue;
 
       const overlay = new THREE.Group();
       overlay.position.copy(root.position);
-      if (mountain) {
+      if (smallBadge) {
         overlay.add(this.textSprite('E · GIGS', 2.4, .64, 2.9));
       } else {
         overlay.add(this.textSprite('E · GIGS', 4.8, 1.2, 3.4));
