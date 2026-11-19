@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { climbStep } from '../physics/climb-gait';
 import type { RayHit } from '../physics';
 import type { GoatRagdoll } from '../physics';
-import { GROUND_QUERY_GROUPS } from '../physics';
+import { GROUND_QUERY_GROUPS, RAPIER } from '../physics';
 import type { GoatVariant } from './rigged';
 import { HIP_BONES } from './skinned-ragdoll-pose';
 
@@ -15,6 +15,7 @@ interface RigLeg {
   hipAnimation: THREE.Quaternion;
   kneeAnimation: THREE.Quaternion;
   foothold: THREE.Vector3;
+  wallTarget: THREE.Vector3;
   planted: boolean;
   supportHandle?: number;
 }
@@ -42,6 +43,10 @@ export class SkinnedLegPose {
   private readonly right = new THREE.Vector3();
   private readonly origin = new THREE.Vector3();
   private readonly target = new THREE.Vector3();
+  private readonly wallRoot = new THREE.Vector3();
+  private readonly wallRayOrigin = new THREE.Vector3();
+  private readonly wallRayDir = new THREE.Vector3();
+  private readonly wallRay = new RAPIER.Ray(this.wallRayOrigin, this.wallRayDir);
   private readonly hip = new THREE.Vector3();
   private readonly knee = new THREE.Vector3();
   private readonly sole = new THREE.Vector3();
@@ -79,7 +84,7 @@ export class SkinnedLegPose {
       const knee = chain.slice(1, -1).reduce((best, bone) =>
         Math.abs(height(bone) - kneeHeight) < Math.abs(height(best) - kneeHeight) ? bone : best);
       legs.push({ hip, knee, toe, sole, toeOffset, hipAnimation: new THREE.Quaternion(),
-        kneeAnimation: new THREE.Quaternion(), foothold: new THREE.Vector3(), planted: false });
+        kneeAnimation: new THREE.Quaternion(), foothold: new THREE.Vector3(), wallTarget: new THREE.Vector3(), planted: false });
     }
     const neck = model.getObjectByName(variant === 'hero' ? 'joint_17' : 'neck_01');
     return new SkinnedLegPose(legs, neck instanceof THREE.Bone ? neck : null);
@@ -109,10 +114,12 @@ export class SkinnedLegPose {
       for (const leg of this.legs) leg.planted = false;
       this.groundedGait = false;
     }
+    const entering = this.weight === 0;
     this.weight = dt === 0 ? Number(!!wall) : THREE.MathUtils.clamp(this.weight + (wall ? 8 : -8) * dt, 0, 1);
     if (!this.weight) return;
     if (wall) {
-      this.normal.copy(wall.normal).normalize();
+      if (entering || dt === 0) this.normal.copy(wall.normal);
+      else this.normal.lerp(wall.normal, -Math.expm1(-18 * dt)).normalize();
       this.planePoint.copy(wall.point);
       this.phase = phase;
     }
@@ -122,8 +129,33 @@ export class SkinnedLegPose {
     this.origin.copy(torso).sub(this.planePoint);
     const distance = this.origin.dot(this.normal);
     this.origin.copy(torso).addScaledVector(this.normal, -distance);
-    // Bend the knees slightly even in stance so each planted leg has room to push.
-    this.target.copy(this.origin).addScaledVector(this.normal, -.16 * size);
+    this.wallRayDir.copy(this.normal).negate();
+    let recessed = 0;
+    for (const [i, leg] of this.legs.entries()) {
+      const step = climbStep(this.phase, i === 1 || i === 2);
+      const target = leg.wallTarget.copy(this.origin).addScaledVector(this.right, leg.sole.x * size)
+        .addScaledVector(this.down, (leg.sole.z + step.down) * size);
+      this.wallRayOrigin.copy(target).addScaledVector(this.normal, .5 * size);
+      const hit = wall?.collider?.castRay(this.wallRay, size, true);
+      const depth = hit !== undefined && hit >= 0 ? .5 * size - hit : 0;
+      target.addScaledVector(this.normal, depth + (.024 + step.lift) * size);
+      const plant = !!wall && step.lift === 0 && (hit === undefined || hit >= 0);
+      if (plant) {
+        if (!leg.planted || leg.foothold.distanceToSquared(target) > (.48 * size) ** 2) leg.foothold.copy(target);
+        target.copy(leg.foothold);
+      }
+      leg.planted = plant;
+      recessed = Math.min(recessed, depth);
+    }
+    // A raised band may support one pair while the other pair bears on the
+    // recessed silo wall. Carry the hips within reach of both pairs and
+    // damp only changes in wall depth, preserving vertical climbing travel.
+    this.target.copy(this.origin).addScaledVector(this.normal, recessed - .19 * size);
+    if (!entering && dt > 0) {
+      const previousDepth = this.wallRoot.sub(this.target).dot(this.normal);
+      this.target.addScaledVector(this.normal, previousDepth * Math.exp(-14 * dt));
+    }
+    this.wallRoot.copy(this.target);
     model.position.lerp(this.target, this.weight);
     model.quaternion.slerp(this.rotation, this.weight);
     model.updateWorldMatrix(true, true);
@@ -134,24 +166,7 @@ export class SkinnedLegPose {
       this.rotateBone(this.neck);
     }
     for (const [i, leg] of this.legs.entries()) {
-      const step = climbStep(this.phase, i === 1 || i === 2);
-      this.target.copy(this.origin).addScaledVector(this.right, leg.sole.x * size)
-        .addScaledVector(this.down, (leg.sole.z + step.down) * size);
-      // A silo's face curves away on either side of the shoulder contact.
-      // Find the surface under this hoof, including raised seams.
-      const surface = wall?.collider?.projectPoint(this.target, false);
-      if (surface && this.target.distanceToSquared(surface.point) < (.28 * size) ** 2) {
-        this.target.copy(surface.point);
-      }
-      this.target.addScaledVector(this.normal, (.024 + step.lift) * size);
-      const plant = !!wall && step.lift === 0;
-      if (plant) {
-        if (!leg.planted || leg.foothold.distanceToSquared(this.target) > (.28 * size) ** 2) {
-          leg.foothold.copy(this.target);
-        }
-        this.target.copy(leg.foothold);
-      }
-      leg.planted = plant;
+      this.target.copy(leg.wallTarget);
       leg.hipAnimation.copy(leg.hip.quaternion);
       leg.kneeAnimation.copy(leg.knee.quaternion);
       this.solve(leg, i < 2);
