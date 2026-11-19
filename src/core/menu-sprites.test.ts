@@ -170,7 +170,7 @@ class ResizeObserverStub {
   trigger(): void { if (this.target) this.onResize(); }
 }
 
-function setup() {
+function setup(audio?: ConstructorParameters<typeof GameMenu>[4]) {
   const doc = new DocumentStub();
   const win = new WindowStub();
   const observers: ResizeObserverStub[] = [];
@@ -209,7 +209,7 @@ function setup() {
   const settings = { ...DEFAULT_SETTINGS };
   const menu = new GameMenu(host as unknown as HTMLElement,
     game as unknown as ConstructorParameters<typeof GameMenu>[1],
-    view as unknown as ConstructorParameters<typeof GameMenu>[2], settings);
+    view as unknown as ConstructorParameters<typeof GameMenu>[2], settings, audio);
   const setScreen = (screen: string): void =>
     (menu as unknown as { setScreen: (value: string) => void }).setScreen(screen);
   return { menu, doc, win, game, view, settings, setScreen, root: host.children[0]!,
@@ -219,6 +219,32 @@ function setup() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('sprite-backed menu DOM', () => {
+  it('keeps the result tail only on visible gig and party results', () => {
+    const audio = { setVolumes: vi.fn(), setPaused: vi.fn(), playResultAudio: vi.fn() };
+    const { menu, game, doc, view, setScreen } =
+      setup(audio as unknown as ConstructorParameters<typeof GameMenu>[4]);
+    Object.assign(game, { acknowledgeGigResult: vi.fn() });
+    try {
+      expect(audio.setPaused).toHaveBeenLastCalledWith(true);
+      setScreen('playing');
+      expect(audio.setPaused).toHaveBeenLastCalledWith(false);
+      setScreen('gig-results');
+      expect(view.paused).toBe(true);
+      expect(audio.playResultAudio).toHaveBeenLastCalledWith('gig');
+      setScreen('playing');
+      expect(audio.setPaused).toHaveBeenLastCalledWith(false);
+      setScreen('party-results');
+      expect(audio.playResultAudio).toHaveBeenLastCalledWith('party');
+      setScreen('pause');
+      expect(audio.setPaused).toHaveBeenLastCalledWith(true);
+
+      doc.hidden = true;
+      setScreen('party-results');
+      expect(audio.setPaused).toHaveBeenLastCalledWith(true);
+      expect(audio.playResultAudio).toHaveBeenCalledTimes(2);
+    } finally { menu.dispose(); }
+  });
+
   it('references real manifest sprites for every title, pause and settings control', () => {
     const { menu, root, setScreen } = setup();
     try {

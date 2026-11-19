@@ -52,6 +52,8 @@ function fixture() {
   } as unknown as Game;
   const audio = {
     audioContext: null,
+    beginResultAudio: vi.fn<(kind: 'gig' | 'party') => number | null>(() => null),
+    endResultAudio: vi.fn(),
     updateFrame: vi.fn((_frame: AudioFrame) => {}),
     setSettings: vi.fn((settings: Partial<AudioSettings>) =>
       ({ ...DEFAULT_AUDIO_SETTINGS, ...settings })),
@@ -135,6 +137,61 @@ describe('core audio render bridge', () => {
       });
       expect(validateSettings({ volume: 2, musicVolume: -1, effectsVolume: .6 }))
         .toMatchObject({ volume: 1, musicVolume: 0, effectsVolume: .6 });
+    } finally { bridge.dispose(); }
+  });
+
+
+  it('lets a visible result advance to its audio deadline, then suspends without restarting its tail', async () => {
+    const f = fixture();
+    const context = {
+      state: 'running', currentTime: 12,
+      suspend: vi.fn(async () => { context.state = 'suspended'; }),
+      resume: vi.fn(async () => { context.state = 'running'; }),
+    };
+    const sink: AudioSink = { ...f.audio, audioContext: context as unknown as AudioContext };
+    f.audio.beginResultAudio.mockReturnValue(13.588);
+    const bridge = new GameAudio(f.game, sink);
+    const camera = { position: { x: 0, y: 2, z: 0 }, forward: { x: 0, y: 0, z: -1 } };
+    try {
+      bridge.playResultAudio('gig');
+      expect(f.audio.beginResultAudio).toHaveBeenCalledOnce();
+      expect(f.audio.beginResultAudio).toHaveBeenCalledWith('gig');
+      expect(context.suspend).not.toHaveBeenCalled();
+      context.currentTime = 12.781;
+      bridge.frame(1 / 60, camera, false);
+      expect(context.suspend).not.toHaveBeenCalled();
+
+      context.currentTime = 13.589;
+      bridge.frame(1 / 60, camera, false);
+      await Promise.resolve();
+      expect(context.suspend).toHaveBeenCalledOnce();
+      expect(f.audio.endResultAudio).not.toHaveBeenCalled();
+
+      bridge.setPaused(false);
+      await Promise.resolve();
+      expect(f.audio.endResultAudio).toHaveBeenCalledOnce();
+      expect(context.resume).toHaveBeenCalledOnce();
+      expect(f.audio.beginResultAudio).toHaveBeenCalledOnce();
+    } finally { bridge.dispose(); }
+  });
+
+  it.each([true, false])('cancels a live result tail when its screen is replaced with paused=%s', async paused => {
+    const f = fixture();
+    const context = {
+      state: 'running', currentTime: 12,
+      suspend: vi.fn(async () => { context.state = 'suspended'; }),
+      resume: vi.fn(async () => { context.state = 'running'; }),
+    };
+    const sink: AudioSink = { ...f.audio, audioContext: context as unknown as AudioContext };
+    f.audio.beginResultAudio.mockReturnValue(13.99);
+    const bridge = new GameAudio(f.game, sink);
+    try {
+      bridge.playResultAudio('party');
+      bridge.setPaused(paused);
+      await Promise.resolve();
+      expect(f.audio.endResultAudio).toHaveBeenCalledOnce();
+      expect(context.suspend).toHaveBeenCalledTimes(paused ? 1 : 0);
+      expect(context.resume).not.toHaveBeenCalled();
     } finally { bridge.dispose(); }
   });
 
