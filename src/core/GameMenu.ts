@@ -3,6 +3,7 @@ import type { GameView } from './GameView';
 import type { GameAudio } from './GameAudio';
 import { saveGame, type GameSettings } from './Persistence';
 import { hudObjectiveParts } from './GameHudState';
+import { TUNING } from '../gameplay/config';
 import { MODE_DEFAULTS, TICKS_PER_SECOND, type ModeId, type Difficulty as BotDifficulty } from '../modes';
 import type { PoiId } from '../world';
 import { HUD_SPRITES, hudSpriteImage } from './HudSprites';
@@ -266,6 +267,9 @@ const GAMEPLAY_BINDINGS: readonly {
   { action: 'Select build piece', keyboard: '1–4', gamepad: 'D-pad' },
   { action: 'Place build piece', keyboard: 'Left click in Hay-Build', gamepad: 'RT in Hay-Build' },
   { action: 'Sprint', keyboard: 'Shift', gamepad: 'RB' },
+  { action: 'Climb', keyboard: 'Move into a steep wall', gamepad: 'Push left stick into wall' },
+  { action: 'Kick off wall', keyboard: 'Space while climbing', gamepad: 'A while climbing' },
+  { action: 'Glide (unlock in Pause)', keyboard: 'Hold Space while falling', gamepad: 'Hold A while falling' },
   { action: 'Reel tongue', keyboard: 'R', gamepad: 'Press right stick' },
   { action: 'Fling', keyboard: 'F', gamepad: 'Press left stick' },
   { action: 'Bleat / open gig board', keyboard: 'E', gamepad: 'X' },
@@ -466,6 +470,10 @@ export class GameMenu {
       this.view.alignCameraForPlay();
       this.resume(mouseClick);
     } else if (key === 'resume') this.resume(mouseClick);
+    else if (key === 'unlock-glide' && this.screen === 'pause' && !this.game.party.match) {
+      if (this.game.rules.unlocks.purchase('glide').ok) this.save();
+      this.render('[data-action="resume"]');
+    }
     else if (key === 'pause') this.pause();
     else if (key === 'title') {
       this.game.party.returnToFreeRoam();
@@ -1057,6 +1065,9 @@ export class GameMenu {
          <div class="gg-options">${menuButton('resume','▶ RESUME',true)}
          ${this.game.gigs.active?.status === 'running' ? menuButton('abandon-gig','✕ ABANDON GIG') : ''}
          ${this.game.party.match ? '' : menuButton('party','⚡ PARTY MODES')}
+         ${!this.game.party.match && !this.game.rules.unlocks.isUnlocked('glide') &&
+           this.game.rules.wallet.coins >= TUNING.progression.unlockCosts.glide ?
+           menuButton('unlock-glide', 'UNLOCK GLIDE · ' + TUNING.progression.unlockCosts.glide + ' CUD COINS') : ''}
          ${menuButton('settings','⚙ CONTROLS &amp; SETTINGS')}${menuButton('title','⌂ QUIT TO TITLE')}</div>` :
       this.screen === 'party' ? this.partyBody() :
       this.screen === 'party-confirm' ? this.partyConfirmBody() :
