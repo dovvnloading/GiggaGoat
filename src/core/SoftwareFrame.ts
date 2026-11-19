@@ -1,6 +1,9 @@
 /** Projected positions remain homogeneous until the triangle has been clipped. */
 export interface ClipVertex { x: number; y: number; w: number; u: number; v: number }
-export interface SoftwareTexture { pixels: Uint8ClampedArray; width: number; height: number }
+export interface SoftwareTexture {
+  pixels: Uint8ClampedArray; width: number; height: number;
+  flipY: boolean; repeatU: boolean; repeatV: boolean;
+}
 
 interface ScreenVertex { x: number; y: number; iz: number; uz: number; vz: number }
 
@@ -112,9 +115,11 @@ export class SoftwareFrame {
         if (depth <= this.depth[i]!) continue;
         let value = colour;
         if (texture) {
-          const u = uz / iz, v = vz / iz;
-          const tx = Math.floor((u - Math.floor(u)) * texture.width);
-          const ty = Math.floor((v - Math.floor(v)) * texture.height);
+          let u = uz / iz, v = vz / iz;
+          u = texture.repeatU ? u - Math.floor(u) : Math.min(1, Math.max(0, u));
+          v = texture.repeatV ? v - Math.floor(v) : Math.min(1, Math.max(0, v));
+          const tx = Math.min(texture.width - 1, Math.floor(u * texture.width));
+          const ty = Math.min(texture.height - 1, Math.floor((texture.flipY ? 1 - v : v) * texture.height));
           const k = 4 * (ty * texture.width + tx);
           const texels = texture.pixels;
           if (texels[k + 3]! < 96) continue;

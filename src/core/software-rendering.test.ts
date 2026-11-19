@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
+import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
+import { softwareGeometry } from './software-geometry';
 import { SoftwareFrame, pixel } from './SoftwareFrame';
 import { SoftwareGameRenderer } from './SoftwareGameRenderer';
 
@@ -8,6 +10,25 @@ function imageData(width: number, height: number): ImageData {
 }
 
 describe('software 3D rendering', () => {
+  it('keeps the shaft of a tall thin prop connected in its distant mesh', async () => {
+    await MeshoptSimplifier.ready;
+    const geometry = new THREE.CylinderGeometry(.045, .045, 6, 32, 8);
+    const position = geometry.getAttribute('position');
+    const data = softwareGeometry(geometry, 'far');
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    let crossingArea = 0;
+    for (let k = 0; k < data.corners.length; k += 3) {
+      a.fromBufferAttribute(position, data.sources[data.corners[k]!]!);
+      b.fromBufferAttribute(position, data.sources[data.corners[k + 1]!]!);
+      c.fromBufferAttribute(position, data.sources[data.corners[k + 2]!]!);
+      if (Math.min(a.y, b.y, c.y) < .17 && Math.max(a.y, b.y, c.y) > .17) {
+        crossingArea += b.sub(a).cross(c.sub(a)).length() / 2;
+      }
+    }
+    expect(crossingArea).toBeGreaterThan(.02);
+    geometry.dispose();
+  });
+
   it('clips triangles at the camera and resolves crossing surfaces by pixel depth', () => {
     const frame = new SoftwareFrame(imageData(32, 32));
     const vertex = (x: number, y: number, w: number) => ({ x, y, w, u: 0, v: 0 });
