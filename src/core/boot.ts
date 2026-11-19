@@ -5,11 +5,14 @@ import { Game } from './Game';
 import { GameView } from './GameView';
 import { GameMenu } from './GameMenu';
 import { loadSave, DEFAULT_SETTINGS } from './Persistence';
+import { createGameRenderer } from './game-renderer';
 
 /** Browser entry; Game itself remains usable headlessly without this module. */
 export async function bootGame(host: HTMLElement): Promise<{
   game: Game; view: GameView; menu: GameMenu; audio: AudioEngine; dispose: () => void;
 }> {
+  const renderer = createGameRenderer();
+  let viewOwnsRenderer = false;
   const loading = document.createElement('div');
   loading.style.cssText = 'position:absolute;inset:0;display:grid;place-items:center;' +
     'font:900 clamp(28px,5vw,52px) system-ui;color:#ffd833;' +
@@ -36,7 +39,8 @@ export async function bootGame(host: HTMLElement): Promise<{
     const unbindUnlock = audio.unlockOnFirstInput(window, onVisibility);
     loading.remove();
     try {
-      const view = new GameView(host, game, gameAudio);
+      const view = new GameView(host, game, renderer, gameAudio);
+      viewOwnsRenderer = true;
       document.addEventListener('visibilitychange', onVisibility);
       onVisibility();
       try {
@@ -67,5 +71,6 @@ export async function bootGame(host: HTMLElement): Promise<{
     }
   } finally {
     loading.remove();
+    if (!viewOwnsRenderer) renderer.dispose();
   }
 }

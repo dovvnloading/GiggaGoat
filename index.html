@@ -11,6 +11,18 @@
       body { overscroll-behavior: none; }
       #app { position: fixed; inset: 0; overflow: hidden; }
       canvas { display: block; }
+      .game-start-error {
+        box-sizing: border-box; min-height: 100%; padding: 28px;
+        display: flex; flex-direction: column; justify-content: center; align-items: center;
+        text-align: center; background: #262148; color: #fff4df; font: 16px system-ui, sans-serif;
+      }
+      .game-start-error h1 { margin: 0; font-size: clamp(26px, 5vw, 40px); color: #ffd85d; }
+      .game-start-error p { margin: 12px 0 22px; max-width: 34ch; line-height: 1.5; }
+      .game-start-error button {
+        min-height: 44px; padding: 9px 18px; border: 2px solid #ffd06b; border-radius: 9px;
+        color: #2b2047; background: #ffd85d; font: 700 16px system-ui, sans-serif; cursor: pointer;
+      }
+      .game-start-error button:focus-visible { outline: 3px solid white; outline-offset: 3px; }
     </style>
   </head>
   <body>

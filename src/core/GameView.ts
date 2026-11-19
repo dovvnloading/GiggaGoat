@@ -48,7 +48,6 @@ const PAUSED_SCENE_INTERVAL_MS = 1000 / 12;
 
 /** All graphics, time sampling, DOM and input live outside the headless Game. */
 export class GameView {
-  readonly renderer: THREE.WebGLRenderer;
   readonly camera = new THREE.PerspectiveCamera(67, 1, .07, 2200);
   readonly scene = new THREE.Scene();
   readonly world: WorldScene;
@@ -127,8 +126,7 @@ export class GameView {
   private disposed = false;
 
   constructor(private readonly host: HTMLElement, readonly game: Game,
-    private readonly audio?: GameAudio) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    readonly renderer: THREE.WebGLRenderer, private readonly audio?: GameAudio) {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.setPixelRatio(1); // The saved graphics preset is applied by GameMenu.
     this.renderer.shadowMap.enabled = true;

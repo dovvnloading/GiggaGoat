@@ -1,4 +1,5 @@
 import { bootGame } from './core/boot';
+import { WebGLUnavailableError } from './core/game-renderer';
 
 // Supply a real document icon before Chrome's default /favicon.ico lookup.
 // A self-contained SVG also works at the GitHub Pages subpath, without an asset request.
@@ -20,8 +21,21 @@ const host = document.getElementById('app');
 if (!host) throw new Error('Missing #app element');
 void bootGame(host).catch(error => {
   console.error('Gigga-Goat failed to start', error);
-  const notice = document.createElement('div');
-  notice.style.cssText = 'padding:32px;color:#fff;background:#35305b;font:700 18px system-ui';
-  notice.textContent = 'Billy Isle could not load. Check the developer console and reload to try again.';
+  const notice = document.createElement('section');
+  notice.className = 'game-start-error';
+  notice.setAttribute('aria-labelledby', 'game-start-error-title');
+  const title = document.createElement('h1');
+  title.id = 'game-start-error-title';
+  title.textContent = 'Billy Isle couldn’t start';
+  const detail = document.createElement('p');
+  detail.setAttribute('role', 'alert');
+  detail.textContent = error instanceof WebGLUnavailableError
+    ? 'This browser could not start WebGL 2, which Gigga-Goat uses to draw the game.'
+    : 'The game hit an error during startup.';
+  const retry = document.createElement('button');
+  retry.type = 'button';
+  retry.textContent = 'Retry loading';
+  retry.addEventListener('click', () => window.location.reload());
+  notice.append(title, detail, retry);
   host.replaceChildren(notice);
 });
