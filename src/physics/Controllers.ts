@@ -1,5 +1,5 @@
 import type { RayHit } from './PhysicsWorld';
-import { GROUND_QUERY_GROUPS } from './CollisionGroups';
+import { CollisionLayer, GROUND_QUERY_GROUPS } from './CollisionGroups';
 import { add, clamp, clampLength, cross, dot, forward, length, mul, normalize, right, rotate, sub, V, type Vec3 } from './math';
 import type { GoatRagdoll } from './GoatRagdoll';
 
@@ -100,12 +100,23 @@ export class BalanceController {
     torso.applyTorqueImpulse(angularImpulse,true);
 
     const hit = g.locomotion.groundHit;
-    if (!hit || g.locomotion.isClinging || torso.linvel().y > 1.1) return;
+    const velocity = torso.linvel();
+    if (!hit || g.locomotion.isClinging || velocity.y > 1.1) return;
     const height = torso.translation().y - hit.point.y;
     if (height > this.tuning.rideHeight*g.size + .65*g.size) return;
-    const yError = this.tuning.rideHeight*g.size - height;
+    // A fixed deck follows a plane. Use its next support height and damp
+    // separation from it as the goat moves downhill.
+    const normal = hit.normal;
+    const layers = hit.collider.collisionGroups() >>> 16;
+    const fixedDeck = (layers & (CollisionLayer.prop | CollisionLayer['build-piece'])) !== 0 &&
+      (!hit.body || hit.body.isFixed());
+    const downhillSpeed = fixedDeck && normal.y >= g.locomotion.minWalkingNormalY
+      ? Math.min(0, -(normal.x * velocity.x + normal.z * velocity.z) / normal.y)
+      : 0;
+    const yError = this.tuning.rideHeight*g.size - height + downhillSpeed * dt;
+    const relativeSpeed = velocity.y - downhillSpeed;
     const acceleration = clamp(
-      yError*this.tuning.rideStiffness - torso.linvel().y*this.tuning.rideDamping + 9.81,
+      yError*this.tuning.rideStiffness - relativeSpeed*this.tuning.rideDamping + 9.81,
       -this.tuning.maxLiftAcceleration, this.tuning.maxLiftAcceleration,
     );
     torso.applyImpulse(V(0,acceleration*g.mass*dt,0),true);
@@ -240,7 +251,7 @@ export class LocomotionController {
     g.torso.applyTorqueImpulse(mul(axis, scale * .12 * correction * dt), true);
   }
 
-  private get minWalkingNormalY(): number {
+  get minWalkingNormalY(): number {
     return Math.cos(this.tuning.maxSlopeDegrees * Math.PI / 180);
   }
 

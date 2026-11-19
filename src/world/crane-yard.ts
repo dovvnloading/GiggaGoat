@@ -13,12 +13,16 @@ export const CRANE_YARD_PLAN = {
   rearGate: { min: -16, max: 8 },
 } as const;
 
+export const CRANE_SWITCHBACK_PREFIX = 'crane-yard-ramp-';
+
 interface YardOptions {
-  /** Height of the bottom of the prop, in metres above the central paved pad. */
+  idKind?: string;
+  /** Height of the bottom of the local box, in metres above the central paved pad. */
   bottom?: number;
   /** Upper storeys share the same datum instead of tilting with terrain. */
   fixedToPad?: boolean;
   yaw?: number;
+  pitch?: number;
   color?: number;
   dynamicMass?: number;
   collidable?: boolean;
@@ -48,11 +52,12 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
     const size = { x: width * scale, y: height * scale, z: depth * scale };
     const ground = options.fixedToPad ? padY : gridSample(island, x, z);
     const prop: PropDescriptor = {
-      id: 'crane-yard-' + kind + '-' + serial++,
+      id: 'crane-yard-' + (options.idKind ?? kind) + '-' + serial++,
       kind, poiId: 'crane-yard',
       transform: {
         position: { x, y: ground + ((options.bottom ?? 0) + height / 2) * scale, z },
         rotationY: options.yaw ?? 0,
+        ...(options.pitch === undefined ? {} : { rotationX: options.pitch }),
       },
       size, shape: options.shape ?? 'cuboid',
       body: options.dynamicMass === undefined
@@ -240,15 +245,25 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
 
   // A switchback construction ramp climbs around the open east edge. Its
   // lower mouth faces the public gate and each wide landing opens to a floor.
-  const front = 3.6, rear = -11.4, laneLength = front - rear;
-  const accessTint = 0x78b3bc;
-  for (const [index, floorBottom] of floorBottoms.entries()) {
-    const fromFront = index % 2 === 0;
-    const floor = floorBottom + 1.15;
-    const base = index === 0 ? -.18 : floorBottoms[index - 1]! + 1.15;
-    put('ramp', fromFront ? 0.15 : 4.55, (front + rear) / 2, 3.4,
-      floor - base, laneLength, { yaw: fromFront ? Math.PI : 0,
-        bottom: base, fixedToPad: true, color: accessTint });
+  const front = 3.6, rear = -11.4, run = front - rear;
+  const treadWidth = 3.4, treadDepth = .26, accessTint = 0x8ac9d5;
+  const flights = floorBottoms.map((bottom, i) => ({
+    fromFront: i % 2 === 0, x: i % 2 === 0 ? .15 : 4.55,
+    base: i === 0 ? -.18 : floorBottoms[i - 1]! + 1.15,
+    floor: bottom + 1.15,
+  }));
+  for (const { fromFront, x, base, floor } of flights) {
+    const slope = floor - base;
+    const pitch = -Math.atan2(slope, run);
+    const direction = fromFront ? -1 : 1;
+    // The top face follows the original wedge plane. Sink the box centre
+    // along its normal so both ends meet their landings at the same height.
+    put('concrete-slab', x, (front + rear) / 2 - direction * Math.sin(pitch) * treadDepth / 2,
+      treadWidth, treadDepth, Math.hypot(slope, run), {
+        idKind: 'ramp', yaw: fromFront ? Math.PI : 0, pitch, fixedToPad: true,
+        bottom: (base + floor) / 2 - (1 + Math.cos(pitch)) * treadDepth / 2,
+        color: accessTint,
+      });
     const landingZ = fromFront ? rear - 1.8 : front + 1.8;
     put('concrete-slab', 1.05, landingZ, 11.2, .38, 3.6,
       { bottom: floor - .40, fixedToPad: true, color: 0x8ba2a5 });
@@ -265,5 +280,34 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
     { yaw: Math.PI / 2, color: 0xf4e7b9 });
   put('site-barrier', 2.5, 6.3, 2.4, 1.18, .80,
     { yaw: Math.PI / 2, color: 0xf4e7b9 });
+
+  const frame = { idKind: 'ramp-frame', fixedToPad: true, climbable: false, color: 0xefbe55 };
+  const stations = [rear + run / 4, front - run / 4] as const;
+  const postWidth = .28, postOffset = (treadWidth + postWidth) / 2 + .02;
+  for (const [i, flight] of flights.entries()) {
+    const { x, fromFront, base, floor } = flight;
+    const height = (z: number) => base +
+      (floor - base) * (fromFront ? front - z : z - rear) / run;
+    for (const z of stations) {
+      put('concrete-slab', x, z, 2 * postOffset + postWidth, .22, .42,
+        { ...frame, bottom: height(z) - .46 });
+      if (i < 2) continue;
+      // Each pair of posts supports the two stacked flights. The posts
+      // stand outside the full walking width of both lanes.
+      for (const side of [-1, 1]) {
+        put('concrete-column', x + side * postOffset, z, postWidth, height(z) - .22, postWidth,
+          { ...frame, bottom: -.10 });
+      }
+    }
+    const [lowZ, highZ] = fromFront ? [stations[1], stations[0]] : stations;
+    const lowY = Math.max(.12, height(lowZ) - 2.1);
+    const highY = height(highZ) - .62;
+    const length = Math.hypot(highZ - lowZ, highY - lowY);
+    const pitch = Math.atan2(highZ - lowZ, highY - lowY);
+    for (const side of [-1, 1]) {
+      put('concrete-column', x + side * postOffset, (lowZ + highZ) / 2, .19, length, .19,
+        { ...frame, bottom: (lowY + highY - length) / 2, pitch });
+    }
+  }
   return props;
 }

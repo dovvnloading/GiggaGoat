@@ -1,7 +1,12 @@
 /** Public, engine-independent world data. Distances are metres; Y is up. */
 export interface Vec2 { x: number; z: number }
 export interface Vec3 { x: number; y: number; z: number }
-export interface Transform { position: Vec3; rotationY: number }
+export interface Transform {
+  position: Vec3;
+  rotationY: number;
+  /** Local pitch before yaw for sloping static scenery. */
+  rotationX?: number;
+}
 export type Seed = string | number;
 
 export const POI_IDS = [

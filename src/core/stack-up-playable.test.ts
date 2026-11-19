@@ -1,6 +1,5 @@
 import { expect, it } from 'vitest';
 import { Game, type PlayerIntent } from './Game';
-import { heightAt } from '../world';
 
 type Point = { x: number; z: number };
 const ticks = (g: Game, n: number, i: PlayerIntent = {}) => { for (let t = 0; t < n; t++) g.step(i); };
@@ -21,8 +20,7 @@ it.each(['easy', 'medium', 'hard'] as const)('uses the native lift for a stable 
   const g = await Game.create({ seed: 'billy-isle', resolution: 193 });
   try {
     const b = g.gigs.boards.find(entry => entry.poiId === 'crane-yard')!.position;
-    const x = b.x + 7.6, z = b.z + 2;
-    g.teleport({ x, y: heightAt(g.island, x, z), z }, 0);
+    g.teleport(b, 0);
     ticks(g, 45);
     let offer = g.gigs.board('crane-yard').find(o => o.gigId === 'stack-up' && o.difficulty === tier);
     while (!offer) {

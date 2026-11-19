@@ -15,21 +15,6 @@ function intersectsRoad(
     box.minZ < z + halfLength - tolerance;
 }
 
-/** Footprint of the actual instanced unit box, including road grade and yaw. */
-function instanceFootprint(mesh: THREE.InstancedMesh, index: number): Footprint {
-  const matrix = new THREE.Matrix4();
-  const corner = new THREE.Vector3();
-  mesh.getMatrixAt(index, matrix);
-  const xs: number[] = [], zs: number[] = [];
-  for (const x of [-0.5, 0.5]) for (const z of [-0.5, 0.5]) {
-    corner.set(x, 0.5, z).applyMatrix4(matrix);
-    xs.push(corner.x);
-    zs.push(corner.z);
-  }
-  return { minX: Math.min(...xs), maxX: Math.max(...xs),
-    minZ: Math.min(...zs), maxZ: Math.max(...zs) };
-}
-
 describe('Hoofington E1: road surface and painted crossing', () => {
   it('renders one asphalt deck through the village and joins both approach roads', () => {
     const island = generateIsland({ seed: 'billy-isle' });
@@ -80,17 +65,11 @@ describe('Hoofington E1: road surface and painted crossing', () => {
           }
         };
 
-        // Trail ribbons are one indexed mesh; the remaining art uses instances.
-        const trail = view.group.getObjectByName('paths-trail') as THREE.Mesh;
-        expect(trail).toBeInstanceOf(THREE.Mesh);
-        expect(trail).not.toBeInstanceOf(THREE.InstancedMesh);
-        inspectTriangles(trail);
-        for (const name of ['paved-village-sidewalks', 'raised-stone-curbs']) {
-          const mesh = view.group.getObjectByName(name) as THREE.InstancedMesh;
-          expect(mesh, name).toBeInstanceOf(THREE.InstancedMesh);
-          for (let i = 0; i < mesh.count; i++) {
-            if (overlaps(instanceFootprint(mesh, i))) intrusions.push(name + '[' + i + ']');
-          }
+        for (const name of ['paths-trail', 'paved-village-sidewalks', 'raised-stone-curbs']) {
+          const mesh = view.group.getObjectByName(name) as THREE.Mesh;
+          expect(mesh, name).toBeInstanceOf(THREE.Mesh);
+          expect(mesh, name).not.toBeInstanceOf(THREE.InstancedMesh);
+          inspectTriangles(mesh);
         }
 
         // Surface decals are world-space triangles merged into ground chunks.
@@ -164,6 +143,67 @@ describe('Hoofington E1: road surface and painted crossing', () => {
           expect(positions.getY(vertex)).toBeCloseTo(roadY + 0.22, 2);
         }
       }
+    } finally {
+      view.dispose();
+    }
+  });
+});
+
+describe('Downtown street verge', () => {
+  it('joins the curb and sidewalk over every grade change and follows the actual asphalt and terrain', () => {
+    const island = generateIsland();
+    const { width, points } = makeLocalStreets(island).find(road => road.from === 'downtown-bleatsville')!;
+    const view = createWorldScene(island);
+    try {
+      view.group.updateMatrixWorld(true);
+      const road = view.group.getObjectByName('paths-road')!;
+      const curb = view.group.getObjectByName('raised-stone-curbs') as THREE.Mesh;
+      const walk = view.group.getObjectByName('paved-village-sidewalks') as THREE.Mesh;
+      const paint = view.group.getObjectByName('two-lane-edge-stripes') as THREE.Mesh;
+      const street = view.group.getObjectByName('two-lane-streets-and-sidewalks')!;
+      const terrain = view.group.children.filter(mesh => mesh.userData['terrainChunk']);
+      const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
+      const heights = (objects: THREE.Object3D[], x: number, z: number) => {
+        ray.ray.origin.set(x, 50, z);
+        return ray.intersectObjects(objects, false).map(hit => hit.point.y);
+      };
+      const edge = width / 2;
+      for (let i = 1; i < points.length - 1; i++) {
+        const { x, z } = points[i]!;
+        for (const side of [-1, 1]) {
+          for (const [surface, offset] of [[curb, .19], [walk, 1.35]] as const) {
+            const px = x + side * (edge + offset);
+            const before = heights([surface], px, z - .008);
+            const after = heights([surface], px, z + .008);
+            expect(before, surface.name + ' before ' + z).toHaveLength(1);
+            expect(after, surface.name + ' after ' + z).toHaveLength(1);
+            expect(Math.abs(before[0]! - after[0]!), surface.name + ' step at ' + z).toBeLessThan(.01);
+          }
+          const px = x + side * (edge - .35);
+          expect(heights([paint], px, z)).toEqual([]);
+          const marking = heights([paint], px, z + .19)[0]!;
+          expect(marking - heights([road], px, z + .19)[0]!).toBeCloseTo(.017, 3);
+
+          const nearSeam = heights([curb], x + side * (edge + .355), z - .008)[0]!;
+          const farSeam = heights([walk], x + side * (edge + .37), z - .008)[0]!;
+          expect(nearSeam - farSeam).toBeCloseTo(.025, 2);
+          const outer = x + side * (edge + 2.325);
+          const paving = heights([walk], outer, z - .008)[0]!;
+          expect(paving - heights(terrain, outer, z - .008)[0]!).toBeCloseTo(.055, 1);
+          expect(heights([walk], x + side * (edge + 2.36), z - .008)).toEqual([]);
+          expect(heights([curb], x + side * (edge + .01), z - .008)).toEqual([]);
+        }
+      }
+
+      expect(street.children).toHaveLength(6);
+      let triangles = 0;
+      for (const [mesh, color] of [[curb, 0xf2e6ce], [walk, 0xdcd4ba], [paint, 0xf2e9cf]] as const) {
+        expect(mesh.geometry.groups).toEqual([]);
+        expect((mesh.material as THREE.MeshToonMaterial).color.getHex()).toBe(color);
+        expect(mesh.castShadow).toBe(false);
+        triangles += mesh.geometry.index!.count / 3;
+      }
+      expect(triangles).toBeLessThanOrEqual((points.length - 1) * 2 * 3 * 12);
     } finally {
       view.dispose();
     }

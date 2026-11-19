@@ -19,7 +19,7 @@ import { CAMERA_TARGET_HEIGHT, PLAY_CAMERA_PITCH, SPAWN_CAMERA_PITCH, SPAWN_CAME
   goatCameraLookAhead, goatCameraOffset, goatCameraVerticalOffset, goatOrbitOffset,
   goatViewDirection } from './GoatCamera';
 import { GameHud, type FramePerformance } from './GameHud';
-import { createSplashDiveMarkers, hayHaulGuidance, type HayHaulGuidance } from './GigPresentation';
+import { createSplashDiveMarkers, createSummitTrailMarker, hayHaulGuidance, type HayHaulGuidance } from './GigPresentation';
 import { MowDownPresentation } from './MowDownPresentation';
 import {
   WORLD_LIBRARY_KINDS, createWorldLibraryProp, createBoardLibraryProp,
@@ -300,22 +300,24 @@ export class GameView {
       const root = createBoardLibraryProp(this.propFactory);
       const mountain = board.poiId === 'mt-gigga';
       const lighthouse = board.poiId === 'old-lighthouse';
+      const craneYard = board.poiId === 'crane-yard';
+      const smallBadge = mountain || craneYard;
       const compact = board.poiId === 'hoofington' || board.poiId === 'downtown-bleatsville' ||
-        lighthouse || mountain;
+        lighthouse || smallBadge;
       if (compact) {
         root.scale.multiplyScalar(.58);
         // The summit notice faces the last climb from Hoofington.
-        root.rotation.y = mountain ? 2.67 : lighthouse ? Math.PI / 2 : -Math.PI / 2;
+        if (!craneYard) root.rotation.y = mountain ? 2.67 : lighthouse ? Math.PI / 2 : -Math.PI / 2;
       }
-      const base = mountain || lighthouse ? 0 : .15;
+      const base = smallBadge || lighthouse ? 0 : .15;
       root.position.set(board.position.x, board.position.y + base, board.position.z);
       this.instancedProps.add(root);
       this.boardRoots.push(root);
-      if (compact && !mountain) continue;
+      if (compact && !smallBadge) continue;
 
       const overlay = new THREE.Group();
       overlay.position.copy(root.position);
-      if (mountain) {
+      if (smallBadge) {
         overlay.add(this.textSprite('E · GIGS', 2.4, .64, 2.9));
       } else {
         overlay.add(this.textSprite('E · GIGS', 4.8, 1.2, 3.4));
@@ -424,7 +426,26 @@ export class GameView {
           this.gigMarkers.add(this.splashDive.root);
         }
         const customMarkers = config.kind === 'hay-haul' || config.kind === 'mow-down' || config.kind === 'splash-dive';
-        for (const marker of customMarkers ? [] : run.setup.markers) {
+        const markers = customMarkers ? [] : run.setup.markers;
+        const summitTrail = config.kind === 'summit-sprint' && markers[0]?.type === 'start';
+        const trailSurfaces = summitTrail ? new Set([this.game.colliders.terrain.handle,
+          ...this.game.colliders.paths.map(path => path.handle)]) : null;
+        for (const [index, marker] of markers.entries()) {
+          if (trailSurfaces) {
+            const previous = markers[index - 1]?.position ?? marker.position;
+            const next = markers[index + 1]?.position ?? marker.position;
+            const facing = Math.atan2(next.x - previous.x, next.z - previous.z);
+            const scale = this.game.island.size / 600;
+            const sampleGround = (x: number, z: number): number => {
+              const ground = this.game.physics.raycast({ x, y: marker.position.y + 3 * scale, z },
+                { x: 0, y: -1, z: 0 }, 6 * scale,
+                { predicate: collider => trailSurfaces.has(collider.handle) });
+              return ground?.point.y ?? heightAt(this.game.island, x, z);
+            };
+            this.gigMarkers.add(createSummitTrailMarker(marker.position, facing, scale,
+              marker.type === 'destination', sampleGround));
+            continue;
+          }
           const group = new THREE.Group();
           group.position.copy(vec(marker.position));
           const ring = new THREE.Mesh(new THREE.RingGeometry(
@@ -480,7 +501,7 @@ export class GameView {
     for (const group of this.gigMarkers.children) {
       if (group === this.mowDown) continue;
       const ring = group.children[0];
-      if (ring instanceof THREE.Mesh && ring.material instanceof THREE.MeshBasicMaterial) {
+      if (ring instanceof THREE.Mesh && ring.material instanceof THREE.MeshBasicMaterial && ring.material.transparent) {
         ring.material.opacity = .6 + .22 * Math.sin(this.game.physics.time * 3);
       }
     }

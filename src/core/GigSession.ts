@@ -127,6 +127,11 @@ export class GigSession {
         position.x += 8.1 * scale;
         position.z += 2.2 * scale;
         position.y = heightAt(island, position.x, position.z);
+      } else if (poi.id === 'crane-yard') {
+        // Open apron beside the public gate, clear of both switchback lanes.
+        position.x += 7.6 * scale;
+        position.z += 2 * scale;
+        position.y = heightAt(island, position.x, position.z);
       } else if (poi.id === 'mt-gigga') {
         // South shoulder of the last Hoofington switchback, clear of the summit ring.
         position.x -= scale;

@@ -216,9 +216,9 @@ function showDebug(): void {
           color: collider.body.type === 'dynamic' ? 0xffa85c : 0x53fae3,
           wireframe: true, transparent: true, opacity: 0.32, depthTest: false,
         }));
-      const { position, rotationY } = collider.transform;
+      const { position, rotationY, rotationX = 0 } = collider.transform;
       mesh.position.set(position.x, position.y, position.z);
-      mesh.rotation.y = rotationY;
+      mesh.rotation.set(rotationX, rotationY, 0, 'YXZ');
       colliderDebug.add(mesh);
     }
     scene.add(colliderDebug);
