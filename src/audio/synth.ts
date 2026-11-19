@@ -235,6 +235,20 @@ export class ProceduralSynth {
         t(0, 145, .22, .2, 'triangle', 85);
         n(0, .1, .17, 1400);
         break;
+      case 'toy-gas':
+        for (let i=0;i<7;i++) t(i*.045,106-i*6,.074,.22,'sawtooth',54-i*2);
+        n(.05,.24,.11,320,'lowpass'); break;
+      case 'toy-glob':
+        t(0,410,.11,.25,'triangle',95); t(.065,142,.095,.16,'sine',230); break;
+      case 'toy-brew':
+        n(0,.26,.17,4900,'highpass');
+        arpeggio([0,7,12,16],310,.068,'sine',.15); break;
+      case 'toy-sock':
+        t(0,140,.42,.18,'triangle',320); t(.10,147,.33,.12,'sine',323); break;
+      case 'toy-pogo':
+        t(0,165,.23,.23,'triangle',470); t(.09,460,.19,.15,'sine',240); break;
+      case 'toy-duck':
+        t(0,640,.105,.17,'sawtooth',340); t(.125,550,.13,.14,'triangle',280); break;
       case 'graze':
         n(0, .09, .13, 1850); n(.07, .06, .08, 2300);
         break;

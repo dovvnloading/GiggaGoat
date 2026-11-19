@@ -7,7 +7,7 @@ const BUILD_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4'];
 const KEYBOARD_CONTROLS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight',
   'KeyI', 'KeyJ', 'KeyK', 'KeyL', 'Space', 'ShiftLeft', 'ShiftRight', 'KeyE', 'KeyF',
-  'KeyQ', 'KeyR', 'KeyG', 'KeyB', 'KeyC', 'F3', ...BUILD_KEYS,
+  'KeyQ', 'KeyR', 'KeyV', 'KeyX', 'KeyG', 'KeyB', 'KeyC', 'F3', ...BUILD_KEYS,
 ]);
 const STICK_ACTION_DELTA = .2;
 const STICK_REST_MAGNITUDE = .12;
@@ -69,6 +69,9 @@ export class GameInput {
   private pendingBleat = false;
   private pendingFlop = false;
   private pendingFling = false;
+  private pendingCycle = 0;
+  private pendingToy = false;
+  private padToyMask = 0;
   private pendingGraze = false;
   private pendingInteract = false;
   private readonly unsubscribers: Array<() => void> = [];
@@ -109,6 +112,8 @@ export class GameInput {
       if (code === 'F3') this.debugVisible = !this.debugVisible;
       if (code === 'Space') this.pendingJump = true;
       if (code === 'KeyE') { this.pendingBleat = true; this.pendingInteract = true; }
+      if (code === 'KeyV') this.pendingCycle = event.shiftKey ? -1 : 1;
+      if (code === 'KeyX') this.pendingToy = true;
       if (code === 'KeyG') this.pendingGraze = true;
       if (code === 'KeyQ') this.pendingFlop = true;
       if (code === 'KeyF') this.pendingFling = true;
@@ -286,6 +291,7 @@ export class GameInput {
     let placeBuild = this.buildPlaceQueued;
     let buildPiece = this.selected;
     let reelTongue = pressed('KeyR');
+    let cycleToy = this.pendingCycle, useToy = this.pendingToy;
     let graze = this.pendingGraze;
     let interact = this.pendingInteract;
 
@@ -321,11 +327,20 @@ export class GameInput {
       const padToggle = down(pad, 3);
       if (padToggle && !this.padToggleWasDown) toggleBuild = true;
       this.padToggleWasDown = padToggle;
-      buildPiece = PIECES.find(piece => down(pad, PAD_BUILD_BINDINGS[piece].button)) ?? buildPiece;
+      const mask = Number(down(pad,14)) | Number(down(pad,15)) << 1 | Number(down(pad,12)) << 2;
+      const edge = mask & ~this.padToyMask;
+      this.padToyMask = mask;
+      if (!buildMode) {
+        if (edge & 1) cycleToy = -1;
+        if (edge & 2) cycleToy = 1;
+        useToy ||= !!(edge & 4);
+      }
+      if (buildMode) buildPiece = PIECES.find(piece => down(pad, PAD_BUILD_BINDINGS[piece].button)) ?? buildPiece;
       if (buildMode && chargeHeadbutt && !this.padPlaceWasDown) placeBuild = true;
       this.padPlaceWasDown = chargeHeadbutt;
     } else {
       if (this.device === 'gamepad') this.recordDevice('keyboard-mouse');
+      this.padToyMask = 0;
       this.padPromptButtons = 0;
       this.padPromptMove.x = this.padPromptMove.y = 0;
       this.padPromptLook.x = this.padPromptLook.y = 0;
@@ -345,10 +360,13 @@ export class GameInput {
     this.pendingBleat = false;
     this.pendingFlop = false;
     this.pendingFling = false;
+    this.pendingCycle = 0;
+    this.pendingToy = false;
     this.pendingGraze = false;
     this.pendingInteract = false;
     return {
-      moveX, moveZ, cameraYaw: this.yaw, sprint, jump, glide,
+      moveX, moveZ, cameraYaw: this.yaw, cameraPitch: this.pitch, sprint, jump, glide,
+      cycleToy, useToy,
       chargeHeadbutt: !buildMode && chargeHeadbutt, tongue,
       reelTongue, flingTongue, bleat, flop,
       toggleBuild, placeBuild: buildMode && placeBuild, buildPiece, graze, interact,
@@ -357,6 +375,8 @@ export class GameInput {
 
   reset(): void {
     this.keys.clear();
+    this.pendingCycle = this.padToyMask = 0;
+    this.pendingToy = false;
     this.mousePrimary = false;
     this.mouseSecondary = false;
     this.clearMouseAnchor();

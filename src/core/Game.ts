@@ -1,3 +1,4 @@
+import { Toybox } from './Toybox';
 import type { RigidBody, ColliderDesc } from '@dimforge/rapier3d-compat';
 import {
   PhysicsWorld, GoatRagdoll, RAPIER, V, forward, add, sub, mul, rotate, collisionGroups,
@@ -48,6 +49,9 @@ const multiplyRotation = (a: Quat, b: Quat): Quat => ({
   w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
 });
 export interface PlayerIntent extends GoatIntent {
+  cameraPitch?: number;
+  cycleToy?: number;
+  useToy?: boolean;
   moveX?: number;
   moveZ?: number;
   cameraYaw?: number;
@@ -121,6 +125,7 @@ export class Game {
   readonly colliders: ColliderBuild;
   readonly rules: GameSimulation;
   readonly goat: GoatRagdoll;
+  readonly toys = new Toybox(this);
   readonly water: WaterSystem;
   readonly breakables: BreakableRegistry;
   readonly chains: ChainReactions;
@@ -726,6 +731,7 @@ export class Game {
     if (intent.toggleBuild) this.buildMode = !this.buildMode;
     if (intent.buildPiece) this.buildPiece = intent.buildPiece;
     if (intent.placeBuild && this.buildMode) this.placeBuild();
+    this.toys.input(intent);
     const result = this.physics.step(seconds);
     // WaterSystem.setSeaLevel wakes all tracked Rapier bodies. It must run
     // outside PhysicsWorld's callbacks to avoid re-entering Rapier during step.
@@ -764,6 +770,7 @@ export class Game {
       this.pendingSize = null;
     }
     this.driveGoat(this.goat, this.intent, this.rules, true, dt);
+    this.toys.tick(dt, this.intent);
     this.party.beforeTick(this.intent);
   }
 
@@ -1272,6 +1279,7 @@ export class Game {
   }
 
   respawn(): void {
+    this.toys.reset();
     const spawn = this.island.spawns[0]!.position;
     // A rescue is also a physical spawn; don't reapply the world lane's
     // clearance height on top of the ragdoll's own standing torso offset.

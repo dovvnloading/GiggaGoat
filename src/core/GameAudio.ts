@@ -93,6 +93,12 @@ export class GameAudio {
   constructor(private readonly game: Game, private readonly audio: AudioSink) {
     this.barns = game.island.props.filter(p => p.poiId === 'hoofington' && p.kind === 'barn').map(p => p.transform.position);
     this.pines = game.island.props.filter(p => p.poiId === 'whispering-pines' && p.kind === 'tree-pine').map(p => p.transform.position);
+    if (game.toys) {
+      const toySound = (e: import('./Toybox').ToyCue) =>
+        this.queueCue({sound: `toy-${e.toy}`, position:e.position, intensity: Math.min(1,e.strength*.72)});
+      game.toys.listeners.add(toySound);
+      this.off.push(() => game.toys.listeners.delete(toySound));
+    }
     this.off.push(game.onMaterialAudio(this.onMaterialContact));
     for (const type of GAMEPLAY_EVENT_TYPES) {
       this.off.push(game.rules.events.on(type, data => {
