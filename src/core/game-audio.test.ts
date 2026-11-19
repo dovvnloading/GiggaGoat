@@ -54,6 +54,9 @@ function fixture() {
     audioContext: null,
     beginResultAudio: vi.fn<(kind: 'gig' | 'party') => number | null>(() => null),
     endResultAudio: vi.fn(),
+    setMenuAudio: vi.fn(),
+    clearVoices: vi.fn(),
+    play: vi.fn(() => true),
     updateFrame: vi.fn((_frame: AudioFrame) => {}),
     setSettings: vi.fn((settings: Partial<AudioSettings>) =>
       ({ ...DEFAULT_AUDIO_SETTINGS, ...settings })),
@@ -129,7 +132,11 @@ describe('core audio render bridge', () => {
         volume: .25, musicVolume: .4, effectsVolume: .75 };
       bridge.setVolumes(settings);
       expect(f.audio.setSettings).toHaveBeenCalledWith({
-        master: .25, music: .4, sfx: .75,
+        master: .25, music: .4, sfx: .75, ui: .75 * .7 / .88,
+      });
+      bridge.setVolumes({ ...settings, effectsVolume: 0 });
+      expect(f.audio.setSettings).toHaveBeenLastCalledWith({
+        master: .25, music: .4, sfx: 0, ui: 0,
       });
       expect(validateSettings(JSON.parse(JSON.stringify(settings)))).toEqual(settings);
       expect(validateSettings({ volume: .55 })).toEqual({
@@ -141,7 +148,7 @@ describe('core audio render bridge', () => {
   });
 
 
-  it('lets a visible result advance to its audio deadline, then suspends without restarting its tail', async () => {
+  it('keeps a visible result and its later button cues on the running context', () => {
     const f = fixture();
     const context = {
       state: 'running', currentTime: 12,
@@ -163,19 +170,21 @@ describe('core audio render bridge', () => {
 
       context.currentTime = 13.589;
       bridge.frame(1 / 60, camera, false);
-      await Promise.resolve();
-      expect(context.suspend).toHaveBeenCalledOnce();
+      bridge.playMenuCue('ui-confirm');
+      expect(f.audio.play).toHaveBeenCalledWith('ui-confirm');
+      expect(f.audio.setMenuAudio).toHaveBeenLastCalledWith(true);
+      expect(context.suspend).not.toHaveBeenCalled();
       expect(f.audio.endResultAudio).not.toHaveBeenCalled();
 
-      bridge.setPaused(false);
-      await Promise.resolve();
+      bridge.setMenuOpen(false);
+      expect(f.audio.setMenuAudio).toHaveBeenLastCalledWith(false);
       expect(f.audio.endResultAudio).toHaveBeenCalledOnce();
-      expect(context.resume).toHaveBeenCalledOnce();
+      expect(context.resume).not.toHaveBeenCalled();
       expect(f.audio.beginResultAudio).toHaveBeenCalledOnce();
     } finally { bridge.dispose(); }
   });
 
-  it.each([true, false])('cancels a live result tail when its screen is replaced with paused=%s', async paused => {
+  it.each([true, false])('cancels a live result tail when leaving for menu=%s', menuOpen => {
     const f = fixture();
     const context = {
       state: 'running', currentTime: 12,
@@ -187,30 +196,51 @@ describe('core audio render bridge', () => {
     const bridge = new GameAudio(f.game, sink);
     try {
       bridge.playResultAudio('party');
-      bridge.setPaused(paused);
-      await Promise.resolve();
+      bridge.setMenuOpen(menuOpen);
+      expect(f.audio.setMenuAudio).toHaveBeenLastCalledWith(menuOpen);
       expect(f.audio.endResultAudio).toHaveBeenCalledOnce();
-      expect(context.suspend).toHaveBeenCalledTimes(paused ? 1 : 0);
+      expect(context.suspend).not.toHaveBeenCalled();
       expect(context.resume).not.toHaveBeenCalled();
     } finally { bridge.dispose(); }
   });
 
-  it('suspends for a paused/hidden game and resumes only a previously unlocked context', async () => {
+  it('honors autoplay, plays the first pending UI action once, and clears it when hidden', async () => {
     const f = fixture();
     const context = {
-      state: 'running',
+      state: 'suspended',
       suspend: vi.fn(async () => { context.state = 'suspended'; }),
       resume: vi.fn(async () => { context.state = 'running'; }),
     };
-    const sink: AudioSink = { ...f.audio, audioContext: context as unknown as AudioContext };
-    const bridge = new GameAudio(f.game, sink);
+    const bridge = new GameAudio(f.game, {
+      ...f.audio, audioContext: context as unknown as AudioContext,
+    });
+    const camera = { position: { x: 0, y: 2, z: 0 }, forward: { x: 0, y: 0, z: -1 } };
     try {
-      bridge.setPaused(true);
+      bridge.setMenuOpen(true);
+      bridge.playMenuCue('ui-click');
+      bridge.frame(1 / 60, camera, false);
+      expect(context.resume).not.toHaveBeenCalled();
+      expect(f.audio.play).not.toHaveBeenCalled();
+
+      context.state = 'running'; // Browser finished the first real user activation.
+      bridge.frame(1 / 60, camera, false);
+      bridge.frame(1 / 60, camera, false);
+      expect(f.audio.play.mock.calls).toEqual([['ui-click']]);
+      expect(f.audio.updateFrame.mock.calls.every(([frame]) => frame.cues?.length === 0)).toBe(true);
+
+      bridge.playResultAudio('party');
+      bridge.setHidden(true);
       await Promise.resolve();
-      expect(context.suspend).toHaveBeenCalledTimes(1);
-      bridge.setPaused(false);
+      expect(context.suspend).toHaveBeenCalledOnce();
+      expect(f.audio.endResultAudio).toHaveBeenCalledTimes(2);
+      expect(f.audio.clearVoices).toHaveBeenCalledOnce();
+      bridge.playMenuCue('ui-back');
+      bridge.setHidden(false);
       await Promise.resolve();
-      expect(context.resume).toHaveBeenCalledTimes(1);
+      bridge.frame(1 / 60, camera, false);
+      expect(context.resume).toHaveBeenCalledOnce();
+      expect(f.audio.beginResultAudio).toHaveBeenCalledOnce();
+      expect(f.audio.play.mock.calls).toEqual([['ui-click']]);
     } finally { bridge.dispose(); }
   });
 });

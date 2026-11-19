@@ -1,6 +1,6 @@
-import { GAMEPLAY_EVENT_TYPES } from '../audio';
+import { DEFAULT_AUDIO_SETTINGS, GAMEPLAY_EVENT_TYPES } from '../audio';
 import type {
-  AudioCue, AudioEngine, CameraAudioPose, GameplayAudioEvent, ResultAudioKind, Surface, WalkingGoat,
+  AudioCue, AudioEngine, CameraAudioPose, GameplayAudioEvent, ResultAudioKind, SoundId, Surface, WalkingGoat,
 } from '../audio';
 import { biomeAt, zoneAt } from '../world';
 import type { GoatRagdoll, Vec3 } from '../physics';
@@ -9,7 +9,9 @@ import type { GameSettings } from './Persistence';
 
 /** The narrow audio interface allows a fake AudioEngine in headless core tests. */
 export type AudioSink = Pick<AudioEngine, 'updateFrame' | 'setSettings' | 'audioContext' |
-  'beginResultAudio' | 'endResultAudio'>;
+  'beginResultAudio' | 'endResultAudio' | 'setMenuAudio' | 'clearVoices' | 'play'>;
+
+type MenuSound = Extract<SoundId, `ui-${string}`>;
 
 function surfaceAt(game: Game, position: Vec3): Surface {
   if (position.y <= game.water.seaLevel + .25) return 'water';
@@ -52,9 +54,16 @@ export class GameAudio {
     const p = body.translation();
     return { x: p.x, y: p.y, z: p.z };
   };
+  private readonly audioKindForBody = (handle: number): 'goat' | 'wood' | undefined => {
+    const body = this.game.physics.bodyData(handle);
+    if (body?.kind === 'goat') return 'goat';
+    if (body?.data === 'crate' || body?.data === 'tower' || body?.data === 'stack-crate' ||
+      body?.data === 'pallet-stack') return 'wood';
+    return undefined;
+  };
   private charging = false;
-  private paused = true;
-  private resultAudioUntil: number | null = null;
+  private hidden = false;
+  private pendingMenuCue: { sound: MenuSound; expiresAt: number } | null = null;
   private wasUnlocked = false;
   private transition: Promise<void> | null = null;
 
@@ -69,10 +78,23 @@ export class GameAudio {
   setVolumes(settings: GameSettings): void {
     this.audio.setSettings({
       master: settings.volume, music: settings.musicVolume, sfx: settings.effectsVolume,
+      ui: settings.effectsVolume * DEFAULT_AUDIO_SETTINGS.ui / DEFAULT_AUDIO_SETTINGS.sfx,
     });
   }
 
   queueCue(cue: AudioCue): void { this.cues.push(cue); }
+
+  /** UI feedback is anchored to the screen and independent of the island listener. */
+  playMenuCue(sound: MenuSound): void {
+    const context = this.audio.audioContext;
+    if (this.hidden || !context) return;
+    this.pendingMenuCue = null;
+    if (context.state === 'running') this.audio.play(sound);
+    // A trusted event may have just created the context without finishing resume.
+    else if (context.state === 'suspended') {
+      this.pendingMenuCue = { sound, expiresAt: performance.now() + 250 };
+    }
+  }
 
   /** Charge start is an input-only edge; gameplay's release is still authoritative. */
   onInput(intent: PlayerIntent): void {
@@ -81,19 +103,27 @@ export class GameAudio {
     this.charging = charging;
   }
 
-  /** Pause the actual AudioContext, not just the game rules or music scheduler. */
-  setPaused(paused: boolean): void {
-    this.paused = paused;
-    this.resultAudioUntil = null;
+  setMenuOpen(open: boolean): void {
+    this.audio.setMenuAudio(open);
     this.audio.endResultAudio();
-    if (paused) this.charging = false;
-    this.syncContext();
+    if (open) this.charging = false;
   }
 
   playResultAudio(result: ResultAudioKind): void {
-    this.paused = true;
     this.charging = false;
-    this.resultAudioUntil = this.audio.beginResultAudio(result);
+    this.audio.beginResultAudio(result);
+    this.audio.setMenuAudio(true);
+  }
+
+  setHidden(hidden: boolean): void {
+    this.hidden = hidden;
+    if (hidden) {
+      this.charging = false;
+      this.pendingMenuCue = null;
+      this.cues.length = 0;
+      this.audio.endResultAudio();
+      this.audio.clearVoices();
+    }
     this.syncContext();
   }
 
@@ -101,9 +131,8 @@ export class GameAudio {
     const context = this.audio.audioContext;
     if (!context || this.transition) return;
     if (context.state === 'running') this.wasUnlocked = true;
-    const finishingResult = this.resultAudioUntil !== null && context.currentTime < this.resultAudioUntil;
-    const suspending = this.paused && !finishingResult && context.state === 'running';
-    const resuming = !this.paused && this.wasUnlocked && context.state === 'suspended';
+    const suspending = this.hidden && context.state === 'running';
+    const resuming = !this.hidden && this.wasUnlocked && context.state === 'suspended';
     if (!suspending && !resuming) return;
     const action = suspending ? context.suspend() : context.resume();
     this.transition = action.then(() => {
@@ -115,8 +144,13 @@ export class GameAudio {
 
   /** Called on every visible animation frame, including while menus are open. */
   frame(dt: number, camera: CameraAudioPose, night: boolean): void {
-    // Catches an AudioContext first unlocked by a gesture while a menu is open.
     this.syncContext();
+    const menuCue = this.pendingMenuCue;
+    if (menuCue && performance.now() > menuCue.expiresAt) {
+      this.pendingMenuCue = null;
+    } else if (menuCue && this.audio.audioContext?.state === 'running') {
+      this.playMenuCue(menuCue.sound);
+    }
     const match = this.game.party.match;
     const goats = [observeGoat(this.game, this.game.goat)];
     const physics = this.game.goat.events.drain();
@@ -166,6 +200,7 @@ export class GameAudio {
       goatPosition: player.position,
       positionForGoat: this.positionForGoat,
       positionForBody: this.positionForBody,
+      audioKindForBody: this.audioKindForBody,
       sizeForGoat: this.sizeForGoat,
     });
   }

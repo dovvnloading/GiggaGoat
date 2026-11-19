@@ -1,4 +1,5 @@
 import { AudioEngine, localAudioSettings } from '../audio';
+import { BILLY_ISLE_RECORDINGS } from '../audio/soundtrack-assets';
 import { GameAudio } from './GameAudio';
 import { Game } from './Game';
 import { GameView } from './GameView';
@@ -21,7 +22,9 @@ export async function bootGame(host: HTMLElement): Promise<{
     // Exactly one lazily-unlocked audio engine for the island's lifetime.
     // The game's versioned save owns the three exposed volume controls; on
     // first boot, initialize those controls from the audio lane's own store.
-    const audio = new AudioEngine({ seed: game.island.seed, storage: localAudioSettings() });
+    const audio = new AudioEngine({
+      seed: game.island.seed, storage: localAudioSettings(), recordedAssets: BILLY_ISLE_RECORDINGS,
+    });
     const gameAudio = new GameAudio(game, audio);
     const settings = save?.settings ?? {
       ...DEFAULT_SETTINGS,
@@ -29,14 +32,13 @@ export async function bootGame(host: HTMLElement): Promise<{
       musicVolume: audio.settings.music,
       effectsVolume: audio.settings.sfx,
     };
-    const unbindUnlock = audio.unlockOnFirstInput(window);
+    const onVisibility = (): void => gameAudio.setHidden(document.hidden);
+    const unbindUnlock = audio.unlockOnFirstInput(window, onVisibility);
     loading.remove();
     try {
       const view = new GameView(host, game, gameAudio);
-      const onVisibility = (): void => {
-        gameAudio.setPaused(view.paused || document.hidden);
-      };
       document.addEventListener('visibilitychange', onVisibility);
+      onVisibility();
       try {
         const menu = new GameMenu(host, game, view, settings, gameAudio);
         return {

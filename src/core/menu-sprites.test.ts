@@ -220,28 +220,67 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('sprite-backed menu DOM', () => {
   it('keeps the result tail only on visible gig and party results', () => {
-    const audio = { setVolumes: vi.fn(), setPaused: vi.fn(), playResultAudio: vi.fn() };
+    const audio = { setVolumes: vi.fn(), setMenuOpen: vi.fn(), playResultAudio: vi.fn() };
     const { menu, game, doc, view, setScreen } =
       setup(audio as unknown as ConstructorParameters<typeof GameMenu>[4]);
     Object.assign(game, { acknowledgeGigResult: vi.fn() });
     try {
-      expect(audio.setPaused).toHaveBeenLastCalledWith(true);
+      expect(audio.setMenuOpen).toHaveBeenLastCalledWith(true);
       setScreen('playing');
-      expect(audio.setPaused).toHaveBeenLastCalledWith(false);
+      expect(audio.setMenuOpen).toHaveBeenLastCalledWith(false);
       setScreen('gig-results');
       expect(view.paused).toBe(true);
       expect(audio.playResultAudio).toHaveBeenLastCalledWith('gig');
       setScreen('playing');
-      expect(audio.setPaused).toHaveBeenLastCalledWith(false);
+      expect(audio.setMenuOpen).toHaveBeenLastCalledWith(false);
       setScreen('party-results');
       expect(audio.playResultAudio).toHaveBeenLastCalledWith('party');
       setScreen('pause');
-      expect(audio.setPaused).toHaveBeenLastCalledWith(true);
+      expect(audio.setMenuOpen).toHaveBeenLastCalledWith(true);
 
       doc.hidden = true;
       setScreen('party-results');
-      expect(audio.setPaused).toHaveBeenLastCalledWith(true);
+      expect(audio.setMenuOpen).toHaveBeenLastCalledWith(true);
       expect(audio.playResultAudio).toHaveBeenCalledTimes(2);
+    } finally { menu.dispose(); }
+  });
+
+  it('routes pointer, keyboard, and gamepad menu activations to UI feedback', () => {
+    const audio = { setVolumes: vi.fn(), setMenuOpen: vi.fn(), playMenuCue: vi.fn() };
+    const { menu, root, win, view, setScreen } =
+      setup(audio as unknown as ConstructorParameters<typeof GameMenu>[4]);
+    try {
+      expect(audio.playMenuCue).not.toHaveBeenCalled();
+      const settings = root.querySelector<ButtonStub>('[data-action="settings"]')!;
+      root.dispatch('click', settings, { isTrusted: true, detail: 1, pointerType: 'mouse' });
+      expect(audio.playMenuCue).toHaveBeenLastCalledWith('ui-confirm');
+
+      root.querySelector<ButtonStub>('[data-tab="controls"]')!.focus();
+      win.dispatch('keydown', { code: 'ArrowRight', preventDefault: vi.fn() });
+      expect(audio.playMenuCue).toHaveBeenLastCalledWith('ui-click');
+      const buttons = [{ pressed: true }];
+      vi.stubGlobal('navigator', { getGamepads: () => [{ connected: true, buttons, axes: [] }] });
+      root.querySelector<ButtonStub>('[data-tab="audio"]')!.focus();
+      view.onFrame?.();
+      expect(audio.playMenuCue.mock.calls).toEqual([['ui-confirm'], ['ui-click'], ['ui-click']]);
+      buttons[0]!.pressed = false;
+
+      const slider = root.querySelector<InputStub>('[id="gg-setting-effectsVolume"]')!;
+      slider.value = '0.4';
+      root.dispatch('input', slider);
+      root.dispatch('change', slider);
+      expect(audio.setVolumes).toHaveBeenLastCalledWith(expect.objectContaining({ effectsVolume: .4 }));
+      expect(audio.playMenuCue).toHaveBeenCalledTimes(4);
+      win.dispatch('keydown', { code: 'Escape', preventDefault: vi.fn(), stopPropagation: vi.fn() });
+      expect(audio.playMenuCue).toHaveBeenLastCalledWith('ui-back');
+
+      setScreen('playing');
+      win.dispatch('keydown', { code: 'Escape', preventDefault: vi.fn(), stopPropagation: vi.fn() });
+      expect(audio.playMenuCue).toHaveBeenLastCalledWith('ui-back');
+      expect(audio.setMenuOpen).toHaveBeenLastCalledWith(true);
+      root.querySelector<ButtonStub>('[data-action="resume"]')!.click();
+      expect(audio.playMenuCue).toHaveBeenLastCalledWith('ui-confirm');
+      expect(audio.setMenuOpen).toHaveBeenLastCalledWith(false);
     } finally { menu.dispose(); }
   });
 

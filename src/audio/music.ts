@@ -130,13 +130,12 @@ export class AdaptiveMusic {
     if (beat === 0 || beat === 8) {
       for (const note of [degree, degree + 2, degree + 4]) {
         this.synth.tone(this.gains.chords, at, noteHz(note, -1), duration * 1.65,
-          .075 * p.intensity, flavor === 'town' ? 'triangle' : 'sine');
+          .12 * p.intensity, flavor === 'town' ? 'triangle' : 'sine');
       }
     }
 
     if (p.rhythm && (beat === 0 || beat === 4 || beat === 7 || beat === 12)) {
-      const wave: OscillatorType = flavor === 'coast' || flavor === 'forest' ? 'sine' :
-        flavor === 'farm' ? 'triangle' : 'square';
+      const wave: OscillatorType = flavor === 'farm' || flavor === 'town' ? 'triangle' : 'sine';
       this.synth.tone(this.gains.rhythm, at, noteHz(degree + (beat === 7 ? 4 : 2), 0),
         flavor === 'mountain' ? .38 : .18, .11 * p.intensity, wave);
     }
@@ -159,6 +158,8 @@ export class AdaptiveMusic {
     }
     if (p.lead && phraseNote >= 0 && [2, 3, 6, 9, 10, 14].includes(beat)) {
       this.scheduleMelody(flavor, at, noteHz(phraseNote + degree, 1), p.intensity);
+    } else if (!p.lead && p.mode === 'free' && !p.night && phraseNote >= 0 && (beat === 2 || beat === 10)) {
+      this.scheduleMelody(flavor, at, noteHz(phraseNote + degree, 1), p.intensity * .62);
     }
     // Keep the crossfade musically alive; don't just fade silence from the old area.
     if (this.previousFlavor && this.previousFlavor !== flavor &&
@@ -232,10 +233,9 @@ export class IslandAmbience {
       this.updateAt = now + .32;
       const target = locationFlavor(location);
       for (const [flavor, bed] of this.beds) {
-        // At the dam it is a roaring low rumble; on the coast broad surf;
-        // forest has soft stream noise with chirps; mountain has windy gusts.
+        // Continuous wind and surf sit underneath the soundtrack and action cues.
         const volume: Record<Flavor, number> = {
-          farm: .065, coast: .2, town: .085, forest: .14, mountain: .18, dam: .24,
+          farm: .010, coast: .030, town: .013, forest: .021, mountain: .027, dam: .036,
         };
         const gust = flavor === 'mountain' ? .82 + .17 * Math.sin(now * .33) : 1;
         const afterDark = night && (flavor === 'forest' || flavor === 'farm') ? .55 : 1;
@@ -256,7 +256,7 @@ export class IslandAmbience {
       if (flavor === 'town') cue = 'ambient-town';
       if (flavor === 'mountain') cue = 'ambient-wind';
       if (flavor === 'dam') cue = 'ambient-dam';
-      if (cue) this.synth.play(cue, this.output, { when: now + .03, intensity: .28 });
+      if (cue) this.synth.play(cue, this.output, { when: now + .03, intensity: .18 });
       this.nextAccent = now + this.rng.range(night ? 6 : 3.4, night ? 11 : 7.2);
     }
   }
