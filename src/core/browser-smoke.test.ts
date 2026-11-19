@@ -160,6 +160,9 @@ class ChromePage {
         state = await this.evaluate<string>('JSON.stringify({' +
           'menu: document.querySelector(".gg-shell-panel")?.textContent?.slice(0, 200),' +
           'hidden: document.querySelector(".gg-shell")?.hidden,' +
+          'visibility: document.visibilityState,' +
+          'partyPhase: document.querySelector("[data-party-clock-label]")?.textContent,' +
+          'partyClock: document.querySelector("[data-party-clock]")?.textContent,' +
           'locked: !!document.pointerLockElement, url: location.href})');
       } catch { /* A browser crash may also remove the execution context. */ }
       throw new Error('Waiting for ' + what + ' failed: ' + String(error) +
@@ -576,6 +579,19 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
       await page.tap('Escape');
       await page.waitFor('document.querySelector(".gg-shell h2")?.textContent === "PAUSED"',
         'pause menu', 20000);
+      // The software renderer can starve the game's fixed countdown ticks on
+      // crowded rounds. Keep the default graphics checks above and use the
+      // shipped Low preset for the party simulation.
+      await page.click('[data-action="settings"]');
+      await page.click('[data-tab="video"]');
+      const graphics = await page.evaluate<string>(`(() => {
+        const select = document.querySelector('#gg-setting-graphics');
+        select.value = 'low';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        return document.querySelector('#gg-setting-graphics').value;
+      })()`);
+      expect(graphics).toBe('low');
+      await page.click('[data-action="back"]');
       await page.click('[data-action="resume"]');
       await page.waitFor('document.querySelector(".gg-shell")?.hidden === true',
         'resume from pause');
