@@ -275,7 +275,8 @@ export class GameInput {
     let moveZ = Number(pressed('KeyW') || pressed('ArrowUp')) -
       Number(pressed('KeyS') || pressed('ArrowDown'));
     let sprint = pressed('ShiftLeft') || pressed('ShiftRight');
-    let jump = pressed('Space') || this.pendingJump;
+    let glide = pressed('Space');
+    let jump = glide || this.pendingJump;
     let chargeHeadbutt = this.mousePrimary;
     let tongue = this.mouseSecondary;
     let bleat = pressed('KeyE') || this.pendingBleat;
@@ -301,6 +302,7 @@ export class GameInput {
       sprint ||= down(pad, 5);
       const padJump = down(pad, 0);
       jump ||= padJump;
+      glide ||= padJump;
       if (padJump && !this.padJumpWasDown) this.pendingJump = true;
       this.padJumpWasDown = padJump;
       tongue ||= down(pad, 4) || trigger(pad, 6);
@@ -346,7 +348,7 @@ export class GameInput {
     this.pendingGraze = false;
     this.pendingInteract = false;
     return {
-      moveX, moveZ, cameraYaw: this.yaw, sprint, jump, glide: pressed('Space'),
+      moveX, moveZ, cameraYaw: this.yaw, sprint, jump, glide,
       chargeHeadbutt: !buildMode && chargeHeadbutt, tongue,
       reelTongue, flingTongue, bleat, flop,
       toggleBuild, placeBuild: buildMode && placeBuild, buildPiece, graze, interact,

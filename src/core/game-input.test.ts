@@ -258,6 +258,32 @@ describe('game camera input', () => {
     expect(input.sample(1 / 60, false)).toMatchObject({ interact: true, toggleBuild: false });
   });
 
+  it('holds glide on Space and gamepad A without turning a short jump tap into glide', () => {
+    const { input, key, getGamepads } = setup();
+    const a = { pressed: false, touched: false, value: 0 };
+    getGamepads.mockReturnValue([{ connected: true, axes: [], buttons: [a] }]);
+
+    key('keydown', 'Space');
+    key('keyup', 'Space');
+    expect(input.sample(1 / 60, false)).toMatchObject({ jump: true, glide: false });
+    expect(input.sample(1 / 60, false)).toMatchObject({ jump: false, glide: false });
+
+    key('keydown', 'Space');
+    expect(input.sample(1 / 60, false)).toMatchObject({ jump: true, glide: true });
+    key('keyup', 'Space');
+    expect(input.sample(1 / 60, false)).toMatchObject({ jump: false, glide: false });
+
+    a.pressed = true;
+    expect(input.sample(1 / 60, false)).toMatchObject({ jump: true, glide: true });
+    expect(input.sample(1 / 60, false)).toMatchObject({ jump: true, glide: true });
+    a.pressed = false;
+    expect(input.sample(1 / 60, false)).toMatchObject({ jump: false, glide: false });
+
+    input.setActive(false);
+    a.pressed = true;
+    expect(input.sample(1 / 60, false)).toEqual({ cameraYaw: 0 });
+  });
+
   it('keeps the hints on keyboard and mouse for connected pads with idle stick drift', () => {
     const { input, getGamepads } = setup();
     getGamepads.mockReturnValue([{ connected: true, axes: [.13, -.13, .21, -.15], buttons: [] }]);
