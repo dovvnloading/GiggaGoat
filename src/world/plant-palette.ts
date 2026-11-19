@@ -36,7 +36,8 @@ export function plantKitBatches(entries: readonly PropDescriptor[]): Map<string,
 
 /** Grounded source geometry comes in native metres. Align a tree's trunk
  * (rather than the centre of an asymmetric crown) with its solid collider. */
-export function fitPlantGeometry(geometry: THREE.BufferGeometry, trunk: boolean): void {
+export function fitPlantGeometry(geometry: THREE.BufferGeometry, kind: PropDescriptor['kind']): void {
+  const trunk = kind === 'tree-pine' || kind === 'tree-oak';
   const box = geometry.boundingBox!;
   const height = Math.max(.001, box.max.y - box.min.y);
   const p = geometry.getAttribute('position');
@@ -50,8 +51,31 @@ export function fitPlantGeometry(geometry: THREE.BufferGeometry, trunk: boolean)
     }
     cx = (minX + maxX) / 2; cz = (minZ + maxZ) / 2;
   }
+  paintNatureKit(geometry, kind);
   const radius = Math.max(.001, box.max.x - cx, cx - box.min.x, box.max.z - cz, cz - box.min.z);
   geometry.translate(-cx, -box.min.y, -cz);
   geometry.scale(.49 / radius, .98 / height, .49 / radius);
   geometry.translate(0, -.49, 0);
+}
+
+export function paintNatureKit(geometry: THREE.BufferGeometry, kind?: PropDescriptor['kind']): void {
+  const p = geometry.getAttribute('position'), box = geometry.boundingBox!;
+  const height = Math.max(.001, box.max.y - box.min.y);
+  // Match the island's painted bark and canopies. The nature kit encodes
+  // its wood in peach and foliage in turquoise as separate palette swatches.
+  const colours = geometry.getAttribute('color');
+  const pine = kind === 'tree-pine';
+  const tree = pine || kind === 'tree-oak';
+  for (let i = 0; i < colours.count; i++) {
+    const r = colours.getX(i), g = colours.getY(i), b = colours.getZ(i);
+    const t = Math.max(0, Math.min(1, (p.getY(i) - box.min.y) / height));
+    if (tree && r > g * 1.35 && r > b * 1.5) {
+      const light = .72 + .42 * t;
+      colours.setXYZ(i, .21 * light, .096 * light, .043 * light);
+    } else if (g > r * 1.5 && b > r * 1.4) {
+      colours.setXYZ(i, pine ? .027 + .05 * t : .105 + .14 * t,
+        pine ? .135 + .18 * t : .30 + .24 * t,
+        pine ? .063 + .055 * t : .065 + .035 * t);
+    }
+  }
 }

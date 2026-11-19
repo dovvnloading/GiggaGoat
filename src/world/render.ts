@@ -87,6 +87,18 @@ const COLORS = {
   submerged: new THREE.Color('#4D9C9F'),
 } as const;
 
+// Wear under working yards, market aisles and camps shares the terrain surface.
+const DISTRICT_GROUND = {
+  'hoofington': new THREE.Color('#b08c5c'),
+  'baa-ardwalk': new THREE.Color('#d5bb89'),
+  'crane-yard': new THREE.Color('#938b7e'),
+  'downtown-bleatsville': new THREE.Color('#ac9c85'),
+  'mt-gigga': new THREE.Color('#9a8b77'),
+  'whispering-pines': new THREE.Color('#866e50'),
+  'the-dam': new THREE.Color('#97948a'),
+  'old-lighthouse': new THREE.Color('#b4a38a'),
+} as const;
+
 const CAPE_GRASS = new THREE.Color('#7FBF56');
 const CAPE_STONE = new THREE.Color('#A8A9B1');
 const MT_GIGGA_STONE = new THREE.Color(0xa39a96);
@@ -142,6 +154,10 @@ function terrainGeometry(
   const color = new THREE.Color();
   const lighthouse = island.pois.find(p => p.id === 'old-lighthouse')!.center;
   const scale = island.size / 600;
+  const workingGround = (island.districtSets ?? []).flatMap(set => set.pieces.map(piece => ({
+    centre: piece.bottom, radius: piece.length * .67 + 2.8 * scale, paint: DISTRICT_GROUND[set.district],
+  }))).filter(p => Math.abs(p.centre.x - cx) <= countX * metres / 2 + p.radius &&
+    Math.abs(p.centre.z - cz) <= countZ * metres / 2 + p.radius);
   const sample = (x: number, z: number): number =>
     island.heights[gridIndex(n, Math.max(0, Math.min(n - 1, x)),
       Math.max(0, Math.min(n - 1, z)))]!;
@@ -209,6 +225,16 @@ function terrainGeometry(
       color.lerp(COLORS.dirt, Math.max(0, -broad - 0.3) * 0.12);
       color.lerp(COLORS.pine, Math.max(0, broad - 0.1) * 0.09);
     }
+    let wear = 0;
+    let soil: THREE.Color | undefined;
+    for (const patch of workingGround) {
+      const px = x - patch.centre.x, pz = z - patch.centre.z;
+      const ratio = (px * px + pz * pz) / (patch.radius * patch.radius);
+      if (ratio >= 1) continue;
+      const weight = 1 - smoothstep(.09, 1, ratio);
+      if (weight > wear) { wear = weight; soil = patch.paint; }
+    }
+    if (soil) color.lerp(soil, wear * (.80 + fine * .09));
     const variation = 0.968 + broad * 0.038 + fine * 0.022;
     color.multiplyScalar(ambient * variation);
     colors.push(color.r, color.g, color.b);

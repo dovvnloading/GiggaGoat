@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import type { IslandWeather } from '../world/island-weather';
 import type { Game } from './Game';
+import type { Vec3 } from '../physics';
 
 const COUNT = 440;
 const SPAN = 36;
+const UP = { x: 0, y: 1, z: 0 };
 const wrap = THREE.MathUtils.euclideanModulo;
 
 /** Camera-local volume, with drops anchored to world coordinates as the goat moves. */
@@ -16,8 +18,9 @@ export class IslandAtmosphere {
   private readonly lamps: THREE.Vector3[];
   private readonly lights = [new THREE.PointLight(0xffb45e, 0, 13, 2), new THREE.PointLight(0xffb45e, 0, 13, 2)];
   private nextCheck = -1;
-  private sheltered = false;
-  get underCover(): boolean { return this.sheltered; }
+  private cameraUnderCover = false;
+  private goatUnderCover = false;
+  get playerUnderCover(): boolean { return this.goatUnderCover; }
 
   constructor(private readonly game: Game) {
     let seed = 19273;
@@ -35,14 +38,21 @@ export class IslandAtmosphere {
     this.group.add(this.rain, ...this.lights);
   }
 
-  update(weather: IslandWeather, camera: THREE.Vector3, low: boolean): void {
+  private hasRoofAbove(position: Vec3): boolean {
+    // Rapier treats unparented island geometry as fixed. PhysicsWorld excludes sensors.
+    return !!this.game.physics.raycast(position, UP, 32, {
+      predicate: collider => collider.parent()?.isFixed() ?? true,
+    });
+  }
+
+  update(weather: IslandWeather, camera: THREE.Vector3, player: Vec3, low: boolean): void {
     const { time, rain, phase } = weather;
     const dusk = THREE.MathUtils.smoothstep(-Math.cos(phase * Math.PI * 2), -.40, .22);
     const lightPower = 115 * (1 - dusk);
     if (time >= this.nextCheck || time < this.nextCheck - .5) {
       this.nextCheck = time + .32;
-      this.sheltered = (rain > .01 || weather.wet > .15) && !!this.game.physics.raycast(camera, { x:0,y:1,z:0 }, 32,
-        { predicate: collider => !!collider.parent()?.isFixed() });
+      this.cameraUnderCover = rain > .01 && this.hasRoofAbove(camera);
+      this.goatUnderCover = (rain > .01 || weather.wet > .15) && this.hasRoofAbove(player);
       if (lightPower > .01) {
         let first: THREE.Vector3 | undefined, second: THREE.Vector3 | undefined;
         let a = Infinity, b = Infinity;
@@ -56,7 +66,7 @@ export class IslandAtmosphere {
       }
     }
     for (const light of this.lights) light.intensity = lightPower;
-    this.rain.visible = rain > .012 && !this.sheltered;
+    this.rain.visible = rain > .012 && !this.cameraUnderCover;
     if (!this.rain.visible) return;
     const count = Math.ceil(COUNT * rain * (low ? .46 : 1));
     this.rain.material.opacity = .19 + rain * .22;

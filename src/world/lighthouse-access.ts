@@ -3,6 +3,12 @@ import { gridIndex, gridSample } from './terrain';
 import { clamp } from './random';
 import { accessGuard, sectionCenter, type AccessSection } from './access-path';
 
+/** Centreline knots shared by the cape walking route and the visible dirt track. */
+export const LIGHTHOUSE_FOOTPATH = [
+  [-17, 4], [-15, 8], [-12, 10], [-8, 12], [-3, 10], [-3, 6], [-2, 2],
+] as const;
+
+
 export const LIGHTHOUSE_ACCESS_ID = 'lighthouse-access-';
 export const LIGHTHOUSE_ACCESS_GUARD_ID = LIGHTHOUSE_ACCESS_ID + 'guard-';
 const STEPS = 36;

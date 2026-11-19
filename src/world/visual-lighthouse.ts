@@ -8,7 +8,7 @@ import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import { buildArchitecture } from './visual-architecture';
 import { TOON_RAMP, BUILDING_RAMP } from './visual-props';
 import type { AccessSection } from './access-path';
-import { capeSurface, keeperCottagePiers, lighthouseAccess,
+import { LIGHTHOUSE_FOOTPATH, capeSurface, keeperCottagePiers, lighthouseAccess,
   lighthouseOuterGuard } from './lighthouse-access';
 import { accessArrows, accessPathVisual } from './visual-access-path';
 
@@ -308,11 +308,7 @@ function batchHeroMeshes(root: THREE.Group, name: string,
 /** A strip conforming to the heightfield: decorative, not a false flat collider. */
 function makeWindingFootpath(island: IslandData, center: { x: number; z: number }): THREE.Mesh {
   const scale = island.size / 600;
-  const knots = [
-    [-17, 4], [-15, 8], [-12, 10], [-8, 12],
-    [-3, 10], [-3, 6], [-2, 2],
-  ];
-  const curve = new THREE.CatmullRomCurve3(knots.map(([dx, dz]) =>
+  const curve = new THREE.CatmullRomCurve3(LIGHTHOUSE_FOOTPATH.map(([dx, dz]) =>
     new THREE.Vector3(center.x + dx! * scale, 0, center.z + dz! * scale)), false, 'centripetal');
   const vertices: number[] = [], indices: number[] = [];
   for (let i = 0; i <= 72; i++) {

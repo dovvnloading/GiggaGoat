@@ -921,7 +921,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
           continue;
         }
         if (disposed) { geometry.dispose(); break; }
-        fitPlantGeometry(geometry, trunk);
+        fitPlantGeometry(geometry, job.kind);
         const draw = new THREE.InstancedMesh(geometry, job.mesh.material, slots.length);
         draw.name = 'habitat-' + model;
         draw.count = 0;

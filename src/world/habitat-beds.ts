@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { paintNatureKit } from './plant-palette';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { loadGroundedKitGeometry } from './library-props';
 import { SeededRandom } from './random';
@@ -42,6 +43,7 @@ export function planHabitatBeds(island: IslandData): Beds {
         back: Math.min(start.z, end.z) - margin, front: Math.max(start.z, end.z) + margin };
     });
   });
+  const approaches = (island.districtSets ?? []).map(set => set.approach);
   const solid = island.props.filter(p => p.collidable && !['grass-tuft', 'flower'].includes(p.kind));
   const safe = (x: number, z: number, r: number): boolean => {
     const y = gridSample(island, x, z);
@@ -50,6 +52,7 @@ export function planHabitatBeds(island: IslandData): Beds {
     if (river.distance < river.width * .52 + r && y < river.level + .5 * scale) return false;
     return !lines.some(l => x >= l.left - r && x <= l.right + r && z >= l.back - r && z <= l.front + r &&
       segmentProjection({ x, z }, l.start, l.end).distance < l.margin + r) &&
+      approaches.every(a => segmentProjection({ x, z }, a.from, a.to).distance > 1.05 * scale + r) &&
       solid.every(p => outsideProp(x, z, r, p)) &&
       kit.every(p => Math.hypot(p.bottom.x - x, p.bottom.z - z) > p.length * .72 + r) &&
       island.spawns.every(p => Math.hypot(x - p.position.x, z - p.position.z) > 2.5 * scale + r);
@@ -119,6 +122,7 @@ export function buildHabitatBeds(island: IslandData) {
       try {
         const geometry = await loadGroundedKitGeometry('assets/library/kenney/nature-kit/' + model + '.glb', loader);
         if (disposed) { geometry.dispose(); return; }
+        paintNatureKit(geometry);
         const span = geometry.boundingBox!.getSize(new THREE.Vector3());
         const mesh = new THREE.InstancedMesh(geometry, material, sites.length);
         const transform = new THREE.Object3D();

@@ -1,6 +1,7 @@
 import { downtownPublicSpaceAt, downtownPublicSpaces } from './downtown-public-space';
 import { roadsideGravelAt, roadsideStops } from './roadside-stops';
 import * as THREE from 'three';
+import { paintNatureKit } from './plant-palette';
 import type { skyUniforms } from './visual-sky';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -259,6 +260,7 @@ export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof s
     });
     void loadGroundedKitGeometry('assets/library/kenney/nature-kit/flower_yellowA.glb', loader).then(geometry => {
       if (disposed) { geometry.dispose(); return; }
+      paintNatureKit(geometry);
       const h = geometry.boundingBox!.max.y - geometry.boundingBox!.min.y;
       geometry.scale(.74 / h, .74 / h, .74 / h);
       flowersMesh.geometry = geometry;
