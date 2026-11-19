@@ -277,6 +277,48 @@ describe('The Dam downstream scenery', () => {
     }
   });
 
+  it('keeps the walk out of the plunge pool clear of rendered rocks', async () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const asset = 'assets/library/kenney/nature-kit/rock_largeA.glb';
+    const model = await new GLTFLoader().parseAsync(Uint8Array.from(readFileSync('public/' + asset)).buffer, '');
+    const load = vi.spyOn(GLTFLoader.prototype, 'load').mockImplementation((url, onLoad) => {
+      if (url === publicAssetUrl(asset)) onLoad(model);
+    });
+    vi.stubGlobal('document', { createElement: () => ({ getContext: () => null }) });
+    let visuals: ReturnType<typeof buildDamVisuals> | undefined;
+    try {
+      visuals = buildDamVisuals(island);
+      visuals.group.updateMatrixWorld(true);
+      const { position } = getDamPlacement(island);
+      const route = new THREE.Box3(
+        new THREE.Vector3(position.x + 26, position.y + 5.9, position.z + 27.3),
+        new THREE.Vector3(position.x + 42, position.y + 8.4, position.z + 28.1),
+      );
+      const fallback = visuals.group.getObjectByName('dam-rocky-bank-underpainting');
+      const cliff = visuals.group.getObjectByName('dam-kenney-cliff-faces');
+      expect(fallback).toBeInstanceOf(THREE.InstancedMesh);
+      expect(cliff).toBeInstanceOf(THREE.Group);
+      const matrix = new THREE.Matrix4();
+      const box = new THREE.Box3();
+      for (const rock of [fallback!, ...cliff!.children]) {
+        expect(rock).toBeInstanceOf(THREE.InstancedMesh);
+        const mesh = rock as THREE.InstancedMesh;
+        expect(mesh.count).toBeGreaterThan(10);
+        mesh.geometry.computeBoundingBox();
+        for (let i = 0; i < mesh.count; i++) {
+          mesh.getMatrixAt(i, matrix);
+          matrix.premultiply(mesh.matrixWorld);
+          box.copy(mesh.geometry.boundingBox!).applyMatrix4(matrix);
+          expect(box.intersectsBox(route), mesh.name + ' instance ' + i).toBe(false);
+        }
+      }
+    } finally {
+      visuals?.dispose();
+      load.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('keeps the bank oaks outside the loaded Dam pier and the rear masonry', () => {
     const asset = readFileSync('public/assets/library/custom/the-dam/the-dam.glb');
     const json = JSON.parse(asset.toString('utf8', 20, 20 + asset.readUInt32LE(12))) as {

@@ -31,6 +31,7 @@ export const DAM_CHANNEL: readonly DamChannelSection[] = [
 export const DAM_WATER_SURFACE_LIFT = .20;
 export const DAM_UPSTREAM_RIVER_END = 5;
 export const DAM_FOREST_RIVER_START = 11;
+export const DAM_POOL_EXIT = { left: 21, right: 48, near: 21, far: 27 } as const;
 
 /** The surface drawn by the plunge pool and downstream channel. */
 export function damOutflowWaterY({ position, scale }: DamPlacement, z: number): number {
@@ -82,6 +83,7 @@ export function damChannelAt(z: number): DamChannelSection {
 export function sculptDamOutflow(island: IslandData): void {
   const { position, scale } = getDamPlacement(island);
   const { heights, resolution: n, size } = island;
+  const { left, right, near, far } = DAM_POOL_EXIT;
   const minZ = position.z + 4 * scale;
   const maxZ = position.z + 111 * scale;
   for (let iz = 0; iz < n; iz++) {
@@ -109,8 +111,8 @@ export function sculptDamOutflow(island: IslandData): void {
       height = lerp(height, Math.max(height, bluffTop), shoulder * 0.72);
       // A shallow east-bank exit from the plunge pool meets the meadow beyond
       // the steep shoulder. Keep the launch lane and the submerged pool floor.
-      const exit = smoothstep(14, 21, z) * (1 - smoothstep(27, 36, z)) *
-        smoothstep(21, 25, x) * (1 - smoothstep(42, 48, x));
+      const exit = smoothstep(near - 7, near, z) * (1 - smoothstep(far, far + 9, z)) *
+        smoothstep(left, left + 4, x) * (1 - smoothstep(right - 6, right, x));
       const fromBank = x - channel.x - half;
       const beachHeight = Math.min(1.1, (fromBank + .8) * (fromBank < 0 ? .29 : .105));
       const exitGrade = surface + (DAM_WATER_SURFACE_LIFT + beachHeight) * scale;
