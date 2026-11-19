@@ -1,10 +1,12 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { createGameRenderer, WebGLUnavailableError } from './game-renderer';
+import { createGameRenderer, GameCanvasUnavailableError } from './game-renderer';
 
 const { constructRenderer } = vi.hoisted(() => ({
   constructRenderer: vi.fn(function () {}),
 }));
-vi.mock('three', () => ({ WebGLRenderer: constructRenderer }));
+vi.mock('three', async importOriginal => ({
+  ...await importOriginal<typeof import('three')>(), WebGLRenderer: constructRenderer,
+}));
 
 const usableContext = {
   isContextLost: () => false,
@@ -23,27 +25,35 @@ afterEach(() => {
   constructRenderer.mockClear();
 });
 
-it('constructs Three from the first usable context without a second canvas', () => {
+it('constructs Three from the first usable context without a second canvas', async () => {
   const { createElement, first } = mockCanvases(usableContext);
-  createGameRenderer();
+  await createGameRenderer();
   expect(createElement).toHaveBeenCalledExactlyOnceWith('canvas');
   expect(first.getContext).toHaveBeenCalledExactlyOnceWith('webgl2',
     { alpha: true, antialias: true, powerPreference: 'high-performance' });
   expect(constructRenderer).toHaveBeenCalledExactlyOnceWith({ canvas: first, context: usableContext });
 });
 
-it('tries a fresh low-power canvas when the first context is already lost', () => {
+it('tries a fresh low-power canvas when the first context is already lost', async () => {
   const { createElement, fallback } = mockCanvases({ isContextLost: () => true }, usableContext);
-  createGameRenderer();
+  await createGameRenderer();
   expect(createElement).toHaveBeenCalledTimes(2);
   expect(fallback!.getContext).toHaveBeenCalledExactlyOnceWith('webgl2',
     { alpha: true, antialias: false, powerPreference: 'low-power' });
   expect(constructRenderer).toHaveBeenCalledExactlyOnceWith({ canvas: fallback, context: usableContext });
 });
 
-it('reports unavailable WebGL 2 after two failed requests and never constructs Three', () => {
-  const { createElement } = mockCanvases(null, null);
-  expect(() => createGameRenderer()).toThrow(WebGLUnavailableError);
-  expect(createElement).toHaveBeenCalledTimes(2);
+it('starts the software renderer when the browser denies both WebGL contexts', async () => {
+  const { createElement } = mockCanvases(null, null, {});
+  const renderer = await createGameRenderer();
+  expect(renderer).toHaveProperty('isSoftwareRenderer', true);
+  expect(createElement).toHaveBeenCalledTimes(3);
+  expect(constructRenderer).not.toHaveBeenCalled();
+});
+
+it('reports a startup failure when the browser denies every drawing surface', async () => {
+  const { createElement } = mockCanvases(null, null, null);
+  await expect(createGameRenderer()).rejects.toThrow(GameCanvasUnavailableError);
+  expect(createElement).toHaveBeenCalledTimes(3);
   expect(constructRenderer).not.toHaveBeenCalled();
 });

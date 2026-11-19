@@ -11,7 +11,7 @@ import { createGameRenderer } from './game-renderer';
 export async function bootGame(host: HTMLElement): Promise<{
   game: Game; view: GameView; menu: GameMenu; audio: AudioEngine; dispose: () => void;
 }> {
-  const renderer = createGameRenderer();
+  const renderer = await createGameRenderer();
   let viewOwnsRenderer = false;
   const loading = document.createElement('div');
   loading.style.cssText = 'position:absolute;inset:0;display:grid;place-items:center;' +
