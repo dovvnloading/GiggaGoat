@@ -770,6 +770,11 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         const canvas = document.querySelector<HTMLCanvasElement>('#app > canvas');
         const context = canvas?.getContext('2d');
         if (!canvas || !context) return false;
+        const view = canvas.getBoundingClientRect();
+        // The preceding settings flow saved Low (.8). No second resolution
+        // multiplier may shrink the world behind the full-resolution HUD.
+        const minRatio = Math.min(.8, Math.sqrt(1920 * 1080 / (view.width * view.height)));
+        if (canvas.width + 1 < view.width * minRatio || canvas.height + 1 < view.height * minRatio) return false;
         // A blank canvas or a sky gradient cannot produce distinct colours across a scanline.
         const row = context.getImageData(0, Math.floor(canvas.height * .65), canvas.width, 1);
         return new Set(new Uint32Array(row.data.buffer)).size > 8;

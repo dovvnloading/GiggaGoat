@@ -953,7 +953,9 @@ export class GameView {
     this.perfStats.triangles = info.render.triangles;
     this.perfStats.textures = info.memory.textures;
     this.perfStats.pixelRatio = this.renderer.getPixelRatio();
-    const nextRatio = this.resolution.sample(elapsed * 1000, renderElapsed, elapsed, !this.paused);
+    // The 60 Hz GPU controller would continuously downscale a healthy 30 Hz software frame.
+    const nextRatio = 'isSoftwareRenderer' in this.renderer ? null :
+      this.resolution.sample(elapsed * 1000, renderElapsed, elapsed, !this.paused);
     if (nextRatio !== null) {
       this.renderer.setPixelRatio(nextRatio);
       this.onResize();

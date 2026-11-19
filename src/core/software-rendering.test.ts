@@ -10,6 +10,19 @@ function imageData(width: number, height: number): ImageData {
 }
 
 describe('software 3D rendering', () => {
+  it('renders High at display resolution and applies a lower preset only once', () => {
+    const canvas = { width: 0, height: 0 } as HTMLCanvasElement;
+    const renderer = new SoftwareGameRenderer(canvas, { createImageData: imageData, putImageData() {} });
+    for (const [w, h] of [[1454, 883], [1024, 576], [540, 360], [1920, 1080]] as const) {
+      renderer.setSize(w, h, false);
+      expect([canvas.width, canvas.height]).toEqual([w, h]);
+    }
+    renderer.setPixelRatio(.8);
+    renderer.setSize(1280, 720, false);
+    expect([canvas.width, canvas.height]).toEqual([1024, 576]);
+    renderer.dispose();
+  });
+
   it('keeps the shaft of a tall thin prop connected in its distant mesh', async () => {
     await MeshoptSimplifier.ready;
     const geometry = new THREE.CylinderGeometry(.045, .045, 6, 32, 8);
@@ -27,6 +40,15 @@ describe('software 3D rendering', () => {
     }
     expect(crossingArea).toBeGreaterThan(.02);
     geometry.dispose();
+  });
+
+  it('interpolates painted ground colours between vertices', () => {
+    const frame = new SoftwareFrame(imageData(64, 64));
+    const vertex = (x: number, y: number, tint: number) => ({ x, y, w: 1, u: 0, v: 0, tint });
+    frame.clear(0, 0);
+    frame.triangle(vertex(-1, -1, pixel(30, 160, 45)), vertex(1, -1, pixel(180, 140, 70)),
+      vertex(0, 1, pixel(60, 180, 90)), .1, 0, undefined, THREE.DoubleSide, 1);
+    expect(new Set(frame.pixels.subarray(48 * 64 + 16, 48 * 64 + 48)).size).toBeGreaterThan(20);
   });
 
   it('clips triangles at the camera and resolves crossing surfaces by pixel depth', () => {
@@ -67,5 +89,39 @@ describe('software 3D rendering', () => {
     renderer.render(scene, camera);
     expect(new Uint32Array(captured!.data.buffer)).not.toEqual(first);
     renderer.dispose();
+  });
+
+  it('renders weighted bone motion at the same position as the equivalent rigid mesh', () => {
+    let captured!: ImageData;
+    const renderer = new SoftwareGameRenderer({} as HTMLCanvasElement, {
+      createImageData: imageData, putImageData(image) { captured = image; },
+    });
+    renderer.setSize(96, 64, false);
+    const geometry = new THREE.BoxGeometry(), material = new THREE.MeshBasicMaterial({ color: 0xff9944 });
+    const count = geometry.getAttribute('position').count;
+    const indices = new Uint16Array(count * 4), weights = new Float32Array(count * 4);
+    for (let i = 0; i < count; i++) {
+      indices[i * 4 + 1] = 1;
+      weights[i * 4] = .25; weights[i * 4 + 1] = .75;
+    }
+    geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(indices, 4));
+    geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(weights, 4));
+    const skin = new THREE.SkinnedMesh(geometry, material);
+    const root = new THREE.Bone(), child = new THREE.Bone();
+    root.add(child); skin.add(root);
+    skin.bind(new THREE.Skeleton([root, child]));
+    child.position.x = 1;
+    const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(55, 1.5, .1, 100);
+    camera.position.z = 4;
+    scene.add(skin);
+    renderer.render(scene, camera);
+    const animated = Uint32Array.from(new Uint32Array(captured.data.buffer));
+    const rigid = new THREE.Mesh(geometry, material);
+    rigid.position.x = .75;
+    scene.remove(skin); scene.add(rigid);
+    renderer.render(scene, camera);
+    expect(animated).toEqual(new Uint32Array(captured.data.buffer));
+    expect(animated).toContain(pixel(255, 153, 68) >>> 0);
+    renderer.dispose(); geometry.dispose(); material.dispose();
   });
 });

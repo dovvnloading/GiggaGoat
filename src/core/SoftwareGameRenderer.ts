@@ -1,10 +1,15 @@
 import * as THREE from 'three';
 import { SoftwareFrame, pixel, type ClipVertex, type SoftwareTexture } from './SoftwareFrame';
 import { softwareGeometry } from './software-geometry';
+import { surfacePaintMaps } from '../world/surface-paint';
+import type { SoftwareGeometry } from './software-geometry';
 
 type Surface = THREE.Material & { color?: THREE.Color; map?: THREE.Texture | null };
 interface Paint {
   material: Surface; colour: THREE.Color; texture?: SoftwareTexture; unlit: boolean;
+}
+interface ShadedFaces {
+  data: SoftwareGeometry; material: Surface; light: THREE.Vector3; tint: THREE.Color; colours: Uint32Array;
 }
 
 /** Draw the existing perspective scene when the browser cannot create a GPU context. */
@@ -38,7 +43,12 @@ export class SoftwareGameRenderer {
   private readonly white = new THREE.Color(0xffffff);
   private readonly water = new THREE.Color(0x53aeb9);
   private readonly points: (ClipVertex & { outside: number })[] = [];
+  private readonly boneMatrix = new THREE.Matrix4();
+  private bonePalette = new Float32Array(0);
   private readonly textures = new WeakMap<THREE.Texture, { version: number; image: SoftwareTexture }>();
+  private readonly groundTints = new WeakMap<SoftwareGeometry, Uint32Array>();
+  private readonly faceTints = new WeakMap<THREE.Mesh, ShadedFaces[]>();
+  private readonly diffuse = new THREE.Color();
   private readonly srgb = Uint8Array.from({ length: 4097 }, (_, i) =>
     Math.round(255 * THREE.ColorManagement.workingToColorSpace(
       new THREE.Color(i / 4096, 0, 0), THREE.SRGBColorSpace).r));
@@ -51,11 +61,13 @@ export class SoftwareGameRenderer {
   }) {}
 
   setClearColor(colour: THREE.Color): void { this.clearColour.copy(colour); }
-  setPixelRatio(ratio: number): void { this.ratio = Math.min(1, Math.max(.4, ratio)); }
+  setPixelRatio(ratio: number): void { this.ratio = Math.min(1.25, Math.max(.4, ratio)); }
   getPixelRatio(): number { return this.actualRatio; }
 
   setSize(width: number, height: number, updateStyle = true): void {
-    this.actualRatio = Math.min(1, 640 / Math.max(1, width), 384 / Math.max(1, height)) * this.ratio;
+    // Apply the chosen graphics scale exactly once. Budget by pixel count so
+    // both wide and portrait displays can use their native CSS resolution.
+    this.actualRatio = Math.min(this.ratio, Math.sqrt(1920 * 1080 / Math.max(1, width * height)));
     const w = Math.max(1, Math.round(width * this.actualRatio));
     const h = Math.max(1, Math.round(height * this.actualRatio));
     if (updateStyle) {
@@ -110,7 +122,7 @@ export class SoftwareGameRenderer {
     const source = map.image as CanvasImageSource & { width?: number; height?: number };
     if (!source?.width || !source.height) return;
     if ('data' in source) return;
-    const ratio = Math.min(1, 512 / Math.max(source.width, source.height));
+    const ratio = Math.min(1, 1024 / Math.max(source.width, source.height));
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(source.width * ratio));
     canvas.height = Math.max(1, Math.round(source.height * ratio));
@@ -161,13 +173,60 @@ export class SoftwareGameRenderer {
         mesh.getMatrixAt(i, this.instance);
         this.world.multiplyMatrices(mesh.matrixWorld, this.instance);
         if (mesh.instanceColor) mesh.getColorAt(i, this.tint);
-        this.drawInstance(mesh, this.world, mesh.instanceColor ? this.tint : this.white, paints);
+        this.drawInstance(mesh, this.world, mesh.instanceColor ? this.tint : this.white, paints, i);
       }
     } else this.drawInstance(mesh, mesh.matrixWorld, this.white, paints);
   }
 
+  /** Fold both bind transforms into each bone once. The articulated goat shares
+   * those bones across thousands of vertices in a single frame. */
+  private prepareBones(mesh: THREE.SkinnedMesh): void {
+    const { bones, boneInverses } = mesh.skeleton;
+    if (this.bonePalette.length < bones.length * 16) this.bonePalette = new Float32Array(bones.length * 16);
+    for (let i = 0; i < bones.length; i++) {
+      this.boneMatrix.multiplyMatrices(bones[i]!.matrixWorld, boneInverses[i]!)
+        .multiply(mesh.bindMatrix).premultiply(mesh.bindMatrixInverse).toArray(this.bonePalette, i * 16);
+    }
+  }
+
+  private groundColours(mesh: THREE.Mesh, material: Surface, data: SoftwareGeometry): Uint32Array | undefined {
+    const map = surfacePaintMaps.get(material);
+    if (!map) return;
+    const existing = this.groundTints.get(data);
+    if (existing) return existing;
+    const tint = new Uint32Array(data.sources.length);
+    const colour = mesh.geometry.getAttribute('color'), normal = mesh.geometry.getAttribute('normal');
+    const base = material.color ?? this.white;
+    for (let i = 0; i < tint.length; i++) {
+      const source = data.sources[i]!;
+      const x = data.positions[3 * i]! + mesh.matrixWorld.elements[12];
+      const z = data.positions[3 * i + 2]! + mesh.matrixWorld.elements[14];
+      const u = (x - map.cx) / map.width + .5, v = (z - map.cz) / map.width + .5;
+      let r = base.r * (colour ? colour.getX(source) : 1);
+      let g = base.g * (colour ? colour.getY(source) : 1);
+      let b = base.b * (colour ? colour.getZ(source) : 1);
+      if (u >= 0 && u < 1 && v >= 0 && v < 1) {
+        const at = Math.floor(v * map.samples) * map.samples + Math.floor(u * map.samples);
+        if (map.kind === 'road') {
+          const wear = .81 + .33 * map.data[at]! / 255;
+          r *= wear; g *= wear; b *= wear;
+        } else {
+          const contact = map.data[at * 2]! / 255, lawn = map.data[at * 2 + 1]! / 255 - .5;
+          r *= (1 + lawn * .26) * (1 - contact * .30);
+          g *= (1 + lawn * .31) * (1 - contact * .27);
+          b *= (1 + lawn * .21) * (1 - contact * .37);
+        }
+      }
+      const light = normal ? this.position.fromBufferAttribute(normal, source).dot(this.sun) : 1;
+      const shade = .79 + .21 * Math.max(-.6, light);
+      tint[i] = pixel(this.channel(r, shade), this.channel(g, shade), this.channel(b, shade));
+    }
+    this.groundTints.set(data, tint);
+    return tint;
+  }
+
   private drawInstance(mesh: THREE.Mesh, matrix: THREE.Matrix4, tint: THREE.Color,
-    paints: (Paint | undefined)[]): void {
+    paints: (Paint | undefined)[], slot = 0): void {
     const geometry = mesh.geometry;
     this.sphere.copy(geometry.boundingSphere!).applyMatrix4(matrix);
     if (this.sphere.radius <= 0 || !this.frustum.intersectsSphere(this.sphere)) return;
@@ -180,31 +239,55 @@ export class SoftwareGameRenderer {
     const skinned = mesh instanceof THREE.SkinnedMesh;
     // Keep roads and terrain on their authored heights; their thin layers need exact depth.
     const fixed = mesh.userData.terrainChunk || mesh.name.startsWith('paths-');
+    const detailRadius = radius * Math.min(1, 480 / this.frame!.image.height);
     const detail = fixed || position.count < 250 ? 'full' :
-      radius < 32 || mesh.name === 'rising-sea' ? 'far' : position.count > 1500 ? 'near' : 'full';
+      detailRadius < 32 || mesh.name === 'rising-sea' ? 'far' : position.count > 1500 ? 'near' : 'full';
     const data = softwareGeometry(geometry, detail);
+    const ground = fixed && paints[0] ? this.groundColours(mesh, paints[0].material, data) : undefined;
     this.transform.multiplyMatrices(this.viewProjection, matrix);
     const m = this.transform.elements;
-    const uv = geometry.getAttribute('uv');
+    const uv = data.uvs;
     const textured = uv && paints.some(p => p?.texture);
     const mirrored = matrix.determinant() < 0;
+    const skinIndices = geometry.getAttribute('skinIndex'), weights = geometry.getAttribute('skinWeight');
+    const paletteSkin = skinned && skinIndices && weights && !mesh.morphTargetInfluences?.some(Boolean);
+    if (paletteSkin) this.prepareBones(mesh);
+    const coords = data.positions, palette = this.bonePalette;
     for (let i = 0; i < data.sources.length; i++) {
       const source = data.sources[i]!;
       const p = this.points[i] ?? (this.points[i] = { x: 0, y: 0, w: 1, u: 0, v: 0, outside: 0 });
-      if (skinned) mesh.getVertexPosition(source, this.position);
-      else this.position.fromBufferAttribute(position, source);
-      const { x, y, z } = this.position;
+      let x = coords[3 * i]!, y = coords[3 * i + 1]!, z = coords[3 * i + 2]!;
+      if (paletteSkin) {
+        const bx = x, by = y, bz = z;
+        x = y = z = 0;
+        for (let component = 0; component < 4; component++) {
+          const weight = weights.getComponent(source, component);
+          if (!weight) continue;
+          const j = skinIndices.getComponent(source, component) * 16;
+          x += weight * (palette[j]! * bx + palette[j + 4]! * by + palette[j + 8]! * bz + palette[j + 12]!);
+          y += weight * (palette[j + 1]! * bx + palette[j + 5]! * by + palette[j + 9]! * bz + palette[j + 13]!);
+          z += weight * (palette[j + 2]! * bx + palette[j + 6]! * by + palette[j + 10]! * bz + palette[j + 14]!);
+        }
+      } else if (skinned) {
+        mesh.getVertexPosition(source, this.position);
+        ({ x, y, z } = this.position);
+      }
       p.x = m[0] * x + m[4] * y + m[8] * z + m[12];
       p.y = m[1] * x + m[5] * y + m[9] * z + m[13];
       p.w = m[3] * x + m[7] * y + m[11] * z + m[15];
       p.outside = Number(p.x < -p.w) | Number(p.x > p.w) << 1 | Number(p.y < -p.w) << 2 |
         Number(p.y > p.w) << 3 | Number(p.w < this.near) << 4;
-      if (textured) { p.u = uv.getX(source); p.v = uv.getY(source); }
+      if (textured) { p.u = uv[2 * i]!; p.v = uv[2 * i + 1]!; }
+      p.tint = ground?.[i];
+      if (p.w >= this.near) this.frame!.prepare(p);
+      else p.screen = undefined;
     }
     this.normalMatrix.getNormalMatrix(matrix).transpose();
     this.localLight.copy(this.sun).applyMatrix3(this.normalMatrix).normalize();
     const light = this.localLight;
     const { corners, colours, normals } = data;
+    const common = paints.length === 1 ? paints[0] : undefined;
+    const faceTints = !ground && common ? this.shadeFaces(mesh, slot, data, common, tint) : undefined;
     this.info.render.calls++;
     this.info.render.triangles += corners.length / 3;
     for (let k = 0; k < corners.length; k += 3) {
@@ -214,17 +297,53 @@ export class SoftwareGameRenderer {
       const a = this.points[corners[k]!]!, b = this.points[corners[k + 1]!]!,
         c = this.points[corners[k + 2]!]!;
       if (a.outside & b.outside & c.outside) continue;
+      const faceSide = paint.material.side;
+      const side = mirrored && faceSide !== THREE.DoubleSide ? 1 - faceSide : faceSide;
+      if (a.screen && b.screen && c.screen) {
+        const det = (b.screen.x - a.screen.x) * (c.screen.y - a.screen.y) -
+          (b.screen.y - a.screen.y) * (c.screen.x - a.screen.x);
+        if (Math.abs(det) < .02 || (side === THREE.FrontSide && det > 0) ||
+            (side === THREE.BackSide && det < 0)) continue;
+      }
+      let colour = ground ? 0 : faceTints?.[face];
+      if (colour === undefined) {
+        const shade = paint.unlit ? 1 : .79 + .21 * Math.max(-.6,
+          normals[k]! * light.x + normals[k + 1]! * light.y + normals[k + 2]! * light.z);
+        const vertex = paint.material.vertexColors ? colours : undefined;
+        const base = paint.colour;
+        colour = pixel(this.channel(base.r * tint.r * (vertex ? vertex[k]! : 1), shade),
+          this.channel(base.g * tint.g * (vertex ? vertex[k + 1]! : 1), shade),
+          this.channel(base.b * tint.b * (vertex ? vertex[k + 2]! : 1), shade));
+      }
+      this.frame!.triangle(a, b, c, this.near, colour, uv ? paint.texture : undefined,
+        side, paint.material.polygonOffset ? 1.00005 : 1);
+    }
+  }
+
+  private shadeFaces(mesh: THREE.Mesh, slot: number, data: SoftwareGeometry,
+    paint: Paint, instanceTint: THREE.Color): Uint32Array {
+    let slots = this.faceTints.get(mesh);
+    if (!slots) { slots = []; this.faceTints.set(mesh, slots); }
+    const tint = this.diffuse.copy(paint.colour).multiply(instanceTint), light = this.localLight;
+    let entry = slots[slot];
+    if (entry?.data === data && entry.material === paint.material && entry.light.equals(light) &&
+      entry.tint.equals(tint)) return entry.colours;
+    if (!entry || entry.data !== data) {
+      entry = { data, material: paint.material, light: new THREE.Vector3(), tint: new THREE.Color(),
+        colours: new Uint32Array(data.materials.length) };
+      slots[slot] = entry;
+    }
+    entry.material = paint.material; entry.light.copy(light); entry.tint.copy(tint);
+    const normals = data.normals, vertex = paint.material.vertexColors ? data.colours : undefined;
+    for (let i = 0; i < entry.colours.length; i++) {
+      const k = i * 3;
       const shade = paint.unlit ? 1 : .79 + .21 * Math.max(-.6,
         normals[k]! * light.x + normals[k + 1]! * light.y + normals[k + 2]! * light.z);
-      const vertex = paint.material.vertexColors ? colours : undefined;
-      const base = paint.colour;
-      const r = this.channel(base.r * tint.r * (vertex ? vertex[k]! : 1), shade);
-      const g = this.channel(base.g * tint.g * (vertex ? vertex[k + 1]! : 1), shade);
-      const blue = this.channel(base.b * tint.b * (vertex ? vertex[k + 2]! : 1), shade);
-      const side = paint.material.side;
-      this.frame!.triangle(a, b, c, this.near, pixel(r, g, blue), uv ? paint.texture : undefined,
-        mirrored && side !== THREE.DoubleSide ? 1 - side : side, paint.material.polygonOffset ? 1.00005 : 1);
+      entry.colours[i] = pixel(this.channel(tint.r * (vertex ? vertex[k]! : 1), shade),
+        this.channel(tint.g * (vertex ? vertex[k + 1]! : 1), shade),
+        this.channel(tint.b * (vertex ? vertex[k + 2]! : 1), shade));
     }
+    return entry.colours;
   }
 
   private channel(linear: number, shade: number): number {

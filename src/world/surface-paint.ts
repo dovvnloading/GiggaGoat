@@ -3,6 +3,10 @@ import { clamp, GradientNoise, hashString, smoothstep } from './random';
 import type { IslandData } from './types';
 
 const MAP_RESOLUTION = 256;
+/** The software renderer samples the same authored masks as the terrain shaders. */
+export const surfacePaintMaps = new WeakMap<THREE.Material, {
+  kind: 'road' | 'lawn'; data: Uint8Array; samples: number; width: number; cx: number; cz: number;
+}>();
 type ToonShader = Parameters<THREE.MeshToonMaterial['onBeforeCompile']>[0];
 
 function filteredPaint(data: Uint8Array, format: THREE.PixelFormat): THREE.DataTexture {
@@ -25,6 +29,8 @@ export function paintAsphalt(material: THREE.MeshToonMaterial, island: IslandDat
     data[z * MAP_RESOLUTION + x] = Math.round(clamp(wear, 0, 1) * 255);
   }
   const map = filteredPaint(data, THREE.RedFormat);
+  surfacePaintMaps.set(material, { kind: 'road', data, samples: MAP_RESOLUTION,
+    width: island.size, cx: 0, cz: 0 });
   material.addEventListener('dispose', () => map.dispose());
   material.onBeforeCompile = shader => {
     shader.uniforms['uAsphaltWear'] = { value: map };
@@ -65,7 +71,7 @@ diffuseColor.rgb *= 1.0 - 0.15 * contact;`,
   };
 }
 
-export function makeVillageGroundPaint(island: IslandData): {
+export function makeVillageGroundPaint(island: IslandData, material?: THREE.Material): {
   map: THREE.DataTexture; apply(shader: ToonShader): void;
 } {
   const village = island.pois.find(poi => poi.id === 'hoofington')!.center;
@@ -98,6 +104,8 @@ export function makeVillageGroundPaint(island: IslandData): {
     data[at + 1] = Math.round(clamp(.5 + lawn * .62, 0, 1) * 255);
   }
   const map = filteredPaint(data, THREE.RGFormat);
+  if (material) surfacePaintMaps.set(material, { kind: 'lawn', data, samples: MAP_RESOLUTION,
+    width, cx: village.x, cz: village.z });
   return {
     map,
     apply(shader): void {
