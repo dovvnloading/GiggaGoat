@@ -13,6 +13,7 @@ import { frame, goat, readyMatch } from '../modes/test-utils';
  */
 class ElementStub {
   className = '';
+  readonly style = { display: '' };
   textContent = '';
   hidden = false;
   readonly children: ElementStub[] = [];
@@ -344,11 +345,19 @@ describe('live free-roam HUD DOM', () => {
       expect(hint.hidden).toBe(false);
       expect(copy.textContent).toBe('RIGHT STICK TO LOOK');
       expect(root.querySelector<ElementStub>('[data-hint-key]')?.textContent).toBe('RS');
+      hud.setPointerLockHint(false, false, 'gamepad', false, true);
+      expect(hint.hidden).toBe(true);
+      hud.setPointerLockHint(false, false, 'keyboard-mouse', true, true);
+      expect(hint.hidden).toBe(true);
       hud.setPointerLockHint(false);
       expect(hint.hidden).toBe(false);
       expect(boardKey.textContent).toBe('E');
       expect(copy.textContent).toBe('MOUSE / IJKL LOOK · C CAPTURE MOUSE');
       expect(head.children[0]!.textContent).toContain('.gg-ui [hidden]{display:none!important}');
+      hud.setVisible(false);
+      expect(root.style.display).toBe('none');
+      hud.setVisible(true);
+      expect(root.style.display).toBe('');
     } finally {
       hud.dispose();
     }

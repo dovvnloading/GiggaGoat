@@ -104,15 +104,19 @@ export class BalanceController {
     if (!hit || g.locomotion.isClinging || velocity.y > 1.1) return;
     const height = torso.translation().y - hit.point.y;
     if (height > this.tuning.rideHeight*g.size + .65*g.size) return;
-    // A fixed deck follows a plane. Use its next support height and damp
-    // separation from it as the goat moves downhill.
-    const normal = hit.normal;
+    const { normal } = hit;
     const layers = hit.collider.collisionGroups() >>> 16;
-    const fixedDeck = (layers & (CollisionLayer.prop | CollisionLayer['build-piece'])) !== 0 &&
-      (!hit.body || hit.body.isFixed());
-    const downhillSpeed = fixedDeck && normal.y >= g.locomotion.minWalkingNormalY
+    const fixed = !hit.body || hit.body.isFixed();
+    const deck = (layers & (CollisionLayer.prop | CollisionLayer['build-piece'])) !== 0;
+    const slopeSpeed = normal.y >= g.locomotion.minWalkingNormalY
       ? Math.min(0, -(normal.x * velocity.x + normal.z * velocity.z) / normal.y)
       : 0;
+    // Follow a walkable grade through a short loss of contact as the slope rolls away.
+    // Require recent support within reach so a jump or ledge fall keeps its momentum.
+    const downhillTerrain = (layers & CollisionLayer.terrain) !== 0 &&
+      normal.y < .995 && slopeSpeed < -.2 && velocity.y >= -3 &&
+      g.locomotion.groundSupportAge <= .18 && height <= (this.tuning.rideHeight + .26) * g.size;
+    const downhillSpeed = fixed && (deck || downhillTerrain) ? slopeSpeed : 0;
     const yError = this.tuning.rideHeight*g.size - height + downhillSpeed * dt;
     const relativeSpeed = velocity.y - downhillSpeed;
     const acceleration = clamp(
@@ -198,6 +202,7 @@ export class LocomotionController {
     this.input.x = clamp(this.input.x,-1,1);
     this.input.z = clamp(this.input.z,-1,1);
   }
+  get groundSupportAge(): number { return this.clock - this.lastGroundAt; }
   get isFlipping(): boolean { return this.airFlipActive && !this.flipScored; }
 
   private get airFlipActive(): boolean {

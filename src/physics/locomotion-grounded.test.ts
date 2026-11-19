@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import RAPIER from '@dimforge/rapier3d-compat';
+import { PHYSICS_MATERIALS } from '../chaos';
 import { GoatRagdoll, GOAT_SIZES, type GoatSize } from './GoatRagdoll';
 import { collisionGroups } from './CollisionGroups';
 import { PhysicsWorld } from './PhysicsWorld';
@@ -73,10 +74,11 @@ const RAMP_RISE = 6.2;
 const RAMP_RUN = 15;
 const FIXED_DT = 1 / 60;
 
-async function rampFixture(size: GoatSize, uphill = false, drop = 0) {
+async function rampFixture(size: GoatSize, uphill = false, drop = 0, layer: 'prop' | 'terrain' = 'prop') {
   const world = await PhysicsWorld.create({ solverIterations: 8 });
+  const { friction, restitution } = PHYSICS_MATERIALS[layer === 'terrain' ? 'grass' : 'wood'];
   const place = (desc: RAPIER.ColliderDesc) => world.raw.createCollider(desc
-    .setFriction(.65).setRestitution(.17).setCollisionGroups(collisionGroups('prop')));
+    .setFriction(friction).setRestitution(restitution).setCollisionGroups(collisionGroups(layer)));
   const pitch = -Math.atan2(RAMP_RISE, RAMP_RUN);
   const halfThickness = .13;
   const halfLength = Math.hypot(RAMP_RUN, RAMP_RISE) / 2;
@@ -136,26 +138,31 @@ it.each(GOAT_SIZES.flatMap(size => gaits.map(gait => ({ size, ...gait }))))(
   },
 );
 
-it.each(gaits)('accepts one intentional jump during a downhill $pose', async ({ sprint }) => {
-  const { world, goat } = await rampFixture(.6);
-  try {
-    goat.locomotion.setInput({ z: 1, sprint, canClimb: false });
-    for (let tick = 0; tick < 240 && goat.torso.translation().z > .4; tick++) world.step(FIXED_DT);
-    expect(goat.torso.translation().z).toBeLessThanOrEqual(.4);
-    expect(goat.locomotion.grounded).toBe(true);
+const layers = ['prop', 'terrain'] as const;
 
-    let starts = 0;
-    goat.events.on(event => { if (event.type === 'airtimeStart') starts++; });
-    goat.locomotion.requestJump();
-    world.step(FIXED_DT);
-    expect(starts).toBe(1);
-    expect(goat.pose).toBe('jumpTuck');
-    expect(goat.torso.linvel().y).toBeGreaterThan(2);
-  } finally {
-    goat.dispose();
-    world.dispose();
-  }
-});
+it.each(layers.flatMap(layer => gaits.map(gait => ({ layer, ...gait }))))(
+  'accepts one intentional jump during a downhill $pose on $layer',
+  async ({ layer, sprint }) => {
+    const { world, goat } = await rampFixture(.6, false, 0, layer);
+    try {
+      goat.locomotion.setInput({ z: 1, sprint, canClimb: false });
+      for (let tick = 0; tick < 240 && goat.torso.translation().z > .4; tick++) world.step(FIXED_DT);
+      expect(goat.torso.translation().z).toBeLessThanOrEqual(.4);
+      expect(goat.locomotion.grounded).toBe(true);
+
+      let starts = 0;
+      goat.events.on(event => { if (event.type === 'airtimeStart') starts++; });
+      goat.locomotion.requestJump();
+      world.step(FIXED_DT);
+      expect(starts).toBe(1);
+      expect(goat.pose).toBe('jumpTuck');
+      expect(goat.torso.linvel().y).toBeGreaterThan(2);
+    } finally {
+      goat.dispose();
+      world.dispose();
+    }
+  },
+);
 
 it('can still walk uphill on the same grade without climbing or jumping', async () => {
   const { world, goat } = await rampFixture(.6, true);
@@ -172,8 +179,8 @@ it('can still walk uphill on the same grade without climbing or jumping', async 
   }
 });
 
-it('still tucks and emits a real landing when walking off a descending ledge', async () => {
-  const { world, goat } = await rampFixture(.6, false, 3.5);
+it.each(layers)('still tucks and emits a real landing when walking off a %s ledge', async layer => {
+  const { world, goat } = await rampFixture(.6, false, 3.5, layer);
   try {
     const landings: number[] = [];
     goat.events.on(event => { if (event.type === 'landed') landings.push(event.airtime); });
