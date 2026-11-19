@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { climbStep } from '../physics/climb-gait';
 import type { PhysicsWorld, RayHit } from '../physics';
 import type { GoatRagdoll } from '../physics';
-import { GROUND_QUERY_GROUPS } from '../physics';
+import { GROUND_QUERY_GROUPS, RAPIER } from '../physics';
 import type { GoatVariant } from './rigged';
 import { HIP_BONES } from './skinned-ragdoll-pose';
 
@@ -23,6 +23,7 @@ interface RigLeg {
 type Contact = Pick<RayHit, 'point' | 'normal'> & Partial<Pick<RayHit, 'collider'>>;
 const UP = new THREE.Vector3(0, 1, 0);
 const DOWN = { x: 0, y: -1, z: 0 };
+const UPRIGHT = { x: 0, y: 0, z: 0, w: 1 };
 const TROT_PHASE = [0, .5, .5, 0] as const;
 const GALLOP_PHASE = [0, .13, .52, .65] as const;
 
@@ -43,6 +44,7 @@ export class SkinnedLegPose {
   private readonly right = new THREE.Vector3();
   private readonly origin = new THREE.Vector3();
   private readonly target = new THREE.Vector3();
+  private readonly hoofContact = new RAPIER.Cylinder(.01, .055);
   private readonly wallRoot = new THREE.Vector3();
   private readonly wallRayOrigin = new THREE.Vector3();
   private readonly wallRayDir = new THREE.Vector3();
@@ -294,8 +296,12 @@ export class SkinnedLegPose {
         const n = floor.normal, p = floor.point;
         this.target.y = p.y - ((this.target.x - p.x) * n.x + (this.target.z - p.z) * n.z) / n.y;
         this.origin.copy(this.target).y += .38 * size;
-        const hit = goat.world.raycast(this.origin, DOWN, .82 * size, { groups: GROUND_QUERY_GROUPS });
-        if (hit && hit.normal.y >= .65) this.target.y = hit.point.y;
+        // A hoof can straddle the asphalt lip while its center is still over
+        // the lower terrain. Sweep the width of the sole for the step height.
+        this.hoofContact.radius = .055 * size;
+        const hit = goat.world.shapeCast(this.origin, UPRIGHT, DOWN, this.hoofContact,
+          .82 * size, { groups: GROUND_QUERY_GROUPS });
+        if (hit && hit.normal.y >= .65) this.target.y = this.origin.y - hit.distance - this.hoofContact.halfHeight;
         this.target.y += size * (.014 + (plant ? 0 : stepAmount * (gallop ? .34 : .23) * Math.sin(Math.PI * swing)));
         if (plant) {
           if (!hit || hit.normal.y < .65) { leg.planted = false; continue; }
