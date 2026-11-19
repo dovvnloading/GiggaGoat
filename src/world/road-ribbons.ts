@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import type { IslandData, RoadDescriptor, RoadPoint } from './types';
-import { makeLocalStreets } from './roads';
+import { makeLocalStreets, MOUNTAIN_SPIRAL_TRAIL } from './roads';
+
+const SURFACE_LIFT = { road: .2, trail: .19 } as const;
 
 /**
  * The POI road network and the authored Downtown high street both terminate
@@ -47,6 +49,7 @@ interface RoadRibbonRun {
   points: RoadPoint[];
   width: number;
   widths?: number[];
+  squareNorthStart?: boolean;
 }
 interface RibbonSegment {
   a: RoadPoint;
@@ -96,10 +99,39 @@ function hoofingtonThroughStreet(allRoads: readonly RoadDescriptor[], scale: num
   return { run: { points, width: street.width, widths }, replaced: new Set([street.id, north.id, south.id]) };
 }
 
+/**
+ * Seat both northern approaches against the same pavement cap. Preserve their
+ * full widths away from the junction and taper only the overlapping ends.
+ */
+function downtownNorthApproach(road: RoadDescriptor, points: readonly RoadPoint[],
+  street: RoadDescriptor | undefined, scale: number): { point: RoadPoint; width: number; rest: number } | null {
+  const edge = street?.points[0];
+  const inner = street?.points[1];
+  if (!street || !edge || !inner || inner.z <= edge.z) return null;
+  const rest = points.findIndex(point => point.z < edge.z);
+  if (rest <= 0) return null;
+  const inside = points[rest - 1]!, outside = points[rest]!;
+  if (inside.bridge || outside.bridge) return null;
+
+  const z = edge.z + .04 * scale;
+  const factor = (z - outside.z) / (inside.z - outside.z);
+  const x = THREE.MathUtils.lerp(outside.x, inside.x, factor);
+  const pavementHalfWidth = street.width / 2;
+  const left = Math.max(edge.x - pavementHalfWidth, x - road.width / 2);
+  const right = Math.min(edge.x + pavementHalfWidth, x + road.width / 2);
+  if (right - left < road.width * .35) return null;
+
+  const streetY = THREE.MathUtils.lerp(edge.y, inner.y, (z - edge.z) / (inner.z - edge.z));
+  const y = streetY + SURFACE_LIFT.road - SURFACE_LIFT[road.type] - .02 * scale;
+  return { point: { x: (left + right) / 2, y, z, bridge: false }, width: right - left, rest };
+}
+
 export function roadRibbonRuns(island: IslandData, type: RoadDescriptor['type']): RoadRibbonRun[] {
   const allRoads = [...island.roads, ...makeLocalStreets(island)];
   const runs: RoadRibbonRun[] = [];
-  const throughStreet = type === 'road' ? hoofingtonThroughStreet(allRoads, island.size / 600) : null;
+  const scale = island.size / 600;
+  const downtown = allRoads.find(road => road.id === 'downtown-bleatsville-main-street');
+  const throughStreet = type === 'road' ? hoofingtonThroughStreet(allRoads, scale) : null;
   if (throughStreet) runs.push(throughStreet.run);
   // The two raised causeway approaches meet at the same Dam junction.
   // A shared mitre covers the little wedge left by their separate end caps.
@@ -113,21 +145,31 @@ export function roadRibbonRuns(island: IslandData, type: RoadDescriptor['type'])
   for (const road of allRoads) {
     if (road.type !== type || throughStreet?.replaced.has(road.id)) continue;
     if (joinedDamRoad && road === damWest) continue;
-    const points = joinedDamRoad && road === damEast ? joinedDamRoad : road.points;
+    const original = joinedDamRoad && road === damEast ? joinedDamRoad : road.points;
+    const approach = road.id === MOUNTAIN_SPIRAL_TRAIL || road.id === 'downtown-bleatsville--the-dam' ?
+      downtownNorthApproach(road, original, downtown, scale) : null;
+    const points = approach ? [approach.point, ...original.slice(approach.rest)] : original;
     let kept: RoadPoint[] = [];
+    const finish = () => {
+      if (kept.length < 2) return;
+      if (approach && kept[0] === approach.point) {
+        runs.push({ points: kept, width: road.width, squareNorthStart: true,
+          widths: kept.map((_, i) => i === 0 ? approach.width : road.width) });
+      } else runs.push({ points: kept, width: road.width });
+    };
     for (let i = 1; i < points.length; i++) {
       const a = points[i - 1]!, b = points[i]!;
       const hidden = isDowntownRoadOverlay(island, road.id, a, b) ||
         (type === 'trail' && isHoofingtonTrailOverlay(island, road.width, a, b));
       if (hidden) {
-        if (kept.length > 1) runs.push({ points: kept, width: road.width });
+        finish();
         kept = [];
       } else {
         if (kept.length === 0) kept.push(a);
         kept.push(b);
       }
     }
-    if (kept.length > 1) runs.push({ points: kept, width: road.width });
+    finish();
   }
   return runs;
 }
@@ -160,7 +202,7 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'])
   crossSections: number[];
 } {
   const runs = roadRibbonRuns(island, type);
-  const topOffset = type === 'road' ? 0.2 : 0.19;
+  const topOffset = SURFACE_LIFT[type];
   const positions: number[] = [];
   const indices: number[] = [];
   const supportIndices: number[] = [];
@@ -170,7 +212,7 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'])
     ? island.roads.find(road => road.id === 'mt-gigga--the-dam')?.points.at(-1) : undefined;
   const pavement = damTrailEnd ? roadRibbonData(island, 'road') : undefined;
 
-  for (const { points, width, widths } of runs) {
+  for (const { points, width, widths, squareNorthStart } of runs) {
     const firstVertex = positions.length / 3;
     const directions = points.slice(1).map((b, i) => {
       const a = points[i]!;
@@ -191,11 +233,13 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'])
       const tangent = incoming.clone().add(outgoing);
       if (tangent.lengthSq() < 1e-12) tangent.copy(outgoing);
       tangent.normalize();
+      const squareStart = !!squareNorthStart && i === 0;
+      if (squareStart) tangent.set(0, -1);
       tangents.push(tangent);
 
       const perp = new THREE.Vector2(-tangent.y, tangent.x);
       const perpIn = new THREE.Vector2(-incoming.y, incoming.x);
-      const mitre = Math.min(2, 1 / Math.max(0.5, perpIn.dot(perp)));
+      const mitre = squareStart ? 1 : Math.min(2, 1 / Math.max(0.5, perpIn.dot(perp)));
       const halfWidth = (widths?.[i] ?? width) / 2;
       const x = perp.x * halfWidth * mitre;
       const z = perp.y * halfWidth * mitre;

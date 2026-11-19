@@ -169,6 +169,47 @@ describe('IS-6 joined road/trail visual ribbons', () => {
     }
   });
 
+  it('seats both Downtown approaches below the local street at the north junction', () => {
+    const island = generateIsland();
+    const street = island.pois.find(poi => poi.id === 'downtown-bleatsville')!.center;
+    const roadRuns = roadRibbonRuns(island, 'road');
+    const trailRuns = roadRibbonRuns(island, 'trail');
+    const approaches = [
+      roadRuns.find(run => run.squareNorthStart)!,
+      trailRuns.find(run => run.squareNorthStart)!,
+    ];
+    const cap = street.z - 43;
+    const view = createWorldScene(island);
+    try {
+      const road = view.group.getObjectByName('paths-road')!;
+      const trail = view.group.getObjectByName('paths-trail')!;
+      const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
+      const sample = (surface: THREE.Object3D, x: number, z: number) => {
+        ray.ray.origin.set(x, 50, z);
+        return ray.intersectObject(surface).map(hit => hit.point.y);
+      };
+      for (const [index, run] of approaches.entries()) {
+        const joint = run.points[0]!;
+        const approach = index === 0 ? road : trail;
+        expect(joint.z - cap).toBeCloseTo(.04);
+        for (const x of [joint.x - run.widths![0]! * .25, joint.x, joint.x + run.widths![0]! * .25]) {
+          const incoming = sample(approach, x, cap - .10)[0]!;
+          const overlap = sample(road, x, cap + .02);
+          const outgoing = sample(road, x, cap + .10);
+          expect(Math.abs(incoming - outgoing[0]!)).toBeLessThan(.10);
+          expect(outgoing).toHaveLength(1);
+          if (index === 0) expect(overlap[0]! - overlap.at(-1)!).toBeGreaterThan(.005);
+          else expect(overlap[0]! - sample(trail, x, cap + .02)[0]!).toBeGreaterThan(.005);
+        }
+      }
+      // Original live reproduction was more than a metre inside the painted street.
+      expect(sample(trail, 145.39, 77.29)).toHaveLength(0);
+      expect(sample(road, 140.67, 77.29)).toHaveLength(1);
+    } finally {
+      view.dispose();
+    }
+  });
+
   it('merges kept runs per type with six triangles per segment and shared mitred joints', () => {
     for (const [seed, size] of [
       ['billy-isle', 600], ['ribbon-curves', 400], ['ribbon-alt', 900],

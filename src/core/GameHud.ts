@@ -1,5 +1,6 @@
 import type { Game } from './Game';
 import type { PlacementFailure, Validation } from '../gameplay';
+import type { Vec3 } from '../world';
 import { HUD_PIECES, deriveHudState, projectHudMap } from './GameHudState';
 import { PAD_BUILD_BINDINGS, type InputDevice } from './GameInput';
 import { buildArtwork, goatArtwork, renderHudMinimap } from './HudArtwork';
@@ -677,7 +678,8 @@ export class GameHud {
     this.hotbar = get('hotbar');
   }
 
-  private updateMap(game: Game, location: string, hayHaul: HayHaulGuidance | null): void {
+  private updateMap(game: Game, location: string, hayHaul: HayHaulGuidance | null,
+    tideTarget?: Vec3): void {
     const position = game.goat.torso.translation();
     const site = game.island.pois.find(poi => poi.name.toUpperCase() === location);
     const zone = site?.id ?? 'open-island';
@@ -705,8 +707,10 @@ export class GameHud {
     }
     this.updateHayHaulMap(hayHaul, point);
     const run = game.gigs.active;
-    const target = !game.party.match && run?.status === 'running' && run.objective.kind === 'summit'
+    const match = game.party.match;
+    const contractTarget = !match && run?.status === 'running' && run.objective.kind === 'summit'
       ? run.objective.next : undefined;
+    const target = match?.mode === 'rising-tide' && match.phase !== 'results' ? tideTarget : contractTarget;
     const flag = this.mapObjectives?.querySelector('[data-map-climb-target]');
     if (flag) {
       flag.setAttribute('visibility', target ? 'visible' : 'hidden');
@@ -786,7 +790,7 @@ export class GameHud {
 
   update(game: Game, fps: number, stepMilliseconds: number, debugVisible: boolean,
     pointerLocked: boolean, perf?: FramePerformance, hayHaul: HayHaulGuidance | null = null,
-    device: InputDevice = 'keyboard-mouse', pointerLockUnavailable = false): void {
+    device: InputDevice = 'keyboard-mouse', pointerLockUnavailable = false, tideTarget?: Vec3): void {
     const rules = game.rules;
     const inventory = rules.inventory.all;
     const activeGig = game.gigs.active;
@@ -832,7 +836,7 @@ export class GameHud {
     this.place.textContent = state.location;
     this.place.dataset.longLabel = String(state.location.length > 18);
     this.wallet.textContent = state.coins + ' CUD COINS';
-    this.updateMap(game, state.location, hayHaul);
+    this.updateMap(game, state.location, hayHaul, tideTarget);
 
     this.stamina.style.setProperty('--gg-stamina', state.stamina.toFixed(2) + '%');
     const staminaLow = String(state.staminaLow);

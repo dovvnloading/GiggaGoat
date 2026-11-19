@@ -32,7 +32,6 @@ interface PaintedPart {
   color: number;
 }
 
-
 const lerpPoint = (a: Vec3, b: Vec3, amount: number): Vec3 => ({
   x: a.x + (b.x - a.x) * amount,
   y: a.y + (b.y - a.y) * amount,
@@ -49,6 +48,24 @@ function deckPoint(a: AccessSection, b: AccessSection, across: number, along: nu
   return lerpPoint(edge, lerpPoint(a.outer, b.inner, along), across / along);
 }
 
+type DeckCoordinate = readonly [across: number, along: number];
+
+/** Split the paint along the same diagonal as a turning ramp's two top faces. */
+function clipPaintToDeckFace(triangle: readonly DeckCoordinate[], side: 1 | -1): DeckCoordinate[] {
+  const face: DeckCoordinate[] = [];
+  for (let i = 0; i < triangle.length; i++) {
+    const a = triangle[i]!, b = triangle[(i + 1) % triangle.length]!;
+    const from = side * (a[0] - a[1]), to = side * (b[0] - b[1]);
+    if (from >= 0) face.push(a);
+    if (from * to < 0) {
+      const t = from / (from - to);
+      const crossing = THREE.MathUtils.lerp(a[0], b[0], t);
+      face.push([crossing, crossing]);
+    }
+  }
+  return face;
+}
+
 /** Painted chevrons lead the player forward around corners without another draw. */
 export function accessArrows(sections: readonly AccessSection[], scale: number, color: number): PaintedPart {
   const vertices: number[] = [];
@@ -61,16 +78,24 @@ export function accessArrows(sections: readonly AccessSection[], scale: number, 
     const depth = .55 * scale / length;
     for (; remaining < length; remaining += 4.6 * scale) {
       const t = Math.max(depth, Math.min(1 - depth, remaining / length));
-      const vertex = (u: number, v: number): void => {
+      const vertex = ([u, v]: DeckCoordinate): void => {
         const p = deckPoint(a, b, u, v);
         vertices.push(p.x, p.y + .028 * scale, p.z);
       };
-      vertex(.5 - half, t - depth);
-      vertex(.5, t + depth);
-      vertex(.5, t + depth * .20);
-      vertex(.5, t + depth);
-      vertex(.5 + half, t - depth);
-      vertex(.5, t + depth * .20);
+      const tip: DeckCoordinate = [.5, t + depth];
+      const notch: DeckCoordinate = [.5, t + depth * .20];
+      const wings: DeckCoordinate[][] = [
+        [[.5 - half, t - depth], tip, notch],
+        [tip, [.5 + half, t - depth], notch],
+      ];
+      for (const wing of wings) for (const side of [1, -1] as const) {
+        const face = clipPaintToDeckFace(wing, side);
+        for (let index = 1; index < face.length - 1; index++) {
+          vertex(face[0]!);
+          vertex(face[index]!);
+          vertex(face[index + 1]!);
+        }
+      }
     }
     remaining -= length;
   }
