@@ -59,6 +59,18 @@ function propClearance(prop: PropDescriptor, p: Vec2): number {
 /** Move only accidental generic scatter, after the authored stop layouts are settled. */
 export function clearPavedRoadScenery(island: IslandData): void {
   const scale = island.size / 600;
+  // Shoulder dressing and district layouts can meet on the same sidewalk.
+  // Prefer the district lantern at that elevation and preserve all other prop IDs.
+  const districtLamps = island.props.filter(p => p.kind === 'lamp' && p.poiId);
+  island.props = island.props.filter(p => {
+    if (p.kind !== 'lamp' || p.poiId) return true;
+    const position = p.transform.position, foot = position.y - p.size.y / 2;
+    return !districtLamps.some(lamp => {
+      const q = lamp.transform.position;
+      return Math.abs(foot - (q.y - lamp.size.y / 2)) < scale &&
+        Math.hypot(position.x - q.x, position.z - q.z) < 2.5 * scale;
+    });
+  });
   const overlapsRoad = pavedRoadOverlap(island);
   const stops = roadsideStops(island);
   const solid = island.props.filter(prop => prop.collidable);

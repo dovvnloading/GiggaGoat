@@ -18,6 +18,15 @@ describe('paved road scenery', () => {
     },
   );
 
+  it('keeps a single lantern at the shopfront on the Downtown approach', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const shopfront = island.props.find(p => p.id === 'downtown-bleatsville-lamp-75')!;
+    const a = shopfront.transform.position;
+    const adjacent = island.props.filter(p => p.kind === 'lamp' &&
+      Math.hypot(p.transform.position.x - a.x, p.transform.position.z - a.z) < 2.5);
+    expect(adjacent).toEqual([shopfront]);
+  });
+
   it('preserves the seeded Crane bypass bushes and clears the center and edge for a sprint', async () => {
     const game = await Game.create();
     try {
