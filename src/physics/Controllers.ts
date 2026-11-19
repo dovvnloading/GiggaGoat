@@ -121,6 +121,18 @@ export class BalanceController {
     // A deliberate airborne flip owns rotation until the turn is complete.
     if (g.locomotion.isFlipping) return;
     const omega = torso.angvel();
+    const wall = g.locomotion.climbSurface;
+    if (wall && Math.abs(wall.normal.y) < .22) {
+      // Brace the articulated body against the same face as its animated feet.
+      // World-upright balance otherwise rolls the neck and legs into the wall.
+      const ascent = normalize(sub(V(0, 1, 0), mul(wall.normal, wall.normal.y)));
+      const targetUp = add(mul(wall.normal, .98), mul(ascent, .20));
+      const targetForward = sub(mul(ascent, .98), mul(wall.normal, .20));
+      const turn = add(cross(bodyUp, targetUp), cross(rotate(q, V(0, 0, -1)), targetForward));
+      const correction = clampLength(sub(mul(turn, 75), mul(omega, 13)), 120);
+      torso.applyTorqueImpulse(mul(correction, g.mass * g.size * g.size * .11 * dt), true);
+      return;
+    }
     const tilt = cross(bodyUp, V(0, 1, 0));
     const currentForward = rotate(q, V(0, 0, -1));
     const wanted = forward(g.locomotion.heading);
@@ -353,10 +365,23 @@ export class LocomotionController {
         const head = g.head;
         const contactReach = dot(sub(head.translation(), torso), inward) + head.collider(0).radius() + .10 * g.size;
         for (const offset of [.09, -.48]) {
-          const grip = g.world.raycast(add(torso, V(0, offset * g.size, 0)), inward, Math.max(reach, contactReach), query);
+          // Once the body turns upright, the leading hoof can reach farther
+          // than the tucked head. Both probes must still hit actual geometry.
+          const grip = g.world.raycast(add(torso, V(0, offset * g.size, 0)), inward, Math.max(1.3 * g.size, contactReach), query);
           if (canClimb(grip) && grip.collider.handle === collider.handle) return grip;
         }
       }
+    }
+
+    // On an oblique approach the near shoulder can touch a facet while the
+    // centre ray passes alongside it. Verify the swept face at chest height
+    // to exclude kerbs and the horizontal top of a prop.
+    const chest = add(torso, V(0, .09 * g.size, 0));
+    const sweep = g.world.shapeCast(chest, g.torso.rotation(), wish, g.head.collider(0).shape, reach, query);
+    if (canClimb(sweep) && Math.abs(sweep.normal.y) < .22 && !sweep.body?.isDynamic()) {
+      const inward = normalize(V(-sweep.normal.x, 0, -sweep.normal.z));
+      const face = g.world.raycast(chest, inward, reach + g.head.collider(0).radius(), query);
+      if (canClimb(face) && face.collider.handle === sweep.collider.handle) return face;
     }
 
     // The leading head can already touch a slope even when the chest ray
@@ -521,7 +546,9 @@ export class LocomotionController {
       if (Math.abs(normal.y) < .22) {
         const sideways = cross(ascent, normal);
         const velocity = torso.linvel();
-        grip = sub(grip, mul(normal, clamp(dot(velocity, normal), 0, .35)));
+        const clearance = dot(sub(position, this.climbSurface.point), normal);
+        const brace = clamp((.75 * s - clearance) * 80 - dot(velocity, normal) * 13, -19, 19);
+        grip = mul(normal, brace * dt);
         grip = sub(grip, mul(sideways, clamp(dot(velocity, sideways), -9 * dt, 9 * dt)));
       }
       torso.applyImpulse(add(mul(traction, 1 - footShare), mul(grip, g.mass)), true);

@@ -681,7 +681,11 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
     } finally { game.dispose(); }
   });
 
-  it.each([[5.25, 1.1], [3.73, 2.67]])('keeps a continuous grip on the Hoofington silo from (%s, %s)', async (dx, dz) => {
+  it.each([
+    { dx: 5.25, dz: 1.1, facing: .89, input: { moveZ: 1, cameraYaw: -Math.PI / 2 } },
+    { dx: 3.73, dz: 2.67, facing: .89, input: { moveZ: 1, cameraYaw: -Math.PI / 2 } },
+    { dx: 3.92, dz: 3.03, facing: -3.07, input: { moveX: -1, cameraYaw: .674 } },
+  ])('keeps a continuous grip on the Hoofington silo from ($dx, $dz)', async ({ dx, dz, facing, input }) => {
     const game = await Game.create();
     try {
       ticks(game, 90);
@@ -689,7 +693,7 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
       const { x, z } = silo.transform.position;
       const startX = x + dx;
       const startZ = z + dz;
-      game.teleport(V(startX, heightAt(game.island, startX, startZ) + .02, startZ), .89);
+      game.teleport(V(startX, heightAt(game.island, startX, startZ) + .02, startZ), facing);
       ticks(game, 60);
       const transitions: string[] = [];
       const off = game.goat.events.on(event => {
@@ -698,7 +702,7 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
         }
       });
       const base = game.goat.torso.translation().y;
-      ticks(game, 180, { moveZ: 1, cameraYaw: -Math.PI / 2 });
+      ticks(game, 180, input);
       expect(game.goat.torso.translation().y - base).toBeGreaterThan(4);
       expect(transitions).toEqual(['wallClingStart']);
       ticks(game, 1);

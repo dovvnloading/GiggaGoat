@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import RAPIER from '@dimforge/rapier3d-compat';
+import { addRapierPropCollider } from './colliders';
 import { createWorldScene, generateIsland } from './index';
 import { gridSample } from './terrain';
 import { createDistrictLod, type BakedPlacement } from './district-lod';
@@ -12,6 +14,48 @@ import {
 } from './visual-hoofington';
 
 describe('Hoofington sourced village model integration', () => {
+
+  it('puts physical footholds on the rendered silo wall, ladder, pipe and roof', async () => {
+    const island = generateIsland();
+    const placement = makeHoofingtonPlacements(island).find(entry => entry.model === 'silo')!;
+    const descriptor = island.colliders.find(c => c.shape !== 'heightfield' && c.id === placement.source!.id)!;
+    if (descriptor.shape !== 'trimesh') throw Error('Expected the authored silo collider');
+    const bytes = readFileSync('public/' + HOOFINGTON_MODELS.silo);
+    const { scene } = await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, '');
+    const geometry = bakeHoofingtonGeometry([placement], new Map([['silo', scene]]))!;
+    const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+    const shell = new THREE.Mesh(geometry, material);
+    await RAPIER.init();
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    try {
+      const props = new Map<string, RAPIER.Collider>();
+      addRapierPropCollider(world, { props, bodies: new Map() }, descriptor);
+      const collider = props.get(descriptor.id)!;
+      const centre = new THREE.Vector3().copy(placement.position);
+      for (const height of [-.4, -.25, .09, .27, .42]) {
+        for (let i = 0; i < 24; i++) {
+          const angle = 2 * Math.PI * i / 24;
+          const direction = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+          const origin = centre.clone().addScaledVector(direction, -12);
+          origin.y += height * placement.size.y;
+          const art = new THREE.Raycaster(origin, direction).intersectObject(shell)[0];
+          expect(art).toBeDefined();
+          const distance = collider.castRay(new RAPIER.Ray(origin, direction), 24, false);
+          expect(Math.abs(distance - art!.distance)).toBeLessThan(.003);
+        }
+      }
+    } finally {
+      world.free();
+      geometry.dispose();
+      material.dispose();
+      scene.traverse(object => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+          (object.material as THREE.Material).dispose();
+        }
+      });
+    }
+  });
 
   it('keeps the shipped cream cottage silhouette and upper paint while shading its base course', async () => {
     const island = generateIsland();
