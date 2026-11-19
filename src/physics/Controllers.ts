@@ -2,6 +2,7 @@ import type { RayHit } from './PhysicsWorld';
 import { CollisionLayer, GROUND_QUERY_GROUPS } from './CollisionGroups';
 import { add, clamp, clampLength, cross, dot, forward, length, mul, normalize, right, rotate, sub, V, type Vec3 } from './math';
 import type { GoatRagdoll } from './GoatRagdoll';
+import { CLIMB_STRIDE, climbStep } from './climb-gait';
 
 const HIP_RECOVERY_HOLD_LIMIT = .65;
 const HIP_RECOVERY_HANDOFF_SECONDS = .55;
@@ -229,6 +230,8 @@ export class LocomotionController {
   grounded = false;
   groundHit: RayHit | null = null;
   isClinging = false;
+  climbSurface: RayHit | null = null;
+  climbPhase = 0;
   airborneSeconds = 0;
   private clock = 0;
   private lastGroundAt = -Infinity;
@@ -240,8 +243,7 @@ export class LocomotionController {
   private flipAngle = 0;
   private flipScored = false;
   private flightStarted: number | null = null;
-  private clingGrace = 0;
-  private clingNormal: Vec3 = V(0,0,1);
+  private lastClimbPosition: Vec3 = V();
   private lastGrounded = false;
   constructor(private readonly goat: GoatRagdoll) {}
 
@@ -251,6 +253,14 @@ export class LocomotionController {
     this.input.z = clamp(this.input.z,-1,1);
   }
   get groundSupportAge(): number { return this.clock - this.lastGroundAt; }
+  /** Sample the same stride at the interpolated visual torso position. */
+  climbPhaseAt(point: Vec3): number {
+    if (!this.climbSurface) return this.climbPhase;
+    const n = this.climbSurface.normal;
+    const delta = sub(point, this.lastClimbPosition);
+    const travel = (delta.y - dot(delta, n) * n.y) / Math.sqrt(1 - n.y * n.y);
+    return this.climbPhase + travel / (CLIMB_STRIDE * this.goat.size);
+  }
   get canCoyoteJump(): boolean {
     return !this.grounded && !this.isClinging && !this.goat.isRagdoll &&
       this.canGroundJumpAt(this.clock + this.goat.world.fixedDt);
@@ -326,9 +336,16 @@ export class LocomotionController {
     const query = { groups: GROUND_QUERY_GROUPS };
     const canClimb = (hit: RayHit | null): hit is RayHit =>
       hit !== null && hit.normal.y < this.minWalkingNormalY && dot(wish, hit.normal) < -.45;
-    const shoulder = g.world.raycast(add(torso, V(0, .09 * g.size, 0)), wish,
-      this.tuning.climbReach * g.size, query);
+    const reach = (this.tuning.climbReach + (this.isClinging ? .18 : 0)) * g.size;
+    const shoulder = g.world.raycast(add(torso, V(0, .09 * g.size, 0)), wish, reach, query);
     if (canClimb(shoulder)) return shoulder;
+
+    // At a lip the shoulders clear first. Keep pushing only while a lower
+    // foothold can still reach the same face.
+    if (this.climbSurface) {
+      const hind = g.world.raycast(add(torso, V(0, -.48 * g.size, 0)), wish, reach, query);
+      if (canClimb(hind) && hind.collider.handle === this.climbSurface.collider.handle) return hind;
+    }
 
     // The leading head can already touch a slope even when the chest ray
     // still falls short. Sweep the actual head collider over a short reach.
@@ -418,21 +435,17 @@ export class LocomotionController {
     }
     const wall = this.input.climbContact === undefined
       ? this.findClimbSurface(movement) : this.input.climbContact;
-    if (wall) {
-      this.clingGrace = .34;
-      this.clingNormal = { ...wall.normal };
-    } else {
-      this.clingGrace = Math.max(0,this.clingGrace-dt);
-    }
-    const clinging = !g.isRagdoll && this.input.canClimb && wishLength > .1 &&
-      (wall !== null || (this.isClinging && this.clingGrace > 0));
+    const clinging = !g.isRagdoll && this.input.canClimb && wishLength > .1 && wall !== null;
+    this.climbSurface = clinging ? wall : null;
     // Steep-wall intent takes priority over ordinary ground contact, so a goat can
     // initiate a climb with its hooves still planted on flat terrain.
     if (clinging) this.grounded = false;
     if (clinging !== this.isClinging) {
       this.isClinging = clinging;
       if (clinging) {
-        g.events.emit({type:'wallClingStart',goatId:g.id,time:g.world.time,normal:{...this.clingNormal}});
+        this.lastClimbPosition = position;
+        this.climbPhase = 0;
+        g.events.emit({type:'wallClingStart',goatId:g.id,time:g.world.time,normal:{...wall!.normal}});
       } else {
         g.events.emit({type:'wallClingEnd',goatId:g.id,time:g.world.time});
       }
@@ -476,13 +489,37 @@ export class LocomotionController {
       g.events.emit({type:'jumped',goatId:g.id,time:g.world.time});
     }
 
-    if (this.isClinging) {
-      const upward = clamp(this.tuning.climbSpeed*Math.sqrt(s)-torso.linvel().y,-.2,.42);
-      // Keep shoulder and hooves in reach when collisions rebound the torso:
-      // climbing is a constrained push against a real surface, not a teleport.
-      const wallPressure = mul(this.clingNormal,-g.mass*5*dt);
-      torso.applyImpulse(add(V(0,upward*g.mass,0),wallPressure),true);
-      g.setPose('climb',g.phase+dt*9);
+    if (this.climbSurface) {
+      const normal = this.climbSurface.normal;
+      this.heading = Math.atan2(-normal.x, normal.z);
+      const ascent = normalize(sub(V(0, 1, 0), mul(normal, normal.y)));
+      const travel = dot(sub(position, this.lastClimbPosition), ascent);
+      this.climbPhase += travel / (CLIMB_STRIDE * s);
+      this.lastClimbPosition = position;
+      const phase = this.climbPhase * 2 * Math.PI;
+      const drive = 1 + .16 * Math.cos(2 * phase);
+      const target = this.tuning.climbSpeed * Math.sqrt(s) * drive / ascent.y;
+      const gravity = -dot(g.world.raw.gravity, ascent) * dt;
+      const pull = clamp(target - dot(torso.linvel(), ascent) + gravity, -.2, .42);
+      const traction = mul(ascent, pull * g.mass);
+      // The small Rapier leg boxes take a portion of the supporting load.
+      // Keep peak impulses below the hips' holding strength at contact.
+      const footShare = pull > 0 ? .12 : 0;
+      torso.applyImpulse(add(mul(traction, 1 - footShare), mul(normal, -5 * dt * g.mass)), true);
+      if (footShare) {
+        const first = climbStep(this.climbPhase, false).lift === 0;
+        const second = climbStep(this.climbPhase, true).lift === 0;
+        const push = mul(traction, footShare / (2 * (Number(first) + Number(second))));
+        if (first) {
+          g.getPart('frontLeft').applyImpulse(push, true);
+          g.getPart('backRight').applyImpulse(push, true);
+        }
+        if (second) {
+          g.getPart('frontRight').applyImpulse(push, true);
+          g.getPart('backLeft').applyImpulse(push, true);
+        }
+      }
+      g.setPose('climb', phase);
       return;
     }
     this.driveAirFlip(dt);

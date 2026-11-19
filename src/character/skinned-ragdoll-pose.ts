@@ -3,7 +3,7 @@ import { GROUND_QUERY_GROUPS, type GoatPart, type GoatRagdoll, type RayHit } fro
 import type { GoatVariant } from './rigged';
 
 const LEGS = ['frontLeft', 'frontRight', 'backLeft', 'backRight'] as const satisfies readonly GoatPart[];
-const HIP_BONES: Readonly<Record<GoatVariant, readonly string[]>> = {
+export const HIP_BONES: Readonly<Record<GoatVariant, readonly string[]>> = {
   hero: ['joint_27', 'joint_22', 'joint_14', 'joint_10'],
   bandana: ['clavicleL', 'clavicleR', 'rearUprL', 'rearUprR'],
   bell: ['frontUprL', 'frontUprR', 'rearUprL', 'rearUprR'],

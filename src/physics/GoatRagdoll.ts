@@ -178,7 +178,10 @@ export class GoatRagdoll {
     if (name === 'head') return this.pose === 'climb' ? -.12 : -.06;
     const front = name.startsWith('front');
     if (this.pose === 'jumpTuck') return front ? .58 : -.53;
-    if (this.pose === 'climb') return front ? .43 : -.38;
+    if (this.pose === 'climb') {
+      const diagonal = name === 'frontLeft' || name === 'backRight' ? 0 : Math.PI;
+      return (front ? .28 : -.21) + .38 * Math.sin(this.phase + diagonal);
+    }
     if (this.pose === 'stand') return front ? .03 : -.03;
     const gallop = this.pose === 'gallop';
     const amplitude = gallop ? .61 : .33;

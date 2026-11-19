@@ -8,6 +8,7 @@ import {
 } from './motion';
 import { LegacyGoatCharacter } from './LegacyGoatCharacter';
 import { SkinnedRagdollPose } from './skinned-ragdoll-pose';
+import { SkinnedClimbPose } from './skinned-climb-pose';
 import {
   GOAT_CLIPS, GOAT_GLB_FILES, clipForAction, goatPublicAssetUrl,
   locomotionBlend, selectGoatVariant, type GoatCharacterOptions,
@@ -45,6 +46,7 @@ type Rig = {
   weights: { Idle: number; Walk: number; Run: number };
   shot: Shot | null;
   ragdoll: SkinnedRagdollPose | null;
+  climb: SkinnedClimbPose | null;
   previewing: boolean;
 };
 
@@ -118,6 +120,7 @@ export class GoatCharacter {
   private generation = 0;
   private disposed = false;
   private readonly offset = new THREE.Vector3();
+  private readonly torsoCentre = new THREE.Vector3();
   private idleSolesGrounded = false;
   private readonly supportNormal = new THREE.Vector3();
   private readonly supportBack = new THREE.Vector3();
@@ -274,6 +277,7 @@ export class GoatCharacter {
       // Carry locomotion, jumps and flops with the interpolated torso. For
       // idle, the support plane below supplies the render rig's foot frame.
       const transform = goat.world.getInterpolatedTransform(goat.torso, interpolation);
+      this.torsoCentre.copy(transform.translation);
       rig.model.quaternion.set(transform.rotation.x, transform.rotation.y,
         transform.rotation.z, transform.rotation.w);
       rig.model.position.set(transform.translation.x, transform.translation.y,
@@ -331,12 +335,21 @@ export class GoatCharacter {
       rig.actions[this.previewClip].setEffectiveWeight(1);
     }
 
+    rig.climb?.restore();
     rig.ragdoll?.restore();
     rig.ragdoll?.blend(goat, frameDt);
     rig.mixer.update(frameDt);
     if (goat) {
       if (selected === 'stand') this.settleIdleRig(rig, goat, 1 - (rig.ragdoll?.weight ?? 0));
+      if (goat.isRagdoll || rig.ragdoll?.weight) rig.climb?.reset();
+      else rig.climb?.apply(rig.model, this.torsoCentre, goat.locomotion.climbSurface,
+        goat.locomotion.climbPhaseAt(this.torsoCentre), goat.size, frameDt);
       rig.ragdoll?.apply(rig.model, goat, interpolation);
+    } else if (selected === 'wall-climb') {
+      const size = rig.model.scale.x;
+      this.torsoCentre.set(0, size, 0);
+      rig.climb?.apply(rig.model, this.torsoCentre, { point: { x: 0, y: 0, z: 0 },
+        normal: { x: 0, y: 0, z: 1 } }, this.clock * 2.4, size, frameDt);
     }
     return sampleMotion(selected, this.clock);
   }
@@ -433,6 +446,7 @@ export class GoatCharacter {
       this.rig = {
         model, skeleton, mixer, actions, shot: null, previewing: !this.bound,
         ragdoll: SkinnedRagdollPose.create(model, this.variantValue),
+        climb: SkinnedClimbPose.create(model, this.variantValue, IDLE_SOLES[this.variantValue]),
         weights: { Idle: 1, Walk: 0, Run: 0 },
       };
       this.configureActions(this.rig);
@@ -453,6 +467,7 @@ export class GoatCharacter {
   }
 
   private configureActions(rig: Rig): void {
+    rig.climb?.reset();
     rig.ragdoll?.reset();
     rig.mixer.stopAllAction();
     rig.shot = null;

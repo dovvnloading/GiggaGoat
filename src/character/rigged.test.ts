@@ -5,7 +5,8 @@ import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { describe, expect, it, vi } from 'vitest';
 import { forward } from '../physics/math';
 import { GOAT_SIZES } from '../physics/GoatRagdoll';
-import { RAPIER } from '../physics';
+import { collisionGroups, GoatRagdoll, PhysicsWorld, RAPIER } from '../physics';
+import { climbStep } from '../physics/climb-gait';
 import { Game } from '../core/Game';
 import { heightAt } from '../world';
 import { GoatCharacter } from './GoatCharacter';
@@ -143,6 +144,86 @@ const FACING_BONES: Record<GoatVariant, { muzzle: string; tail: string }> = {
   bandana: { muzzle: 'jaw', tail: 'tail4' },
   bell: { muzzle: 'head_13', tail: 'tail4' },
 };
+
+it.each(GOAT_SIZES)('plants alternating skinned hooves on a real wall at size %s, then releases', async size => {
+  const world = await PhysicsWorld.create();
+  world.createGround();
+  const faceZ = -2.2 * size;
+  world.raw.createCollider(RAPIER.ColliderDesc.cuboid(4 * size, 8 * size, .2 * size)
+    .setTranslation(0, 7.9 * size, faceZ - .2 * size)
+    .setCollisionGroups(collisionGroups('terrain')));
+  const goat = new GoatRagdoll(world, { size });
+  const characters = GOAT_VARIANTS.map(variant => new GoatCharacter(goat, { variant }));
+  try {
+    vi.stubGlobal('self', globalThis);
+    vi.stubGlobal('createImageBitmap', async () => ({ width: 1, height: 1, close() {} }));
+    const rigs = await Promise.all(characters.map(async character => {
+      await attachCheckedInRig(character);
+      let skin: THREE.SkinnedMesh | undefined;
+      character.root.traverse(node => { if (node instanceof THREE.SkinnedMesh) skin = node; });
+      if (!skin) throw new Error('Missing skinned goat');
+      const positions = skin.geometry.getAttribute('position');
+      const feet: number[][] = [[], [], [], []];
+      for (let i = 0; i < positions.count; i++) {
+        const x = positions.getX(i), z = positions.getZ(i);
+        if (positions.getY(i) < .022 && Math.abs(x) > .08 && Math.abs(z) > .12) {
+          feet[Number(x > 0) + 2 * Number(z > 0)]!.push(i);
+        }
+      }
+      return { character, skin, feet, planted: [0, 0, 0, 0], lifted: [0, 0, 0, 0],
+        held: [0, 0, 0, 0], previous: [NaN, NaN, NaN, NaN] };
+    }));
+    for (let i = 0; i < 60; i++) world.step(1 / 60);
+    goat.locomotion.setInput({ z: 1, cameraYaw: 0 });
+    const vertex = new THREE.Vector3(), sole = new THREE.Vector3();
+    // A full stride is proportional to size, while climb speed scales with its square root.
+    for (let tick = 0; tick < 160 * Math.max(1, Math.sqrt(size)); tick++) {
+      world.step(1 / 60);
+      const torso = goat.torso.translation();
+      for (const rig of rigs) {
+        rig.character.update(1 / 60, 1);
+        if (!goat.locomotion.isClinging || torso.y < 2.1 * size) continue;
+        rig.character.root.updateMatrixWorld(true);
+        const model = rig.character.root.getObjectByName('rigged goat | ' + rig.character.variant)!;
+        expect(new THREE.Vector3(0, 0, -1).applyQuaternion(model.quaternion).y).toBeGreaterThan(.94);
+        const phase = goat.locomotion.climbPhaseAt(torso);
+        for (const [i, indices] of rig.feet.entries()) {
+          sole.set(0, 0, 0);
+          for (const index of indices) sole.add(rig.skin.getVertexPosition(index, vertex).applyMatrix4(rig.skin.matrixWorld));
+          sole.multiplyScalar(1 / indices.length);
+          const gap = (sole.z - faceZ) / size;
+          const { lift } = climbStep(phase, i === 1 || i === 2);
+          if (!lift && Math.abs(gap) < .11) {
+            rig.planted[i]!++;
+            if (Math.abs(rig.previous[i]! - sole.y) < .025 * size) rig.held[i]!++;
+            rig.previous[i] = sole.y;
+          } else {
+            rig.previous[i] = NaN;
+            if (lift > .13 && gap > .10) rig.lifted[i]!++;
+          }
+        }
+      }
+    }
+    expect(goat.torso.translation().y).toBeGreaterThan(3.5 * size);
+    for (const rig of rigs) {
+      expect(Math.min(...rig.planted), rig.character.variant + ' contacts').toBeGreaterThan(15);
+      expect(Math.min(...rig.held), rig.character.variant + ' stationary footholds').toBeGreaterThan(12);
+      expect(Math.min(...rig.lifted), rig.character.variant + ' clear swings').toBeGreaterThan(8);
+    }
+    goat.locomotion.setInput({ z: -1 });
+    for (let i = 0; i < 22; i++) {
+      world.step(1 / 60);
+      for (const character of characters) character.update(1 / 60, 1);
+    }
+    expect(goat.locomotion.climbSurface).toBeNull();
+    expect(characters.every(character => character.action !== 'wall-climb')).toBe(true);
+  } finally {
+    vi.unstubAllGlobals();
+    for (const character of characters) character.dispose();
+    goat.dispose();
+    world.dispose();
+  }
+});
 
 describe('rigged GLB heading matches physical forward', () => {
   it.each(GOAT_VARIANTS)('%s faces forward with its actual animated muzzle and tail',
