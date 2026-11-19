@@ -1,5 +1,5 @@
 import type { IslandData, PoiId, PropColliderDescriptor, RoadDescriptor, RoadPoint, Vec2 } from './types';
-import { clamp, lerp, SeededRandom } from './random';
+import { clamp, lerp, SeededRandom, smoothstep } from './random';
 import { gridSample, riverAt, stampRoad } from './terrain';
 import { CRANE_YARD_PLAN } from './crane-yard';
 
@@ -118,6 +118,40 @@ function gradeRoad(points: RoadPoint[], maxGrade: number): void {
       const limit = maxGrade * Math.hypot(b.x - a.x, b.z - a.z);
       a.y = clamp(a.y, b.y - limit, b.y + limit);
     }
+  }
+}
+
+/** Keep the through road inland of the Lighthouse bridge's low mainland spans. */
+export function separateLighthouseFork(island: IslandData): void {
+  const road = island.roads.find(road => road.id === 'whispering-pines--hoofington');
+  if (!road) return;
+  const scale = island.size / 600;
+  let first = road.points.length;
+  let last = -1;
+  for (const [index, point] of road.points.entries()) {
+    const enter = smoothstep(-70 * scale, -44 * scale, point.z);
+    const leave = 1 - smoothstep(-21 * scale, -4 * scale, point.z);
+    if (enter === 0 || leave === 0) continue;
+    point.x += 9.75 * scale * enter * leave;
+    point.y = Math.max(point.y, gridSample(island, point.x, point.z));
+    first = Math.min(first, index);
+    last = index;
+  }
+  if (first > last) return;
+
+  // Grade the existing shoulders into the bend so walking downhill does not
+  // lose contact at either handoff to the original pavement.
+  const approach = road.points.slice(Math.max(0, first - 4), last + 5);
+  gradeRoad(approach, .04);
+
+  // Retain the seeded plants and the way they sit on the verge after grading.
+  const planted = island.props.filter(prop => prop.id.startsWith('detail-island-'))
+    .map(({ transform: { position } }) => ({ position, ground: gridSample(island, position.x, position.z) }));
+  for (let i = 1; i < approach.length; i++) {
+    stampRoad(island, approach[i - 1]!, approach[i]!, road.width, island.river);
+  }
+  for (const { position, ground } of planted) {
+    position.y += gridSample(island, position.x, position.z) - ground;
   }
 }
 
