@@ -33,6 +33,10 @@ import { findStockBaleSeat, isLegacyStockBale } from './HoofingtonStock';
 
 export const FIXED_DT = 1 / 60;
 
+const buildHalfHeight: Record<PieceType, number> = {
+  floor: .23, wall: 1, ramp: .9, 'launch-pad': .23,
+};
+
 /** Compose rotations for a whole-ragdoll rescue without modifying joint angles. */
 const multiplyRotation = (a: Quat, b: Quat): Quat => ({
   x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
@@ -111,7 +115,7 @@ export class Game {
   private lastTongueTime = 0;
   private lastActionTime = -Infinity;
   private lastStyle = new Map<string, number>();
-  private buildOrigin: Vec3;
+  private readonly buildOrigin: Vec3;
   private readonly pierDecks: readonly PropDescriptor[];
   private readonly blockedClimbHandles = new Set<number>();
   private readonly safetyRailHandles = new Set<number>();
@@ -538,8 +542,9 @@ export class Game {
 
   buildPosition(piece: Placement, origin = this.buildOrigin): Vec3 {
     const grid = TUNING.build.gridSize;
-    return V(origin.x + piece.cell.x * grid,
-      origin.y + piece.cell.y * grid + grid / 2,
+    const base = piece.foundationOffset === undefined
+      ? grid / 2 : piece.foundationOffset + buildHalfHeight[piece.type];
+    return V(origin.x + piece.cell.x * grid, origin.y + piece.cell.y * grid + base,
       origin.z + piece.cell.z * grid);
   }
 
@@ -551,7 +556,7 @@ export class Game {
     const collider = piece.type === 'ramp'
       ? RAPIER.ColliderDesc.convexHull(new Float32Array(BUILD_RAMP_VERTICES))
       : RAPIER.ColliderDesc.cuboid(
-        piece.type === 'wall' ? .23 : 1, piece.type === 'wall' ? 1 : .23, 1);
+        piece.type === 'wall' ? .23 : 1, buildHalfHeight[piece.type], 1);
     if (!collider) throw new Error('Invalid Hay-Build ramp');
     this.physics.raw.createCollider(collider.setCollisionGroups(collisionGroups('build-piece'))
       .setFriction(.85).setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS |
@@ -571,29 +576,87 @@ export class Game {
     if (body) { this.physics.removeBody(body); this.buildBodies.delete(id); }
   }
 
-  private buildCandidate(cameraYaw: number): { placement: Placement; origin: Vec3 } {
-    const torso = this.goat.torso.translation(), dir = forward(cameraYaw);
-    const x = torso.x + dir.x * 4.5, z = torso.z + dir.z * 4.5;
-    const origin = this.rules.build.size ? this.buildOrigin : V(0, heightAt(this.island, x, z), 0);
-    const snap = this.rules.build.snap(V(x - origin.x,
-      Math.max(0, torso.y - origin.y - this.goat.size * .7), z - origin.z));
-    return { placement: { ...snap, type: this.buildPiece }, origin };
+  /** Sample the footprint below the aim point and keep the base on solid support. */
+  private buildGround(x: number, z: number, feet: number): number | undefined {
+    const halfWidth = this.buildPiece === 'wall' ? .18 : .85;
+    const samples = [[0, 0], [-halfWidth, -.85], [halfWidth, -.85], [-halfWidth, .85], [halfWidth, .85]] as const;
+    const heights: number[] = [];
+    for (const [dx, dz] of samples) {
+      const sample = this.buildSupportSample(V(x + dx, feet + 1.2, z + dz));
+      if (sample === undefined) return;
+      heights.push(sample);
+    }
+    const high = Math.max(...heights);
+    if (high - Math.min(...heights) <= .60) return high;
+  }
+
+  private buildSupportSample(origin: Vec3): number | undefined {
+    const down = V(0, -1, 0);
+    const maxDepth = 9;
+    const isFixedSupport = (collider: typeof this.colliders.terrain): boolean => {
+      const body = collider.parent();
+      return !collider.isSensor() &&
+        (!body || (body.isFixed() && this.physics.bodyData(body.handle)?.kind !== 'build-piece'));
+    };
+    if (this.physics.stepCount > 0) {
+      const hit = this.physics.raycast(origin, down, maxDepth, { predicate: isFixedSupport });
+      return hit && hit.normal.y >= .56 ? hit.point.y : undefined;
+    }
+
+    // The first build preview can run before Rapier creates its query index.
+    const ray = new RAPIER.Ray(origin, down);
+    let nearest = maxDepth;
+    let normalY = 0;
+    for (const collider of [this.colliders.terrain, ...this.colliders.paths, ...this.colliders.props.values()]) {
+      if (!isFixedSupport(collider)) continue;
+      const hit = collider.castRayAndGetNormal(ray, nearest, true);
+      if (hit && hit.timeOfImpact < nearest) {
+        nearest = hit.timeOfImpact;
+        normalY = hit.normal.y;
+      }
+    }
+    return normalY >= .56 ? origin.y - nearest : undefined;
   }
 
   buildPreview(cameraYaw = this.intent.cameraYaw ?? this.goat.locomotion.heading): BuildPreview | null {
     if (!this.buildMode) return null;
-    const { placement, origin } = this.buildCandidate(cameraYaw);
-    return {
-      placement,
-      position: this.buildPosition(placement, origin),
-      validation: this.rules.build.validatePlacement(placement),
-    };
+    const torso = this.goat.torso.translation(), dir = forward(cameraYaw);
+    const feet = torso.y - .97 * this.goat.size;
+    const grid = TUNING.build.gridSize;
+    const origin = this.buildOrigin;
+    const x = torso.x + dir.x * 4.5, z = torso.z + dir.z * 4.5;
+    const snap = this.rules.build.snap(V(x - origin.x, 0, z - origin.z));
+    const ground = this.buildGround(origin.x + snap.cell.x * grid, origin.z + snap.cell.z * grid, feet);
+    let placement: Placement = { ...snap, type: this.buildPiece, foundationOffset: (ground ?? feet) - origin.y };
+    let validation: Validation = ground === undefined ? { valid: false, reason: 'no-support' } :
+      this.rules.build.validatePlacement(placement);
+    let closest = ground === undefined ? Infinity : Math.abs(feet - ground);
+
+    // Extend an existing grid at the player's height. Different foundations do
+    // not prop each other up, even if their integer cells are adjacent.
+    const foundations = new Set(this.rules.build.pieces.filter(piece =>
+      Math.abs(piece.cell.x - snap.cell.x) + Math.abs(piece.cell.z - snap.cell.z) <= 1)
+      .map(piece => piece.foundationOffset));
+    for (const offset of foundations) {
+      const datum = origin.y + (offset ?? 0);
+      const y = Math.round((feet - datum) / grid);
+      const height = datum + y * grid;
+      const distance = Math.abs(feet - height);
+      if (y < 1 || distance >= closest || (ground !== undefined && height < ground - .05)) continue;
+      const candidate: Placement = { ...snap, type: this.buildPiece, cell: { ...snap.cell, y },
+        ...(offset === undefined ? {} : { foundationOffset: offset }) };
+      const support = this.rules.build.validatePlacement(candidate);
+      if (!support.valid) continue;
+      closest = distance;
+      placement = candidate;
+      validation = support;
+    }
+    return { placement, position: this.buildPosition(placement), validation };
   }
 
   private placeBuild(): void {
-    const { placement, origin } = this.buildCandidate(this.intent.cameraYaw ?? this.goat.locomotion.heading);
-    this.buildOrigin = origin;
-    this.rules.build.place(placement);
+    const preview = this.buildPreview();
+    if (preview?.validation.valid) this.rules.build.place(preview.placement);
   }
 
   /** Advance by wall-clock elapsed seconds; Rapier alone handles accumulator and fixed ticks. */

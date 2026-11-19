@@ -68,6 +68,22 @@ describe('HayBuild', () => {
     expect(build.pieces.map(p => p.id)).toEqual([otherRoot, otherLeaf]);
     expect(build.getPiece(stem)).toBeUndefined();
   });
+  it('saves separate ground levels and never treats a neighboring mismatched foundation as support', () => {
+    const { build, inventory, events } = setup();
+    const root = place(build, { ...at(0, 0, 0), foundationOffset: -3.4 });
+    const support = place(build, { ...at(0, 1, 0, 'wall'), foundationOffset: -3.4 });
+    const other = place(build, { ...at(1, 0, 0), foundationOffset: -1.2 });
+    expect(build.validatePlacement({ ...at(1, 2, 0), foundationOffset: -1.2 }))
+      .toEqual({ valid: false, reason: 'no-support' });
+    expect(build.validatePlacement({ ...at(0, 2, 0), foundationOffset: -3.7 }))
+      .toEqual({ valid: false, reason: 'overlap' });
+    const copy = HayBuild.fromJSON(structuredClone(build.toJSON()), inventory, events);
+    expect(copy.toJSON()).toEqual(build.toJSON());
+    copy.remove(root);
+    expect(copy.getPiece(support)).toBeUndefined();
+    expect(copy.getPiece(other)).toMatchObject({ foundationOffset: -1.2 });
+  });
+
   it('uses BFS from ALL ground roots, avoiding false collapse for multiply supported spans', () => {
     const { build } = setup();
     const a = place(build, at(0, 0, 0));

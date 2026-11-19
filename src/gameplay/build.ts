@@ -13,7 +13,13 @@ export const BUILD_RAMP_TRIANGLES = [0, 2, 1, 1, 2, 3, 2, 4, 3, 3, 4, 5,
 export type MaterialCounts = Record<Material, number>;
 export type Cell = { x: number; y: number; z: number };
 export type QuarterTurn = 0 | 1 | 2 | 3;
-export interface Placement { type: PieceType; cell: Cell; rotation: QuarterTurn }
+export interface Placement {
+  type: PieceType;
+  cell: Cell;
+  rotation: QuarterTurn;
+  /** Local ground datum relative to the original island-wide build grid. */
+  foundationOffset?: number;
+}
 export interface BuildPiece extends Placement { id: number; hp: number }
 export interface BuildSnapshot { nextId: number; pieces: BuildPiece[] }
 export type PlacementFailure = 'out-of-bounds' | 'invalid-rotation' | 'overlap' | 'no-support' | 'cost';
@@ -32,7 +38,13 @@ function validCell(cell: Cell): boolean {
   return Number.isSafeInteger(cell.x) && Number.isSafeInteger(cell.y) && Number.isSafeInteger(cell.z) &&
     Math.abs(cell.x) <= TUNING.build.maxHorizontalCell && cell.y >= 0 && cell.y <= TUNING.build.maxHeight && Math.abs(cell.z) <= TUNING.build.maxHorizontalCell;
 }
-const cellKey = (p: Cell) => `${p.x},${p.y},${p.z}`;
+const foundation = (p: Placement): number => p.foundationOffset ?? 0;
+const cellKey = (p: Cell, offset: number): string => `${p.x},${p.y},${p.z},${offset}`;
+function overlapsCell(a: Placement, b: Placement): boolean {
+  if (a.cell.x !== b.cell.x || a.cell.z !== b.cell.z) return false;
+  const grid = TUNING.build.gridSize;
+  return Math.abs((a.cell.y - b.cell.y) * grid + foundation(a) - foundation(b)) < grid - 1e-5;
+}
 const neighbours = (p: Cell): Cell[] => [
   { x: p.x - 1, y: p.y, z: p.z }, { x: p.x + 1, y: p.y, z: p.z },
   { x: p.x, y: p.y - 1, z: p.z }, { x: p.x, y: p.y + 1, z: p.z },
@@ -110,8 +122,8 @@ export class Inventory {
   }
 }
 
-/** Face-connected voxel support. Every piece must connect to y=0 through pieces.
- * Rotations affect the physics mesh, not the occupancy/support cell. */
+/** Face-connected voxel support. Elevated pieces must connect to a ground
+ * cell on their foundation. Rotations affect the mesh, not the support cell. */
 export class HayBuild {
   private readonly map = new Map<number, BuildPiece>();
   private nextId = 1;
@@ -133,37 +145,39 @@ export class HayBuild {
 
   private anchored(exclude?: number): Set<number> {
     const byCell = new Map<string, BuildPiece>();
-    for (const p of this.map.values()) if (p.id !== exclude) byCell.set(cellKey(p.cell), p);
+    for (const p of this.map.values()) if (p.id !== exclude) byCell.set(cellKey(p.cell, foundation(p)), p);
     const queue: BuildPiece[] = [...byCell.values()].filter(p => p.cell.y === 0).sort((a, b) => a.id - b.id);
     const seen = new Set(queue.map(p => p.id));
     for (let i = 0; i < queue.length; i++) {
       const node = queue[i];
       if (!node) continue;
       for (const adjacent of neighbours(node.cell)) {
-        const p = byCell.get(cellKey(adjacent));
+        const p = byCell.get(cellKey(adjacent, foundation(node)));
         if (p && !seen.has(p.id)) { seen.add(p.id); queue.push(p); }
       }
     }
     return seen;
   }
 
-  private isSupported(cell: Cell, exclude?: number): boolean {
-    if (cell.y === 0) return true;
+  private isSupported(placement: Placement, exclude?: number): boolean {
+    if (placement.cell.y === 0) return true;
     const anchors = this.anchored(exclude);
-    const cells = new Set([...this.map.values()].filter(p => anchors.has(p.id)).map(p => cellKey(p.cell)));
-    return neighbours(cell).some(n => cells.has(cellKey(n)));
+    const cells = new Set([...this.map.values()].filter(p => anchors.has(p.id))
+      .map(p => cellKey(p.cell, foundation(p))));
+    return neighbours(placement.cell).some(n => cells.has(cellKey(n, foundation(placement))));
   }
 
   validatePlacement(placement: Placement, replacing?: number): Validation {
     if (!isRecord(placement) || !validType(placement.type) ||
-      !isRecord(placement.cell) || !validCell(placement.cell as Cell)) {
+      !isRecord(placement.cell) || !validCell(placement.cell as Cell) ||
+      (placement.foundationOffset !== undefined && !Number.isFinite(placement.foundationOffset))) {
       return { valid: false, reason: 'out-of-bounds' };
     }
     if (![0, 1, 2, 3].includes(placement.rotation)) return { valid: false, reason: 'invalid-rotation' };
-    if ([...this.map.values()].some(p => p.id !== replacing && cellKey(p.cell) === cellKey(placement.cell))) {
+    if ([...this.map.values()].some(p => p.id !== replacing && overlapsCell(p, placement))) {
       return { valid: false, reason: 'overlap' };
     }
-    if (!this.isSupported(placement.cell, replacing)) return { valid: false, reason: 'no-support' };
+    if (!this.isSupported(placement, replacing)) return { valid: false, reason: 'no-support' };
     const former = replacing == null ? undefined : this.map.get(replacing);
     if (!this.inventory.canExchange(former ? cost(former.type) : zero(), cost(placement.type))) {
       return { valid: false, reason: 'cost' };
@@ -189,6 +203,7 @@ export class HayBuild {
       type: changes.type ?? current.type,
       cell: changes.cell ?? current.cell,
       rotation: changes.rotation ?? current.rotation,
+      ...(current.foundationOffset === undefined ? {} : { foundationOffset: current.foundationOffset }),
     };
     const validation = this.validatePlacement(placement, id);
     if (!validation.valid) return { validation };
@@ -244,7 +259,7 @@ export class HayBuild {
     integer(nextId, 'build.nextId');
     if (!Array.isArray(obj.pieces)) throw new TypeError('build.pieces must be an array');
     const b = new HayBuild(inventory, bus);
-    const occupied = new Set<string>();
+    const occupied = new Map<string, BuildPiece[]>();
     for (const entry of obj.pieces) {
       const item = requireRecord(entry, 'build piece');
       const id = requireNumber(item.id, 'piece.id'); integer(id, 'piece.id');
@@ -255,12 +270,20 @@ export class HayBuild {
       };
       const rotation = requireNumber(item.rotation, 'rotation');
       const hp = requireNumber(item.hp, 'hp');
+      const column = `${cell.x},${cell.z}`;
+      const existing = occupied.get(column) ?? [];
+      const foundationOffset = item.foundationOffset === undefined
+        ? undefined : requireNumber(item.foundationOffset, 'piece.foundationOffset');
       if (!id || !validType(type) || !validCell(cell) || ![0, 1, 2, 3].includes(rotation) ||
-        hp <= 0 || hp > TUNING.build.hp[type] || occupied.has(cellKey(cell)) || b.map.has(id)) {
+        hp <= 0 || hp > TUNING.build.hp[type] || b.map.has(id)) {
         throw new RangeError('invalid/overlapping build piece');
       }
-      const piece: BuildPiece = { id, type, cell, rotation: rotation as QuarterTurn, hp };
-      b.map.set(id, piece); occupied.add(cellKey(cell));
+      const piece: BuildPiece = { id, type, cell, rotation: rotation as QuarterTurn, hp,
+        ...(foundationOffset === undefined ? {} : { foundationOffset }) };
+      if (existing.some(other => overlapsCell(piece, other))) throw new RangeError('overlapping build piece');
+      b.map.set(id, piece);
+      existing.push(piece);
+      occupied.set(column, existing);
     }
     let maxId = 0;
     for (const id of b.map.keys()) maxId = Math.max(maxId, id);

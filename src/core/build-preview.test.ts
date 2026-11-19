@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { TUNING } from '../gameplay';
+import { V } from '../physics';
+import { heightAt } from '../world';
 import { BuildPlacementGhost } from './BuildPlacementGhost';
 import { Game } from './Game';
 
@@ -51,6 +53,40 @@ describe('Hay-Build placement preview', () => {
 
       game.advance(0, { toggleBuild: true });
       expect(game.buildPreview()).toBeNull();
+    } finally {
+      game.dispose();
+    }
+  });
+
+  it('plants a remote floor against local terrain and saves its height alongside an older build', async () => {
+    const game = await Game.create();
+    try {
+      const legacy = game.rules.build.place({ type: 'floor', cell: { x: -85, y: 0, z: 56 }, rotation: 0 }).piece!;
+      const oldPose = game.buildBodies.get(legacy.id)!.translation();
+      const x = 210, z = -91.5;
+      game.teleport(V(x, heightAt(game.island, x, z), z), 0);
+      for (let tick = 0; tick < 45; tick++) game.step({ cameraYaw: 0 });
+      game.advance(0, { toggleBuild: true, buildPiece: 'floor', cameraYaw: 0 });
+
+      const preview = game.buildPreview()!;
+      expect(preview.placement.cell).toEqual({ x: 105, y: 0, z: -48 });
+      expect(preview.validation.valid).toBe(true);
+      const surface = game.physics.raycast(V(210, 20, -96), V(0, -1, 0), 22);
+      expect(surface!.point.y).toBeGreaterThan(3);
+      expect(preview.position.y - .23 - surface!.point.y).toBeGreaterThanOrEqual(-.01);
+      expect(preview.position.y - .23 - surface!.point.y).toBeLessThan(.4);
+
+      game.advance(0, { placeBuild: true, cameraYaw: 0 });
+      const placed = game.rules.build.pieces.at(-1)!;
+      expect(placed).toMatchObject(preview.placement);
+      const restored = await Game.create({ progress: game.exportProgress() });
+      try {
+        expect(restored.buildBodies.get(legacy.id)!.translation()).toEqual(oldPose);
+        expect(restored.buildBodies.get(placed.id)!.translation()).toEqual(game.buildBodies.get(placed.id)!.translation());
+        expect(restored.rules.inventory.all).toEqual(game.rules.inventory.all);
+      } finally {
+        restored.dispose();
+      }
     } finally {
       game.dispose();
     }
