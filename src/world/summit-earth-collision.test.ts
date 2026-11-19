@@ -41,9 +41,56 @@ it('matches the two exposed Summit bank faces and leaves shallow and bridge-adja
         expect(walls.castRay(ray, 1.25, false)).toBeLessThan(0);
       }
     }
+
+    const entrance = V(.73842, 102.62, 3.48286);
+    const inward = new THREE.Vector3(.121 - entrance.x, 0, 2.326 - entrance.z).normalize();
+    expect(walls.castRay(new RAPIER.Ray(entrance, inward), 1.25, false)).toBeLessThan(0);
+
+    // The east shoulder and its collision are the same gentle surface.
+    const down = new THREE.Vector3(0, -1, 0);
+    for (const [x, z] of [[.36, 4.43], [.37, 3.60], [.31, 2.94]] as const) {
+      const origin = new THREE.Vector3(x, 108, z);
+      const drawn = new THREE.Raycaster(origin, down, 0, 10).intersectObject(trail)[0];
+      const hit = paths[1]!.castRayAndGetNormal(new RAPIER.Ray(origin, down), 10, false);
+      expect(drawn).toBeDefined();
+      expect(hit?.timeOfImpact).toBeCloseTo(drawn!.distance, 4);
+      expect(hit?.normal.y).toBeGreaterThan(.88);
+      expect(hit?.normal.y).toBeLessThan(.96);
+    }
   } finally {
     scene.dispose();
     world.free();
+  }
+});
+
+it('sprints all the way across the summit entrance without tumbling or grabbing a wall', async () => {
+  const game = await Game.create();
+  try {
+    const start = V(.3575, 108, 6.725), goal = V(.121, 0, 2.326);
+    const down = new RAPIER.Ray(start, V(0, -1, 0));
+    const floor = Math.min(...[game.colliders.terrain, game.colliders.paths[1]!]
+      .map(shape => shape.castRay(down, 10, false)).filter(distance => distance >= 0));
+    expect(Number.isFinite(floor)).toBe(true);
+    const yaw = Math.atan2(goal.x - start.x, start.z - goal.z);
+    game.teleport(V(start.x, start.y - floor, start.z), -yaw);
+    for (let i = 0; i < 40; i++) game.step({ cameraYaw: yaw });
+
+    let reached = false;
+    for (let i = 0; i < 105; i++) {
+      const p = game.goat.torso.translation();
+      const dx = goal.x - p.x, dz = goal.z - p.z;
+      if (Math.hypot(dx, dz) < .65) {
+        reached = true;
+        break;
+      }
+      game.step({ moveZ: 1, sprint: true, cameraYaw: Math.atan2(dx, -dz) });
+      expect(game.goat.isRagdoll).toBe(false);
+      expect(game.goat.locomotion.isClinging).toBe(false);
+    }
+    expect(reached).toBe(true);
+    expect(game.respawns).toBe(0);
+  } finally {
+    game.dispose();
   }
 });
 

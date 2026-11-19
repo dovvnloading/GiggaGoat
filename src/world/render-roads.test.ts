@@ -374,9 +374,10 @@ describe('IS-6 joined road/trail visual ribbons', () => {
       const moved = [];
       for (let component = 0; component < previous.length; component++) {
         if (position.array[component] === previous[component]) continue;
-        const vertex = (component - 1) / 3 - first;
+        const vertex = Math.floor(component / 3) - first;
         const point = Math.floor(vertex / 6);
-        expect(component % 3).toBe(1);
+        // Only the two right toes at the summit entrance splay outwards.
+        if (component % 3 !== 1) expect([5, 11]).toContain(vertex);
         expect(point).toBeGreaterThanOrEqual(0);
         expect(point).toBeLessThan(points.length);
         expect(vertex % 6).toBeGreaterThanOrEqual(4);
