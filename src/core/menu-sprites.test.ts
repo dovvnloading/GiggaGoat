@@ -35,7 +35,9 @@ class NodeStub {
   private listeners = new Map<string, Array<(event: any) => void>>();
   private controls: NodeStub[] = [];
   private panel: NodeStub | null = null;
+  private standings: NodeStub | null = null;
   scrollTop = 0;
+  clientHeight = 124;
   private brief: NodeStub[] = [];
   private html = '';
   owner: NodeStub | null = null;
@@ -43,7 +45,8 @@ class NodeStub {
 
   set innerHTML(html: string) {
     this.html = html;
-    this.panel = html.includes('class="gg-shell-panel"') ? new NodeStub(this.doc) : null;
+    this.panel = /class="gg-shell-panel(?:\s|")/.test(html) ? new NodeStub(this.doc) : null;
+    this.standings = html.includes('<ol class="gg-results"') ? new NodeStub(this.doc) : null;
     this.controls = [...html.matchAll(/<(button|select|input)\b([^>]*)>/gi)].map(match => {
       const tag = match[1]!.toLowerCase();
       const node = tag === 'button' ? new ButtonStub(this.doc) :
@@ -93,6 +96,7 @@ class NodeStub {
   }
   querySelectorAll<T = NodeStub>(selector: string): T[] {
     if (selector === '.gg-shell-panel') return (this.panel ? [this.panel] : []) as T[];
+    if (selector === '.gg-results') return (this.standings ? [this.standings] : []) as T[];
     if (selector === 'button,select,input') return this.controls as T[];
     if (selector === 'button') return this.controls.filter(n => n.tagName === 'BUTTON') as T[];
     const match = /^\[([\w-]+)(?:(\^?=)"([^"]+)")?\]$/.exec(selector);
@@ -493,7 +497,7 @@ describe('sprite-backed menu DOM', () => {
   });
 
   it('labels a simultaneous Rising Tide tie and shows survival without countdown time', () => {
-    const { menu, doc, game, root, win, setScreen } = setup();
+    const { menu, doc, game, root, win, setScreen, view } = setup();
     try {
       const match = readyMatch({ mode: 'rising-tide', config: {
         countdownTicks: 120, submergeTicks: 1,
@@ -515,10 +519,28 @@ describe('sprite-backed menu DOM', () => {
       expect(html).toContain('0.5 s survived');
       expect(html).toContain('Final tide 0 m');
       expect(html).not.toMatch(/\d+ pts/);
+      expect(html).toMatch(/role="dialog" aria-modal="true" aria-labelledby="gg-party-result-title"/);
+      expect(html).toMatch(/<\/ol>\s*<div class="gg-options">\s*<button[^>]*data-action="leave-party"/);
 
+      const standings = root.querySelector('.gg-results')!;
+      const panel = root.querySelector('.gg-shell-panel')!;
       const back = root.querySelector('[data-action="leave-party"]')!;
       const title = root.querySelector('[data-action="title"]')!;
       expect(doc.activeElement).toBe(back);
+      for (const [code, scroll] of [['PageDown', 100], ['PageUp', 0]] as const) {
+        const preventDefault = vi.fn();
+        win.dispatch('keydown', { code, repeat: false, preventDefault });
+        expect(preventDefault).toHaveBeenCalledOnce();
+        expect(standings.scrollTop).toBe(scroll);
+        expect(panel.scrollTop).toBe(0);
+        expect(doc.activeElement).toBe(back);
+      }
+      vi.stubGlobal('navigator', { getGamepads: () => [
+        { connected: true, buttons: [], axes: [0, 0, 0, .5] },
+      ] });
+      view.onFrame?.();
+      expect(standings.scrollTop).toBe(7);
+      expect(panel.scrollTop).toBe(0);
       win.dispatch('keydown', { code: 'ArrowDown', repeat: false,
         preventDefault: vi.fn(), stopPropagation: vi.fn() });
       expect(doc.activeElement).toBe(title);

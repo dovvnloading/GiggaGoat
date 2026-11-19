@@ -8,11 +8,11 @@ import { Game } from './Game';
 
 const seed = 'billy-isle';
 
-async function accept(gig: GigId, difficulty: Difficulty, grown?: 'Big' | 'GIGGA'): Promise<Game> {
+async function accept(gig: GigId, difficulty: Difficulty, grown?: 'Big' | 'GIGGA', postedCycle?: number): Promise<Game> {
   const island = generateIsland({ seed });
   const catalog = new GigCatalog(island, island.seed);
   const poi = catalog.info(gig).poiId;
-  const cycle = [0, 1, 2].find(index => catalog.board(poi, index * BOARD_CYCLE_TICKS)
+  const cycle = postedCycle ?? [0, 1, 2].find(index => catalog.board(poi, index * BOARD_CYCLE_TICKS)
     .offers.some(offer => offer.gigId === gig && offer.difficulty === difficulty))!;
   const gigs = new GigDirector(catalog).toJSON();
   gigs.tick = cycle * BOARD_CYCLE_TICKS;
@@ -90,6 +90,49 @@ it.each([undefined, 'Big', 'GIGGA'] as const)('allows an ordinary %s nudge to mo
     expect(Math.hypot(end.x - from.x, end.z - from.z)).toBeGreaterThan(1);
   } finally { game.dispose(); }
 }, 25_000);
+
+it.each([['easy', 'Big', 102], ['medium', undefined, undefined], ['hard', undefined, undefined]] as const)(
+  'tows the gnome through every %s flag using ordinary controls', async (difficulty, grown, cycle) => {
+    const game = await accept('escort-the-gnome', difficulty, grown, cycle);
+    try {
+      const config = game.gigs.active!.setup.config;
+      if (config.kind !== 'escort-the-gnome') throw new Error('Expected Escort the Gnome');
+      const first = config.route[0]!, second = config.route[1]!;
+      const yaw = Math.atan2(second.x - first.x, first.z - second.z);
+      const dx = Math.sin(yaw), dz = -Math.cos(yaw);
+      const lead = 1.8 + game.goat.size * .9;
+      const approach = { x: first.x + dx * lead, z: first.z + dz * lead };
+      walk(game, { x: approach.x + dz * 1.6, z: approach.z - dx * 1.6 });
+      walk(game, approach, .36);
+      const gnome = game.gigs.props.get(config.gnomeId)!.body;
+      const latch = () => {
+        for (let tick = 0; tick < 36 && game.goat.interactions.tongueBody?.handle !== gnome.handle; tick++) {
+          const at = game.goat.torso.translation();
+          const target = gnome.translation();
+          game.step({ moveZ: 1, cameraYaw: Math.atan2(target.x - at.x, at.z - target.z), tongue: true });
+        }
+        expect(game.goat.interactions.tongueBody?.handle).toBe(gnome.handle);
+      };
+      latch();
+      for (let tick = 0; tick < 700 && game.gigs.active?.status === 'running'; tick++) {
+        if (cycle === 102 && tick === 42) {
+          const before = gnome.linvel();
+          game.step();
+          const after = gnome.linvel();
+          expect(game.goat.interactions.isTongueAttached).toBe(false);
+          expect((after.x - before.x) * dx + (after.z - before.z) * dz).toBeGreaterThan(-1.2);
+          for (let rest = 0; rest < 23; rest++) game.step();
+          latch();
+        }
+        const next = config.route[game.gigs.active!.checkpointIndex] ?? config.route.at(-1)!;
+        const at = game.goat.torso.translation();
+        game.step({ moveZ: 1, cameraYaw: Math.atan2(next.x + dx * lead - at.x,
+          at.z - next.z - dz * lead), tongue: true });
+      }
+      expect(game.gigs.active).toMatchObject({ status: 'completed', checkpointIndex: config.route.length });
+      expect(game.respawns).toBe(0);
+    } finally { game.dispose(); }
+  }, 35_000);
 
 it('fails a buried gnome promptly and can retry with a reachable one', async () => {
   const game = await accept('escort-the-gnome', 'medium');

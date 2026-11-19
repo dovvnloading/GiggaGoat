@@ -240,12 +240,12 @@ export class GoatInteractions {
     applyImpulseAt(g.head,impulse,headPoint);
     applyImpulseAt(tether.target,mul(impulse,-1),targetPoint);
   }
-  /** Release under tension to fling the attached dynamic body away from the goat. */
-  detachTongue(reason: 'released' | 'broken' | 'replaced' | 'destroyed' = 'released'): void {
+  /** Release under tension can fling the attached dynamic body away from the goat. */
+  detachTongue(reason: 'released' | 'broken' | 'replaced' | 'destroyed' = 'released', flingBody = true): void {
     const tether = this.tether;
     if (!tether) return;
     const g = this.goat;
-    if (reason === 'released' && tether.target.isValid() && tether.target.isDynamic()) {
+    if (flingBody && reason === 'released' && tether.target.isValid() && tether.target.isDynamic()) {
       const from = g.head.translation(), to = tether.target.translation();
       const tension = Math.max(0,distance(from,to)-tether.length*.7);
       const fling = Math.min(13*g.size,g.mass*tension*.14);

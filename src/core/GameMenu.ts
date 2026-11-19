@@ -95,17 +95,26 @@ const CSS = `
 .gg-shell .gg-gig-progress strong{font-size:clamp(13px,2.1vw,24px)}
 .gg-shell .gg-gig-progress span{margin-top:2px}
 .gg-shell .gg-gig-result-return{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
-.gg-shell .gg-results{list-style:none;margin:8px 0 20px;padding:0;max-height:34vh;overflow:auto}
+.gg-shell .gg-party-results-panel{display:grid;grid-template-rows:auto minmax(0,1fr) auto auto;
+  gap:clamp(8px,1.5dvh,14px);overflow:hidden}
+.gg-shell .gg-party-results-head h2{margin:4px 0 9px}
+.gg-shell .gg-results{min-height:0;list-style:none;margin:0;padding:2px 3px 2px 2px;
+  overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-gutter:stable}
 .gg-shell .gg-results li{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:3px 10px;
-  padding:7px 10px;margin:4px 0;border-radius:8px;background:#ffffff19;font-size:clamp(11px,1.45vw,14px)}
+  padding:7px 10px;border-radius:8px;background:#ffffff19;font-size:clamp(11px,1.45vw,14px)}
+.gg-shell .gg-results li+li{margin-top:4px}
 .gg-shell .gg-results li[data-result-you]{background:#4b3248;box-shadow:inset 0 0 0 1px #ffd477}
-.gg-shell .gg-results:focus-visible{outline:2px solid #ffe44b;outline-offset:2px}
+.gg-shell .gg-results:focus-visible{outline:2px solid #ffe44b;outline-offset:-2px}
+.gg-shell .gg-party-results-panel .gg-options{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:9px;padding:3px}
+.gg-shell .gg-party-results-panel .gg-art-button{min-height:54px;padding:2px 8px;
+  border-width:13px;border-image-width:13px}
+.gg-shell .gg-party-results-panel footer{margin:0;padding:0 3px}
 .gg-shell .gg-result-label{display:flex;align-items:baseline;gap:6px}
 .gg-shell .gg-result-rank{color:#ffe092;font-variant-numeric:tabular-nums}
 .gg-shell .gg-result-tie,.gg-shell .gg-result-you{color:#fff0a2;font-size:.78em;letter-spacing:.55px}
 .gg-shell .gg-result-measure{display:flex;flex-wrap:wrap;column-gap:6px;align-items:baseline}
 .gg-shell .gg-result-measure small{color:#e3cfe9}
-.gg-shell .gg-party-outcome{display:grid;gap:2px;margin:0 0 8px}
+.gg-shell .gg-party-outcome{display:grid;gap:2px;margin:0}
 .gg-shell .gg-party-outcome strong{font-size:clamp(18px,2.8vw,27px);color:#ffe092;line-height:1.1}
 .gg-shell .gg-party-outcome span{font-size:clamp(11px,1.4vw,14px);color:#f0ddeb}
 .gg-shell footer{margin-top:14px;color:#e0cfea;font-size:clamp(10px,1.15vw,12px);line-height:1.5}
@@ -169,6 +178,12 @@ const CSS = `
  .gg-shell .gg-party-brief{padding:5px 7px}
  .gg-shell .gg-party-actions{grid-template-columns:1fr 1fr}
  .gg-shell :is(.gg-party-actions,.gg-board-actions) .gg-art-button{min-height:47px;padding:2px 8px;border-width:13px;border-image-width:13px}
+}
+@media(max-height:460px){
+ .gg-shell .gg-party-results-panel{padding:8px 12px;border-width:20px;border-image-width:20px}
+ .gg-shell .gg-party-results-head h2{margin:2px 0 5px}
+ .gg-shell .gg-party-results-panel .gg-art-button{min-height:44px;border-width:10px;border-image-width:10px}
+ .gg-shell .gg-party-results-panel .gg-results li{padding:5px 8px}
 }
 @media(max-width:510px){
  .gg-shell{padding:6px}
@@ -491,6 +506,15 @@ export class GameMenu {
       }
       return;
     }
+    if (event.code === 'PageUp' || event.code === 'PageDown') {
+      const region = this.menuScrollRegion();
+      if (region) {
+        event.preventDefault();
+        const direction = event.code === 'PageDown' ? 1 : -1;
+        region.scrollBy(0, direction * Math.max(24, region.clientHeight - 24));
+        return;
+      }
+    }
     if (event.code === 'ArrowDown' || event.code === 'ArrowUp') {
       const focused = document.activeElement;
       if (this.screen === 'party-results' && focused === this.root.querySelector('.gg-results')) return;
@@ -603,7 +627,15 @@ export class GameMenu {
     this.setScreen('board');
     return true;
   }
-  /** Called once per render frame for menu pad navigation and terminal result transitions. */
+  private menuScrollRegion(): HTMLElement | null {
+    if (this.screen === 'party-results') return this.root.querySelector('.gg-results');
+    if (this.screen === 'settings' && this.settingsTab === 'controls') {
+      return this.root.querySelector('.gg-shell-panel');
+    }
+    return null;
+  }
+
+  /** Poll menu controls and surface results on every browser animation frame. */
   private frame(): void {
     const pad = navigator.getGamepads?.().find(p => p?.connected);
     if (pad) {
@@ -616,11 +648,7 @@ export class GameMenu {
       const back = !!buttons[1]?.pressed;
       const menu = !!buttons[9]?.pressed;
       const scroll = pad.axes[3] ?? 0;
-      if (Math.abs(scroll) > .2) {
-        const region = this.screen === 'party-results' ? '.gg-results' :
-          this.screen === 'settings' && this.settingsTab === 'controls' ? '.gg-shell-panel' : null;
-        if (region) this.root.querySelector(region)?.scrollBy(0, scroll * 14);
-      }
+      if (Math.abs(scroll) > .2) this.menuScrollRegion()?.scrollBy(0, scroll * 14);
       if (menu && !this.padMenu) {
         if (this.screen === 'playing') this.setScreen('pause'); else this.back();
       }
@@ -889,9 +917,10 @@ export class GameMenu {
     }
     const summary = rising ? 'Final tide ' + match.tideLevel + ' m' :
       !teams ? 'Round time ' + timed(playTicks) : '';
-    return `<div class="gg-shell-eyebrow">ROUND COMPLETE</div><h2>${esc(this.game.party.title)}</h2>
+    return `<header class="gg-party-results-head">
+      <div class="gg-shell-eyebrow">ROUND COMPLETE</div><h2 id="gg-party-result-title">${esc(this.game.party.title)}</h2>
       <div class="gg-party-outcome"><strong>${outcome}</strong>
-      <span>${esc([yours?.measure, summary].filter(Boolean).join(' · '))}</span></div>
+      <span>${esc([yours?.measure, summary].filter(Boolean).join(' · '))}</span></div></header>
       <ol class="gg-results" aria-label="Placements" tabindex="0">${rows.map(row => `
         <li${row.you ? ' data-result-you' : ''}>
           <div class="gg-result-label"><strong class="gg-result-rank">#${row.rank}</strong>
@@ -901,7 +930,7 @@ export class GameMenu {
           <div class="gg-result-measure"><strong>${esc(row.measure)}</strong>
           ${row.detail ? `<small>${esc(row.detail)}</small>` : ''}</div>
         </li>`).join('')}</ol>
-      <div class="gg-options gg-party-actions">${menuButton('leave-party','▶ RETURN TO FREE ROAM',true)}
+      <div class="gg-options">${menuButton('leave-party','▶ FREE ROAM',true)}
       ${menuButton('title','⌂ TITLE')}</div>`;
   }
   private render(): void {
@@ -920,12 +949,15 @@ export class GameMenu {
       this.screen === 'settings' ? this.settingsBody() :
       this.screen === 'board' ? this.boardBody() :
       this.screen === 'gig-results' ? this.gigResultsBody() : this.partyResultsBody();
-    const scrollHelp = this.screen === 'party-results' ||
-      (this.screen === 'settings' && this.settingsTab === 'controls')
-      ? ' · PgUp/PgDn or right stick scroll' : '';
-    const panel = this.screen === 'title' ? 'gg-shell-panel gg-title-panel' : 'gg-shell-panel';
-    this.root.innerHTML = `<section class="${panel}" role="dialog" aria-modal="true" ${menuSkin(MENU_SPRITES.panel)}>${body}
-      <footer>Enter / click select · ↑↓ navigate · Gamepad A select, B back · Esc back${scrollHelp}</footer></section>`;
+    const partyResults = this.screen === 'party-results';
+    const panel = this.screen === 'title' ? 'gg-shell-panel gg-title-panel' :
+      partyResults ? 'gg-shell-panel gg-party-results-panel' : 'gg-shell-panel';
+    const dialogLabel = partyResults ? ' aria-labelledby="gg-party-result-title"' : '';
+    const footer = partyResults ? 'PgUp/PgDn or right stick scroll · Esc or B back' :
+      'Enter / click select · ↑↓ navigate · Gamepad A select, B back · Esc back' +
+      (this.screen === 'settings' && this.settingsTab === 'controls' ? ' · PgUp/PgDn or right stick scroll' : '');
+    this.root.innerHTML = `<section class="${panel}" role="dialog" aria-modal="true"${dialogLabel} ${menuSkin(MENU_SPRITES.panel)}>${body}
+      <footer>${footer}</footer></section>`;
     this.syncFullscreen();
     this.root.querySelector<HTMLElement>('button')?.focus();
   }

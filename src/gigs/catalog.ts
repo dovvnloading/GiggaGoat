@@ -48,7 +48,7 @@ export const GIG_INFO: Readonly<Record<GigId, GigInfo>> = {
   'escort-the-gnome': {
     id: 'escort-the-gnome', title: 'ESCORT THE GNOME', poiId: 'whispering-pines',
     pitch: 'Fragile passenger. Unlicensed goat movers.',
-    instruction: 'Walk behind the gnome to nudge it through the flags, or hold lick and back away. Avoid headbutts.',
+    instruction: 'Get ahead of the gnome, face it and hold lick. Tow it through the flags. Release to reposition. Avoid headbutts.',
     verbs: ['headbutt', 'tongue', 'bleat'], baseCoins: 75,
     cosmetic: { id: 'gnome-cap', name: 'Tiny Guardian Cap', slot: 'hat', color: '#D84F3D' },
   },
@@ -385,6 +385,11 @@ export class GigCatalog {
     if (JSON.stringify(current) === serialized) return saved;
     if (current.config.kind === 'stack-up' && saved.info?.instruction ===
         'Tow the loose crates to the marked pad. Stack them and keep still for five seconds.' &&
+        JSON.stringify({ ...current, info: { ...current.info, instruction: saved.info.instruction } }) === serialized) {
+      return saved;
+    }
+    if (current.config.kind === 'escort-the-gnome' && saved.info?.instruction ===
+        'Walk behind the gnome to nudge it through the flags, or hold lick and back away. Avoid headbutts.' &&
         JSON.stringify({ ...current, info: { ...current.info, instruction: saved.info.instruction } }) === serialized) {
       return saved;
     }

@@ -101,7 +101,7 @@ export class GameAudio {
     }, () => { this.transition = null; });
   }
 
-  /** Called once by GameView on every rendered frame, even while menus are open. */
+  /** Called on every visible animation frame, including while menus are open. */
   frame(dt: number, camera: CameraAudioPose, night: boolean): void {
     // Catches an AudioContext first unlocked by a gesture while a menu is open.
     this.syncContext();

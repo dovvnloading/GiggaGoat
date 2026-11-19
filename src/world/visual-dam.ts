@@ -5,7 +5,7 @@ import type { IslandData } from './types';
 import { gridSample } from './terrain';
 import { DAM_ACCESS_ID, DAM_ACCESS_SUPPORT_ID, DAM_BACK_GUARD, DAM_FRONT_GUARD, damAccess, damAccessGuards,
   getDamPlacement, makeDamColliderDescriptors } from './the-dam';
-import { accessPathVisual, mergePaintedParts } from './visual-access-path';
+import { accessArrows, accessPathVisual, mergePaintedParts } from './visual-access-path';
 import { publicAssetUrl } from './public-assets';
 import { buildDamLandscape, DAM_SPILLWAY_IMPACTS } from './visual-dam-landscape';
 import { damChannelAt } from './dam-landscape';
@@ -303,9 +303,19 @@ export function buildDamVisuals(island: IslandData,
   const { position, scale } = placement;
   const backRail = damRailGeometry('back').scale(scale, scale, scale)
     .translate(position.x, position.y, position.z);
+  const [ramp, transfer] = paths;
+  const turn = transfer[0]!;
+  const turnZ = ramp[2]!.outer.z + .24 * scale;
+  const landingGuide = [{ outer: { ...turn.outer, z: turnZ },
+    inner: { ...turn.inner, z: turnZ } }, ...transfer];
+  const paint = 0x72512e;
   // The same static batch stays visible when the authored model replaces the fallback.
-  const approach = accessPathVisual('dam-board-access-ramp', paths, damAccessGuards(paths[0]!, scale),
-    .38 * scale, scale, 0xdeb665, 0xd69d28, [...supports, { geometry: backRail, color: 0xf2c12e }]);
+  const approach = accessPathVisual('dam-board-access-ramp', paths, damAccessGuards(paths, scale),
+    .38 * scale, scale, 0xdeb665, 0xd69d28, [
+      ...supports, { geometry: backRail, color: 0xf2c12e },
+      accessArrows(ramp.slice(0, 2), scale, paint),
+      accessArrows(landingGuide, scale, paint),
+    ]);
   approach.position.copy(group.position).multiplyScalar(-1 / placement.scale);
   approach.scale.setScalar(1 / placement.scale);
   group.add(fallback, approach);

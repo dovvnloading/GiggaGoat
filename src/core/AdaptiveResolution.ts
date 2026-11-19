@@ -36,8 +36,8 @@ export class AdaptiveResolution {
 
   /** Paused/hidden frames and huge tab-resume deltas must not drive adaptation. */
   sample(frameMs: number, renderMs: number, dt: number, active = true): number | null {
-    if (!active || !Number.isFinite(dt) || dt <= 0 || dt > 0.1 ||
-        !Number.isFinite(frameMs) || frameMs <= 0 || frameMs > 100 ||
+    if (!active || !Number.isFinite(dt) || dt <= 0 || dt > 0.25 ||
+        !Number.isFinite(frameMs) || frameMs <= 0 || frameMs > 250 ||
         !Number.isFinite(renderMs) || renderMs < 0) return null;
     this.warmupSeconds += dt;
     if (this.warmupSeconds < 0.75) return null;

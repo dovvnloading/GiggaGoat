@@ -2,8 +2,8 @@ import type { Collider, CoefficientCombineRule, RigidBody } from '@dimforge/rapi
 import { GigCatalog, GigDirector, GigGameplayBridge, type AbilityFact, type GigEvent,
   type GigOffer, type GigRun, type GigPropSpawn, type GigSetup, type GigSnapshot,
   type PropFact, type StyleFact } from '../gigs';
-import { RAPIER, V, collisionGroups, type PhysicsContact, type Vec3 } from '../physics';
-import { lerp, distance, Q, slerp } from '../physics/math';
+import { RAPIER, V, collisionGroups, type GoatRagdoll, type PhysicsContact, type RayHit, type Vec3 } from '../physics';
+import { lerp, distance, forward, Q, slerp, sub } from '../physics/math';
 import { heightAt, type PoiId } from '../world';
 import { ROOFTOP_DECK_PREFIX, ROOFTOP_SPAN_PREFIX, rooftopDecks } from '../world/rooftop-course';
 import type { Game } from './Game';
@@ -486,6 +486,25 @@ export class GigSession {
     body.setLinvel(V(), true);
     body.setAngvel(V(), true);
     this.game.water.track(body);
+  }
+
+  /** Keep the small, toppled objective selectable, with the same first-hit rule as a normal lick. */
+  escortGnomeAim(goat: GoatRagdoll, wish: Vec3): { direction: Vec3; hit: RayHit } | undefined {
+    const run = this.active;
+    if (run?.status !== 'running' || run.setup.config.kind !== 'escort-the-gnome') return;
+    const entry = this.temporary.get(run.setup.config.gnomeId);
+    if (!entry || entry.broken || !entry.body.isValid()) return;
+    const target = entry.body.translation();
+    const torso = goat.torso.translation();
+    const offset = sub(target, torso);
+    if (distance(target, torso) > Math.min(5, 2 + 1.8 * goat.size)) return;
+    const movement = Math.hypot(wish.x, wish.z);
+    const aim = movement > .08 ? wish : forward(goat.locomotion.heading);
+    const projected = (aim.x * offset.x + aim.z * offset.z) / (movement > .08 ? movement : 1);
+    if (projected < Math.hypot(offset.x, offset.z) * .7) return;
+    const direction = sub(target, goat.interactions.tongueOrigin);
+    const hit = goat.interactions.raycastTongue(direction);
+    if (hit?.body?.handle === entry.body.handle) return { direction, hit };
   }
 
   private gnomeBuried(position: { x: number; y: number; z: number }): boolean {

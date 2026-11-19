@@ -61,9 +61,9 @@ export function createSurfaceLibraryProp(factory: PropFactory,
     : factory.createLaunchPad(marker.halfExtents, marker.artAtGround);
 }
 
-/** All four spawn roles share a sized library crate until dedicated role art exists. */
 export function createSpawnLibraryProp(factory: PropFactory,
   spawn: Pick<GigPropSpawn, 'role' | 'size'>): THREE.Group {
+  if (spawn.role === 'gnome') return factory.createWorldProp('gnome', spawn.size, undefined);
   const root = factory.createGigProp(DEFAULT_CRATE_SIZE, 'crate');
   return fitRoot(root, spawn.size, DEFAULT_CRATE_SIZE);
 }

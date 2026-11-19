@@ -15,12 +15,12 @@ export type BuildPieceType = 'floor' | 'wall' | 'ramp' | 'launch-pad';
 export type GigPropType = 'crate' | 'barrel' | 'hay';
 export interface Size3 { x: number; y: number; z: number }
 export type WorldLibraryPropKind =
-  'crate' | 'barrel' | 'hay-bale' | 'fence' | 'ramp' | 'trampoline';
+  'crate' | 'barrel' | 'hay-bale' | 'fence' | 'ramp' | 'trampoline' | 'gnome';
 
 /** Same descriptor colours as the World Lab's procedural loading placeholders. */
 const WORLD_PROP_COLORS: Readonly<Record<WorldLibraryPropKind, number>> = {
   crate: 0xc4915f, barrel: 0xe67d5d, 'hay-bale': 0xf2c14f,
-  fence: 0xe5c587, ramp: 0xe5b974, trampoline: 0x7960d9,
+  fence: 0xe5c587, ramp: 0xe5b974, trampoline: 0x7960d9, gnome: 0xd84f3d,
 };
 
 export const BUILD_PIECE_SIZES: Readonly<Record<BuildPieceType, Readonly<Size3>>> = {
@@ -298,20 +298,20 @@ export class PropFactory {
 
   /** Draw one placeholder, then swap in the exact World Lab GLB. */
   createWorldProp(kind: WorldLibraryPropKind, size: Size3, color: number | undefined,
-    legacyFallback: () => THREE.Group): THREE.Group {
+    legacyFallback?: () => THREE.Group): THREE.Group {
     const root = this.root('world-' + kind, size);
     const slot = new THREE.Group();
     slot.name = 'library-slot';
     root.add(slot);
-    const isFence = kind === 'fence';
-    const placeholder = isFence
-      ? this.cachedGeometry('world-picket-fence', () => buildProceduralPropGeometry('fence'))
+    const proceduralKind = kind === 'fence' || kind === 'gnome' ? kind : null;
+    const placeholder = proceduralKind
+      ? this.cachedGeometry('world-shape:' + proceduralKind, () => buildProceduralPropGeometry(proceduralKind))
       : this.cachedGeometry(`box:${size.x}:${size.y}:${size.z}`,
         () => new THREE.BoxGeometry(size.x, size.y, size.z));
     const proxy = new THREE.Mesh(placeholder,
-      this.worldMaterial(isFence ? 0xffffff : color ?? WORLD_PROP_COLORS[kind], isFence));
-    if (isFence) {
-      proxy.name = 'world-picket-fence';
+      this.worldMaterial(proceduralKind ? 0xffffff : color ?? WORLD_PROP_COLORS[kind], proceduralKind !== null));
+    if (proceduralKind) {
+      proxy.name = proceduralKind === 'fence' ? 'world-picket-fence' : 'gig-gnome-placeholder';
       proxy.scale.set(size.x, size.y, size.z);
     }
     proxy.castShadow = true;
@@ -332,7 +332,7 @@ export class PropFactory {
         slot.add(model);
         slot.userData.assetPath = path;
         root.userData.assetStatus = 'ready';
-      } else if (isFence) {
+      } else if (proceduralKind || !legacyFallback) {
         root.userData.assetStatus = 'fallback';
       } else {
         // Keep the existing PropFactory toy shape only when the Lab GLB fails.

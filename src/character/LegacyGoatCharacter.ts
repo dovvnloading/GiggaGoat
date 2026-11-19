@@ -182,6 +182,8 @@ export class LegacyGoatCharacter {
     for (const horn of this.mesh.horns) horn.scale.setScalar(profile.hornScale);
     const gigga = profile.glow > 0;
     for (const aura of this.mesh.aura) aura.visible = gigga;
+    // Visible zero-intensity lights still alter the renderer's shader variants.
+    this.mesh.purpleLight.visible = gigga;
     this.mesh.purpleLight.intensity = gigga ? 0.85 : 0;
   }
 

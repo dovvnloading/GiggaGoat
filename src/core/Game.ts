@@ -20,7 +20,8 @@ import { addRapierPropCollider } from '../world/colliders';
 import { boardwalkPierDecks } from '../world/boardwalk';
 import { HOOFINGTON_HAUL_BALE_PREFIX } from '../world/hoofington-entrances';
 import { getDamHeadwater, isDamHeadwater } from '../world/dam-landscape';
-import { DAM_FRONT_GUARD } from '../world/the-dam';
+import { DAM_ACCESS_GUARD_ID, DAM_BACK_GUARD, DAM_FRONT_GUARD } from '../world/the-dam';
+import { LIGHTHOUSE_ACCESS_GUARD_ID } from '../world/lighthouse-access';
 import { HAY_HAUL_TAG_RADIUS } from '../gigs';
 import { GigSession } from './GigSession';
 import { PartySession } from './PartySession';
@@ -132,8 +133,12 @@ export class Game {
     this.physics = physics;
     this.island = island;
     this.colliders = colliders;
+    const noClimbGuardPrefixes = [DAM_FRONT_GUARD.prefix, DAM_BACK_GUARD.prefix,
+      DAM_ACCESS_GUARD_ID, LIGHTHOUSE_ACCESS_GUARD_ID];
     for (const [id, collider] of colliders.props) {
-      if (id.startsWith(DAM_FRONT_GUARD.prefix)) this.blockedClimbHandles.add(collider.handle);
+      if (noClimbGuardPrefixes.some(prefix => id.startsWith(prefix))) {
+        this.blockedClimbHandles.add(collider.handle);
+      }
     }
     this.pierDecks = boardwalkPierDecks(island);
     // Restore only validated, complete progression. Any corrupt save is ignored.
@@ -656,9 +661,10 @@ export class Game {
     const directHit = hayHeist ? null : this.physics.raycast(courierAim ? goat.interactions.tongueOrigin : head,
       courierAim ?? add(forward(goat.locomotion.heading), V(0, -.10, 0)),
       9 * goat.size, { predicate: collider => !goat.ownsBody(collider.parent()) });
-    const hayAim = seekingTongueTarget && !match
-      ? this.hayHaulBaleAim(goat, wish, directHit?.body?.handle) : undefined;
-    const hit = hayAim?.hit ?? directHit;
+    const contractAim = seekingTongueTarget && !match
+      ? this.gigs.escortGnomeAim(goat, wish) ?? this.hayHaulBaleAim(goat, wish, directHit?.body?.handle)
+      : undefined;
+    const hit = contractAim?.hit ?? directHit;
     const prop = hit ? [...this.colliders.props].find(([, c]) => c.handle === hit.collider.handle) : undefined;
     const lickable = !!hit && (!prop || this.island.props.find(p => p.id === prop[0])?.lickable !== false);
     const facts: GoatPhysicsFacts = {
@@ -688,7 +694,7 @@ export class Game {
       acceptForwardSupport: parcelHeld ? this.gigs.isCourierRamp : undefined,
     });
     this.water.setPaddle(goat.torso, wish);
-    this.executeCommands(commands, goat, player, hayAim?.direction ?? courierAim);
+    this.executeCommands(commands, goat, player, contractAim?.direction ?? courierAim);
     if (player && input.graze && this.canGraze() &&
         this.gigs.active?.setup.config.kind === 'mow-down') {
       this.gigs.noteAbility({ type: 'eat' });
@@ -873,7 +879,9 @@ export class Game {
         }
         g.interactions.detachTongue('released');
       } else if (cmd.action === 'detach') {
-        g.interactions.detachTongue('released');
+        const target = g.interactions.tongueBody;
+        const escortGnome = player && target && this.physics.bodyData(target.handle)?.data === 'gnome';
+        g.interactions.detachTongue('released', !escortGnome);
       } else g.interactions.setReel(0);
     } else g.interactions.setReel(0);
     if (commands.bleat) {

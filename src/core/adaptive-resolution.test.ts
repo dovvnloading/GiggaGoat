@@ -15,6 +15,16 @@ describe('adaptive resolution', () => {
     expect(controller.ratio).toBeGreaterThan(0);
   });
 
+  it('uses sustained slow wall-clock frames without reacting to one isolated stall', () => {
+    const controller = new AdaptiveResolution('high', 1);
+    for (let i = 0; i < 60; i++) controller.sample(16.7, 4, 1 / 60);
+    expect(controller.sample(160, 20, .16)).toBeNull();
+    for (let i = 0; i < 20; i++) controller.sample(16.7, 4, 1 / 60);
+    expect(controller.ratio).toBe(1);
+    for (let i = 0; i < 14; i++) controller.sample(160, 20, .16);
+    expect(controller.ratio).toBeLessThan(1);
+  });
+
   it('recovers slowly with headroom but never exceeds the configured cap', () => {
     const controller = new AdaptiveResolution('medium', 2);
     for (let i = 0; i < 300; i++) controller.sample(30, 16, 1 / 30);

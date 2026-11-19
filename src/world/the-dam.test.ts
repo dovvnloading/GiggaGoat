@@ -153,6 +153,11 @@ describe('The Dam hero POI', () => {
       expect(backRailHits(-16)).toBeGreaterThan(0);
       expect(backRailHits(-10)).toBe(0);
       expect(backRailHits(-3)).toBeGreaterThan(0);
+
+      const guardRay = new THREE.Raycaster(
+        new THREE.Vector3(position.x - 13 * scale, position.y + 19.7 * scale, position.z - 8.5 * scale),
+        new THREE.Vector3(-1, 0, 0), 0, 2 * scale);
+      expect(guardRay.intersectObject(access, false)).not.toHaveLength(0);
       expect(fallback?.children.filter(child => (child as THREE.Mesh).castShadow))
         .toHaveLength(1);
     } finally {
