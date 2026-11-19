@@ -87,6 +87,12 @@ describe('in-game HUD state projection', () => {
     expect(map).toContain('stop-color="#373737"');
     expect(scenery).toContain('mask="url(#gg-hud-map-scenery)"');
     expect(scenery).toMatch(/data-sprite="icons\/marker_/);
+    const icons = Array.from(scenery!.matchAll(/<image [^>]*?x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"/g),
+      ([, x, y, w, h]) => ({ x: Number(x), y: Number(y), w: Number(w), h: Number(h) }));
+    expect(icons.length).toBeGreaterThan(1);
+    for (const [i, a] of icons.entries()) for (const b of icons.slice(i + 1)) {
+      expect(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y).toBe(true);
+    }
     expect(scenery).not.toContain('data-player>');
     expect(scenery).not.toContain('data-map-objectives>');
     expect(map).toMatch(/<\/g><g data-map-objectives><path data-map-climb-target[^>]*\/><\/g><g data-player>/);

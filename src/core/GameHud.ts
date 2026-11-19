@@ -117,11 +117,13 @@ const CSS = `
 }
 /* Live SVG terrain is clipped inside the transparent PNG ring. */
 .gg-map-panel{position:absolute;right:clamp(8px,1.15vw,22px);top:clamp(6px,.7vw,12px);width:clamp(190px,17vw,290px);aspect-ratio:311/337}
-.gg-map-frame{position:absolute;left:4.5%;top:7.5%;width:91%;height:76%;overflow:hidden;border-radius:50%;background:#8abd75}
+.gg-map-frame{position:absolute;left:6%;top:9%;width:88%;aspect-ratio:1;overflow:hidden;border-radius:50%}
 .gg-map-frame svg{width:100%;height:100%;display:block}
 .gg-map-skin{position:absolute;inset:0;background:var(--gg-minimapRing) center/100% 100% no-repeat}
-.gg-map-north{position:absolute;top:1%;left:42%;width:16%;height:16%}
-.gg-compass{width:100%;height:100%}
+/* The ring already has a blue medallion centered at (160,34) in its 311×337 art.
+   Inset the navy face of the compass sprite into that socket. */
+.gg-map-north{position:absolute;top:10.1%;left:51.45%;width:19%;aspect-ratio:1;transform:translate(-50%,-50%)}
+.gg-compass{display:block;width:100%;height:100%;object-fit:contain;clip-path:ellipse(32% 33% at 50% 49%)}
 .gg-map-location{position:absolute;left:12%;right:12%;bottom:5%;height:13%;display:grid;place-items:center;
  text-wrap:balance;text-align:center;line-height:1.02;font-size:clamp(11px,1.25vw,19px);color:#fff5d4;letter-spacing:.1px}
 @media(min-width:1101px){.gg-map-location [data-long-label="true"]{font-size:.82em}}
@@ -129,7 +131,7 @@ const CSS = `
 /* Shadow only the illustrated panel: filtering the card itself rasterizes its
    live copy and makes the tiny footer glyphs look blurred. */
 .gg-gig-card::before{content:"";position:absolute;inset:0;background:var(--gg-gigCard) center/100% 100% no-repeat;filter:drop-shadow(0 5px 2px #281b4890);pointer-events:none}
-.gg-gig-header{position:absolute;top:9%;left:27%;right:9%;height:19%;display:grid;place-items:center;color:#ffcc43;font-size:clamp(15px,1.4vw,23px);white-space:nowrap;letter-spacing:.3px;-webkit-text-stroke:.6px #623645;text-shadow:2px 3px #583147}
+.gg-gig-header{position:absolute;top:17.5%;left:31%;right:14%;height:18%;display:grid;place-items:center;color:#fff0b7;font-size:clamp(15px,1.4vw,23px);line-height:1;white-space:nowrap;letter-spacing:.3px;text-shadow:0 1px 1px #522714}
 /* The checkbox is painted into gig_card.png. Copy an adjacent, empty part of
    that same cream sprite over it; only draw a live box for a running gig. */
 .gg-gig-checkbox-mask{position:absolute;left:8.3%;top:50.2%;width:10.7%;height:24%;background:var(--gg-gigCard) 27% 67%/935% 417% no-repeat;pointer-events:none}
@@ -300,7 +302,7 @@ const CSS = `
   right:10px;top:calc(26px + var(--gg-compact-map-width) * 337 / 311);
   width:clamp(204px,23vw,253px);height:clamp(120px,14vw,154px);
  }
- .gg-gig-header{top:15%;height:22%;font-size:clamp(12px,1.25vw,15px)}
+ .gg-gig-header{font-size:clamp(12px,1.25vw,15px)}
  .gg-gig-paper{top:45%;bottom:22%}
  .gg-gig-checkbox[hidden] + .gg-gig-paper{left:10%}
  .gg-gig-footer{left:10%;right:10%;bottom:14%;height:8%}
@@ -354,7 +356,7 @@ const CSS = `
    top:calc(15px + var(--gg-landscape-map-width) * 337 / 311);
    right:6px;width:var(--gg-landscape-gig-width);height:clamp(96px,34vh,132px)
  }
- .gg-gig-header{top:15%;height:22%;font-size:clamp(9px,2vw,13px)}
+ .gg-gig-header{font-size:clamp(9px,2vw,13px)}
  .gg-gig-paper{top:43%;right:9%;bottom:21%;gap:1px}
  .gg-gig-checkbox[hidden] + .gg-gig-paper{left:9%}
  .gg-gig-title,.gg-gig-detail{font-size:8px}
@@ -455,8 +457,7 @@ const CSS = `
  .gg-stamina-inner .gg-hoof{display:none}
  .gg-stamina-label,.gg-stamina-value{margin:0;font-size:clamp(9px,2.55vw,11px);line-height:1.15;transform:none;text-shadow:none}
  .gg-stamina-value{font-variant-numeric:tabular-nums;white-space:nowrap}
- .gg-stamina[data-low="true"] .gg-stamina-label{font-size:clamp(9px,2.55vw,11px)}
- .gg-stamina[data-low="true"] .gg-stamina-label::after{content:" LOW";font-size:inherit;color:#ffac93}
+ .gg-stamina[data-low="true"] .gg-stamina-label::after{font-size:clamp(9px,2.55vw,11px);color:#ffac93}
  .gg-prompts{
   left:8px;top:calc(var(--gg-portrait-second-row) + var(--gg-portrait-score-height) + 50px);
   width:var(--gg-portrait-left-width);transform:none;align-items:stretch;gap:5px
