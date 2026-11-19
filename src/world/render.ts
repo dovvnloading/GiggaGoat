@@ -370,7 +370,7 @@ function buildRoads(island: IslandData, terrain: readonly Chunk[]): THREE.Group 
   const summitGround = (x: number, z: number) => Math.min(near(x, z), far(x, z));
 
   for (const type of ['road', 'trail'] as const) {
-    const { positions, indices, segments, crossSections } = roadRibbonData(island, type, { visual: summitGround });
+    const { positions, indices, segments, crossSections } = roadRibbonData(island, type, { visual: summitGround, entrance: near });
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setIndex(indices);

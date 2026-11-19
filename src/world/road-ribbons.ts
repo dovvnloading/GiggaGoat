@@ -16,6 +16,7 @@ type GroundHeight = (x: number, z: number) => number;
 interface SummitGround {
   visual?: GroundHeight;
   collision?: GroundHeight;
+  entrance?: GroundHeight;
 }
 interface TriangleMesh {
   positions: number[];
@@ -216,6 +217,11 @@ function hasBridgeAtEdge(points: readonly RoadPoint[], start: number): boolean {
   return points.slice(Math.max(0, start - 1), start + 3).some(point => point.bridge);
 }
 
+/** The right edge of the terminal span is the opening from the summit. */
+function summitEntranceEdge(span: number, side: number): boolean {
+  return span === 0 && side === 1;
+}
+
 /** Extend only existing side panels; their top edge and road support stay put. */
 function fitSummitEarth(
   points: readonly RoadPoint[], positions: number[], first: number, scale: number,
@@ -223,8 +229,9 @@ function fitSummitEarth(
 ): void {
   for (let i = 1; i < points.length; i++) {
     if (hasBridgeAtEdge(points, i - 1)) continue;
-    for (const side of [4, 5]) {
-      const a = (first + (i - 1) * 6 + side) * 3, b = a + 18;
+    for (const side of [0, 1]) {
+      if (summitEntranceEdge(i - 1, side)) continue;
+      const a = (first + (i - 1) * 6 + side + 4) * 3, b = a + 18;
       const x = positions[a]!, z = positions[a + 2]!;
       const dx = positions[b]! - x, dz = positions[b + 2]! - z;
       const steps = Math.max(2, Math.ceil(Math.hypot(dx, dz) / (EARTH_SAMPLE_LENGTH * scale)));
@@ -238,6 +245,44 @@ function fitSummitEarth(
       positions[b + 1] = Math.min(positions[b + 1]!, toe);
     }
   }
+}
+
+/** Splay the first right toe out into the summit clearing and anchor its ends to native ground. */
+function fitSummitEntrance(
+  points: readonly RoadPoint[], positions: number[], first: number,
+  width: number, scale: number, ground: GroundHeight,
+): boolean {
+  const crest = (first + 1) * 3, toe = (first + 5) * 3;
+  const dx = positions[crest]! - points[0]!.x;
+  const dz = positions[crest + 2]! - points[0]!.z;
+  const length = Math.hypot(dx, dz);
+  if (length < 1e-6) return false;
+  const reach = 1.05 * width;
+  const rx = reach * dx / length, rz = reach * dz / length;
+  const x = positions[toe]! + rx, z = positions[toe + 2]! + rz;
+  const end = toe + 18;
+  const endX = positions[end]! + rx, endZ = positions[end + 2]! + rz;
+  const startFloor = ground(x, z), endFloor = ground(endX, endZ);
+  if (!Number.isFinite(startFloor) || !Number.isFinite(endFloor)) return false;
+  // A straight edge between two grounded endpoints can still bridge a
+  // hollow. Embed the toe through the whole opening so the slope has
+  // no leading lip for the goat's hooves to strike.
+  const { lerp } = THREE.MathUtils;
+  const steps = Math.max(2, Math.ceil(Math.hypot(endX - x, endZ - z) / (EARTH_SAMPLE_LENGTH * scale)));
+  let overhang = 0;
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const floor = ground(lerp(x, endX, t), lerp(z, endZ, t));
+    if (Number.isFinite(floor)) overhang = Math.max(overhang, lerp(startFloor, endFloor, t) - floor);
+  }
+  const inset = overhang + .035 * scale;
+  positions[toe] = x;
+  positions[toe + 1] = startFloor - inset;
+  positions[toe + 2] = z;
+  positions[end] = endX;
+  positions[end + 1] = endFloor - inset;
+  positions[end + 2] = endZ;
+  return true;
 }
 
 /**
@@ -256,6 +301,7 @@ function summitEarthWalls(
   for (let i = 0; i < points.length - 1; i++) {
     if (hasBridgeAtEdge(points, i)) continue;
     for (const side of [0, 1]) {
+      if (summitEntranceEdge(i, side)) continue;
       const a = (first + i * 6 + side) * 3, b = a + 18;
       const length = Math.hypot(ribbon[b]! - ribbon[a]!, ribbon[b + 2]! - ribbon[a + 2]!);
       const steps = Math.max(2, Math.ceil(length / (EARTH_SAMPLE_LENGTH * scale)));
@@ -404,9 +450,12 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
       if (type === 'road') crossSections.push(-1, halfWidth, 1, halfWidth,
         -1, halfWidth, 1, halfWidth, -1, halfWidth, 1, halfWidth);
     }
+    let summitEntrance = false;
     if (points[0] === summitStart) {
       if (summitGround.visual)
         fitSummitEarth(points, positions, firstVertex, scale, summitGround.visual);
+      const native = summitGround.entrance ?? summitGround.collision;
+      if (native) summitEntrance = fitSummitEntrance(points, positions, firstVertex, width, scale, native);
       if (summitGround.collision)
         earthWalls = summitEarthWalls(points, positions, firstVertex, summitGround.collision,
           island.seaLevel, scale);
@@ -431,9 +480,10 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
         pavedBridgeDecks.push(pavedBridgeDeck(DAM_PINES_BRIDGE_PREFIX + pavedBridge.index,
           p, q, width + 1, positions, [a, b, a + 1, b + 1], scale));
       } else if (!p.bridge && !q.bridge) {
-        // Trail bridges retain their original deck supports. Other road
-        // skirts stay visual so they cannot block lateral entry from terrain.
+        // Trail bridges retain their original deck supports. The summit
+        // entrance is a walkable shoulder; ordinary skirts remain visual.
         supportIndices.push(...top);
+        if (summitEntrance && i === 0) supportIndices.push(a + 1, b + 1, a + 5, b + 1, b + 5, a + 5);
       }
       const tangent = tangents[i]!.clone().add(tangents[i + 1]!);
       if (tangent.lengthSq() < 1e-12) tangent.copy(directions[i]!);
