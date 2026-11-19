@@ -37,7 +37,7 @@ export class SoftwareGameRenderer {
   private readonly tint = new THREE.Color();
   private readonly white = new THREE.Color(0xffffff);
   private readonly water = new THREE.Color(0x53aeb9);
-  private readonly points: ClipVertex[] = [];
+  private readonly points: (ClipVertex & { outside: number })[] = [];
   private readonly textures = new WeakMap<THREE.Texture, { version: number; image: SoftwareTexture }>();
   private readonly srgb = Uint8Array.from({ length: 4097 }, (_, i) =>
     Math.round(255 * THREE.ColorManagement.workingToColorSpace(
@@ -118,14 +118,15 @@ export class SoftwareGameRenderer {
     if (!ctx) return;
     ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
     const image = { pixels: ctx.getImageData(0, 0, canvas.width, canvas.height).data,
-      width: canvas.width, height: canvas.height };
+      width: canvas.width, height: canvas.height, flipY: map.flipY,
+      repeatU: map.wrapS !== THREE.ClampToEdgeWrapping, repeatV: map.wrapT !== THREE.ClampToEdgeWrapping };
     this.textures.set(map, { version: map.version, image });
     if (!saved) this.info.memory.textures++;
     return image;
   }
 
   private paint(mesh: THREE.Mesh, material: Surface): Paint | undefined {
-    if (!material.visible || material.opacity < .12 || material.side === THREE.BackSide) return;
+    if (!material.visible || material.opacity < .12) return;
     let colour = material.color ?? this.white;
     if (material instanceof THREE.ShaderMaterial) {
       if (!/sea|river|reservoir|plunge-pool|terrace-water/.test(mesh.name)) return;
@@ -179,25 +180,30 @@ export class SoftwareGameRenderer {
     const skinned = mesh instanceof THREE.SkinnedMesh;
     // Keep roads and terrain on their authored heights; their thin layers need exact depth.
     const fixed = mesh.userData.terrainChunk || mesh.name.startsWith('paths-');
-    const cells = fixed || position.count < 160 ? 0 : mesh.name === 'rising-sea' ? 32 :
-      radius < 8 ? 5 : radius < 22 ? 9 : radius < 65 ? 16 : skinned ? 36 :
-      position.count > 2300 ? 32 : 0;
-    const data = softwareGeometry(geometry, cells);
+    const detail = fixed || position.count < 250 ? 'full' :
+      radius < 32 || mesh.name === 'rising-sea' ? 'far' : position.count > 1500 ? 'near' : 'full';
+    const data = softwareGeometry(geometry, detail);
     this.transform.multiplyMatrices(this.viewProjection, matrix);
     const m = this.transform.elements;
+    const uv = geometry.getAttribute('uv');
+    const textured = uv && paints.some(p => p?.texture);
+    const mirrored = matrix.determinant() < 0;
     for (let i = 0; i < data.sources.length; i++) {
       const source = data.sources[i]!;
-      const p = this.points[i] ?? (this.points[i] = { x: 0, y: 0, w: 1, u: 0, v: 0 });
+      const p = this.points[i] ?? (this.points[i] = { x: 0, y: 0, w: 1, u: 0, v: 0, outside: 0 });
       if (skinned) mesh.getVertexPosition(source, this.position);
       else this.position.fromBufferAttribute(position, source);
       const { x, y, z } = this.position;
       p.x = m[0] * x + m[4] * y + m[8] * z + m[12];
       p.y = m[1] * x + m[5] * y + m[9] * z + m[13];
       p.w = m[3] * x + m[7] * y + m[11] * z + m[15];
+      p.outside = Number(p.x < -p.w) | Number(p.x > p.w) << 1 | Number(p.y < -p.w) << 2 |
+        Number(p.y > p.w) << 3 | Number(p.w < this.near) << 4;
+      if (textured) { p.u = uv.getX(source); p.v = uv.getY(source); }
     }
     this.normalMatrix.getNormalMatrix(matrix).transpose();
     this.localLight.copy(this.sun).applyMatrix3(this.normalMatrix).normalize();
-    const light = this.localLight, uv = geometry.getAttribute('uv');
+    const light = this.localLight;
     const { corners, colours, normals } = data;
     this.info.render.calls++;
     this.info.render.triangles += corners.length / 3;
@@ -207,7 +213,7 @@ export class SoftwareGameRenderer {
       if (!paint) continue;
       const a = this.points[corners[k]!]!, b = this.points[corners[k + 1]!]!,
         c = this.points[corners[k + 2]!]!;
-      if (a.w < this.near && b.w < this.near && c.w < this.near) continue;
+      if (a.outside & b.outside & c.outside) continue;
       const shade = paint.unlit ? 1 : .79 + .21 * Math.max(-.6,
         normals[k]! * light.x + normals[k + 1]! * light.y + normals[k + 2]! * light.z);
       const vertex = paint.material.vertexColors ? colours : undefined;
@@ -215,21 +221,10 @@ export class SoftwareGameRenderer {
       const r = this.channel(base.r * tint.r * (vertex ? vertex[k]! : 1), shade);
       const g = this.channel(base.g * tint.g * (vertex ? vertex[k + 1]! : 1), shade);
       const blue = this.channel(base.b * tint.b * (vertex ? vertex[k + 2]! : 1), shade);
-      if (paint.texture && uv) {
-        const flip = paint.material.map!.flipY;
-        this.uv(a, uv, data.originals[k]!, flip);
-        this.uv(b, uv, data.originals[k + 1]!, flip);
-        this.uv(c, uv, data.originals[k + 2]!, flip);
-      }
+      const side = paint.material.side;
       this.frame!.triangle(a, b, c, this.near, pixel(r, g, blue), uv ? paint.texture : undefined,
-        paint.material.side, paint.material.polygonOffset ? 1.00005 : 1);
+        mirrored && side !== THREE.DoubleSide ? 1 - side : side, paint.material.polygonOffset ? 1.00005 : 1);
     }
-  }
-
-  private uv(p: ClipVertex, uv: THREE.BufferAttribute | THREE.InterleavedBufferAttribute,
-    i: number, flip: boolean): void {
-    p.u = uv.getX(i);
-    p.v = flip ? 1 - uv.getY(i) : uv.getY(i);
   }
 
   private channel(linear: number, shade: number): number {

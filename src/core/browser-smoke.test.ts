@@ -753,14 +753,15 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
 
       page.phase = 'cold launch and play without WebGL';
       await page.send('Page.addScriptToEvaluateOnNewDocument', {
-        source: `const originalCanvasContext = HTMLCanvasElement.prototype.getContext;
+        source: `window.__browserSmokeForcesSoftware = true;
+          const originalCanvasContext = HTMLCanvasElement.prototype.getContext;
           HTMLCanvasElement.prototype.getContext = function(kind, ...args) {
             if (kind.includes('webgl')) return null;
             return originalCanvasContext.call(this, kind, ...args);
           };`,
       });
       await page.send('Page.reload', { ignoreCache: true });
-      await page.waitFor('!!document.querySelector(".gg-shell [data-action=play]")',
+      await page.waitFor('window.__browserSmokeForcesSoftware && !!document.querySelector(".gg-shell [data-action=play]")',
         'software-rendered title screen', 90000);
       await page.click('[data-action="play"]');
       await page.waitFor('document.querySelector(".gg-shell")?.hidden === true',
