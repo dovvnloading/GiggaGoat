@@ -9,6 +9,8 @@ export interface WaterVolume {
   readonly halfExtents: Vec3;
   readonly flow: Vec3;
   readonly containsXZ?: (x: number, z: number) => boolean;
+  /** World height within the volume's envelope, for sloped water surfaces. */
+  readonly surfaceYAt?: (x: number, z: number) => number;
 }
 export interface WaterOptions {
   seaLevel?: number;
@@ -95,7 +97,8 @@ export class WaterSystem {
     const id = input.id ?? 'water-' + this.nextId++;
     if (id === 'sea' || this.volumes.has(id)) throw new Error('duplicate or reserved water volume id: ' + id);
     this.volumes.set(id, { id, center: { ...center }, halfExtents: { ...halfExtents }, flow: { ...flow },
-      ...(input.containsXZ ? { containsXZ: input.containsXZ } : {}) });
+      ...(input.containsXZ ? { containsXZ: input.containsXZ } : {}),
+      ...(input.surfaceYAt ? { surfaceYAt: input.surfaceYAt } : {}) });
     return id;
   }
   removeVolume(id: string): boolean { return this.volumes.delete(id); }
@@ -139,12 +142,16 @@ export class WaterSystem {
       let flow = V(), volumeId = 'sea';
       for (const local of this.volumes.values()) {
         const a = local.halfExtents, o = local.center;
-        const overlapY = Math.min(top, o.y + a.y) - Math.max(bottom, o.y - a.y);
-        if (overlapY <= 0) continue;
+        const lowest = Math.max(bottom, o.y - a.y);
+        const highest = Math.min(top, o.y + a.y);
+        if (highest <= lowest) continue;
         const left = Math.max(p.x - h.x, o.x - a.x), right = Math.min(p.x + h.x, o.x + a.x);
         const rear = Math.max(p.z - h.z, o.z - a.z), front = Math.min(p.z + h.z, o.z + a.z);
         const overlapX = right - left, overlapZ = front - rear;
         if (overlapX <= 0 || overlapZ <= 0) continue;
+        const surface = local.surfaceYAt?.((left + right) / 2, (rear + front) / 2) ?? highest;
+        const overlapY = Math.min(highest, surface) - lowest;
+        if (overlapY <= 0) continue;
         const footprint = clamp01(overlapX / Math.max(2 * h.x, 1e-6)) *
           clamp01(overlapZ / Math.max(2 * h.z, 1e-6));
         let wetShare = 1;

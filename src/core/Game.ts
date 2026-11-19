@@ -20,7 +20,8 @@ import { addRapierPropCollider } from '../world/colliders';
 import { BOARDWALK_SHORE_GUARD_ID, BOARDWALK_SHORE_ID, boardwalkFarEnd, boardwalkPierDecks } from '../world/boardwalk';
 import { PINES_LOG_ENTRY_ID } from '../world/pines-log-access';
 import { HOOFINGTON_HAUL_BALE_PREFIX } from '../world/hoofington-entrances';
-import { getDamHeadwater, isDamHeadwater } from '../world/dam-landscape';
+import { DAM_FOREST_RIVER_START, DAM_UPSTREAM_RIVER_END, getDamHeadwater, getDamOutflow,
+  isDamHeadwater } from '../world/dam-landscape';
 import { DAM_ACCESS_GUARD_ID, DAM_BACK_GUARD, DAM_FRONT_GUARD } from '../world/the-dam';
 import { LIGHTHOUSE_ACCESS_GUARD_ID } from '../world/lighthouse-access';
 import { COAST_TURNOUT_GNOME_ID } from '../world/roadside-stops';
@@ -483,7 +484,6 @@ export class Game {
   }
 
   private addWaterVolumes(): void {
-    const lake = this.island.reservoir;
     const upper = getDamHeadwater(this.island);
     const depth = 4 * upper.scale;
     this.water.addVolume({
@@ -493,13 +493,20 @@ export class Game {
       flow: V(),
       containsXZ: (x, z) => isDamHeadwater(this.island, x, z),
     });
-    // This established front volume serves the Dam Bomb drop below the deck.
+    const outflow = getDamOutflow(this.island);
     this.water.addVolume({
       id: 'reservoir',
-      center: V(lake.center.x, lake.level - 3.5, lake.center.z),
-      halfExtents: V(lake.radiusX, 3.5, lake.radiusZ), flow: V(0, 0, 0),
+      center: V((outflow.left + outflow.right) / 2, (outflow.top + outflow.bottom) / 2,
+        (outflow.near + outflow.far) / 2),
+      halfExtents: V((outflow.right - outflow.left) / 2, (outflow.top - outflow.bottom) / 2,
+        (outflow.far - outflow.near) / 2),
+      flow: V(0, 0, 1.2),
+      containsXZ: outflow.containsXZ,
+      surfaceYAt: (_x, z) => outflow.surfaceY(z),
     });
     for (let i = 1; i < this.island.river.length; i++) {
+      // The visible outflow replaces these original river reaches.
+      if (i >= DAM_UPSTREAM_RIVER_END && i <= DAM_FOREST_RIVER_START) continue;
       const a = this.island.river[i - 1]!, b = this.island.river[i]!;
       const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
       const level = (a.level + b.level) / 2;
@@ -507,14 +514,15 @@ export class Game {
       const speed = Math.min(4, 1.2 + (a.level - b.level) / Math.max(1, length));
       const widthX = Math.abs(b.x - a.x) / 2 + Math.max(a.width, b.width) * .42;
       const widthZ = Math.abs(b.z - a.z) / 2 + Math.max(a.width, b.width) * .42;
-      const touchesUpper = mx + widthX > upper.left && mx - widthX < upper.right &&
-        mz + widthZ > upper.rear && mz - widthZ < upper.front;
+      const touchesDam = mx + widthX > upper.left && mx - widthX < upper.right &&
+        mz + widthZ > upper.rear && mz - widthZ < outflow.far;
       this.water.addVolume({
         id: 'river-' + i,
         center: V(mx, level - 1.7, mz),
         halfExtents: V(widthX, 1.7, widthZ),
-        ...(touchesUpper ? { containsXZ: (x: number, z: number) =>
-          x < upper.left || x > upper.right || z < upper.rear || z >= upper.front } : {}),
+        ...(touchesDam ? { containsXZ: (x: number, z: number) =>
+          (x < upper.left || x > upper.right || z < upper.rear || z >= outflow.near) &&
+          !outflow.containsXZ(x, z) } : {}),
         flow: V((b.x - a.x) / Math.max(1, length) * speed, -.15,
           (b.z - a.z) / Math.max(1, length) * speed),
       });

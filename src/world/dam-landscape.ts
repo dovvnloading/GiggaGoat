@@ -1,7 +1,7 @@
 import type { IslandData, RoadPoint } from './types';
 import { gridCoordinate, gridIndex, gridSample, segmentProjection } from './terrain';
 import { lerp, smoothstep } from './random';
-import { getDamPlacement } from './the-dam';
+import { getDamPlacement, type DamPlacement } from './the-dam';
 import { DAM_MOUNTAIN_TRAIL, damMountainTrailDirt, fitDamMountainTrail } from './roads';
 
 /** Metres in the Dam model's +Z (downstream) coordinates, at island size 600. */
@@ -27,6 +27,34 @@ export const DAM_CHANNEL: readonly DamChannelSection[] = [
   { x: -12, z: 94, halfWidth: 9.5, level: 3.5 },
   { x: -16, z: 110, halfWidth: 9, level: 3.2 },
 ];
+
+export const DAM_WATER_SURFACE_LIFT = .20;
+export const DAM_UPSTREAM_RIVER_END = 5;
+export const DAM_FOREST_RIVER_START = 11;
+
+/** The surface drawn by the plunge pool and downstream channel. */
+export function damOutflowWaterY({ position, scale }: DamPlacement, z: number): number {
+  return position.y + (damChannelAt((z - position.z) / scale).level + DAM_WATER_SURFACE_LIFT) * scale;
+}
+
+export function getDamOutflow(island: IslandData) {
+  const placement = getDamPlacement(island);
+  const { position, scale } = placement;
+  const first = DAM_CHANNEL[0]!;
+  const last = DAM_CHANNEL[DAM_CHANNEL.length - 1]!;
+  const near = position.z + first.z * scale;
+  const far = position.z + last.z * scale;
+  const left = position.x + Math.min(...DAM_CHANNEL.map(section => section.x - section.halfWidth)) * scale;
+  const right = position.x + Math.max(...DAM_CHANNEL.map(section => section.x + section.halfWidth)) * scale;
+  const surfaceY = (z: number): number => damOutflowWaterY(placement, z);
+  const containsXZ = (x: number, z: number): boolean => {
+    if (z < near || z > far) return false;
+    const section = damChannelAt((z - position.z) / scale);
+    return Math.abs((x - position.x) / scale - section.x) <= section.halfWidth;
+  };
+  return { left, right, near, far, surfaceY, containsXZ,
+    top: surfaceY(near), bottom: surfaceY(far) - 3.5 * scale };
+}
 
 /** Piecewise linear centreline/width so render mesh and heightfield agree. */
 export function damChannelAt(z: number): DamChannelSection {

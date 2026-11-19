@@ -3,8 +3,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData } from './types';
 import { gridSample } from './terrain';
-import { DAM_ACCESS_ID, DAM_ACCESS_SUPPORT_ID, DAM_BACK_GUARD, DAM_FRONT_GUARD, damAccess, damAccessGuards,
-  getDamPlacement, makeDamColliderDescriptors } from './the-dam';
+import { DAM_ACCESS_ID, DAM_ACCESS_SUPPORT_ID, DAM_BACK_GUARD, DAM_FRONT_GUARD, DAM_PLATFORM_GUARD_ID,
+  damAccess, damAccessGuards, getDamPlacement, makeDamColliderDescriptors } from './the-dam';
 import { accessArrows, accessPathVisual, mergePaintedParts } from './visual-access-path';
 import { publicAssetUrl } from './public-assets';
 import { buildDamLandscape, DAM_SPILLWAY_IMPACTS } from './visual-dam-landscape';
@@ -209,7 +209,8 @@ function buildProceduralDamFallback(island: IslandData): THREE.Group {
   const deckAndHouse: Array<{ geometry: THREE.BufferGeometry; color: number }> = [];
 
   for (const collider of makeDamColliderDescriptors(island)) {
-    if ([DAM_FRONT_GUARD.prefix, DAM_BACK_GUARD.prefix, DAM_ACCESS_ID]
+    const platformRail = collider.id === DAM_PLATFORM_GUARD_ID;
+    if (!platformRail && [DAM_FRONT_GUARD.prefix, DAM_BACK_GUARD.prefix, DAM_ACCESS_ID]
       .some(prefix => collider.id.startsWith(prefix))) continue;
     const geometry = new THREE.BoxGeometry(
       collider.size.x / scale, collider.size.y / scale, collider.size.z / scale,
@@ -219,8 +220,9 @@ function buildProceduralDamFallback(island: IslandData): THREE.Group {
       (collider.transform.position.y - position.y) / scale,
       (collider.transform.position.z - position.z) / scale,
     );
-    const color = collider.id === 'the-dam-control-house' ? 0xf3eee0 :
-      collider.id === 'the-dam-deck' ? 0xd6d6c9 : undefined;
+    const color = platformRail ? 0xf2c12e :
+      collider.id === 'the-dam-control-house' || collider.id === 'the-dam-control-house-roof' ? 0xf3eee0 :
+      collider.id === 'the-dam-deck' || collider.id === 'the-dam-control-house-platform' ? 0xd6d6c9 : undefined;
     if (color === undefined) stoneParts.push(geometry);
     else deckAndHouse.push({ geometry, color });
   }
