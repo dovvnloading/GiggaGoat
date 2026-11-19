@@ -35,6 +35,17 @@ describe('adaptive resolution', () => {
     expect(controller.ratio).toBe(1);
   });
 
+  it('restores native resolution at a steady 60 Hz with room in the render budget', () => {
+    const controller = new AdaptiveResolution('high', 1);
+    for (let i = 0; i < 90; i++) controller.sample(26, 16, .026);
+    const reduced = controller.ratio;
+    expect(reduced).toBeLessThan(1);
+    for (let i = 0; i < 480; i++) controller.sample(1000 / 60, 10.5, 1 / 60);
+    expect(controller.ratio).toBe(reduced);
+    for (let i = 0; i < 480; i++) controller.sample(1000 / 60, 4, 1 / 60);
+    expect(controller.ratio).toBe(1);
+  });
+
   it('ignores pauses, resume spikes and alternating noisy frames', () => {
     const controller = new AdaptiveResolution('high', 1);
     for (let i = 0; i < 180; i++) {

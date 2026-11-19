@@ -25,10 +25,13 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
     ]);
     expect(view.group.getObjectByName('lighthouse-lookout-cliff-braces-and-landing'))
       .toBeInstanceOf(THREE.Group);
+    expect(view.group.getObjectByName('baaardwalk-painted-rails')).toBeInstanceOf(THREE.Mesh);
     const grouped = new Map<string, PropDescriptor[]>();
     for (const prop of island.props) {
       // The Dam Bomb's data-only platform is replaced visually by the GLB.
       if (prop.id.startsWith('the-dam-compat-')) continue;
+      // The Baa-ardwalk's timber rails share a static mesh to keep their joins flush.
+      if (prop.poiId === 'baa-ardwalk' && prop.kind === 'pier-rail') continue;
       const group = grouped.get(prop.kind) ?? [];
       group.push(prop);
       grouped.set(prop.kind, group);

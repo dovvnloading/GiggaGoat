@@ -43,7 +43,8 @@ export class AdaptiveResolution {
     if (this.warmupSeconds < 0.75) return null;
     this.cooldownSeconds = Math.max(0, this.cooldownSeconds - dt);
     const overloaded = frameMs > 18.5 || renderMs > 15.5;
-    const headroom = frameMs < 15.1 && renderMs < 11.5;
+    // A healthy 60 Hz display produces ~16.7 ms intervals even with GPU headroom.
+    const headroom = frameMs < 17.25 && renderMs < 9.5;
     this.slowSeconds = overloaded ? this.slowSeconds + dt : Math.max(0, this.slowSeconds - 2 * dt);
     this.fastSeconds = headroom ? this.fastSeconds + dt : Math.max(0, this.fastSeconds - 2 * dt);
     if (this.cooldownSeconds > 0) return null;
