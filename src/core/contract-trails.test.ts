@@ -28,11 +28,11 @@ async function accept(gig: GigId, difficulty: Difficulty, grown?: 'Big' | 'GIGGA
   return game;
 }
 
-function walk(game: Game, target: Pick<Point, 'x' | 'z'>, tolerance = .65, maxTicks = 500): void {
+function walk(game: Game, target: Pick<Point, 'x' | 'z'>, tolerance = .65, maxTicks = 500, sprint = false): void {
   for (let tick = 0; tick < maxTicks; tick++) {
     const { x, z } = game.goat.torso.translation();
     if (Math.hypot(target.x - x, target.z - z) < tolerance) return;
-    game.step({ moveZ: 1, cameraYaw: Math.atan2(target.x - x, z - target.z) });
+    game.step({ moveZ: 1, cameraYaw: Math.atan2(target.x - x, z - target.z), sprint });
   }
   throw new Error('Stopped at ' + JSON.stringify(game.goat.torso.translation()) + ' walking to ' + JSON.stringify(target));
 }
@@ -188,3 +188,108 @@ it.each([['easy', 3, 4], ['medium', 4, 6], ['hard', 5, 8]] as const)(
       expect(game.respawns).toBe(0);
     } finally { game.dispose(); }
   }, 35_000);
+
+it('finishes Hard Summit Sprint at normal sprint pace on the browser QA route', async () => {
+  const game = await accept('summit-sprint', 'hard');
+  try {
+    game.step();
+    const turns = [
+      [24.567, -14.53], [25.615, -9.866], [25.598, -4.361], [25.414, -3.276],
+      [22.305, 4.556], [19.03, 8.771], [16.210, 10.885], [8.797, 13.576],
+      [3.544, 13.358], [1.03, 12.534], [.508, 8.701], [.276, 6.097], [.121, 2.326],
+    ] as const;
+    for (const [x, z] of turns) {
+      if (game.gigs.active?.status !== 'running') break;
+      walk(game, { x, z }, .65, 100, true);
+    }
+    expect(game.gigs.active).toMatchObject({ status: 'completed', checkpointIndex: 5, rating: 'gold' });
+    expect(game.gigs.active!.metrics.climbed).toBeGreaterThan(9);
+    expect(game.respawns).toBe(0);
+  } finally { game.dispose(); }
+}, 35_000);
+
+it('preserves actual Summit Sprint ascent across reload and ignores interrupted movement', async () => {
+  const game = await accept('summit-sprint', 'hard');
+  let restored: Game | undefined;
+  try {
+    for (let tick = 0; tick < 20; tick++) game.step();
+    const standY = game.goat.torso.translation().y;
+    let highY = standY;
+    for (let tick = 0; tick < 100; tick++) {
+      game.step({ jump: tick === 0 });
+      highY = Math.max(highY, game.goat.torso.translation().y);
+    }
+    expect(highY - standY).toBeGreaterThan(.3);
+    expect(game.gigs.active?.metrics.climbed).toBe(0);
+
+    const run = game.gigs.active!;
+    const trail = game.island.roads.find(road => road.id === 'mt-gigga--hoofington')!;
+    const start = trail.points.findIndex(point => point.x === run.setup.start.x && point.z === run.setup.start.z);
+    const middle = start - 20;
+    for (const point of trail.points.slice(middle, start).reverse()) walk(game, point);
+    const earned = game.gigs.active!.metrics.climbed;
+    expect(earned).toBeGreaterThan(2);
+
+    restored = await Game.create({ seed, progress: game.exportProgress() });
+    expect(restored.gigs.active).toMatchObject({
+      status: 'running', attemptId: run.attemptId, metrics: { climbed: earned },
+    });
+    for (const point of trail.points.slice(0, middle).reverse()) {
+      if (restored.gigs.active?.status !== 'running') break;
+      walk(restored, point);
+    }
+    expect(restored.gigs.active).toMatchObject({ status: 'completed', checkpointIndex: 5 });
+
+    game.step({ flop: true });
+    expect(game.goat.isRagdoll).toBe(true);
+    for (let tick = 0; tick < 60; tick++) game.step();
+    expect(game.gigs.active?.metrics.climbed).toBe(earned);
+    game.respawn();
+    game.step();
+    expect(game.respawns).toBe(1);
+    expect(game.gigs.active?.metrics.climbed).toBe(earned);
+
+    game.teleport(trail.points[5]!, 0);
+    for (let tick = 0; tick < 45; tick++) game.step();
+    expect(game.goat.locomotion.grounded).toBe(true);
+    expect(game.gigs.active?.metrics.climbed).toBe(earned);
+    for (const point of trail.points.slice(0, 5).reverse()) walk(game, point);
+    expect(game.gigs.active?.metrics.climbed).toBe(earned);
+  } finally {
+    restored?.dispose();
+    game.dispose();
+  }
+}, 35_000);
+
+it('lets the older 5/5 Summit Sprint save earn its missing ascent by walking the trail', async () => {
+  const original = await accept('summit-sprint', 'hard');
+  const progress = original.exportProgress();
+  original.dispose();
+
+  const run = progress.gigs.run!;
+  run.metrics.climbed = 6.572;
+  run.checkpointIndex = 5;
+  progress.gigPlayerPose = {
+    attemptId: run.attemptId, position: { x: .121, y: 102.62, z: 2.326 }, heading: 0,
+  };
+
+  const game = await Game.create({ seed, progress });
+  try {
+    const trail = game.island.roads.find(road => road.id === 'mt-gigga--hoofington')!;
+    const start = trail.points.findIndex(point => point.x === run.setup.start.x && point.z === run.setup.start.z);
+    const upperTrail = trail.points.slice(0, start - 12);
+    for (let tick = 0; tick < 45; tick++) game.step();
+    expect(game.gigs.active).toMatchObject({
+      status: 'running', checkpointIndex: 5, metrics: { climbed: 6.572 },
+    });
+    for (const point of upperTrail) walk(game, point);
+    expect(game.gigs.active!.metrics.climbed).toBe(6.572);
+    for (const point of upperTrail.slice().reverse()) {
+      if (game.gigs.active?.status !== 'running') break;
+      walk(game, point);
+    }
+    expect(game.gigs.active).toMatchObject({ status: 'completed', checkpointIndex: 5 });
+    expect(game.gigs.active!.metrics.climbed).toBeGreaterThanOrEqual(8);
+    expect(game.respawns).toBe(0);
+  } finally { game.dispose(); }
+}, 35_000);

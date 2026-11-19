@@ -4,7 +4,8 @@ import { GigCatalog, GigDirector, GigGameplayBridge, type AbilityFact, type GigE
   type PropFact, type StyleFact } from '../gigs';
 import { RAPIER, V, collisionGroups, type GoatRagdoll, type PhysicsContact, type RayHit, type Vec3 } from '../physics';
 import { lerp, distance, forward, Q, slerp, sub } from '../physics/math';
-import { heightAt, type PoiId } from '../world';
+import { heightAt, type PoiId, type RoadPoint } from '../world';
+import { segmentProjection } from '../world/terrain';
 import { ROOFTOP_DECK_PREFIX, ROOFTOP_SPAN_PREFIX, rooftopDecks } from '../world/rooftop-course';
 import type { Game } from './Game';
 import type { GigPlayerPose, RooftopPose } from './Persistence';
@@ -23,6 +24,16 @@ interface StackLift {
   waypoints: Vec3[];
   clearRadius: number;
 }
+interface SummitAscent {
+  trail: RoadPoint[];
+  radius: number;
+  startY: number;
+  peak: number;
+  previous: Vec3 | null;
+  respawns: number;
+  interrupted: boolean;
+}
+const SUMMIT_TRAIL_ID = 'mt-gigga--hoofington';
 const COURIER_SHRINK_SETTLE_TICKS = 24;
 const STACK_LIFT_RANGE = 4;
 
@@ -44,8 +55,7 @@ export class GigSession {
   private courierShrink: { previousSize: number; expiresAt: number } | null = null;
   private gnomePressure = 0;
   private gnomeRiskUntil = -1;
-  private summitPeak = -Infinity;
-  private previousSummitPosition: { x: number; y: number; z: number } | null = null;
+  private summitAscent: SummitAscent | null = null;
   private readonly abilities: AbilityFact[] = [];
   private readonly style: StyleFact[] = [];
   private readonly off: Array<() => void> = [];
@@ -194,7 +204,7 @@ export class GigSession {
   private stageSummit(setup: GigSetup): void {
     if (setup.offer.gigId !== 'summit-sprint' || setup.config.kind !== 'summit-sprint' ||
         setup.markers[0]?.type !== 'start') return;
-    const trail = this.game.island.roads.find(road => road.id === 'mt-gigga--hoofington')?.points;
+    const trail = this.game.island.roads.find(road => road.id === SUMMIT_TRAIL_ID)?.points;
     const { start } = setup;
     const index = trail?.findIndex(point => point.x === start.x && point.z === start.z) ?? -1;
     const ahead = trail?.[index - 1] ?? setup.config.checkpoints[1]!;
@@ -524,14 +534,58 @@ export class GigSession {
     });
   }
 
-  private measuredSummitAscent(position: { x: number; y: number; z: number }): number {
-    const previous = this.previousSummitPosition;
-    const delta = previous ? Math.hypot(position.x - previous.x, position.z - previous.z) : 0;
-    const gain = this.game.goat.locomotion.grounded && delta > .005 && delta < .45 &&
-      previous && Math.abs(position.y - previous.y) < .35 ? Math.max(0, position.y - this.summitPeak) : 0;
-    this.previousSummitPosition = { ...position };
-    this.summitPeak = Math.max(this.summitPeak, position.y);
-    return gain;
+  private beginSummitAscent(run: GigRun): SummitAscent | null {
+    const { island, colliders } = this.game;
+    const { start } = run.setup;
+    const road = island.roads.find(({ id }) => id === SUMMIT_TRAIL_ID);
+    const startIndex = road?.points.findIndex(({ x, z }) => x === start.x && z === start.z) ?? -1;
+    if (!road || startIndex < 1) return null;
+
+    // Rebuild the earned-height floor from the existing score on reload.
+    const ray = new RAPIER.Ray(V(start.x, start.y + 1, start.z), V(0, -1, 0));
+    const hits = [colliders.terrain, ...colliders.paths]
+      .map(floor => floor.castRay(ray, 3, false)).filter(distance => distance >= 0);
+    const startY = hits.length ? ray.origin.y - Math.min(...hits) : start.y;
+    return {
+      trail: road.points.slice(0, startIndex + 1),
+      radius: road.width, // Include the graded shoulders of the trail.
+      startY,
+      peak: startY + run.metrics.climbed,
+      previous: null,
+      respawns: this.game.respawns,
+      interrupted: true,
+    };
+  }
+
+  private measuredSummitAscent(position: Vec3, run: GigRun): number {
+    const ascent = this.summitAscent ??= this.beginSummitAscent(run);
+    if (!ascent) return 0;
+    const { goat, colliders, respawns } = this.game;
+    const { previous, trail, radius } = ascent;
+    ascent.previous = { ...position };
+    const travel = previous ? Math.hypot(position.x - previous.x, position.z - previous.z) : 0;
+    const onTrail = trail.some((point, index) => index > 0 &&
+      segmentProjection(position, trail[index - 1]!, point).distance <= radius);
+    const scale = Math.max(1, goat.size);
+    ascent.interrupted ||= ascent.respawns !== respawns || !onTrail || goat.isRagdoll || !previous ||
+      travel >= .45 * scale || Math.abs(position.y - previous.y) >= .35 * scale;
+    ascent.respawns = respawns;
+    if (!onTrail || goat.isRagdoll) return 0;
+    const support = goat.locomotion.groundHit;
+    if (!goat.locomotion.grounded || !support || (support.collider.handle !== colliders.terrain.handle &&
+        !colliders.paths.some(path => path.handle === support.collider.handle))) return 0;
+
+    // Reconnect within a step of previously earned ascent after a rescue or reload.
+    // A player who skipped a section can still walk back and earn it.
+    if (ascent.interrupted) {
+      if (support.point.y > ascent.peak + .1 * scale) return 0;
+      ascent.interrupted = false;
+    }
+
+    // Measure the supported trail height so an airborne torso cannot consume ascent.
+    if (travel > .005) ascent.peak = Math.max(ascent.peak, support.point.y);
+    const climbed = Math.round((ascent.peak - ascent.startY) * 1000) / 1000;
+    return climbed - run.metrics.climbed;
   }
   /** Called after each completed physics tick, including catch-up substeps. */
   tick(climbed: number): void {
@@ -542,8 +596,9 @@ export class GigSession {
     }
     const p = this.game.goat.torso.translation();
     const abilities = this.abilities.splice(0);
-    if (run?.status === 'running' && run.setup.offer.gigId === 'summit-sprint') {
-      climbed = Math.max(climbed, this.measuredSummitAscent(p));
+    if (run?.status === 'running' && run.setup.offer.gigId === 'summit-sprint' &&
+        run.setup.markers[0]?.type === 'start') {
+      climbed = this.measuredSummitAscent(p, run);
     }
     if (climbed > 0) abilities.push({ type: 'climb', metres: climbed });
     const style = this.style.splice(0);
@@ -653,8 +708,7 @@ export class GigSession {
     this.courierShrink = null;
     this.gnomePressure = 0;
     this.gnomeRiskUntil = -1;
-    this.summitPeak = -Infinity;
-    this.previousSummitPosition = null;
+    this.summitAscent = null;
   }
   dispose(): void { this.clear(); for (const off of this.off.splice(0)) off(); }
 }
