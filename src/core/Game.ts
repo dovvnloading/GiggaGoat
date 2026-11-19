@@ -555,10 +555,13 @@ export class Game {
     const boardwalk = this.island.pois.find(p => p.id === 'baa-ardwalk')!;
     place('launch', boardwalk.center.x + 6, boardwalk.center.z + 12);
     for (const prop of this.island.props) {
-      if (prop.poiId !== 'baa-ardwalk' || prop.kind !== 'trampoline') continue;
+      if (prop.kind !== 'trampoline' || (prop.poiId !== 'hoofington' && prop.poiId !== 'baa-ardwalk')) continue;
       const position = prop.transform.position;
       const halfExtents = V(prop.size.x / 2, prop.size.y / 2, prop.size.z / 2);
-      const id = this.surfaces.createTrampoline({ id: prop.id, position, halfExtents, bounceSpeed: 13 });
+      const id = this.surfaces.createTrampoline({
+        id: prop.id, position, halfExtents, bounceSpeed: 13,
+        sensorOnly: this.colliders.props.has(prop.id),
+      });
       this.surfaceMarkers.push({ id, kind: 'trampoline', position, halfExtents, hasWorldArt: true });
     }
   }

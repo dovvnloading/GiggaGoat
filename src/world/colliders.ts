@@ -6,7 +6,8 @@ import { makeDamColliderDescriptors } from './the-dam';
 import { makeGradedBridgeColliders } from './roads';
 import { roadRibbonData } from './road-ribbons';
 import { accessSlabs } from './access-path';
-import { BOARDWALK_SHORE_GUARD_ID, BOARDWALK_SHORE_ID, boardwalkShoreEntry } from './boardwalk';
+import { BOARDWALK_SHORE_GUARD_ID, BOARDWALK_SHORE_ID, boardwalkShoreEntry,
+  boardwalkWheelSupports } from './boardwalk';
 import { pinesLogEntryColliders } from './pines-log-access';
 import { LIGHTHOUSE_ACCESS_GUARD_ID, LIGHTHOUSE_ACCESS_ID, keeperCottagePierColliders, lighthouseAccess,
   lighthouseFoundationDepth, lighthouseOuterGuard } from './lighthouse-access';
@@ -103,6 +104,10 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
   const bridgeDecks = makeGradedBridgeColliders(island);
   for (const deck of roadRibbonData(island, 'road').pavedBridgeDecks) bridgeDecks.set(deck.id, deck);
   for (const prop of island.props) {
+    if (prop.kind === 'ferris-wheel' && prop.poiId === 'baa-ardwalk') {
+      colliders.push(...boardwalkWheelSupports(prop));
+      continue;
+    }
     if (!prop.collidable) continue;
     const bridgeDeck = bridgeDecks.get(prop.id);
     if (bridgeDeck) {

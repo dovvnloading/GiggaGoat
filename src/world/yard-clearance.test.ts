@@ -58,6 +58,51 @@ it.each(['billy-isle', 'hoofington-geometry', 'full-loop-core-test'])(
     }
   });
 
+it('bounces the goat on both Hoofington trampolines without duplicating the yard support', async () => {
+  const game = await Game.create();
+  try {
+    const farm = game.island.pois.find(poi => poi.id === 'hoofington')!.center;
+    const yard = game.surfaceMarkers.find(marker => marker.id === 'detail-hoofington-trampoline-3')!;
+    const roadside = game.surfaceMarkers.find(marker => marker.kind === 'trampoline' &&
+      Math.hypot(marker.position.x - farm.x, marker.position.z - farm.z) < 20)!;
+    expect(yard).toMatchObject({ kind: 'trampoline', hasWorldArt: true });
+    expect(roadside.hasWorldArt).toBeUndefined();
+
+    const support = game.colliders.props.get(yard.id)!;
+    const coincidentSolids: number[] = [];
+    game.physics.raw.forEachCollider(collider => {
+      if (collider.isSensor() || collider.shapeType() !== RAPIER.ShapeType.Cuboid) return;
+      const p = collider.translation();
+      if (Math.hypot(p.x - yard.position.x, p.y - yard.position.y, p.z - yard.position.z) < .01) {
+        coincidentSolids.push(collider.handle);
+      }
+    });
+    expect(coincidentSolids).toEqual([support.handle]);
+
+    for (const surface of [roadside, yard]) {
+      const { position, halfExtents } = surface;
+      game.teleport(V(position.x, position.y + halfExtents.y + 1.1, position.z));
+      let bounced = false;
+      const stop = game.surfaces.events.on(event => {
+        if (event.type === 'bounce' && event.surfaceId === surface.id &&
+          game.goat.ownsBody(event.bodyHandle)) bounced = true;
+      });
+      let peak = 0;
+      try {
+        for (let tick = 0; tick < 80; tick++) {
+          game.step();
+          peak = Math.max(peak, game.goat.torso.linvel().y);
+        }
+      } finally { stop(); }
+      expect(bounced, surface.id).toBe(true);
+      expect(peak, surface.id).toBeGreaterThan(3);
+    }
+    expect(game.respawns).toBe(0);
+  } finally {
+    game.dispose();
+  }
+});
+
 it('walks the Crane Yard rear gate both ways with the relocated container', async () => {
   const game = await Game.create({ seed: 'billy-isle', resolution: 193 });
   try {
