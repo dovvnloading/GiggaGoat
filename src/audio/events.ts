@@ -67,8 +67,12 @@ void complete;
 export function mapPhysics(event: PhysicsEvent): AudioCue[] {
   const goatId = event.goatId;
   switch (event.type) {
-    case 'landed':
-      return [cue('landing', { goatId, intensity: clamp(Math.abs(event.verticalSpeed) / 17) })];
+    case 'landed': {
+      const speed = Math.abs(event.verticalSpeed);
+      // Brief support changes during get-up and ordinary steps belong to the locomotion foley.
+      if (event.airtime < .18 && speed < 2) return [];
+      return [cue('landing', { goatId, intensity: clamp(speed / 17) })];
+    }
     case 'impact':
       return event.impulse > 5 ?
         [cue('headbutt-impact', { goatId, intensity: clamp(event.impulse / 60),
@@ -80,7 +84,7 @@ export function mapPhysics(event: PhysicsEvent): AudioCue[] {
     case 'wallClingStart': return [cue('climb', { goatId, intensity: .45 })];
     case 'wallClingEnd': return [];
     case 'ragdollStart': return [cue('ragdoll-flop', { goatId, intensity: event.reason === 'impact' ? 1 : .6 })];
-    case 'ragdollEnd': return [cue('jump', { goatId, intensity: .23 })];
+    case 'ragdollEnd': return [];
     case 'tongueAttach': return [cue('tongue-stick', { goatId, bodyHandle: event.bodyHandle })];
     case 'tongueDetach':
       return event.reason === 'replaced' ? [] :
@@ -111,14 +115,14 @@ export function mapGameplay(event: GameplayAudioEvent): AudioCue[] {
         case 'tongue-attach': return [cue('tongue-shoot')];
         case 'tongue-fling': return [cue('tongue-snap')];
         case 'bleat': return [cue('bleat')];
-        case 'flop': return [cue('ragdoll-flop')];
+        case 'flop': return []; // The physical ragdoll start owns the flop cue.
         case 'flip': return [cue('flip-whoosh')];
         case 'wall-kick': return [cue('jump')];
       }
       return [];
     }
-    case 'balance:knockdown': return [cue('ragdoll-flop', { intensity: .75 })];
-    case 'balance:recovered': return [cue('jump', { intensity: .22 })];
+    case 'balance:knockdown':
+    case 'balance:recovered': return [];
     case 'traversal': return [cue('climb', { intensity: clamp(event.data.metres * 2) })];
     case 'inventory:changed': return event.data.after > event.data.before ?
       [cue('build-snap', { intensity: .24 })] : [];
