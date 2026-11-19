@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
 import { softwareGeometry } from './software-geometry';
+import { islandWeather } from '../world/island-weather';
+import { SoftwareAtmosphere } from './SoftwareAtmosphere';
+import { softwareSea } from './software-sea';
 import { SoftwareFrame, pixel } from './SoftwareFrame';
 import { SoftwareGameRenderer } from './SoftwareGameRenderer';
 
@@ -10,6 +13,39 @@ function imageData(width: number, height: number): ImageData {
 }
 
 describe('software 3D rendering', () => {
+  it('blends sky colours inside each coarse cloud sample', () => {
+    const frame = new SoftwareFrame(imageData(157, 73));
+    const camera = new THREE.PerspectiveCamera(58, 157 / 73, .1, 600);
+    camera.lookAt(0, .6, -1);
+    camera.updateMatrixWorld();
+    new SoftwareAtmosphere().sky(frame, camera, islandWeather(130), 0xa4d6ed);
+    let blended = 0;
+    for (let y = 1; y < 73; y += 3) {
+      for (let x = 1; x < 157; x += 5) {
+        const i = y * 157 + x;
+        if (frame.pixels[i] !== frame.pixels[i - 1] && frame.pixels[i] !== frame.pixels[i - 157]) blended++;
+      }
+    }
+    expect(blended).toBeGreaterThan(20);
+  });
+
+  it('uses tide and shelf depth to shade the sea without rebuilding its mesh', () => {
+    const atlas = new THREE.DataTexture(new Float32Array(9).fill(-1), 3, 3, THREE.RedFormat, THREE.FloatType);
+    const level = { value: 0 };
+    const material = new THREE.ShaderMaterial({ uniforms: {
+      uTerrain: { value: atlas }, uLevel: level, uSize: { value: 600 }, uSeaDatum: { value: 0 },
+      uShallow: { value: new THREE.Color(0x48c9c9) }, uDeep: { value: new THREE.Color(0x2a8fc0) },
+    } });
+    const shore = softwareSea(material)!;
+    expect(new Set(shore.colours).size).toBeGreaterThan(1);
+    level.value = 60;
+    const flooded = softwareSea(material)!;
+    expect(flooded.geometry).toBe(shore.geometry);
+    expect(new Set(flooded.colours)).toEqual(new Set([pixel(42, 143, 192) >>> 0]));
+    atlas.dispose();
+    material.dispose();
+  });
+
   it('renders High at display resolution and applies a lower preset only once', () => {
     const canvas = { width: 0, height: 0 } as HTMLCanvasElement;
     const renderer = new SoftwareGameRenderer(canvas, { createImageData: imageData, putImageData() {} });

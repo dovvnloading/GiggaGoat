@@ -76,7 +76,7 @@ describe('island meadow painted clumps and paved-area exclusions (IS-19)', () =>
       const fallback = tuft.geometry;
       const material = tuft.material as THREE.MeshToonMaterial;
       const materialVersion = material.version;
-      expect(triangleCount(fallback)).toBe(27);
+      expect(triangleCount(fallback)).toBe(29); // The shipped GLB has 51 + 18 + 18 indices.
       expect(Math.abs(fallback.boundingBox!.getSize(new THREE.Vector3()).y - .4)).toBeLessThan(.01);
       expect(tuft.instanceColor).toBeNull();
       expect(material.vertexColors).toBe(true);
@@ -215,7 +215,7 @@ describe('island meadow painted clumps and paved-area exclusions (IS-19)', () =>
       await Promise.resolve();
       for (const group of [offline, invalid]) {
         const tuft = grass(group);
-        expect(triangleCount(tuft.geometry)).toBe(27);
+        expect(triangleCount(tuft.geometry)).toBe(29);
         expect(tuft.instanceColor).toBeNull();
         expect((tuft.material as THREE.MeshToonMaterial).vertexColors).toBe(true);
         expect(group.children).toHaveLength(2);

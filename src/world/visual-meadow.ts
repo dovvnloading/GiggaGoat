@@ -135,8 +135,7 @@ export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof s
     }
     if (flowers.length >= seeds.length) break;
   }
-  const tuft = kitShape('grassClump');
-  tuft.scale(.6, .6, .6);
+  const tuft = kitShape('grassClump', true);
   const blossom = kitShape('meadowFlower');
   paintNatureKit(blossom);
   const flowerScale = .74 / blossom.boundingBox!.getSize(new THREE.Vector3()).y;

@@ -3,6 +3,7 @@ import type { IslandWeather } from '../world/island-weather';
 import { SoftwareAtmosphere } from './SoftwareAtmosphere';
 import { SoftwareFrame, pixel, type ClipVertex, type SoftwareTexture } from './SoftwareFrame';
 import { softwareGeometry } from './software-geometry';
+import { softwareDamWater, softwareSea } from './software-sea';
 import { surfacePaintMaps } from '../world/surface-paint';
 import type { SoftwareGeometry } from './software-geometry';
 import type { SoftwareRaster } from './SoftwareRaster';
@@ -266,10 +267,15 @@ export class SoftwareGameRenderer {
     // The district's nearby architecture includes playable details such as ladder treads.
     const preserveSilhouette = geometry.userData.preserveSilhouette && distance - this.sphere.radius < 16;
     const detailRadius = radius * Math.min(1, 480 / this.frame!.image.height);
-    const detail = fixed || preserveSilhouette || position.count < 250 ? 'full' :
+    const damWater = mesh.material instanceof THREE.ShaderMaterial &&
+      (mesh.name === 'dam-plunge-pool-and-downstream-river' || mesh.name === 'dam-reservoir') ? mesh.material : undefined;
+    const detail = damWater || fixed || preserveSilhouette || position.count < 250 ? 'full' :
       detailRadius < 32 || mesh.name === 'rising-sea' ? 'far' : position.count > 1500 ? 'near' : 'full';
-    const data = softwareGeometry(geometry, detail);
-    const ground = fixed && paints[0] ? this.groundColours(mesh, paints[0].material, data) : undefined;
+    const sea = mesh.name === 'rising-sea' && mesh.material instanceof THREE.ShaderMaterial
+      ? softwareSea(mesh.material) : undefined;
+    const data = sea?.geometry ?? softwareGeometry(geometry, detail);
+    const ground = sea?.colours ?? (damWater ? softwareDamWater(mesh, damWater, data) :
+      fixed && paints[0] ? this.groundColours(mesh, paints[0].material, data) : undefined);
     this.transform.multiplyMatrices(this.viewProjection, matrix);
     const m = this.transform.elements;
     const uv = data.uvs;

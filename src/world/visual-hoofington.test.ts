@@ -394,15 +394,15 @@ describe('Hoofington sourced village model integration', () => {
     });
   });
 
-  it('places each farm animal lengthwise on Z without moving its ground anchor', () => {
+  it('places each farm animal lengthwise on Z at its pasture ground anchor', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
     const farm = island.pois.find(p => p.id === 'hoofington')!.center;
     const scale = island.size / 600;
     const expected = [
-      { model: 'cow', dx: -43, dz: 12, size: [2, 2.8, 4], yaw: -0.8 },
-      { model: 'sheep', dx: -40, dz: 26, size: [1.65, 1.9, 2.5], yaw: 0.9 },
-      { model: 'sheep', dx: 43, dz: -20, size: [1.6, 1.9, 2.4], yaw: -1.2 },
-      { model: 'pig', dx: -43, dz: 31, size: [1.5, 1.6, 2], yaw: -0.2 },
+      { model: 'cow', dx: -48, dz: 11, size: [2, 2.8, 4], yaw: -0.8 },
+      { model: 'sheep', dx: -46, dz: 25, size: [1.65, 1.9, 2.5], yaw: 0.9 },
+      { model: 'sheep', dx: 41, dz: -19, size: [1.6, 1.9, 2.4], yaw: -1.2 },
+      { model: 'pig', dx: -48, dz: 33, size: [1.5, 1.6, 2], yaw: -0.2 },
       { model: 'horse', dx: 45, dz: -35, size: [1.85, 3.5, 4], yaw: -0.3 },
     ] as const;
     const livestock = makeHoofingtonPlacements(island).filter(p =>
