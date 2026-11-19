@@ -4,7 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { generateIsland } from './island';
 import { buildRapierColliders } from './colliders';
-import { DAM_DECK_HEIGHT, getDamPlacement } from './the-dam';
+import { DAM_ACCESS_ID, DAM_ACCESS_SUPPORT_ID, DAM_DECK_HEIGHT, getDamPlacement } from './the-dam';
 import { buildDamVisuals, prepareDamModel, scrollDamWaterfallUVs } from './visual-dam';
 import type { PropColliderDescriptor } from './types';
 
@@ -28,8 +28,9 @@ describe('The Dam hero POI', () => {
     expect(ids).toContain('the-dam-control-house');
     expect(ids).toContain('the-dam-pier-4');
     expect(ids).toContain('the-dam-ladder-rung-13');
-    expect(descriptors.every(collider => collider.shape === 'cuboid' &&
-      collider.body.type === 'static')).toBe(true);
+    expect(descriptors.every(collider => collider.body.type === 'static')).toBe(true);
+    expect(descriptors.filter(collider => collider.id.startsWith(DAM_ACCESS_ID) &&
+      !collider.id.startsWith(DAM_ACCESS_SUPPORT_ID)).every(collider => collider.shape === 'convex')).toBe(true);
 
     const deck = descriptors.find(collider => collider.id === 'the-dam-deck')!;
     const deckTop = deck.transform.position.y + deck.size.y / 2;
@@ -132,12 +133,26 @@ describe('The Dam hero POI', () => {
       expect(fallback).toBeInstanceOf(THREE.Group);
       expect(fallback?.getObjectByName('dam-fallback-stone'))
         .toBeInstanceOf(THREE.Mesh);
-      expect(fallback?.getObjectByName('dam-fallback-house'))
+      expect(fallback?.getObjectByName('dam-fallback-house-and-deck'))
         .toBeInstanceOf(THREE.Mesh);
       expect(fallback?.getObjectByName('dam-fallback-spillways'))
         .toBeInstanceOf(THREE.Mesh);
       expect(fallback?.getObjectByName('dam-front-rail')).toBeInstanceOf(THREE.Mesh);
-      expect(fallback?.children).toHaveLength(5);
+      const access = visuals.group.getObjectByName('dam-board-access-ramp')!;
+      expect(access).toBeInstanceOf(THREE.Mesh);
+      expect(access.castShadow).toBe(false);
+      expect(fallback?.children).toHaveLength(4);
+      visuals.group.updateMatrixWorld(true);
+      const { position, scale } = getDamPlacement(island);
+      const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, 0, 1), 0, scale);
+      const backRailHits = (localX: number): number => {
+        ray.ray.origin.set(position.x + localX * scale,
+          position.y + 19.45 * scale, position.z - 4.2 * scale);
+        return ray.intersectObject(access, false).length;
+      };
+      expect(backRailHits(-16)).toBeGreaterThan(0);
+      expect(backRailHits(-10)).toBe(0);
+      expect(backRailHits(-3)).toBeGreaterThan(0);
       expect(fallback?.children.filter(child => (child as THREE.Mesh).castShadow))
         .toHaveLength(1);
     } finally {

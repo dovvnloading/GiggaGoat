@@ -89,7 +89,7 @@ describe('in-game HUD state projection', () => {
     expect(scenery).toMatch(/data-sprite="icons\/marker_/);
     expect(scenery).not.toContain('data-player>');
     expect(scenery).not.toContain('data-map-objectives>');
-    expect(map).toContain('</g><g data-map-objectives></g><g data-player>');
+    expect(map).toMatch(/<\/g><g data-map-objectives><path data-map-climb-target[^>]*\/><\/g><g data-player>/);
   });
 
   it('shows every growth tier and clamps the live meter without changing simulation state', () => {
@@ -210,6 +210,35 @@ describe('in-game HUD state projection', () => {
     state.partyTitle = 'Rising Tide';
     expect(deriveHudState(state).gig.title).toBe('Rising Tide');
     expect(deriveHudState(state).mode).toBe('Rising Tide');
+  });
+
+  it('shows the next action and physical progress for dives, stacks and flag routes', () => {
+    const state = input();
+    state.gig = {
+      title: 'Splash Dive', status: 'running',
+      objective: { kind: 'splash', label: '', drop: 6.4, requiredDrop: 2.5, splashed: false },
+      elapsedTicks: 0, maxTicks: 600, goldTicks: 400, silverTicks: 500,
+    };
+    expect(deriveHudState(state).gig).toMatchObject({
+      task: 'Reach the launch marker', detail: '2.5m DROP NEEDED · 10s LEFT',
+    });
+    state.gig.objective = { kind: 'splash', label: '', drop: 6.4, requiredDrop: 2.5, splashed: false,
+      launchReached: true, requiresFlop: true };
+    expect(deriveHudState(state).gig.task).toBe('Flop into marked water');
+
+    state.gig.objective = { kind: 'stack', label: '', layers: 2, required: 2, stableTicks: 125, holdTicks: 300 };
+    expect(deriveHudState(state).gig).toMatchObject({
+      task: 'Keep the stack still', detail: 'HOLD 3s MORE · 10s LEFT',
+    });
+
+    state.gig.objective = { kind: 'summit', label: '', climbed: 2.4, minimumClimb: 4, reached: 1, total: 3 };
+    expect(deriveHudState(state).gig).toMatchObject({
+      task: 'Reach flag 2', detail: '1/3 FLAGS · 2/4m CLIMB · 10s LEFT',
+    });
+    state.gig.objective = { ...state.gig.objective, reached: 3, minimumClimb: 0, requiresBleat: true };
+    expect(deriveHudState(state).gig).toMatchObject({
+      task: 'Bleat at the beacon', detail: '3/3 FLAGS · 10s LEFT',
+    });
   });
 
   it('formats each discriminated gig objective using verified progress fields', () => {

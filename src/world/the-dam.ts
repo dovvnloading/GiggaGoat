@@ -1,4 +1,6 @@
 import type { IslandData, PropColliderDescriptor, Vec3 } from './types';
+import { accessGuard, accessSlabs, type AccessSection } from './access-path';
+import { gridSample } from './terrain';
 
 /**
  * The GLB is authored in metres, Y-up, wall-base origin, with the
@@ -20,6 +22,16 @@ export const DAM_FRONT_GUARD = {
   top: 20.21,
 } as const;
 
+export const DAM_ACCESS_ID = 'the-dam-access-';
+export const DAM_ACCESS_SUPPORT_ID = 'the-dam-access-support-';
+export const DAM_BACK_GUARD = {
+  prefix: 'the-dam-back-guard-',
+  spans: [[-29.85, -13.1], [-6.9, 27.65]],
+  z: -3.75,
+  depth: .30,
+  top: 20.21,
+} as const;
+
 export function getDamPlacement(island: IslandData): DamPlacement {
   const scale = island.size / 600;
   const lake = island.reservoir;
@@ -33,6 +45,32 @@ export function getDamPlacement(island: IslandData): DamPlacement {
     },
     scale,
   };
+}
+
+/** A shore-level approach on the road side of the wall. */
+export function damAccess(island: IslandData): AccessSection[][] {
+  const { position, scale } = getDamPlacement(island);
+  const at = (x: number, y: number, z: number): Vec3 => ({
+    x: position.x + x * scale,
+    y: position.y + y * scale,
+    z: position.z + z * scale,
+  });
+  const start = at(11.75, 0, -8.5);
+  const grade = gridSample(island, start.x, start.z) - .18 * scale;
+  const base = (grade - position.y) / scale;
+  const ramp = (x: number, y: number): AccessSection =>
+    ({ outer: at(x, y, -11), inner: at(x, y, -6) });
+  const landing = (z: number): AccessSection =>
+    ({ outer: at(-12.8, DAM_DECK_HEIGHT, z), inner: at(-7.2, DAM_DECK_HEIGHT, z) });
+  return [
+    [ramp(11.75, base), ramp(-7.2, DAM_DECK_HEIGHT), ramp(-12.8, DAM_DECK_HEIGHT)],
+    [landing(-6.03), landing(-3.61)],
+  ];
+}
+
+export function damAccessGuards(path: AccessSection[], scale: number): AccessSection[][] {
+  const slope = path.slice(0, 2);
+  return [accessGuard(slope, 'outer', scale), accessGuard(slope, 'inner', scale)];
 }
 
 /**
@@ -58,6 +96,20 @@ export function makeDamColliderDescriptors(island: IslandData): PropColliderDesc
     size: { x: width * scale, y: height * scale, z: depth * scale },
   });
 
+  const access = damAccess(island);
+  const start = access[0]![0]!.outer;
+  const crest = access[0]![1]!.outer;
+  const supports = [.39, .75, 1.15].flatMap((progress, row) => {
+    const x = start.x + (crest.x - start.x) * progress;
+    const floorY = start.y + (crest.y - start.y) * Math.min(progress, 1) - .34 * scale;
+    return [-10.35, -6.65].flatMap((z, side) => {
+      const grade = gridSample(island, x, position.z + z * scale) - .14 * scale;
+      const height = (floorY - grade) / scale;
+      if (height <= .1) return [];
+      return [makeBox('access-support-' + row + '-' + side, (x - position.x) / scale,
+        (grade - position.y) / scale + height / 2, z, .46, height, .46)];
+    });
+  });
   const colliders: PropColliderDescriptor[] = [
     // Recess the wall below the deck so the spillway drop stays clear.
     makeBox('wall', 0, 9, -1.6, 58, 18, 2.4),
@@ -66,6 +118,14 @@ export function makeDamColliderDescriptors(island: IslandData): PropColliderDesc
       makeBox('front-guard-' + index, (left + right) / 2,
         (DAM_DECK_HEIGHT + DAM_FRONT_GUARD.top) / 2, DAM_FRONT_GUARD.z,
         right - left, DAM_FRONT_GUARD.top - DAM_DECK_HEIGHT, DAM_FRONT_GUARD.depth)),
+    ...DAM_BACK_GUARD.spans.map(([left, right], index) =>
+      makeBox('back-guard-' + index, (left + right) / 2,
+        (DAM_DECK_HEIGHT + DAM_BACK_GUARD.top) / 2, DAM_BACK_GUARD.z,
+        right - left, DAM_BACK_GUARD.top - DAM_DECK_HEIGHT, DAM_BACK_GUARD.depth)),
+    ...access.flatMap((path, i) => accessSlabs(DAM_ACCESS_ID + i + '-', path, .38 * scale)),
+    ...damAccessGuards(access[0]!, scale).flatMap((path, i) =>
+      accessSlabs(DAM_ACCESS_ID + 'guard-' + i + '-', path, 1.22 * scale)),
+    ...supports,
     // Four openings and five masonry piers as visible in the hero art.
     ...[-12, -2, 8, 18, 28].map((x, i) =>
       makeBox('pier-' + i, x, 8.7, 1.8, 2.6, 17.4, 4.8)),

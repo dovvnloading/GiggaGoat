@@ -261,6 +261,10 @@ describe('sprite-backed menu DOM', () => {
       expect(doc.activeElement).toBe(tabs()[1]);
       tabs()[2]!.click();
       checkTabs('audio');
+      expect(root.innerHTML).toMatch(/id="gg-setting-musicVolume"[^>]*step="0.01" value="0.52"/);
+      expect(root.innerHTML).toContain('<output for="gg-setting-musicVolume">52%</output>');
+      expect(root.innerHTML).toMatch(/id="gg-setting-effectsVolume"[^>]*step="0.01" value="0.88"/);
+      expect(root.innerHTML).toContain('<output for="gg-setting-effectsVolume">88%</output>');
 
       root.querySelector<ButtonStub>('[data-action="back"]')!.click();
       expect(root.querySelector('[data-action="play"]')).not.toBeNull();
@@ -462,6 +466,29 @@ describe('sprite-backed menu DOM', () => {
       setScreen('gig-results');
       expect(root.querySelector('[data-action="retry-gig"]')).toBeNull();
       expect(root.innerHTML).toContain('BALES DELIVERED');
+    } finally { menu.dispose(); }
+  });
+
+  it('keeps checkpoint names intact in results and requires a confirmed water landing', () => {
+    const { menu, game, root, setScreen } = setup();
+    try {
+      const director = new GigDirector(new GigCatalog(generateIsland({ resolution: 97 })));
+      Object.assign(game.gigs.director, { personalBests: [] });
+      const round = director.startPractice('beacon-bleat', 'easy');
+      for (let tick = 0; tick < round.maxTicks; tick++) {
+        director.step({ goat: { position: round.start, size: .6 } });
+      }
+      const result = Object.assign(game, { pendingGigResult: director.active! });
+      setScreen('gig-results');
+      expect(root.innerHTML).toContain('<strong>0 / 2</strong><span>CHECKPOINTS</span>');
+
+      const dive = director.startPractice('splash-dive', 'easy');
+      for (let tick = 0; tick < dive.maxTicks; tick++) {
+        director.step({ goat: { position: dive.start, size: .6 } });
+      }
+      result.pendingGigResult = director.active!;
+      setScreen('gig-results');
+      expect(root.innerHTML).toContain('<strong>MISSED</strong><span>WATER LANDING</span>');
     } finally { menu.dispose(); }
   });
 

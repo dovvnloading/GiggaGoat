@@ -23,6 +23,14 @@ function edgeLook(position: number, start: number, end: number): number {
   return after - before;
 }
 
+function recenterDelta(position: number, delta: number, edge: number, start: number, end: number): number {
+  if (edge === 0 || delta * edge >= 0) return delta;
+  // Once edge turning has been used, let the cursor travel back to the
+  // middle without orbiting back. Movement past the middle turns normally.
+  const center = (start + end) / 2;
+  return edge > 0 ? Math.min(0, position - center) : Math.max(0, position - center);
+}
+
 export type InputDevice = 'keyboard-mouse' | 'gamepad';
 export const PAD_BUILD_BINDINGS: Record<PieceType, { button: number; key: string; label: string }> = {
   floor: { button: 12, key: '↑', label: 'D-pad up' },
@@ -46,6 +54,8 @@ export class GameInput {
   private mouseSecondary = false;
   private unlockedMouse: { x: number; y: number } | null = null;
   private readonly unlockedEdge = { x: 0, y: 0 };
+  private readonly unlockedRecenter = { x: 0, y: 0 };
+  pointerLockUnavailable = false;
   private buildToggleQueued = false;
   private buildPlaceQueued = false;
   private selected: PieceType | undefined;
@@ -110,8 +120,15 @@ export class GameInput {
     });
     const clearMouseAnchor = () => this.clearMouseAnchor();
     listen(canvas, 'mouseleave', clearMouseAnchor);
-    listen(document, 'pointerlockchange', clearMouseAnchor);
-    listen(document, 'pointerlockerror', clearMouseAnchor);
+    listen(document, 'pointerlockchange', () => {
+      if (document.pointerLockElement === canvas) this.pointerLockUnavailable = false;
+      clearMouseAnchor();
+    });
+    const reportLockUnavailable = () => {
+      this.pointerLockUnavailable = true;
+      clearMouseAnchor();
+    };
+    listen(document, 'pointerlockerror', reportLockUnavailable);
     listen(canvas, 'mousedown', event => {
       if (!this.active) return;
       if (event.button === 0 || event.button === 2) this.recordDevice('keyboard-mouse');
@@ -145,10 +162,16 @@ export class GameInput {
       const previous = this.unlockedMouse;
       this.unlockedMouse = { x: event.clientX, y: event.clientY };
       if (!previous) return;
-      this.look(event.clientX - previous.x, event.clientY - previous.y);
-      // Embedded browsers can deny pointer lock. Continue looking while
-      // the cursor rests against an edge after moving within the canvas.
+      // Embedded browsers can deny pointer lock. Each edge can still steer
+      // independently, even while the other axis is returning to center.
       const bounds = canvas.getBoundingClientRect();
+      const recenter = this.unlockedRecenter;
+      this.look(
+        recenterDelta(event.clientX, event.clientX - previous.x, recenter.x, bounds.left, bounds.right),
+        recenterDelta(event.clientY, event.clientY - previous.y, recenter.y, bounds.top, bounds.bottom),
+      );
+      if ((event.clientX - (bounds.left + bounds.right) / 2) * recenter.x <= 0) recenter.x = 0;
+      if ((event.clientY - (bounds.top + bounds.bottom) / 2) * recenter.y <= 0) recenter.y = 0;
       this.unlockedEdge.x = edgeLook(event.clientX, bounds.left, bounds.right);
       this.unlockedEdge.y = edgeLook(event.clientY, bounds.top, bounds.bottom);
     });
@@ -157,6 +180,7 @@ export class GameInput {
   private clearMouseAnchor(): void {
     this.unlockedMouse = null;
     this.unlockedEdge.x = this.unlockedEdge.y = 0;
+    this.unlockedRecenter.x = this.unlockedRecenter.y = 0;
     this.pointerPromptX = this.pointerPromptY = 0;
   }
 
@@ -191,10 +215,15 @@ export class GameInput {
   async requestPointerLock(): Promise<void> {
     if (!this.active || document.pointerLockElement === this.canvas) return;
     try {
-      await this.canvas.requestPointerLock?.();
+      if (this.canvas.requestPointerLock) {
+        await this.canvas.requestPointerLock();
+        return;
+      }
     } catch {
-      // Unlocked mouse look stays available when the browser rejects lock.
+      // Keep the same edge-look path in browsers that deny pointer lock.
     }
+    this.pointerLockUnavailable = true;
+    this.clearMouseAnchor();
   }
 
   setActive(active: boolean): void {
@@ -220,6 +249,8 @@ export class GameInput {
     const edge = this.unlockedEdge;
     if ((edge.x || edge.y) && document.pointerLockElement !== this.canvas) {
       const pixels = UNLOCKED_EDGE_PIXELS_PER_SECOND * dt;
+      if (edge.x) this.unlockedRecenter.x = Math.sign(edge.x);
+      if (edge.y) this.unlockedRecenter.y = Math.sign(edge.y);
       this.look(edge.x * pixels, edge.y * pixels);
     }
     const pressed = (code: string): boolean => this.keys.has(code);

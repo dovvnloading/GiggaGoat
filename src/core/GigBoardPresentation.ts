@@ -25,8 +25,10 @@ export function gigBoardGoal(config: GigConfig): string {
     case 'mow-down': return 'Graze ' + config.patches.length + ' grass patches';
     case 'escort-the-gnome': return 'Escort through ' + config.route.length + ' flags';
     case 'stack-up': return 'Stack ' + config.requiredLayers + ' crates';
-    case 'summit-sprint': return 'Climb ' + config.minimumClimb + ' m through ' +
-      config.checkpoints.length + ' checkpoints' + (config.requiresBleat ? ' and bleat' : '');
+    case 'summit-sprint': {
+      const climb = config.minimumClimb > 0 ? 'Climb ' + config.minimumClimb + ' m through ' : 'Reach ';
+      return climb + config.checkpoints.length + ' checkpoints' + (config.requiresBleat ? ' and bleat' : '');
+    }
     case 'splash-dive': return (config.requiresFlop ? 'Flop' : 'Splash') + ' from a ' + config.minDrop + ' m drop';
   }
 }

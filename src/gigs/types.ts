@@ -106,6 +106,7 @@ export interface SummitConfig {
   kind: 'summit-sprint';
   checkpoints: Point[];
   minimumClimb: number;
+  goldClimb?: number;
   /** A lighthouse contract only finishes after a real bleat at the beacon. */
   requiresBleat?: boolean;
 }
@@ -150,6 +151,7 @@ export interface PropFact {
   /** Tilt from upright in radians. */
   tilt?: number;
   broken?: boolean;
+  unreachable?: boolean;
   /** True for an actual tongue attachment / multi-bale tow chain. */
   heldByTongue?: boolean;
   /** True when carried by the goat; useful for a roof parcel. */
@@ -186,8 +188,10 @@ export type GigObjective =
   | { kind: 'coverage'; label: string; eaten: number; total: number; bites: number }
   | { kind: 'escort'; label: string; reached: number; total: number; fragile: true }
   | { kind: 'stack'; label: string; layers: number; required: number; stableTicks: number; holdTicks: number }
-  | { kind: 'summit'; label: string; reached: number; total: number; climbed: number }
-  | { kind: 'splash'; label: string; drop: number; requiredDrop: number; splashed: boolean };
+  | { kind: 'summit'; label: string; reached: number; total: number; climbed: number;
+      minimumClimb?: number; requiresBleat?: boolean; next?: Point }
+  | { kind: 'splash'; label: string; drop: number; requiredDrop: number; splashed: boolean;
+      launchReached?: boolean; requiresFlop?: boolean };
 
 export interface GigMetrics {
   headbutts: number;

@@ -3,6 +3,31 @@ import { GoatRagdoll, GOAT_SIZES } from './GoatRagdoll';
 import { PhysicsWorld } from './PhysicsWorld';
 import { dot, normalize, rotate, V } from './math';
 
+it('continues the walk cycle across a shallow dip and tucks after an intentional jump', async () => {
+  const world = await PhysicsWorld.create();
+  world.createGround(V(20, .5, 20), V(0, -.64, 0));
+  world.createGround(V(4, .3, 2), V(0, -.3, 2));
+  const goat = new GoatRagdoll(world, { size: .6, position: V(0, 0, 2) });
+  try {
+    for (let tick = 0; tick < 40; tick++) world.step(1 / 60);
+    const poses = new Set();
+    goat.locomotion.setInput({ z: 1 });
+    for (let tick = 0; tick < 65; tick++) {
+      world.step(1 / 60);
+      poses.add(goat.pose);
+    }
+    expect(goat.torso.translation().z).toBeLessThan(-1);
+    expect([...poses]).toEqual(['walk']);
+
+    goat.locomotion.requestJump();
+    world.step(1 / 60);
+    expect(goat.pose).toBe('jumpTuck');
+  } finally {
+    goat.dispose();
+    world.dispose();
+  }
+});
+
 it.each(GOAT_SIZES)('keeps normal walk, turn and stop planted with goat size %s', async size => {
   const world = await PhysicsWorld.create();
   world.createGround();

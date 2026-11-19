@@ -3,7 +3,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData } from './types';
 import { gridSample } from './terrain';
-import { DAM_FRONT_GUARD, getDamPlacement, makeDamColliderDescriptors } from './the-dam';
+import { DAM_ACCESS_ID, DAM_ACCESS_SUPPORT_ID, DAM_BACK_GUARD, DAM_FRONT_GUARD, damAccess, damAccessGuards,
+  getDamPlacement, makeDamColliderDescriptors } from './the-dam';
+import { accessPathVisual, mergePaintedParts } from './visual-access-path';
 import { publicAssetUrl } from './public-assets';
 import { buildDamLandscape, DAM_SPILLWAY_IMPACTS } from './visual-dam-landscape';
 import { damChannelAt } from './dam-landscape';
@@ -47,25 +49,30 @@ function needsAbutmentRock(mesh: THREE.Mesh, island: IslandData): boolean {
   return !steep && !buried;
 }
 
-/** Rebuild the authored front rail with the same opening as the physics guards. */
-function buildDamFrontRail(material: THREE.Material): THREE.Mesh {
+/** Cut the same openings in the authored paint and the physical guard spans. */
+function damRailGeometry(side: 'front' | 'back'): THREE.BufferGeometry {
+  const guard = side === 'front' ? DAM_FRONT_GUARD : DAM_BACK_GUARD;
   const parts: THREE.BufferGeometry[] = [];
-  for (const [left, right] of DAM_FRONT_GUARD.spans) {
+  for (const [left, right] of guard.spans) {
     for (const y of [19.45, 20.10]) {
       parts.push(new THREE.BoxGeometry(right - left, .22, .22)
-        .translate((left + right) / 2, y, DAM_FRONT_GUARD.z));
+        .translate((left + right) / 2, y, guard.z));
     }
   }
   for (let i = 0; i < 23; i++) {
     const x = -29.7 + i * 2.6;
-    if (!DAM_FRONT_GUARD.spans.some(([left, right]) => x >= left && x <= right)) continue;
-    parts.push(new THREE.BoxGeometry(.30, 1.35, DAM_FRONT_GUARD.depth)
-      .translate(x, 19.48, DAM_FRONT_GUARD.z));
+    if (!guard.spans.some(([left, right]) => x >= left && x <= right)) continue;
+    parts.push(new THREE.BoxGeometry(.30, 1.35, guard.depth)
+      .translate(x, 19.48, guard.z));
   }
   const geometry = mergeGeometries(parts, false);
   for (const part of parts) part.dispose();
-  if (!geometry) throw new Error('Could not batch the Dam front rail');
-  const mesh = new THREE.Mesh(geometry, material);
+  if (!geometry) throw new Error('Could not batch the Dam ' + side + ' rail');
+  return geometry;
+}
+
+function buildDamFrontRail(material: THREE.Material): THREE.Mesh {
+  const mesh = new THREE.Mesh(damRailGeometry('front'), material);
   mesh.name = 'dam-front-rail';
   mesh.receiveShadow = true;
   return mesh;
@@ -113,9 +120,11 @@ export function prepareDamModel(root: THREE.Object3D, island: IslandData): DamMe
       oldGeometries.add(object.geometry);
       return;
     }
-    if (namedPart(object, /^RailFront_(?:Bar|Post)_/i)) {
+    const front = namedPart(object, /^RailFront_(?:Bar|Post)_/i);
+    const back = namedPart(object, /^RailBack_(?:Bar|Post)_/i);
+    if (front || back) {
       oldGeometries.add(object.geometry);
-      if (!Array.isArray(object.material)) frontRailMaterial ??= object.material;
+      if (front && !Array.isArray(object.material)) frontRailMaterial ??= object.material;
       return;
     }
     const isFall = namedPart(object, /^Water_Fall_/i);
@@ -195,14 +204,12 @@ function buildProceduralDamFallback(island: IslandData): THREE.Group {
   fallback.name = 'the-dam-procedural-fallback';
   const { position, scale } = getDamPlacement(island);
   const stone = new THREE.MeshToonMaterial({ color: 0xb9c3c7 });
-  const deck = new THREE.MeshToonMaterial({ color: 0xd6d6c9 });
-  const house = new THREE.MeshToonMaterial({ color: 0xf3eee0 });
   const stoneParts: THREE.BufferGeometry[] = [];
-  const deckParts: THREE.BufferGeometry[] = [];
-  const houseParts: THREE.BufferGeometry[] = [];
+  const deckAndHouse: Array<{ geometry: THREE.BufferGeometry; color: number }> = [];
 
   for (const collider of makeDamColliderDescriptors(island)) {
-    if (collider.id.startsWith(DAM_FRONT_GUARD.prefix)) continue;
+    if ([DAM_FRONT_GUARD.prefix, DAM_BACK_GUARD.prefix, DAM_ACCESS_ID]
+      .some(prefix => collider.id.startsWith(prefix))) continue;
     const geometry = new THREE.BoxGeometry(
       collider.size.x / scale, collider.size.y / scale, collider.size.z / scale,
     );
@@ -211,9 +218,10 @@ function buildProceduralDamFallback(island: IslandData): THREE.Group {
       (collider.transform.position.y - position.y) / scale,
       (collider.transform.position.z - position.z) / scale,
     );
-    const parts = collider.id === 'the-dam-control-house' ? houseParts :
-      collider.id === 'the-dam-deck' ? deckParts : stoneParts;
-    parts.push(geometry);
+    const color = collider.id === 'the-dam-control-house' ? 0xf3eee0 :
+      collider.id === 'the-dam-deck' ? 0xd6d6c9 : undefined;
+    if (color === undefined) stoneParts.push(geometry);
+    else deckAndHouse.push({ geometry, color });
   }
 
   function addBatch(name: string, material: THREE.Material,
@@ -227,10 +235,13 @@ function buildProceduralDamFallback(island: IslandData): THREE.Group {
     mesh.receiveShadow = true;
     fallback.add(mesh);
   }
-  // One draw call per solid material, not a shadow caster for every ladder rung.
+  // Keep the masonry shadow pass separate from the roof and deck.
   addBatch('dam-fallback-stone', stone, stoneParts, true);
-  addBatch('dam-fallback-deck', deck, deckParts, false);
-  addBatch('dam-fallback-house', house, houseParts, false);
+  const superstructure = new THREE.Mesh(mergePaintedParts(deckAndHouse),
+    new THREE.MeshToonMaterial({ vertexColors: true }));
+  superstructure.name = 'dam-fallback-house-and-deck';
+  superstructure.receiveShadow = true;
+  fallback.add(superstructure);
   fallback.add(buildDamFrontRail(new THREE.MeshToonMaterial({ color: 0xf2c12e })));
 
   const water = new THREE.MeshToonMaterial({
@@ -281,7 +292,23 @@ export function buildDamVisuals(island: IslandData,
   group.position.set(placement.position.x, placement.position.y, placement.position.z);
   group.scale.setScalar(placement.scale);
   const fallback = buildProceduralDamFallback(island);
-  group.add(fallback);
+  const paths = damAccess(island);
+  const supports = makeDamColliderDescriptors(island)
+    .filter(collider => collider.id.startsWith(DAM_ACCESS_SUPPORT_ID))
+    .map(({ size, transform }) => ({
+      geometry: new THREE.BoxGeometry(size.x, size.y, size.z)
+        .translate(transform.position.x, transform.position.y, transform.position.z),
+      color: 0x9e7d52,
+    }));
+  const { position, scale } = placement;
+  const backRail = damRailGeometry('back').scale(scale, scale, scale)
+    .translate(position.x, position.y, position.z);
+  // The same static batch stays visible when the authored model replaces the fallback.
+  const approach = accessPathVisual('dam-board-access-ramp', paths, damAccessGuards(paths[0]!, scale),
+    .38 * scale, scale, 0xdeb665, 0xd69d28, [...supports, { geometry: backRail, color: 0xf2c12e }]);
+  approach.position.copy(group.position).multiplyScalar(-1 / placement.scale);
+  approach.scale.setScalar(1 / placement.scale);
+  group.add(fallback, approach);
   let waterfallMaps: THREE.Texture[] = [];
   let shadowChange = false;
   let disposed = false;

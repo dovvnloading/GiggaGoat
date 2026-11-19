@@ -9,11 +9,17 @@ export interface RooftopPose {
   heading: number;
 }
 
+export interface GigPlayerPose extends RooftopPose {
+  attemptId: number;
+}
+
 export interface GameProgress {
   gameplay: GameSnapshot;
   gigs: GigSnapshot;
   gigBodies: GigBodySave[];
   acknowledgedGigAttempt?: number;
+  gigPlayerPose?: GigPlayerPose;
+  /** Saves made before remote gigs kept the player's position. */
   rooftopPose?: RooftopPose;
 }
 export interface GameSettings {

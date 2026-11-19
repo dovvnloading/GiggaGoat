@@ -2,7 +2,7 @@ import type { Game } from './Game';
 import type { GameView } from './GameView';
 import type { GameAudio } from './GameAudio';
 import { saveGame, type GameSettings } from './Persistence';
-import { formatHudObjective } from './GameHudState';
+import { hudObjectiveParts } from './GameHudState';
 import { MODE_DEFAULTS, TICKS_PER_SECOND, type ModeId, type Difficulty as BotDifficulty } from '../modes';
 import type { PoiId } from '../world';
 import { HUD_SPRITES, hudSpriteImage } from './HudSprites';
@@ -92,9 +92,8 @@ const CSS = `
   border-image:var(--gg-sprite) 48 fill / 14px / 0 stretch;text-align:center;
   color:#fff3db;font-size:clamp(9px,1.05vw,12px)}
 .gg-shell .gg-stat strong{display:block;color:#ffe147;font-size:clamp(17px,2.1vw,24px);line-height:1.1}
-.gg-shell .gg-gig-progress strong{
-  font-size:clamp(13px,2.1vw,24px);overflow-wrap:anywhere
-}
+.gg-shell .gg-gig-progress strong{font-size:clamp(13px,2.1vw,24px)}
+.gg-shell .gg-gig-progress span{margin-top:2px}
 .gg-shell .gg-gig-result-return{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .gg-shell .gg-results{list-style:none;margin:8px 0 20px;padding:0;max-height:34vh;overflow:auto}
 .gg-shell .gg-results li{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:3px 10px;
@@ -207,7 +206,7 @@ const PARTY_ROUNDS: Record<ModeId, { name: string; venue: string; objective: str
   },
   'king-of-the-peak': {
     name: 'King of the Peak', venue: 'Mt. Gigga summit',
-    objective: `Hold the center of the summit. First to ${MODE_DEFAULTS.peakTargetScore} points wins.`,
+    objective: `Get closer to the summit center than your rivals. First to ${MODE_DEFAULTS.peakTargetScore} points wins.`,
   },
   'hay-heist': {
     name: 'Hay Heist', venue: 'Crane Yard · haul lane',
@@ -437,14 +436,16 @@ export class GameMenu {
     } else if (key.startsWith('offer:')) {
       try {
         this.game.gigs.accept(key.slice(6));
-        if (this.game.gigs.active?.setup.config.kind === 'rooftop-express') this.view.alignCameraForPlay();
+        const id = this.game.gigs.active?.setup.offer.gigId;
+        if (id === 'rooftop-express' || id === 'summit-sprint') this.view.alignCameraForPlay();
         this.save();
         this.resume(mouseClick);
       } catch (error) { this.error(error); }
     } else if (key === 'retry-gig' && this.screen === 'gig-results') {
       try {
         this.game.gigs.retryFailed();
-        if (this.game.gigs.active?.setup.config.kind === 'rooftop-express') this.view.alignCameraForPlay();
+        const id = this.game.gigs.active?.setup.offer.gigId;
+        if (id === 'rooftop-express' || id === 'summit-sprint') this.view.alignCameraForPlay();
         // The new attempt replaces the failed one. Leaving results saves the
         // running attempt through the same acknowledgement path as Free Roam.
         this.resume(mouseClick);
@@ -752,12 +753,12 @@ export class GameMenu {
       ` aria-labelledby="gg-fullscreen-label" aria-checked="${!!document.fullscreenElement}"` +
       ` ${menuSkin(document.fullscreenElement ? MENU_SPRITES.checkboxChecked : MENU_SPRITES.checkboxEmpty)}>` +
       `<span class="gg-visually-hidden">Toggle fullscreen</span></button></div>`;
-    const audio = slider('volume', 'MASTER VOLUME', 0, 1, .05, s.volume,
-      Math.round(s.volume * 100) + '%') +
-      slider('musicVolume', 'MUSIC VOLUME', 0, 1, .05, s.musicVolume,
-        Math.round(s.musicVolume * 100) + '%') +
-      slider('effectsVolume', 'EFFECTS VOLUME', 0, 1, .05, s.effectsVolume,
-        Math.round(s.effectsVolume * 100) + '%');
+    const volumeSlider = (key: 'volume' | 'musicVolume' | 'effectsVolume', label: string): string => {
+      const pct = Math.round(s[key] * 100);
+      return slider(key, label, 0, 1, .01, pct / 100, pct + '%');
+    };
+    const audio = volumeSlider('volume', 'MASTER VOLUME') +
+      volumeSlider('musicVolume', 'MUSIC VOLUME') + volumeSlider('effectsVolume', 'EFFECTS VOLUME');
     const content = this.settingsTab === 'controls' ? controls :
       this.settingsTab === 'video' ? video : audio;
     const backTarget = this.settingsReturn === 'pause' ? 'pause' : 'title';
@@ -818,16 +819,20 @@ export class GameMenu {
     const status = success ? 'GIG CLEARED' + (run.rating ? ' · ' + nice(run.rating) : '') : 'GIG ENDED';
     const canRetry = this.game.gigs.retryableOffer !== null;
     const objective = run.objective;
-    const progress = objective.kind === 'deliver' ? {
-      measure: objective.done + ' / ' + objective.required, label: 'BALES DELIVERED',
-    } : { measure: formatHudObjective(objective), label: 'OBJECTIVE PROGRESS' };
+    const progress = hudObjectiveParts(objective);
+    if (objective.kind === 'deliver') progress.unit = 'BALES DELIVERED';
+    if (objective.kind === 'displace') progress.unit = 'KG MOVED';
+    if (objective.kind === 'splash') {
+      progress.measure = objective.splashed ? objective.drop.toFixed(1) + 'm' : 'MISSED';
+      progress.unit = 'WATER LANDING';
+    }
     return `<div class="gg-shell-eyebrow">${status}</div>
       <h2>${esc(run.setup.info.title)}</h2>
       <p>${esc(success?'That was a solid run. Now go cause more trouble.':
         run.failReason ?? 'Try a different route and go again.')}</p>
       <div class="gg-stats">
         <div class="gg-stat gg-gig-progress" ${menuSkin(MENU_SPRITES.stat)}>
-          <strong>${esc(progress.measure)}</strong><span>${progress.label}</span></div>
+          <strong>${esc(progress.measure)}</strong><span>${esc(progress.unit)}</span></div>
         <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}><strong>+${run.payout ?? 0}</strong>CUD COINS</div>
         <div class="gg-stat" ${menuSkin(MENU_SPRITES.stat)}><strong>${(run.elapsedTicks/60).toFixed(1)}s</strong>TIME</div>
       </div>
@@ -857,8 +862,12 @@ export class GameMenu {
         const row = { rank: place.rank, name: player?.name ?? place.playerId, you: place.playerId === 'player' };
         if (rising) {
           const survived = (player?.eliminatedAt ?? tick) - activeStart;
-          const detail = player?.eliminatedAt === null && survivors > 1
-            ? player.headY.toFixed(2) + ' m final head height' : undefined;
+          let detail: string | undefined;
+          if (player?.eliminatedAt === null) {
+            detail = survivors === 1 ? 'Last goat standing' : player.headY.toFixed(2) + ' m final head height';
+          } else if (survivors > 0 && player?.eliminatedAt === tick) {
+            detail = 'Eliminated on the final rise';
+          }
           return { ...row, measure: timed(survived) + ' survived', detail };
         }
         return { ...row, measure: place.score + ' peak points',

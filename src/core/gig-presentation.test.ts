@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { V } from '../physics';
 import { Game } from './Game';
-import { hayHaulGuidance, hayHaulMapPoint, separateMapObjective } from './GigPresentation';
+import { hayHaulGuidance, gigMapPoint, separateMapObjective } from './GigPresentation';
 
 describe('Hay Haul wayfinding', () => {
   it('tracks moved bales, gives the pickup input, and switches to the barn only for a tagged bale', async () => {
@@ -53,9 +53,9 @@ describe('Hay Haul wayfinding', () => {
 
   it('keeps positions within the map or at its rim along the correct bearing', () => {
     const origin = { x: 0, z: 0 };
-    expect(hayHaulMapPoint(V(0, 0, 0), origin)).toEqual({ x: 140, y: 140 });
-    expect(hayHaulMapPoint(V(10, 0, 0), origin)).toEqual({ x: 150.5, y: 140 });
-    const rim = hayHaulMapPoint(V(0, 0, -400), origin);
+    expect(gigMapPoint(V(0, 0, 0), origin)).toEqual({ x: 140, y: 140 });
+    expect(gigMapPoint(V(10, 0, 0), origin)).toEqual({ x: 150.5, y: 140 });
+    const rim = gigMapPoint(V(0, 0, -400), origin);
     expect(rim.x).toBe(140);
     expect(rim.y).toBeCloseTo(32);
   });

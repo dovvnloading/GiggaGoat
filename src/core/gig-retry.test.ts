@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { heightAt } from '../world';
 import { Game } from './Game';
+import { boardwalkPierDecks } from '../world/boardwalk';
 
 const create = () => Game.create({ resolution: 97 });
 
@@ -83,6 +84,45 @@ describe('retrying a failed gig', () => {
         expect(loaded.gigs.active?.attemptId).toBe(retry.attemptId);
         expect(loaded.gigs.active?.status).toBe('running');
       } finally { loaded.dispose(); }
+    } finally { game.dispose(); }
+  });
+
+  it('restores a timed gig and the player beyond the offshore boundary on the pier', async () => {
+    const game = await create();
+    try {
+      const board = game.gigs.boards.find(entry => entry.poiId === 'baa-ardwalk')!;
+      game.teleport(board.position);
+      game.gigs.accept(game.gigs.board(board.poiId)[0]!.id);
+
+      const deck = boardwalkPierDecks(game.island).sort((a, b) =>
+        b.transform.position.z - a.transform.position.z)[0]!;
+      const p = deck.transform.position;
+      game.teleport({ x: p.x, y: p.y + deck.size.y / 2, z: p.z + deck.size.z / 2 - 2 }, .7);
+      for (let tick = 0; tick < 32; tick++) game.step({ cameraYaw: -.7 });
+      const before = game.goat.torso.translation();
+      const run = game.gigs.active!;
+      expect(run.status).toBe('running');
+      expect(before.z).toBeGreaterThan(game.island.size * .57);
+      const progress = game.exportProgress();
+      expect(progress.gigPlayerPose?.attemptId).toBe(run.attemptId);
+
+      const restored = await Game.create({ resolution: 97, progress });
+      try {
+        expect(restored.goat.torso.translation()).toEqual(before);
+        expect(restored.gigs.active).toMatchObject({ elapsedTicks: run.elapsedTicks, status: 'running' });
+        restored.step();
+        expect(restored.location).toBe('Baa-ardwalk');
+        expect(restored.respawns).toBe(0);
+        expect(restored.gigs.active?.elapsedTicks).toBe(run.elapsedTicks + 1);
+      } finally { restored.dispose(); }
+
+      delete progress.gigPlayerPose;
+      const legacy = await Game.create({ resolution: 97, progress });
+      try {
+        expect(legacy.location).toBe('Baa-ardwalk');
+        expect(legacy.gigs.active).toMatchObject({ attemptId: run.attemptId,
+          elapsedTicks: run.elapsedTicks, status: 'running' });
+      } finally { legacy.dispose(); }
     } finally { game.dispose(); }
   });
 

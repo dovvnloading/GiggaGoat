@@ -1,12 +1,15 @@
 import type { IslandData, PropDescriptor, PropKind } from './types';
 import { gridSample } from './terrain';
 
+export const SPLASH_DIVE_BOARD_ID = 'baa-ardwalk-splash-dive-board';
+
 export function boardwalkPierDecks(island: IslandData): PropDescriptor[] {
   return island.props.filter(prop =>
-    prop.poiId === 'baa-ardwalk' && prop.kind === 'pier' && prop.collidable);
+    prop.poiId === 'baa-ardwalk' && (prop.kind === 'pier' || prop.id === SPLASH_DIVE_BOARD_ID) && prop.collidable);
 }
 
 interface Detail {
+  id?: string;
   /** The ground or deck surface supporting the bottom of this object. */
   floor?: number;
   /** World-space centre for suspended decorations and underwater piles. */
@@ -54,7 +57,7 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
     const floor = detail.floor ?? gridSample(island, x, z);
     const y = detail.centreY ?? floor + size.y / 2;
     const prop: PropDescriptor = {
-      id: 'baa-ardwalk-art-' + kind + '-' + serial++,
+      id: detail.id ?? 'baa-ardwalk-art-' + kind + '-' + serial++,
       kind, poiId: 'baa-ardwalk',
       transform: { position: { x, y, z }, rotationY: detail.yaw ?? 0 },
       size,
@@ -100,10 +103,21 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
   // Leave the landward entrance open; return around the widened wheel deck.
   for (let z = -33; z <= 39; z += 8) {
     for (const side of [-1, 1]) {
+      if (side === 1 && z === 23) {
+        // Leave a wide doorway to the diving board between the promenade rails.
+        place('pier-rail', 13.2, z - 3.1, 1.8, 2.65, 0.5,
+          { floor: deckY, yaw: Math.PI / 2, color: 0xffffff, climbable: false });
+        place('pier-rail', 13.2, z + 3.1, 1.8, 2.65, 0.5,
+          { id: 'baa-ardwalk-splash-dive-rail', floor: deckY, yaw: Math.PI / 2,
+            color: 0xffffff, climbable: false });
+        continue;
+      }
       place('pier-rail', side * 13.2, z, 8.0, 2.65, 0.5,
         { floor: deckY, yaw: Math.PI / 2, color: 0xffffff, climbable: false });
     }
   }
+  place('platform', 15.25, 23, 4.1, .42, 3.8,
+    { id: SPLASH_DIVE_BOARD_ID, floor: deckY - .42 * scale, color: 0x57a9b2 });
   for (let z = 48; z <= 64; z += 8) {
     for (const side of [-1, 1]) {
       place('pier-rail', side * 19.1, z, 8.1, 2.65, 0.5,

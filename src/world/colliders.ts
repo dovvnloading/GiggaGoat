@@ -5,6 +5,9 @@ import type {
 import { makeDamColliderDescriptors } from './the-dam';
 import { makeGradedBridgeColliders } from './roads';
 import { roadRibbonData } from './road-ribbons';
+import { accessGuard, accessSlabs } from './access-path';
+import { LIGHTHOUSE_ACCESS_ID, lighthouseAccess, lighthouseFoundationDepth } from './lighthouse-access';
+import { gridSample } from './terrain';
 
 function hull(prop: PropDescriptor): Float32Array {
   const { x, y, z } = prop.size;
@@ -62,6 +65,19 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
     // Cave entrances are open arches: the solid primitive is their recessed back wall,
     // not a box sealing the passage. The visual rock pillars form the side boundaries.
     let transform = prop.transform;
+    if (prop.kind === 'lighthouse') {
+      const depth = lighthouseFoundationDepth(island, prop);
+      size.y += depth;
+      transform = {
+        ...transform,
+        position: { ...transform.position, y: transform.position.y - depth / 2 },
+      };
+      const path = lighthouseAccess(prop, (x, z) => gridSample(island, x, z));
+      const scale = island.size / 600;
+      const outerGuard = accessGuard(path, 'outer', scale);
+      colliders.push(...accessSlabs(LIGHTHOUSE_ACCESS_ID, path, .34 * scale),
+        ...accessSlabs(LIGHTHOUSE_ACCESS_ID + 'guard-', outerGuard, 1.22 * scale));
+    }
     if (prop.kind === 'cave-mouth') {
       size.x = prop.size.x * 0.65;
       size.y = prop.size.y * 0.72;

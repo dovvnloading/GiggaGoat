@@ -95,6 +95,28 @@ describe('game camera input', () => {
     expect(input.yaw - locked).toBeCloseTo(.039);
   });
 
+  it('recenters after edge turning without reversing the accumulated orbit', async () => {
+    const { input, move, requestPointerLock } = setup();
+    requestPointerLock.mockRejectedValue(new DOMException('Wrong document', 'WrongDocumentError'));
+    await input.requestPointerLock();
+    expect(input.pointerLockUnavailable).toBe(true);
+    move(600, 260);
+    move(799, 260);
+    for (let frame = 0; frame < 20; frame++) input.sample(1 / 60, false);
+    const yaw = input.yaw;
+    const pitch = input.pitch;
+
+    move(700, 250);
+    move(400, 250);
+    expect(input.yaw).toBe(yaw);
+    expect(input.pitch).toBeLessThan(pitch);
+    input.sample(.2, false);
+    expect(input.yaw).toBe(yaw);
+
+    move(420, 250);
+    expect(input.yaw).toBeCloseTo(yaw + .052);
+  });
+
   it('restarts hover tracking after leaving the canvas, blur, or a menu transition', () => {
     const { canvas, doc, win, requestPointerLock, input, move } = setup();
     move(90, 50);

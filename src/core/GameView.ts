@@ -154,7 +154,7 @@ export class GameView {
     // Physics yawQuaternion rotates local -Z toward the opposite sign of the
     // locomotion heading; compose the opening shot from the rendered facing.
     this.input = new GameInput(this.renderer.domElement,
-      -game.island.spawns[0]!.heading + SPAWN_CAMERA_YAW_OFFSET);
+      game.goat.locomotion.heading + SPAWN_CAMERA_YAW_OFFSET);
     this.input.pitch = SPAWN_CAMERA_PITCH;
     this.hud = new GameHud(host);
     this.characters = new GameCharacters(this.scene, game);
@@ -423,6 +423,11 @@ export class GameView {
           this.gigProps.set(spawn.id, root);
         }
       }
+    }
+    if (run?.objective.kind === 'summit') {
+      const markers = this.gigMarkers.children;
+      const next = Math.min(run.objective.reached, markers.length - 1);
+      for (const [index, marker] of markers.entries()) marker.visible = index === next;
     }
     this.hayHaul = hayHaulGuidance(this.game, run, this.input.device);
     if (this.hayHaulPickup) {
@@ -742,7 +747,7 @@ export class GameView {
   private updateHud(): void {
     this.hud.update(this.game, this.fps, this.simMs, this.input.debugVisible,
       document.pointerLockElement === this.renderer.domElement, this.perfStats, this.hayHaul,
-      this.input.device);
+      this.input.device, this.input.pointerLockUnavailable);
   }
 
   private updateCamera(alpha: number, dt: number): void {

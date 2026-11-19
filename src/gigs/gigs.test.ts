@@ -402,7 +402,10 @@ describe('Gig-specific anti-cheat physics fact requirements', () => {
     f.props = c.pieces.map(p => ({ id: p.id, position: shifted(p.start, 5) }));
     d.step(f);
     expect(d.active?.status).toBe('running');
-    f.abilities = [{ type: 'headbutt' }];
+    f.abilities = [{ type: 'headbutt', targetId: 'unrelated-prop' }];
+    d.step(f);
+    expect(d.active?.status).toBe('running');
+    f.abilities = [{ type: 'headbutt', targetId: c.pieces[0]!.id }];
     d.step(f);
     expect(d.active?.status).toBe('completed');
   });
