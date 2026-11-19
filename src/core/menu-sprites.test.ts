@@ -36,8 +36,12 @@ class NodeStub {
   private controls: NodeStub[] = [];
   private panel: NodeStub | null = null;
   private standings: NodeStub | null = null;
+  private resultScrollHint: NodeStub | null = null;
+  private controlReference: NodeStub | null = null;
   scrollTop = 0;
   clientHeight = 124;
+  scrollHeight = 124;
+  tabIndex = -1;
   private brief: NodeStub[] = [];
   private html = '';
   owner: NodeStub | null = null;
@@ -47,6 +51,10 @@ class NodeStub {
     this.html = html;
     this.panel = /class="gg-shell-panel(?:\s|")/.test(html) ? new NodeStub(this.doc) : null;
     this.standings = html.includes('<ol class="gg-results"') ? new NodeStub(this.doc) : null;
+    this.resultScrollHint = html.includes('data-results-scroll-hint') ? new NodeStub(this.doc) : null;
+    if (this.resultScrollHint) this.resultScrollHint.hidden = true;
+    this.controlReference = html.includes('id="gg-gameplay-controls"') ? new NodeStub(this.doc) : null;
+    if (this.controlReference) this.controlReference.id = 'gg-gameplay-controls';
     this.controls = [...html.matchAll(/<(button|select|input)\b([^>]*)>/gi)].map(match => {
       const tag = match[1]!.toLowerCase();
       const node = tag === 'button' ? new ButtonStub(this.doc) :
@@ -97,6 +105,9 @@ class NodeStub {
   querySelectorAll<T = NodeStub>(selector: string): T[] {
     if (selector === '.gg-shell-panel') return (this.panel ? [this.panel] : []) as T[];
     if (selector === '.gg-results') return (this.standings ? [this.standings] : []) as T[];
+    if (selector === '[data-results-scroll-hint]')
+      return (this.resultScrollHint ? [this.resultScrollHint] : []) as T[];
+    if (selector === '#gg-gameplay-controls') return (this.controlReference ? [this.controlReference] : []) as T[];
     if (selector === 'button,select,input') return this.controls as T[];
     if (selector === 'button') return this.controls.filter(n => n.tagName === 'BUTTON') as T[];
     const match = /^\[([\w-]+)(?:(\^?=)"([^"]+)")?\]$/.exec(selector);
@@ -124,6 +135,7 @@ class NodeStub {
   }
   click(): void { this.owner?.dispatch('click', this); }
   scrollBy(_x: number, y: number): void { this.scrollTop += y; }
+  scrollIntoView(_options: ScrollIntoViewOptions): void {}
 }
 class ButtonStub extends NodeStub {}
 class InputStub extends NodeStub {}
@@ -150,9 +162,24 @@ class WindowStub {
   }
 }
 
+class ResizeObserverStub {
+  private target: NodeStub | null = null;
+  constructor(private readonly onResize: () => void) {}
+  observe(target: NodeStub): void { this.target = target; }
+  disconnect(): void { this.target = null; }
+  trigger(): void { if (this.target) this.onResize(); }
+}
+
 function setup() {
   const doc = new DocumentStub();
   const win = new WindowStub();
+  const observers: ResizeObserverStub[] = [];
+  vi.stubGlobal('ResizeObserver', class extends ResizeObserverStub {
+    constructor(callback: () => void) {
+      super(callback);
+      observers.push(this);
+    }
+  });
   vi.stubGlobal('document', doc);
   vi.stubGlobal('window', win);
   vi.stubGlobal('HTMLButtonElement', ButtonStub);
@@ -185,7 +212,8 @@ function setup() {
     view as unknown as ConstructorParameters<typeof GameMenu>[2], settings);
   const setScreen = (screen: string): void =>
     (menu as unknown as { setScreen: (value: string) => void }).setScreen(screen);
-  return { menu, doc, win, game, view, settings, setScreen, root: host.children[0]! };
+  return { menu, doc, win, game, view, settings, setScreen, root: host.children[0]!,
+    resizeStandings: () => observers.forEach(observer => observer.trigger()) };
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -432,6 +460,38 @@ describe('sprite-backed menu DOM', () => {
     } finally { menu.dispose(); }
   });
 
+  it('puts the gameplay controls jump before mouse tuning and lets keyboard and gamepad reach it', () => {
+    const { menu, doc, win, root, view, setScreen } = setup();
+    try {
+      setScreen('settings');
+      const jump = root.querySelector<ButtonStub>('[data-action="gameplay-controls"]')!;
+      const reference = root.querySelector('#gg-gameplay-controls')!;
+      expect(jump.attrs.get('aria-controls')).toBe(reference.id);
+      expect(root.innerHTML.indexOf('data-action="gameplay-controls"'))
+        .toBeLessThan(root.innerHTML.indexOf('id="gg-setting-mouseSensitivity"'));
+      const intoView = vi.spyOn(reference, 'scrollIntoView');
+
+      for (let i = 0; i < 4; i++) {
+        win.dispatch('keydown', { code: 'ArrowDown', preventDefault: vi.fn() });
+      }
+      expect(doc.activeElement).toBe(jump);
+      jump.click();
+      expect(doc.activeElement).toBe(reference);
+      expect(intoView).toHaveBeenCalledExactlyOnceWith({ block: 'start' });
+      const preventDefault = vi.fn();
+      win.dispatch('keydown', { code: 'ArrowDown', preventDefault });
+      expect(preventDefault).not.toHaveBeenCalled();
+
+      jump.focus();
+      vi.stubGlobal('navigator', { getGamepads: () => [
+        { connected: true, buttons: [{ pressed: true }], axes: [] },
+      ] });
+      view.onFrame?.();
+      expect(intoView).toHaveBeenCalledTimes(2);
+      expect(doc.activeElement).toBe(reference);
+    } finally { menu.dispose(); }
+  });
+
   it('shows delivery progress and lets the eligible retry exit through results acknowledgement', () => {
     const { menu, doc, game, root, setScreen, view } = setup();
     try {
@@ -497,7 +557,7 @@ describe('sprite-backed menu DOM', () => {
   });
 
   it('labels a simultaneous Rising Tide tie and shows survival without countdown time', () => {
-    const { menu, doc, game, root, win, setScreen, view } = setup();
+    const { menu, doc, game, root, win, setScreen, view, resizeStandings } = setup();
     try {
       const match = readyMatch({ mode: 'rising-tide', config: {
         countdownTicks: 120, submergeTicks: 1,
@@ -524,9 +584,20 @@ describe('sprite-backed menu DOM', () => {
 
       const standings = root.querySelector('.gg-results')!;
       const panel = root.querySelector('.gg-shell-panel')!;
+      const hint = root.querySelector('[data-results-scroll-hint]')!;
       const back = root.querySelector('[data-action="leave-party"]')!;
       const title = root.querySelector('[data-action="title"]')!;
       expect(doc.activeElement).toBe(back);
+      expect(hint.hidden).toBe(true);
+      expect(standings.tabIndex).toBe(-1);
+      const idlePage = vi.fn();
+      win.dispatch('keydown', { code: 'PageDown', repeat: false, preventDefault: idlePage });
+      expect(idlePage).not.toHaveBeenCalled();
+
+      standings.scrollHeight = 350;
+      resizeStandings();
+      expect(hint.hidden).toBe(false);
+      expect(standings.tabIndex).toBe(0);
       for (const [code, scroll] of [['PageDown', 100], ['PageUp', 0]] as const) {
         const preventDefault = vi.fn();
         win.dispatch('keydown', { code, repeat: false, preventDefault });
@@ -541,6 +612,13 @@ describe('sprite-backed menu DOM', () => {
       view.onFrame?.();
       expect(standings.scrollTop).toBe(7);
       expect(panel.scrollTop).toBe(0);
+
+      standings.focus();
+      standings.clientHeight = standings.scrollHeight;
+      resizeStandings();
+      expect(hint.hidden).toBe(true);
+      expect(standings.tabIndex).toBe(-1);
+      expect(doc.activeElement).toBe(back);
       win.dispatch('keydown', { code: 'ArrowDown', repeat: false,
         preventDefault: vi.fn(), stopPropagation: vi.fn() });
       expect(doc.activeElement).toBe(title);

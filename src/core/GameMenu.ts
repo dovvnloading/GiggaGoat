@@ -138,7 +138,13 @@ const CSS = `
 .gg-shell .gg-party-brief{min-width:0;padding:8px 10px;border-left:2px solid #ffc962;background:#151b3870;border-radius:0 6px 6px 0}
 .gg-shell .gg-party-brief strong{display:block;color:#ffe092;font-size:13px}
 .gg-shell .gg-party-brief p{margin:4px 0 0;font-size:13px;line-height:1.28}
-.gg-shell .gg-control-table{width:100%;border-collapse:collapse;font-size:clamp(11px,1.25vw,13px);line-height:1.3;text-shadow:none}
+.gg-shell .gg-control-jump{display:flex;align-items:center;justify-content:space-between;
+  gap:8px;width:100%;min-height:42px;margin:0 0 14px;padding:3px 8px;
+  border:9px solid transparent;border-image:var(--gg-sprite) 42 fill / 9px / 0 stretch;
+  background:transparent;color:#ffedbd;font-size:13px;text-align:left}
+.gg-shell .gg-control-table{width:100%;border-collapse:collapse;scroll-margin-block-start:5px;
+  font-size:clamp(11px,1.25vw,13px);line-height:1.3;text-shadow:none}
+.gg-shell .gg-control-table:focus-visible{outline:2px solid #ffe44b;outline-offset:2px}
 .gg-shell .gg-control-table caption{margin-bottom:7px;font-size:14px;color:#ffe092;text-align:left}
 .gg-shell .gg-control-table :is(th,td){padding:5px;text-align:left;vertical-align:top;border-bottom:1px solid #e8cf993b}
 .gg-shell .gg-control-table thead{color:#ffe092;background:#19173194}
@@ -273,6 +279,8 @@ export class GameMenu {
   private readonly pageHide: () => void;
   private readonly fullscreenChange: () => void;
   private readonly pointerLockChange: () => void;
+  private readonly resultLayout = typeof ResizeObserver === 'undefined' ? null :
+    new ResizeObserver(() => this.syncPartyResultsScroll());
   private wasPointerLocked = false;
   private pointerLockNeedsUserRequest = false;
 
@@ -441,6 +449,10 @@ export class GameMenu {
       this.settingsReturn = this.screen;
       this.settingsTab = 'controls';
       this.setScreen('settings');
+    } else if (key === 'gameplay-controls') {
+      const reference = this.root.querySelector<HTMLElement>('#gg-gameplay-controls');
+      reference?.focus({ preventScroll: true });
+      reference?.scrollIntoView({ block: 'start' });
     } else if (key === 'back') this.back(mouseClick);
     else if (key === 'start-party') {
       try {
@@ -518,6 +530,7 @@ export class GameMenu {
     if (event.code === 'ArrowDown' || event.code === 'ArrowUp') {
       const focused = document.activeElement;
       if (this.screen === 'party-results' && focused === this.root.querySelector('.gg-results')) return;
+      if (focused?.id === 'gg-gameplay-controls') return;
       if (focused instanceof HTMLInputElement && focused.type === 'range') return;
       if (focused instanceof HTMLSelectElement) return;
       event.preventDefault();
@@ -627,8 +640,24 @@ export class GameMenu {
     this.setScreen('board');
     return true;
   }
+  private syncPartyResultsScroll(): void {
+    if (this.screen !== 'party-results') return;
+    const standings = this.root.querySelector<HTMLElement>('.gg-results');
+    const hint = this.root.querySelector<HTMLElement>('[data-results-scroll-hint]');
+    if (!standings || !hint) return;
+    const scrollable = standings.scrollHeight > standings.clientHeight;
+    hint.hidden = !scrollable;
+    standings.tabIndex = scrollable ? 0 : -1;
+    if (!scrollable && document.activeElement === standings) {
+      this.root.querySelector<HTMLButtonElement>('[data-action="leave-party"]')?.focus();
+    }
+  }
+
   private menuScrollRegion(): HTMLElement | null {
-    if (this.screen === 'party-results') return this.root.querySelector('.gg-results');
+    if (this.screen === 'party-results') {
+      const standings = this.root.querySelector<HTMLElement>('.gg-results');
+      return standings?.tabIndex === 0 ? standings : null;
+    }
     if (this.screen === 'settings' && this.settingsTab === 'controls') {
       return this.root.querySelector('.gg-shell-panel');
     }
@@ -758,14 +787,18 @@ export class GameMenu {
         ` data-sprite-hover="${hover}" data-sprite-pressed="${pressed}">` +
         `<span>${nice(tab)}</span></button>`;
     }).join('');
-    const controls = slider('mouseSensitivity', 'MOUSE SENSITIVITY', .25, 3, .05,
-      s.mouseSensitivity, s.mouseSensitivity.toFixed(2) + '×') +
+    const controls = `<button type="button" data-action="gameplay-controls" class="gg-control-jump"` +
+      ` aria-controls="gg-gameplay-controls" ${menuSkin(MENU_SPRITES.purpleNormal)}` +
+      ` data-sprite-normal="${MENU_SPRITES.purpleNormal}" data-sprite-hover="${MENU_SPRITES.purpleHover}"` +
+      ` data-sprite-pressed="${MENU_SPRITES.purplePressed}">Gameplay controls <span aria-hidden="true">↓</span></button>` +
+      slider('mouseSensitivity', 'MOUSE SENSITIVITY', .25, 3, .05,
+        s.mouseSensitivity, s.mouseSensitivity.toFixed(2) + '×') +
       `<div class="gg-setting-row"><span id="gg-invert-label">INVERT CAMERA Y</span>` +
       `<button type="button" class="gg-switch" role="switch" aria-labelledby="gg-invert-label"` +
       ` aria-checked="${s.invertY}" data-setting-toggle="invertY"` +
       ` ${menuSkin(s.invertY ? MENU_SPRITES.toggleOn : MENU_SPRITES.toggleOff)}>` +
       `<span class="gg-visually-hidden">${s.invertY ? 'On' : 'Off'}</span></button></div>` +
-      `<table class="gg-control-table"><caption>GAMEPLAY CONTROLS</caption>` +
+      `<table class="gg-control-table" id="gg-gameplay-controls" tabindex="-1"><caption>GAMEPLAY CONTROLS</caption>` +
       `<thead><tr><th scope="col">Action</th><th scope="col">Keyboard &amp; mouse</th><th scope="col">Gamepad</th></tr></thead><tbody>` +
       GAMEPLAY_BINDINGS.map(binding =>
         `<tr><th scope="row">${binding.action}</th><td>${binding.keyboard}</td><td>${binding.gamepad}</td></tr>`).join('') +
@@ -921,7 +954,7 @@ export class GameMenu {
       <div class="gg-shell-eyebrow">ROUND COMPLETE</div><h2 id="gg-party-result-title">${esc(this.game.party.title)}</h2>
       <div class="gg-party-outcome"><strong>${outcome}</strong>
       <span>${esc([yours?.measure, summary].filter(Boolean).join(' · '))}</span></div></header>
-      <ol class="gg-results" aria-label="Placements" tabindex="0">${rows.map(row => `
+      <ol class="gg-results" aria-label="Placements" tabindex="-1">${rows.map(row => `
         <li${row.you ? ' data-result-you' : ''}>
           <div class="gg-result-label"><strong class="gg-result-rank">#${row.rank}</strong>
           ${tied(row.rank) ? '<span class="gg-result-tie">TIE</span>' : ''}
@@ -934,6 +967,7 @@ export class GameMenu {
       ${menuButton('title','⌂ TITLE')}</div>`;
   }
   private render(): void {
+    this.resultLayout?.disconnect();
     if (this.screen === 'playing') { this.root.hidden = true; this.root.style.display='none'; return; }
     this.root.hidden = false; this.root.style.display = 'grid';
     const body = this.screen === 'title' ? this.titleBody() :
@@ -953,16 +987,24 @@ export class GameMenu {
     const panel = this.screen === 'title' ? 'gg-shell-panel gg-title-panel' :
       partyResults ? 'gg-shell-panel gg-party-results-panel' : 'gg-shell-panel';
     const dialogLabel = partyResults ? ' aria-labelledby="gg-party-result-title"' : '';
-    const footer = partyResults ? 'PgUp/PgDn or right stick scroll · Esc or B back' :
+    const footer = partyResults
+      ? '<span data-results-scroll-hint hidden>PgUp/PgDn or right stick scroll · </span>Esc or B back'
+      :
       'Enter / click select · ↑↓ navigate · Gamepad A select, B back · Esc back' +
       (this.screen === 'settings' && this.settingsTab === 'controls' ? ' · PgUp/PgDn or right stick scroll' : '');
     this.root.innerHTML = `<section class="${panel}" role="dialog" aria-modal="true"${dialogLabel} ${menuSkin(MENU_SPRITES.panel)}>${body}
       <footer>${footer}</footer></section>`;
     this.syncFullscreen();
+    if (partyResults) {
+      this.syncPartyResultsScroll();
+      const standings = this.root.querySelector('.gg-results');
+      if (standings) this.resultLayout?.observe(standings);
+    }
     this.root.querySelector<HTMLElement>('button')?.focus();
   }
   dispose(): void {
     this.save();
+    this.resultLayout?.disconnect();
     window.removeEventListener('keydown', this.keyHandler, true);
     window.removeEventListener('pagehide', this.pageHide);
     document.removeEventListener('fullscreenchange', this.fullscreenChange);
