@@ -135,7 +135,7 @@ export function addRapierPropCollider(world: RAPIER.World,
   const { position, rotationY, rotationX = 0 } = collider.transform;
   const sinYaw = Math.sin(rotationY / 2), cosYaw = Math.cos(rotationY / 2);
   const sinPitch = Math.sin(rotationX / 2), cosPitch = Math.cos(rotationX / 2);
-  const rotation = {
+  const rotation = rotationX === 0 ? { x: 0, y: sinYaw, z: 0, w: cosYaw } : {
     x: cosYaw * sinPitch, y: sinYaw * cosPitch,
     z: -sinYaw * sinPitch, w: cosYaw * cosPitch,
   };
