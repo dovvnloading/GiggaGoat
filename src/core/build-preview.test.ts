@@ -92,6 +92,45 @@ describe('Hay-Build placement preview', () => {
     }
   });
 
+  it('uses the built launch pad as the only solid surface and launches the goat on contact', async () => {
+    const game = await Game.create();
+    try {
+      const x = 210, z = -91.5;
+      game.teleport(V(x, heightAt(game.island, x, z), z), 0);
+      for (let tick = 0; tick < 40; tick++) game.step({ cameraYaw: 0 });
+      game.advance(0, { toggleBuild: true, buildPiece: 'launch-pad', cameraYaw: 0 });
+      const preview = game.buildPreview()!;
+      expect(preview.validation.valid).toBe(true);
+      game.step({ placeBuild: true, cameraYaw: 0 });
+
+      const pad = game.rules.build.pieces.at(-1)!;
+      const point = preview.position;
+      const hit = game.physics.raycast(V(point.x, point.y + 4, point.z), V(0, -1, 0), 6);
+      expect(hit?.body?.handle).toBe(game.buildBodies.get(pad.id)?.handle);
+      expect(hit?.point.y).toBeCloseTo(point.y + .23, 5);
+      const launches: string[] = [];
+      game.surfaces.events.on(event => {
+        if (event.type === 'launch' && event.bodyHandle === game.goat.torso.handle) {
+          launches.push(event.surfaceId);
+        }
+      });
+
+      const approachZ = point.z + 2.15;
+      game.teleport(V(point.x, heightAt(game.island, point.x, approachZ), approachZ), 0);
+      let highest = game.goat.torso.translation().y;
+      for (let tick = 0; tick < 110; tick++) {
+        const advance = game.goat.torso.translation().z > point.z + .15;
+        game.step({ cameraYaw: 0, moveZ: advance ? .65 : 0, jump: tick === 23 });
+        highest = Math.max(highest, game.goat.torso.translation().y);
+      }
+      expect(launches).toEqual(['hay-' + pad.id]);
+      expect(highest).toBeGreaterThan(point.y + 5);
+      expect(game.goat.isRagdoll).toBe(false);
+    } finally {
+      game.dispose();
+    }
+  });
+
   it('tracks quarter-turn orientation and changes color and visibility for a blocked shape', () => {
     const ghost = new BuildPlacementGhost();
     try {

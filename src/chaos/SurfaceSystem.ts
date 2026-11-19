@@ -36,6 +36,8 @@ export interface TrampolineOptions extends SurfaceOptions {
 }
 export interface LaunchPadOptions extends SurfaceOptions {
   direction: Vec3;
+  /** The visible platform already supplies its own solid collider. */
+  sensorOnly?: boolean;
   launchSpeed?: number;
   cooldownSeconds?: number;
 }
@@ -80,7 +82,7 @@ export class SurfaceSystem {
   createLaunchPad(options: LaunchPadOptions): string {
     if (!magnitude(options.direction)) throw new RangeError('launch direction cannot be zero');
     return this.create('launch', options, unit(options.direction),
-      options.launchSpeed ?? 12, 0, options.cooldownSeconds ?? 1);
+      options.launchSpeed ?? 12, 0, options.cooldownSeconds ?? 1, !options.sensorOnly);
   }
   createConveyor(options: ConveyorOptions): string {
     if (!magnitude(horizontal(options.direction))) throw new RangeError('conveyor direction must be horizontal');
@@ -88,7 +90,7 @@ export class SurfaceSystem {
       options.speed ?? 3.5, options.acceleration ?? 15, 0);
   }
   private create(kind: SurfaceKind, opts: SurfaceOptions, direction: Vec3,
-    speed: number, acceleration: number, cooldown: number): string {
+    speed: number, acceleration: number, cooldown: number, solid = true): string {
     for (const value of [...Object.values(opts.position), ...Object.values(opts.halfExtents)]) {
       if (!Number.isFinite(value)) throw new RangeError('surface dimensions must be finite');
     }
@@ -101,8 +103,10 @@ export class SurfaceSystem {
     const p=opts.position, h=opts.halfExtents;
     const body = this.physics.raw.createRigidBody(RAPIER.RigidBodyDesc.fixed()
       .setTranslation(p.x,p.y,p.z));
-    const collider = this.physics.raw.createCollider(RAPIER.ColliderDesc.cuboid(h.x,h.y,h.z),body);
-    applyPhysicsMaterial(collider,opts.material ?? (kind === 'trampoline' ? 'rubber' : 'wood'));
+    if (solid) {
+      const collider = this.physics.raw.createCollider(RAPIER.ColliderDesc.cuboid(h.x,h.y,h.z),body);
+      applyPhysicsMaterial(collider,opts.material ?? (kind === 'trampoline' ? 'rubber' : 'wood'));
+    }
     const sensor = this.physics.raw.createCollider(
       RAPIER.ColliderDesc.cuboid(h.x,.32,h.z)
         .setTranslation(0,h.y + .27,0).setSensor(true),body);

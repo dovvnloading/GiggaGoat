@@ -565,8 +565,8 @@ export class Game {
     this.buildBodies.set(piece.id, body);
     if (piece.type === 'launch-pad') {
       this.surfaces.createLaunchPad({ id: 'hay-' + piece.id,
-        position: V(p.x, p.y + .30, p.z), halfExtents: V(.97, .16, .97),
-        direction: V(0, 1, -.45), launchSpeed: 13 });
+        position: p, halfExtents: V(.97, buildHalfHeight[piece.type], .97),
+        sensorOnly: true, direction: V(0, 1, -.45), launchSpeed: 13 });
     }
   }
 
