@@ -55,7 +55,7 @@ export const GIG_INFO: Readonly<Record<GigId, GigInfo>> = {
   'stack-up': {
     id: 'stack-up', title: 'STACK-UP', poiId: 'crane-yard',
     pitch: 'Structural engineering by the least qualified animal on site.',
-    instruction: 'Tow the loose crates to the marked pad. Stack them and keep still for five seconds.',
+    instruction: 'Tow a crate to the pad. While holding it, reel to lift it onto the stack. Hold the stack steady for five seconds.',
     verbs: ['tongue', 'headbutt', 'flop'], baseCoins: 85,
     cosmetic: { id: 'hard-hat', name: 'Questionably Safe Hard Hat', slot: 'hat', color: '#FFD833' },
   },
@@ -383,6 +383,11 @@ export class GigCatalog {
     const current = this.build(saved.offer);
     const serialized = JSON.stringify(saved);
     if (JSON.stringify(current) === serialized) return saved;
+    if (current.config.kind === 'stack-up' && saved.info?.instruction ===
+        'Tow the loose crates to the marked pad. Stack them and keep still for five seconds.' &&
+        JSON.stringify({ ...current, info: { ...current.info, instruction: saved.info.instruction } }) === serialized) {
+      return saved;
+    }
     if (current.config.kind === 'hay-haul') {
       const fieldSupply = this.buildVariant(saved.offer, false, true);
       if (JSON.stringify(fieldSupply) === serialized) return saved;
