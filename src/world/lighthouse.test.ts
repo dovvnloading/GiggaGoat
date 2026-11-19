@@ -1,14 +1,17 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
+import RAPIER from '@dimforge/rapier3d-compat';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createWorldScene, generateIsland, heightAt, isSafeCollectiblePosition } from './index';
 import { findBookmark } from './viewer/bookmarks';
-import { instantiateLibraryModel, makeLighthouseFooting } from './visual-lighthouse';
+import { instantiateLibraryModel, keeperCottageFoundationGeometry,
+  makeLighthouseFooting } from './visual-lighthouse';
 import { BUILDING_RAMP, TOON_RAMP } from './visual-props';
 import { bakeLibraryPropGeometry } from './library-props';
 import { gridSample } from './terrain';
-import { lighthouseAccess } from './lighthouse-access';
+import { keeperCottagePiers, lighthouseAccess } from './lighthouse-access';
+import { buildRapierColliders } from './colliders';
 import { accessArrows, accessPathVisual } from './visual-access-path';
 
 function renderedCapeSurface(view: ReturnType<typeof createWorldScene>, scale: number) {
@@ -71,6 +74,84 @@ describe('Old Lighthouse painting rebuild', () => {
     } finally {
       geometry.dispose();
       view.dispose();
+    }
+  });
+
+  it.each([
+    { seed: 'billy-isle', size: 600, resolution: 193 },
+    { seed: 'lighthouse-cape', size: 850, resolution: 97 },
+  ])('joins the keeper cottage sill to the final carved terrain ($seed)', options => {
+    const island = generateIsland(options);
+    const cottage = island.props.find(prop => prop.poiId === 'old-lighthouse' && prop.kind === 'cottage')!;
+    const sill = cottage.transform.position.y - cottage.size.y / 2;
+    const scale = island.size / 600;
+    const view = createWorldScene(island);
+    const rendered = keeperCottageFoundationGeometry(island, cottage);
+    try {
+      const groundAt = renderedCapeSurface(view, scale);
+      expect(view.group.getObjectByName('lighthouse-keeper-cottage-foundation')).toBeDefined();
+      expect(rendered).toHaveLength(2);
+      const exposed = rendered.map(geometry => {
+        const positions = geometry.getAttribute('position');
+        let maxRise = 0;
+        for (let i = 0; i < positions.count; i++) {
+          const y = positions.getY(i);
+          const surface = groundAt(positions.getX(i), positions.getZ(i));
+          if (y < sill) {
+            expect(y).toBeLessThan(surface - .26 * scale);
+          } else {
+            expect(y).toBeCloseTo(sill + .04 * scale, 3);
+            maxRise = Math.max(maxRise, y - surface);
+          }
+        }
+        return maxRise;
+      });
+      expect(Math.max(...exposed)).toBeGreaterThan(4 * scale);
+    } finally {
+      rendered.forEach(geometry => geometry.dispose());
+      view.dispose();
+    }
+  });
+
+  it('gives both visible piers real contact and keeps the lower east path open', async () => {
+    await RAPIER.init();
+    const island = generateIsland({ seed: 'billy-isle' });
+    const cottage = island.props.find(prop => prop.poiId === 'old-lighthouse' && prop.kind === 'cottage')!;
+    const { position, rotationY: yaw } = cottage.transform;
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    try {
+      const { props, terrain } = buildRapierColliders(world, island);
+      const piers = keeperCottagePiers(island, cottage);
+      expect(piers).toHaveLength(2);
+      const supports = piers.map(({ id, corners }) => {
+        const body = props.get(id)!;
+        const midpoint = (axis: 'x' | 'z') => corners.reduce((sum, { top }) =>
+          sum + top[axis], 0) / corners.length;
+        const cap = corners[0]!.top.y;
+        const x = midpoint('x'), z = midpoint('z');
+        const downward = new RAPIER.Ray({ x, y: cap + 2, z }, { x: 0, y: -1, z: 0 });
+        expect(body.castRay(downward, 8, true)).toBeCloseTo(2, 4);
+        const nearGround = terrain.castRay(downward, 8, true);
+        expect(nearGround).toBeGreaterThan(2.4);
+        expect(body.containsPoint({ x, y: cap + 2 - nearGround + .15, z })).toBe(true);
+        return body;
+      });
+      const goat = new RAPIER.Cylinder(.42, .36);
+      const rotation = { x: 0, y: 0, z: 0, w: 1 };
+      for (let offset = -1.6; offset <= 1.61; offset += .2) {
+        const side = cottage.size.x * .46;
+        const x = position.x + Math.cos(yaw) * side + Math.sin(yaw) * offset;
+        const z = position.z - Math.sin(yaw) * side + Math.cos(yaw) * offset;
+        const ray = new RAPIER.Ray({ x, y: position.y, z }, { x: 0, y: -1, z: 0 });
+        const floor = terrain.castRayAndGetNormal(ray, cottage.size.y + 1, true)!;
+        expect(floor.normal.y).toBeGreaterThan(.8);
+        const body = { x, y: position.y - floor.timeOfImpact + .48, z };
+        const blocked = [...supports, props.get(cottage.id)!].some(collider =>
+          collider.intersectsShape(goat, body, rotation));
+        expect(blocked, 'east passage at local z ' + offset.toFixed(1)).toBe(false);
+      }
+    } finally {
+      world.free();
     }
   });
 
