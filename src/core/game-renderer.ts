@@ -23,6 +23,10 @@ export async function createGameRenderer(): Promise<GameRenderer> {
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d', { alpha: false });
   if (!context) throw new GameCanvasUnavailableError('No canvas rendering context is available');
-  const { SoftwareGameRenderer } = await import('./SoftwareGameRenderer');
-  return new SoftwareGameRenderer(canvas, context);
+  const [{ SoftwareGameRenderer }, { SoftwareRaster }] = await Promise.all([
+    import('./SoftwareGameRenderer'), import('./SoftwareRaster'),
+  ]);
+  const raster = await SoftwareRaster.create();
+  canvas.dataset.renderBackend = raster ? 'software-simd' : 'software';
+  return new SoftwareGameRenderer(canvas, context, raster);
 }

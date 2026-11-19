@@ -14,7 +14,7 @@ const usableContext = {
 };
 
 function mockCanvases(...contexts: unknown[]) {
-  const canvases = contexts.map(context => ({ getContext: vi.fn(() => context) }));
+  const canvases = contexts.map(context => ({ dataset: {}, getContext: vi.fn(() => context) }));
   const createElement = vi.fn(() => canvases.shift());
   vi.stubGlobal('document', { createElement });
   return { createElement, first: canvases[0]!, fallback: canvases[1] };
