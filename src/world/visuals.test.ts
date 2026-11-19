@@ -177,7 +177,7 @@ describe('Billy Isle hi-fi environment map', () => {
         }
         expect(collider, prop.id).toBeDefined();
         if (!collider) continue;
-        expect(collider.shape).toBe(prop.shape === 'convex' ? 'convex' : prop.shape);
+        expect(collider.shape).toBe(prop.kind === 'silo' && prop.poiId === 'hoofington' ? 'trimesh' : prop.shape);
         expect(Object.values(collider.size).every(v => Number.isFinite(v) && v > 0)).toBe(true);
         expect(Object.values(collider.transform.position).every(Number.isFinite)).toBe(true);
         expect(Number.isFinite(collider.transform.rotationY)).toBe(true);

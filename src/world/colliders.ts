@@ -12,6 +12,17 @@ import { pinesLogEntryColliders } from './pines-log-access';
 import { LIGHTHOUSE_ACCESS_GUARD_ID, LIGHTHOUSE_ACCESS_ID, keeperCottagePierColliders, lighthouseAccess,
   lighthouseFoundationDepth, lighthouseOuterGuard } from './lighthouse-access';
 import { gridSample } from './terrain';
+import siloMesh from './silo-collision.json';
+
+function siloCollider(prop: PropDescriptor): PropColliderDescriptor {
+  // Same centred fit as the sourced district mesh. Preserve the wall facets,
+  // raised bands, pipe, ladder and roof as a single continuous contact surface.
+  const { size } = prop;
+  const scale = [size.x * .96, size.y * .98, size.z * .96];
+  const vertices = Float32Array.from(siloMesh.positions, (n, i) => n / siloMesh.units * scale[i % 3]!);
+  return { id: prop.id, shape: 'trimesh', transform: prop.transform, size, body: prop.body,
+    vertices, indices: Uint32Array.from(siloMesh.triangles) };
+}
 
 function hull(prop: PropDescriptor): Float32Array {
   const { x, y, z } = prop.size;
@@ -109,6 +120,10 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
       continue;
     }
     if (!prop.collidable) continue;
+    if (prop.kind === 'silo' && prop.poiId === 'hoofington') {
+      colliders.push(siloCollider(prop));
+      continue;
+    }
     const bridgeDeck = bridgeDecks.get(prop.id);
     if (bridgeDeck) {
       colliders.push(bridgeDeck);
@@ -186,6 +201,8 @@ export function addRapierPropCollider(world: RAPIER.World,
   } else if (collider.shape === 'cylinder') {
     desc = RAPIER.ColliderDesc.cylinder(
       collider.size.y / 2, Math.max(collider.size.x, collider.size.z) / 2);
+  } else if (collider.shape === 'trimesh') {
+    desc = RAPIER.ColliderDesc.trimesh(collider.vertices!, collider.indices!, RAPIER.TriMeshFlags.FIX_INTERNAL_EDGES);
   } else {
     const hullDesc = RAPIER.ColliderDesc.convexHull(collider.vertices!);
     if (!hullDesc) throw new Error('Invalid convex collider for ' + collider.id);

@@ -173,6 +173,12 @@ function makeColliderGeometry(collider: ColliderDescriptor): THREE.BufferGeometr
     const radius = Math.max(collider.size.x, collider.size.z) / 2;
     return new THREE.CylinderGeometry(radius, radius, collider.size.y, 8);
   }
+  if (collider.shape === 'trimesh') {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(collider.vertices!, 3));
+    geometry.setIndex(new THREE.BufferAttribute(collider.indices!, 1));
+    return geometry;
+  }
   const points: THREE.Vector3[] = [];
   const vertices = collider.vertices!;
   for (let i = 0; i < vertices.length; i += 3) {

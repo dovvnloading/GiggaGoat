@@ -130,14 +130,15 @@ export interface HeightfieldColliderDescriptor {
   position: Vec3;
 }
 export interface PropColliderDescriptor {
-  shape: 'cuboid' | 'cylinder' | 'convex';
+  shape: 'cuboid' | 'cylinder' | 'convex' | 'trimesh';
   id: string;
   transform: Transform;
   size: Vec3;
   body: BodyDescriptor;
   restitution?: number;
-  /** Hull vertices are local metres, in x/y/z triples. */
+  /** Hull and triangle vertices are local metres, in x/y/z triples. */
   vertices?: Float32Array;
+  indices?: Uint32Array;
 }
 export type ColliderDescriptor = HeightfieldColliderDescriptor | PropColliderDescriptor;
 
