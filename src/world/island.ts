@@ -9,6 +9,7 @@ import {
 } from './terrain';
 import { makeRoads, makeBridgeDecks, MOUNTAIN_SPIRAL_TRAIL } from './roads';
 import { makeRoadsideProps } from './roadside-stops';
+import { clearPavedRoadScenery } from './road-scenery';
 import { fitDowntownServiceRamps, populateProps, seatDowntownStock } from './layouts';
 import { dressIsland } from './dressing';
 import { makeRelics, makeSpawns } from './collectibles';
@@ -218,6 +219,7 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   island.spawns = makeSpawns(island);
   island.relics = makeRelics(island, rng);
   island.props.push(...makeRoadsideProps(island));
+  clearPavedRoadScenery(island);
   fitDowntownServiceRamps(island);
   seatDowntownStock(island);
   island.colliders = makeColliderDescriptors(island);
