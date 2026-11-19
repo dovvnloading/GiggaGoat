@@ -5,7 +5,29 @@ import { V } from '../physics';
 import { Game } from './Game';
 import { GameView } from './GameView';
 import { frame, goat, readyMatch } from '../modes/test-utils';
-import { hayHaulGuidance, hayHeistGuidance, gigMapPoint, separateMapObjective } from './GigPresentation';
+import {
+  createSummitTrailMarker, hayHaulGuidance, hayHeistGuidance, gigMapPoint, separateMapObjective,
+} from './GigPresentation';
+
+describe('Summit Sprint wayfinding', () => {
+  it('keeps the painted ring within the trail and follows the grade at every vertex', () => {
+    const ground = (x: number, z: number): number => 24 + .42 * x - .17 * z;
+    const marker = createSummitTrailMarker({ x: 25, y: 30, z: -3 }, 1.1, 1, false, ground);
+    const paint = marker.getObjectByName('summit-trail-paint') as THREE.Mesh;
+    const flag = marker.getObjectByName('summit-trail-flag') as THREE.Mesh;
+    const vertices = paint.geometry.getAttribute('position');
+    marker.updateMatrixWorld(true);
+    expect(marker.children).toEqual([paint, flag]);
+    expect(marker.position.y).toBeCloseTo(ground(25, -3));
+    expect(flag.rotation.y).toBeCloseTo(1.1);
+    for (let i = 0; i < vertices.count; i++) {
+      const local = new THREE.Vector3().fromBufferAttribute(vertices, i);
+      expect(Math.hypot(local.x, local.z)).toBeLessThan(1.15);
+      const world = paint.localToWorld(local);
+      expect(world.y - ground(world.x, world.z)).toBeCloseTo(.065, 5);
+    }
+  });
+});
 
 describe('Splash contract wayfinding', () => {
   it.each(['splash-dive', 'dam-bomb'] as const)(

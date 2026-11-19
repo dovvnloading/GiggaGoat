@@ -8,6 +8,46 @@ import { HUD_SPRITES, hudSpriteUrl } from './HudSprites';
 
 type SplashDiveConfig = Extract<GigConfig, { kind: 'splash-dive' }>;
 
+export function createSummitTrailMarker(point: Point, facing: number, scale: number,
+  destination: boolean, sampleGround: (x: number, z: number) => number): THREE.Group {
+  const root = new THREE.Group();
+  root.name = 'summit-trail-marker';
+  root.position.set(point.x, sampleGround(point.x, point.z), point.z);
+  const color = destination ? 0x88ffcb : 0xffd05f;
+  const ringGeometry = new THREE.RingGeometry(.98 * scale, 1.14 * scale, 24).rotateX(-Math.PI / 2);
+  const ringPositions = ringGeometry.getAttribute('position');
+  for (let vertex = 0; vertex < ringPositions.count; vertex++) {
+    const x = point.x + ringPositions.getX(vertex), z = point.z + ringPositions.getZ(vertex);
+    ringPositions.setY(vertex, sampleGround(x, z) - root.position.y + .065 * scale);
+  }
+  const ring = new THREE.Mesh(ringGeometry, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }));
+  ring.name = 'summit-trail-paint';
+  root.add(ring);
+
+  const banner = new THREE.BufferGeometry();
+  const vertices: number[] = [], colors: number[] = [];
+  const triangle = (paint: number, x1: number, y1: number,
+    x2: number, y2: number, x3: number, y3: number): void => {
+    vertices.push(x1, y1, 0, x2, y2, 0, x3, y3, 0);
+    const tint = new THREE.Color(paint);
+    for (let i = 0; i < 3; i++) colors.push(tint.r, tint.g, tint.b);
+  };
+  triangle(0x705235, -.06, 0, .06, 0, .06, 1.55);
+  triangle(0x705235, -.06, 0, .06, 1.55, -.06, 1.55);
+  triangle(0x573754, .06, 1.60, .95, 1.31, .06, 1.02);
+  triangle(color, .10, 1.53, .77, 1.31, .10, 1.09);
+  banner.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  banner.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  const flag = new THREE.Mesh(banner, new THREE.MeshBasicMaterial({
+    vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1,
+  }));
+  flag.name = 'summit-trail-flag';
+  flag.scale.setScalar(scale);
+  flag.rotation.y = facing;
+  root.add(flag);
+  return root;
+}
+
 function splashLandingTarget(config: SplashDiveConfig, radius: number): THREE.Mesh {
   const positions: number[] = [], colors: number[] = [];
   const sectors = 64;
