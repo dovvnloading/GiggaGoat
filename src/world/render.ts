@@ -229,11 +229,16 @@ function terrainGeometry(
     }
     const a = vertex(x, z), b = vertex(x1, z);
     const c = vertex(x, z1), d = vertex(x1, z1);
-    const left = x === 0 || native(x - lodStep, z);
+    const nativeLeft = x > 0 && native(x - lodStep, z);
+    const nativeTop = z > 0 && native(x, z - lodStep);
+    const left = x === 0 || nativeLeft;
     const right = x1 === countX || native(x1, z);
-    const top = z === 0 || native(x, z - lodStep);
+    const top = z === 0 || nativeTop;
     const bottom = z1 === countZ || native(x, z1);
-    if (lodStep === 1 || !(left || right || top || bottom) || x1 - x < 2 || z1 - z < 2) {
+    const partial = x1 - x < lodStep || z1 - z < lodStep;
+    // In an odd-sized chunk the last row or column has no interior centre.
+    const partialStitch = (z1 - z > 1 && nativeLeft) || (x1 - x > 1 && nativeTop);
+    if (lodStep === 1 || !(left || right || top || bottom) || (partial && !partialStitch)) {
       indices.push(a, c, b, b, c, d);
       continue;
     }
@@ -246,6 +251,14 @@ function terrainGeometry(
     if (right) for (let k = z1 - 1; k > z; k--) perimeter.push(vertex(x1, k));
     perimeter.push(b);
     if (top) for (let k = x1 - 1; k > x; k--) perimeter.push(vertex(k, z));
+    if (partial) {
+      const start = perimeter.indexOf(z1 - z > 1 ? vertex(x, z + 1) : vertex(x + 1, z));
+      for (let i = 1; i < perimeter.length - 1; i++) {
+        indices.push(perimeter[start]!, perimeter[(start + i) % perimeter.length]!,
+          perimeter[(start + i + 1) % perimeter.length]!);
+      }
+      continue;
+    }
     const centre = vertex(x + Math.floor((x1 - x) / 2),
       z + Math.floor((z1 - z) / 2));
     for (let i = 0; i < perimeter.length; i++) {
