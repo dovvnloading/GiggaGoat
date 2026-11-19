@@ -587,6 +587,17 @@ export function buildDamLandscape(
   }
   // These scenic Dam models also reach the separate Pines outflow mesh.
   const wetPines = movePinesToDryBanks(island, [...pines, ...fullPines], origin, scale, height);
+  // The eastern service approach looks diagonally across the outflow. Let young
+  // pines occupy that opening, with mature canopies framing it on either side.
+  for (const pine of [...pines, ...fullPines]) {
+    const eastBankOpening = Math.abs(pine.x - .77 * (pine.z - 7));
+    const reach = THREE.MathUtils.smoothstep(pine.z, 9, 24) * (1 - THREE.MathUtils.smoothstep(pine.z, 63, 83));
+    const opening = reach * (1 - THREE.MathUtils.smoothstep(eastBankOpening, 5, 19));
+    const growth = 1 - .77 * opening;
+    pine.width *= growth;
+    pine.depth *= growth;
+    pine.height *= growth;
+  }
   for (let i = 0; i < 25; i++) {
     const z = rng.range(13, 102);
     const section = damChannelAt(z);
