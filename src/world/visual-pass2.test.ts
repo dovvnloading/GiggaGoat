@@ -7,6 +7,7 @@ import { makeLocalStreets, MOUNTAIN_SPIRAL_BRIDGE_PREFIX } from './roads';
 import { segmentProjection } from './terrain';
 import { findBookmark } from './viewer/bookmarks';
 import { PINES_GLADE_CASCADE } from './visual-water';
+import { PINES_LOG_ENTRY_LENGTH } from './pines-log-access';
 
 describe('World visuals pass 2: geometry, streets and draw budget', () => {
   let island: IslandData;
@@ -45,7 +46,10 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
       instances.geometry.computeBoundingBox();
       const bounds = instances.geometry.boundingBox!;
       const span = bounds.getSize(new THREE.Vector3());
-      expect(Math.max(span.x, span.y, span.z), kind).toBeLessThanOrEqual(1.001);
+      expect(Math.max(span.x, span.y), kind).toBeLessThanOrEqual(1.001);
+      const logEntries = kind === 'log-bridge' ?
+        2 * PINES_LOG_ENTRY_LENGTH * (island.size / 600) / props[0]!.size.z : 0;
+      expect(span.z, kind).toBeLessThanOrEqual(1.001 + logEntries);
       const matrix = new THREE.Matrix4();
       const position = new THREE.Vector3();
       const scale = new THREE.Vector3();

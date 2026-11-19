@@ -43,16 +43,23 @@ describe('party scoreboard state', () => {
     ]);
   });
 
-  it('uses the summit capture score and win target and reports a real contest', () => {
+  it('shows the highest rival score separately from summit possession and the win target', () => {
     const match = readyMatch({ mode: 'king-of-the-peak', config: {
       peakPointsPerSecond: 3, peakTargetScore: 40,
-    } }, ['player', 'rival']);
-    for (let tick = 0; tick < 60; tick++) match.step(frame(goat('player'), goat('rival', 45)));
-    expect(hud(match)).toMatchObject({ goal: 'Hold the summit to score', status: 'YOU HOLD THE SUMMIT' });
+    } }, ['player', 'rival', 'third']);
+    for (let tick = 0; tick < 60; tick++) match.step(frame(goat('player'), goat('rival', 45), goat('third', 45)));
+    expect(hud(match)).toMatchObject({ goal: 'Hold the summit · first to 40', status: 'YOU HOLD THE SUMMIT' });
     expect(hud(match).metrics).toEqual([
-      { label: 'YOUR POINTS', value: '3' }, { label: 'WIN TARGET', value: '40' },
+      { label: 'YOUR POINTS', value: '3' }, { label: 'TOP RIVAL', value: '0' },
     ]);
-    match.step(frame(goat('player'), goat('rival', 0, 1)));
+
+    for (let tick = 0; tick < 120; tick++) match.step(frame(goat('player', 45), goat('rival'), goat('third', 45)));
+    match.step(frame(goat('player', 45), goat('rival', 45), goat('third')));
+    expect(hud(match)).toMatchObject({
+      metrics: [{ label: 'YOUR POINTS', value: '3' }, { label: 'TOP RIVAL', value: '6' }],
+      status: 'GOAT 3 HOLDS SUMMIT',
+    });
+    match.step(frame(goat('player'), goat('rival', 0, 1), goat('third', 45)));
     expect(hud(match).status).toBe('SUMMIT CONTESTED');
   });
 

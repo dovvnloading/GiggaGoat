@@ -19,7 +19,7 @@ import { CAMERA_TARGET_HEIGHT, PLAY_CAMERA_PITCH, SPAWN_CAMERA_PITCH, SPAWN_CAME
   goatCameraLookAhead, goatCameraOffset, goatCameraVerticalOffset, goatOrbitOffset,
   goatViewDirection } from './GoatCamera';
 import { GameHud, type FramePerformance } from './GameHud';
-import { hayHaulGuidance, type HayHaulGuidance } from './GigPresentation';
+import { createSplashDiveMarkers, hayHaulGuidance, type HayHaulGuidance } from './GigPresentation';
 import { MowDownPresentation } from './MowDownPresentation';
 import {
   WORLD_LIBRARY_KINDS, createWorldLibraryProp, createBoardLibraryProp,
@@ -68,6 +68,7 @@ export class GameView {
   private hayHaulPickup: THREE.Sprite | null = null;
   private hayHaulDelivery: THREE.Group | null = null;
   private mowDown: MowDownPresentation | null = null;
+  private splashDive: ReturnType<typeof createSplashDiveMarkers> | null = null;
   private displayedMode: string | null = null;
   private currentSettings: GameSettings = { ...DEFAULT_SETTINGS };
   paused = false;
@@ -386,7 +387,7 @@ export class GameView {
       this.displayedGig = attempt;
       this.clearGroup(this.gigMarkers);
       this.hayHaulPickup = this.hayHaulDelivery = null;
-      this.mowDown = null;
+      this.mowDown = this.splashDive = null;
       for (const root of this.gigProps.values()) this.releaseLibraryProp(root);
       this.gigProps.clear();
       if (run?.status === 'running') {
@@ -409,8 +410,20 @@ export class GameView {
           this.mowDown = new MowDownPresentation(this.game.island, config.patches,
             this.textSprite('G / X GRAZE', .24, .06, 0));
           this.gigMarkers.add(this.mowDown);
+        } else if (config.kind === 'splash-dive') {
+          const scale = this.game.island.size / 600;
+          const start = run.setup.markers.find(marker => marker.type === 'start');
+          const target = run.setup.markers.find(marker => marker.type === 'destination');
+          const { x, y, z } = config.jumpPoint;
+          const surface = this.game.physics.raycast({ x, y: y + .15, z }, { x: 0, y: -1, z: 0 },
+            2 * scale, { predicate: collider => !collider.parent()?.isDynamic() });
+          const deckY = surface?.point.y ?? y - (config.requiresFlop ? .60 : .55 * scale);
+          const caption = start?.label ?? (config.requiresFlop ? 'Flop from here' : 'Leap seaward');
+          const approach = this.textSprite(caption.toUpperCase(), 3.1 * scale, .70 * scale, 0);
+          this.splashDive = createSplashDiveMarkers(config, target?.radius ?? 3.6, deckY, approach, scale);
+          this.gigMarkers.add(this.splashDive.root);
         }
-        const customMarkers = config.kind === 'hay-haul' || config.kind === 'mow-down';
+        const customMarkers = config.kind === 'hay-haul' || config.kind === 'mow-down' || config.kind === 'splash-dive';
         for (const marker of customMarkers ? [] : run.setup.markers) {
           const group = new THREE.Group();
           group.position.copy(vec(marker.position));
@@ -432,6 +445,7 @@ export class GameView {
         }
       }
     }
+    this.splashDive?.update(run);
     if (run?.objective.kind === 'summit') {
       const markers = this.gigMarkers.children;
       const next = Math.min(run.objective.reached, markers.length - 1);

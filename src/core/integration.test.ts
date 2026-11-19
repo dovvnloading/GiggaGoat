@@ -145,6 +145,41 @@ describe('Walkable roads and coastal routes', () => {
     } finally { game.dispose(); }
   });
 
+  it('walks across both Whispering Pines log banks without climbing or jumping', async () => {
+    const game = await Game.create();
+    try {
+      const log = game.island.props.find(prop => prop.kind === 'log-bridge' && prop.poiId === 'whispering-pines')!;
+      const { position: centre, rotationY } = log.transform;
+      const aheadX = Math.sin(rotationY), aheadZ = Math.cos(rotationY);
+      const half = log.size.z / 2;
+      const deck = centre.y + log.size.y / 2;
+      const landing = half + 4.8;
+      standAt(game, centre.x - aheadX * landing, centre.z - aheadZ * landing);
+      for (const direction of [1, -1]) {
+        const targetX = centre.x + aheadX * landing * direction;
+        const targetZ = centre.z + aheadZ * landing * direction;
+        let airborne = 0;
+        for (let tick = 0; tick < 640; tick++) {
+          const at = game.goat.torso.translation();
+          const dx = targetX - at.x, dz = targetZ - at.z;
+          if (Math.hypot(dx, dz) < .65) break;
+          game.step({ moveZ: 1, cameraYaw: Math.atan2(dx, -dz), climb: false });
+          const station = (at.x - centre.x) * aheadX + (at.z - centre.z) * aheadZ;
+          if (Math.abs(Math.abs(station) - half) < 1.2) {
+            if (!game.goat.locomotion.grounded) airborne++;
+            expect(at.y).toBeGreaterThan(deck + .18);
+          }
+          expect(game.goat.isRagdoll).toBe(false);
+          expect(game.goat.locomotion.isClinging).toBe(false);
+        }
+        const at = game.goat.torso.translation();
+        expect(Math.hypot(targetX - at.x, targetZ - at.z)).toBeLessThan(.70);
+        expect(airborne).toBe(0);
+      }
+      expect(game.respawns).toBe(0);
+    } finally { game.dispose(); }
+  }, 35_000);
+
   it('walks from the Baa-ardwalk shore onto the deck and back without climbing or jumping', async () => {
     const game = await Game.create();
     try {

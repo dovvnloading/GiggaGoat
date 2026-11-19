@@ -61,12 +61,14 @@ export function derivePartyHudState(
       status = 'NEXT RISE ' + secondsLeft(ticksUntilRise) + 's';
     }
   } else if (peak) {
+    const rivalBest = players.reduce((best, player) =>
+      player.id === playerId ? best : Math.max(best, player.score), 0);
     metrics = [
       { label: 'YOUR POINTS', value: String(you?.score ?? 0) },
-      { label: 'WIN TARGET', value: String(config.peakTargetScore) },
+      { label: 'TOP RIVAL', value: String(rivalBest) },
     ];
-    goal = phase === 'overtime' ? 'Break the lead tie' :
-      config.peakLeadDistance ? 'Hold the center to score' : 'Hold the summit to score';
+    const hold = config.peakLeadDistance ? 'Hold the center' : 'Hold the summit';
+    goal = phase === 'overtime' ? 'Break the lead tie' : hold + ' · first to ' + config.peakTargetScore;
     const owner = players.find(player => player.id === peak.ownerId);
     const contested = config.peakLeadDistance ? 'CONTESTED · TAKE CENTER' : 'SUMMIT CONTESTED';
     status = peak.contested ? contested : peak.ownerId === playerId ? 'YOU HOLD THE SUMMIT' :

@@ -7,6 +7,7 @@ import { makeGradedBridgeColliders } from './roads';
 import { roadRibbonData } from './road-ribbons';
 import { accessSlabs } from './access-path';
 import { BOARDWALK_SHORE_GUARD_ID, BOARDWALK_SHORE_ID, boardwalkShoreEntry } from './boardwalk';
+import { PINES_LOG_ENTRY_ID, pinesLogEntries } from './pines-log-access';
 import { LIGHTHOUSE_ACCESS_GUARD_ID, LIGHTHOUSE_ACCESS_ID, lighthouseAccess,
   lighthouseFoundationDepth, lighthouseOuterGuard } from './lighthouse-access';
 import { gridSample } from './terrain';
@@ -93,6 +94,12 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
         },
         rotationY: prop.transform.rotationY,
       };
+    }
+    if (prop.kind === 'log-bridge' && prop.poiId === 'whispering-pines') {
+      for (const entry of pinesLogEntries(island, prop)) {
+        colliders.push(...accessSlabs(PINES_LOG_ENTRY_ID + entry.side + '-tread-', entry.sections, entry.thickness),
+          ...entry.supports);
+      }
     }
     const collider: PropColliderDescriptor = {
       id: prop.id, shape, transform, size, body: prop.body,
