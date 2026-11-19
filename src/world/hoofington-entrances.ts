@@ -34,3 +34,5 @@ export const HOOFINGTON_HAUL_PARKING = [-13.2, -9.7, -6.2, -2.7, .8, 4.3, 7.8]
 export const HOOFINGTON_HAUL_LANE = { x: -28, z: -3.25, length: 4.75, width: 25.5 };
 // Protect the turn between the west yard opening and the bale loading lane.
 export const HOOFINGTON_HAUL_CONNECTOR = { x: -21.4, z: -18.6, length: 10.4, width: 5.2 };
+// A relocated garden prop must also stay outside the barn's delivery apron.
+export const HOOFINGTON_HAUL_DROP_APRON = { x: -25.25, z: -20.25, length: 5.2, width: 5.2 };

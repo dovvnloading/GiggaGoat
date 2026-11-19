@@ -4,7 +4,8 @@ import { downtownPublicSpaceAt, downtownPublicSpaces } from './downtown-public-s
 import { gridSample, MOUNTAIN_CAVE_ANCHOR, riverAt, segmentProjection, stampPlot } from './terrain';
 import { getDamPlacement } from './the-dam';
 import { HOOFINGTON_FIELD_ENTRANCES, HOOFINGTON_FIELD_RAILS,
-  HOOFINGTON_HAUL_CONNECTOR, HOOFINGTON_HAUL_LANE, HOOFINGTON_YARD_ENTRANCES } from './hoofington-entrances';
+  HOOFINGTON_HAUL_CONNECTOR, HOOFINGTON_HAUL_DROP_APRON, HOOFINGTON_HAUL_LANE,
+  HOOFINGTON_YARD_ENTRANCES } from './hoofington-entrances';
 import { roadSideOffset } from './roads';
 import { damChannelAt } from './dam-landscape';
 import { overlapsPinesLogEntry } from './pines-log-access';
@@ -170,6 +171,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     ({ x: farmCenter.x + p.x * scale, z: farmCenter.z + p.z * scale,
       sx: (p.length + (p.towing ? 2.3 : 1.5)) * scale, sz: p.width * scale, yaw: 0 });
   const haulConnector = farmPassage(HOOFINGTON_HAUL_CONNECTOR);
+  const haulDropApron = farmPassage(HOOFINGTON_HAUL_DROP_APRON);
   const farmEntrances = [...HOOFINGTON_FIELD_ENTRANCES, ...HOOFINGTON_YARD_ENTRANCES, HOOFINGTON_HAUL_LANE]
     .map(farmPassage);
   farmEntrances.push(haulConnector);
@@ -207,6 +209,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     const free = (px: number, pz: number): boolean => {
       const f = { x: px, z: pz, sx: width, sz: width, yaw };
       return !inFarmEntrance(px, pz, width, yaw) &&
+        !(kind === 'gnome' && footprintOverlaps(f, haulDropApron)) &&
         !occupied.some(b => footprintOverlaps(f, b)) &&
         !hoofRoads.some(r => footprintOverlaps(f, r));
     };
