@@ -402,9 +402,17 @@ export class LocomotionController {
     const aboveHead = .10 * g.size;
     const faceReach = (headCollider.radius() + Math.max(0, close.normal.y) * aboveHead + .035 * g.size) /
       -dot(wish, close.normal);
+    const foreheadReach = close.distance + faceReach;
     const face = g.world.raycast(add(position, V(0, aboveHead, 0)), wish,
-      close.distance + faceReach, query);
-    return canClimb(face) && face.collider.handle === close.collider.handle ? face : null;
+      foreheadReach + .30 * g.size, query);
+    if (!canClimb(face) || face.collider.handle !== close.collider.handle) return null;
+    if (face.distance <= foreheadReach) return face;
+    // A raised band on the silo touches the forehead while the parallel
+    // wall just above it is recessed. Require both physical faces on the
+    // same collider; a lip with air beyond it cannot start a climb.
+    const band = g.world.raycast(position, wish, foreheadReach, query);
+    return canClimb(band) && band.collider.handle === face.collider.handle &&
+      Math.abs(band.normal.y) < .22 && dot(band.normal, face.normal) > .92 ? band : null;
   }
 
   /** Find the side of an actual rung or narrow rail within the hind hoof's
@@ -454,7 +462,10 @@ export class LocomotionController {
     const g = this.goat, torso = g.torso, s = g.size;
     const position = torso.translation();
     const rideHeight = g.balance.tuning.rideHeight * s;
-    const groundedDistance = rideHeight + .16 * s;
+    // A loaded suspension oscillates around ride height when pushing into a
+    // wall. Give an existing contact a small release margin so each bob does
+    // not replay the airborne and landing poses. Takeoff still owns its lock.
+    const groundedDistance = rideHeight + (this.grounded ? .20 : .16) * s;
     const minGroundY = this.minWalkingNormalY;
     let movement = add(mul(forward(this.input.cameraYaw),this.input.z),
       mul(right(this.input.cameraYaw),this.input.x));

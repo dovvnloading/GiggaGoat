@@ -95,6 +95,51 @@ it.each(GOAT_SIZES)('articulates the rendered feet through a complete jump at si
         expect(Math.min(...counts), fits[j]!.character.variant + ' planted ' + (sprint ? 'gallop' : 'walk') + ' ' + counts)
           .toBeGreaterThan(4);
     }
+    // Accelerate from rest, then turn through two right angles. Check the
+    // rendered soles, including the first frames before full running speed.
+    goat.locomotion.setInput({ x: 0, z: 0, sprint: false, cameraYaw: 0 });
+    for (let i = 0; i < 90; i++) {
+      world.step(1 / 60);
+      for (const fit of fits) fit.character.update(1 / 60, 1);
+    }
+    const lowest = fits.map(() => Infinity);
+    const steps = fits.map(() => [] as number[]);
+    const previous = fits.map(fit => fit.soles());
+    const anchors = fits.map(() => Array.from({ length: 4 }, () => new THREE.Vector3(NaN, NaN, NaN)));
+    for (const [x, z] of [[0, 1], [-1, 0], [0, -1]] as const) {
+      goat.locomotion.setInput({ x, z, sprint: true, cameraYaw: 0 });
+      for (let tick = 0; tick < 40; tick++) {
+        world.step(1 / 60);
+        for (const [j, fit] of fits.entries()) {
+          fit.character.update(1 / 60, 1);
+          fit.character.root.updateMatrixWorld(true);
+          if (goat.locomotion.grounded && goat.pose === 'gallop') {
+            const { rig } = fit.character as unknown as {
+              rig: { legs: { legs: { planted: boolean; foothold: THREE.Vector3 }[] } };
+            };
+            for (const [k, foot] of fit.soles().entries()) {
+              lowest[j] = Math.min(lowest[j]!, foot.y / size);
+              const leg = rig.legs.legs[k]!, anchor = anchors[j]![k]!;
+              if (leg.planted && anchor.equals(leg.foothold)) {
+                steps[j]!.push(foot.distanceTo(previous[j]![k]!) / size);
+              }
+              if (leg.planted) anchor.copy(leg.foothold);
+              else anchor.set(NaN, NaN, NaN);
+              previous[j]![k]!.copy(foot);
+            }
+          } else {
+            for (const anchor of anchors[j]!) anchor.set(NaN, NaN, NaN);
+          }
+        }
+      }
+    }
+    for (const [j, fit] of fits.entries()) {
+      expect(Number.isFinite(lowest[j])).toBe(true);
+      expect(lowest[j], fit.character.variant + ' turning clearance').toBeGreaterThan(-.018);
+      const drift = steps[j]!.sort((a, b) => a - b);
+      expect(drift.length).toBeGreaterThan(40);
+      expect(drift[Math.floor(drift.length * .95)], fit.character.variant + ' stance drift').toBeLessThan(.025);
+    }
   } finally {
     for (const c of art) c.dispose();
     world.dispose();
