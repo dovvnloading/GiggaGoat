@@ -8,7 +8,7 @@ import { roadRibbonData } from './road-ribbons';
 import { accessSlabs } from './access-path';
 import { BOARDWALK_SHORE_GUARD_ID, BOARDWALK_SHORE_ID, boardwalkShoreEntry } from './boardwalk';
 import { pinesLogEntryColliders } from './pines-log-access';
-import { LIGHTHOUSE_ACCESS_GUARD_ID, LIGHTHOUSE_ACCESS_ID, lighthouseAccess,
+import { LIGHTHOUSE_ACCESS_GUARD_ID, LIGHTHOUSE_ACCESS_ID, keeperCottagePierColliders, lighthouseAccess,
   lighthouseFoundationDepth, lighthouseOuterGuard } from './lighthouse-access';
 import { gridSample } from './terrain';
 
@@ -80,6 +80,9 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
       const outerGuard = lighthouseOuterGuard(path, scale);
       colliders.push(...accessSlabs(LIGHTHOUSE_ACCESS_ID, path, .34 * scale),
         ...accessSlabs(LIGHTHOUSE_ACCESS_GUARD_ID, outerGuard, 1.22 * scale));
+    }
+    if (prop.kind === 'cottage' && prop.poiId === 'old-lighthouse') {
+      colliders.push(...keeperCottagePierColliders(island, prop));
     }
     if (prop.kind === 'cave-mouth') {
       size.x = prop.size.x * 0.65;

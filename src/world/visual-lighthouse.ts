@@ -2,13 +2,14 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData, PropDescriptor, PropKind } from './types';
-import { gridIndex, gridSample } from './terrain';
+import { gridSample } from './terrain';
 import { publicAssetUrl } from './public-assets';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import { buildArchitecture } from './visual-architecture';
 import { TOON_RAMP, BUILDING_RAMP } from './visual-props';
 import type { AccessSection } from './access-path';
-import { lighthouseAccess, lighthouseOuterGuard } from './lighthouse-access';
+import { capeSurface, keeperCottagePiers, lighthouseAccess,
+  lighthouseOuterGuard } from './lighthouse-access';
 import { accessArrows, accessPathVisual } from './visual-access-path';
 
 export interface LighthouseVisuals {
@@ -343,6 +344,28 @@ function makeWindingFootpath(island: IslandData, center: { x: number; z: number 
   return mesh;
 }
 
+export function keeperCottageFoundationGeometry(island: IslandData,
+  cottage: PropDescriptor): THREE.BufferGeometry[] {
+  return keeperCottagePiers(island, cottage).map(({ corners }) => {
+    const geometry = new THREE.BufferGeometry();
+    const positions = [...corners.map(corner => corner.top), ...corners.map(corner => corner.foot)]
+      .flatMap(({ x, y, z }) => [x, y, z]);
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setIndex([
+      0, 2, 1, 0, 3, 2,
+      4, 5, 6, 4, 6, 7,
+      0, 1, 5, 0, 5, 4,
+      1, 2, 6, 1, 6, 5,
+      2, 3, 7, 2, 7, 6,
+      3, 0, 4, 3, 4, 7,
+    ]);
+    const faces = geometry.toNonIndexed();
+    geometry.dispose();
+    faces.computeVertexNormals();
+    return faces;
+  });
+}
+
 function makeCottage(prop: PropDescriptor): THREE.Group {
   const architecture = buildArchitecture('cottage');
   // Recolour the cottage's baked roof-vertex colours without changing the
@@ -544,22 +567,6 @@ export function instantiateLibraryModel(root: THREE.Object3D, placements: readon
     group.add(instanced);
   });
   return group;
-}
-
-/** Match the native terrain triangles where the cliff props meet the slope. */
-function capeSurface(island: IslandData, x: number, z: number): number {
-  const { resolution, size, heights } = island;
-  const gx = THREE.MathUtils.clamp((x / size + 0.5) * (resolution - 1), 0, resolution - 1);
-  const gz = THREE.MathUtils.clamp((z / size + 0.5) * (resolution - 1), 0, resolution - 1);
-  const ix = Math.min(Math.floor(gx), resolution - 2);
-  const iz = Math.min(Math.floor(gz), resolution - 2);
-  const tx = gx - ix, tz = gz - iz;
-  const a = heights[gridIndex(resolution, ix, iz)]!;
-  const b = heights[gridIndex(resolution, ix + 1, iz)]!;
-  const c = heights[gridIndex(resolution, ix, iz + 1)]!;
-  const d = heights[gridIndex(resolution, ix + 1, iz + 1)]!;
-  return tx + tz <= 1 ? a + (b - a) * tx + (c - a) * tz
-    : d + (c - d) * (1 - tx) + (b - d) * (1 - tz);
 }
 
 export function makeLighthouseFooting(island: IslandData, tower: PropDescriptor): THREE.BufferGeometry {
@@ -816,7 +823,15 @@ export function buildLighthouseVisuals(island: IslandData,
   const lookout = get('platform');
   if (lookout) group.add(makeLookoutBraces(island, lookout));
   const cottage = get('cottage');
-  if (cottage) group.add(makeCottage(cottage));
+  if (cottage) {
+    group.add(makeCottage(cottage));
+    const footings = new THREE.Group();
+    footings.name = 'lighthouse-keeper-cottage-foundation';
+    for (const geometry of keeperCottageFoundationGeometry(island, cottage)) {
+      footings.add(new THREE.Mesh(geometry, rockToonMaterial(0xa39d96)));
+    }
+    group.add(footings);
+  }
   group.add(makeFlowers(island, center));
 
   const lighthouse = get('lighthouse');
