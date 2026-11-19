@@ -188,14 +188,16 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     }
   }
   function clearHoofingtonFoliage(
-    x: number, z: number, width: number, yaw: number, source?: PropDescriptor,
+    x: number, z: number, width: number, yaw: number, kind: PropKind, source?: PropDescriptor,
   ): { x: number; z: number } {
     const blocksEntrance = inFarmEntrance(x, z, width, yaw);
     const occupied = [...island.props, ...result]
       .filter(p => p !== source && p.poiId === farm &&
         (['barn', 'house', 'cottage', 'silo', 'windmill'].includes(p.kind) ||
-          p.id.startsWith('hoofington-verge-') || (blocksEntrance &&
-            ['fence', 'flower', 'bush', 'tree-pine', 'tree-oak'].includes(p.kind))))
+          p.id.startsWith('hoofington-verge-') ||
+          // Keep dense foliage off the low pickets and each mailbox face.
+          (kind === 'bush' && (p.kind === 'fence' || p.kind === 'mailbox')) ||
+          (blocksEntrance && ['fence', 'flower', 'bush', 'tree-pine', 'tree-oak'].includes(p.kind))))
       .map(p => ({ x: p.transform.position.x, z: p.transform.position.z,
         sx: p.size.x, sz: p.size.z, yaw: p.transform.rotationY }));
     const free = (px: number, pz: number): boolean => {
@@ -227,7 +229,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     const { position, rotationY } = prop.transform;
     const width = Math.max(prop.size.x, prop.size.z);
     if (!inFarmEntrance(position.x, position.z, width, rotationY)) continue;
-    const next = clearHoofingtonFoliage(position.x, position.z, width, rotationY, prop);
+    const next = clearHoofingtonFoliage(position.x, position.z, width, rotationY, prop.kind, prop);
     position.x = next.x;
     position.z = next.z;
     position.y = gridSample(island, next.x, next.z) + prop.size.y / 2;
@@ -626,7 +628,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     const blocksEntrance = inFarmEntrance(x, z, foliageWidth, yaw);
     const position = blocksEntrance || (near?.id === farm &&
       (kind === 'flower' || kind === 'bush' || kind.startsWith('tree-')))
-      ? clearHoofingtonFoliage(x, z, foliageWidth, yaw) : { x, z };
+      ? clearHoofingtonFoliage(x, z, foliageWidth, yaw, kind) : { x, z };
     if (onBoardwalkDeck(position.x, position.z) ||
         inCraneYard(position.x, position.z) ||
         isInsideDowntownInfillFootprint(island, position.x, position.z)) continue;

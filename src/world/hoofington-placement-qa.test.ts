@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import type { Vec3 } from './types';
+import type { PropDescriptor, Vec3 } from './types';
 import { generateIsland } from './island';
 import { makeLocalStreets } from './roads';
 import { gridSample } from './terrain';
@@ -11,6 +11,13 @@ interface Placed {
   position: Vec3;
   size: Vec3;
   yaw: number;
+}
+
+function asPlaced(prop: PropDescriptor): Placed {
+  return {
+    id: prop.id, kind: prop.kind, position: prop.transform.position,
+    size: prop.size, yaw: prop.transform.rotationY,
+  };
 }
 
 const BUILDINGS = new Set(['house', 'cottage', 'barn', 'silo', 'windmill']);
@@ -71,10 +78,7 @@ it('keeps all Hoofington buildings and garden art grounded, separate and off the
   }));
   for (const p of island.props) {
     if (p.poiId !== 'hoofington' || represented.has(p.id)) continue;
-    placed.push({
-      id: p.id, kind: p.kind, position: p.transform.position,
-      size: p.size, yaw: p.transform.rotationY,
-    });
+    placed.push(asPlaced(p));
   }
 
   // Physical asphalt follows the actual road segments (including the bends
@@ -153,10 +157,6 @@ it('preserves the fence IDs across distinct yard openings and stages usable prop
     const island = generateIsland({ seed });
     const farm = island.pois.find(p => p.id === 'hoofington')!.center;
     const yard = island.props.filter(p => p.poiId === 'hoofington');
-    const asPlaced = (prop: typeof yard[number]): Placed => ({
-      id: prop.id, kind: prop.kind, position: prop.transform.position,
-      size: prop.size, yaw: prop.transform.rotationY,
-    });
     const fences = yard.filter(p => p.kind === 'fence');
     const front = fences.filter(p => p.id.startsWith('hoofington-fence-'));
     expect(front.map(p => p.id)).toEqual(
@@ -200,3 +200,25 @@ it('preserves the fence IDs across distinct yard openings and stages usable prop
     }
   }
 });
+
+it.each(['billy-isle', 'hoofington-geometry', 'full-loop-core-test'])(
+  'keeps bushes clear of pickets and mailboxes in %s', seed => {
+    const yard = generateIsland({ seed }).props.filter(p => p.poiId === 'hoofington');
+    const fixtures = yard.filter(p => p.kind === 'fence' || p.kind === 'mailbox').map(asPlaced);
+    const bushes = yard.filter(p => p.kind === 'bush').map(asPlaced);
+
+    if (seed === 'billy-isle') {
+      // These live regressions must remain present and clear after relocation.
+      expect(fixtures.map(p => p.id)).toEqual(expect.arrayContaining([
+        'hoofington-fence-6', 'detail-hoofington-mailbox-16',
+      ]));
+      expect(bushes.map(p => p.id)).toEqual(expect.arrayContaining([
+        'detail-hoofington-bush-586', 'detail-hoofington-bush-681',
+      ]));
+    }
+    for (const fixture of fixtures) {
+      const intersects = bushes.filter(bush => overlaps(fixture, bush));
+      expect(intersects.map(label), label(fixture)).toEqual([]);
+    }
+  },
+);

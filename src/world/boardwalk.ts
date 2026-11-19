@@ -5,10 +5,23 @@ import { gridSample } from './terrain';
 export const SPLASH_DIVE_BOARD_ID = 'baa-ardwalk-splash-dive-board';
 export const BOARDWALK_SHORE_ID = 'baa-ardwalk-shore-entry-';
 export const BOARDWALK_SHORE_GUARD_ID = BOARDWALK_SHORE_ID + 'guard-';
+const FERRIS_END_RAIL_INSET = .4;
 
 export function boardwalkPierDecks(island: IslandData): PropDescriptor[] {
   return island.props.filter(prop =>
     prop.poiId === 'baa-ardwalk' && (prop.kind === 'pier' || prop.id === SPLASH_DIVE_BOARD_ID) && prop.collidable);
+}
+
+/** Select only the seaward row across the end of the Ferris wheel deck. */
+export function boardwalkFarEnd(island: IslandData) {
+  const deck = boardwalkPierDecks(island).filter(prop => prop.kind === 'pier').at(-1);
+  if (!deck) return null;
+  const edgeZ = deck.transform.position.z + deck.size.z / 2;
+  const railZ = edgeZ - FERRIS_END_RAIL_INSET * island.size / 600;
+  const rails = island.props.filter(prop => prop.poiId === 'baa-ardwalk' &&
+    prop.kind === 'pier-rail' && prop.collidable && !prop.climbable && prop.body.type === 'static' &&
+    Math.abs(prop.transform.position.z - railZ) < .001);
+  return { deck, edgeZ, rails };
 }
 
 /** The same sloped tread, guard and pile positions drive art and collision. */
@@ -165,7 +178,7 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
     }
   }
   for (const x of [-15, -7.5, 0, 7.5, 15]) {
-    place('pier-rail', x, 70.6, 7.6, 2.65, 0.5,
+    place('pier-rail', x, headEnd - FERRIS_END_RAIL_INSET, 7.6, 2.65, 0.5,
       { floor: headY, color: 0xffffff, climbable: false });
   }
 

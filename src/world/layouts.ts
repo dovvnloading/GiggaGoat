@@ -1,6 +1,7 @@
 import type { IslandData, PoiId, PropDescriptor, PropKind, Vec2, Vec3 } from './types';
 import { SeededRandom } from './random';
-import { gridSample, riverAt } from './terrain';
+import { gridSample, riverAt, segmentProjection } from './terrain';
+import { downtownPublicSpaceAt, downtownPublicSpaces } from './downtown-public-space';
 import { buildBaaardwalk } from './boardwalk';
 import { buildCraneYard } from './crane-yard';
 import { DOWNTOWN_BUILDING_SIZES, DOWNTOWN_INFILL, SHOP_FRONTS,
@@ -443,6 +444,70 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
     }
   }
   return props;
+}
+
+/** Seat the seeded alley stock once the surrounding scenery and grades are final. */
+export function seatDowntownStock(island: IslandData): void {
+  const city = island.pois.find(poi => poi.id === 'downtown-bleatsville')!.center;
+  const scale = island.size / 600;
+  const stock = island.props.filter(prop => /^downtown-bleatsville-(crate|barrel)-\d+$/.test(prop.id));
+  const nearby = (point: Vec2) => Math.abs(point.x - city.x) <= 65 * scale &&
+    Math.abs(point.z - city.z) <= 65 * scale;
+  const blockers = island.props.filter(prop => prop.collidable && nearby(prop.transform.position))
+    .map(prop => prop.kind === 'ramp' && prop.id.startsWith('downtown-bleatsville-ramp-')
+      // Keep room on both shoulders, including the approach beyond each end.
+      ? { ...prop, size: { ...prop.size, x: prop.size.x + scale, z: prop.size.z + 4 * scale } }
+      : prop);
+  const roads = island.roads.flatMap(road => road.points.slice(1).flatMap((end, index) => {
+    const start = road.points[index]!;
+    return nearby(start) || nearby(end) ? [{ start, end, halfWidth: road.width / 2 }] : [];
+  }));
+  const publicSpaces = downtownPublicSpaces(island);
+  const relics = island.relics.filter(relic => nearby(relic.position));
+
+  for (const prop of stock) {
+    const { position } = prop.transform;
+    const halfWidth = prop.size.x / 2, halfDepth = prop.size.z / 2;
+    const radius = Math.hypot(halfWidth, halfDepth) + .15 * scale;
+    const others = blockers.filter(other => other !== prop);
+    const seated = (x: number, z: number): Vec3 => ({
+      x, z, y: gridSample(island, x, z) + prop.size.y / 2,
+    });
+    const stableGround = ({ x, y, z }: Vec3): boolean => {
+      // A steep slope can tip stock onto a corner hard enough to break it on load.
+      const levels = [y - prop.size.y / 2,
+        gridSample(island, x - halfWidth, z - halfDepth),
+        gridSample(island, x - halfWidth, z + halfDepth),
+        gridSample(island, x + halfWidth, z - halfDepth),
+        gridSample(island, x + halfWidth, z + halfDepth)];
+      return Math.min(...levels) > island.seaLevel && Math.max(...levels) - Math.min(...levels) <= .24 * scale;
+    };
+    const clear = (point: Vec3) => stableGround(point) &&
+      !isPointInsideProps(point, others, radius) &&
+      !downtownPublicSpaceAt(publicSpaces, point.x, point.z, radius) &&
+      !roads.some(({ start, end, halfWidth }) =>
+        segmentProjection(point, start, end).distance < halfWidth + radius + scale) &&
+      !relics.some(({ position }) => Math.abs(point.y - position.y) < prop.size.y &&
+        Math.hypot(point.x - position.x, point.z - position.z) < radius + .6 * scale);
+    const originalSite = seated(position.x, position.z);
+    if (clear(originalSite)) {
+      position.y = originalSite.y;
+      continue;
+    }
+
+    // Keep each original RNG roll, ID and side of town. Search nearby unoccupied
+    // patches of the back verge when the original roll lands inside scenery.
+    const side = Math.sign(position.x - city.x);
+    const candidates: Vec3[] = [];
+    for (let dx = 31; dx <= 49; dx += 2) for (let dz = -42; dz <= 42; dz += 2) {
+      const x = city.x + side * dx * scale, z = city.z + dz * scale;
+      candidates.push(seated(x, z));
+    }
+    const distance = (point: Vec2) => Math.hypot(point.x - position.x, point.z - position.z);
+    candidates.sort((a, b) => distance(a) - distance(b));
+    // Keep generation usable even if an unusually crowded verge has no open patch.
+    Object.assign(position, candidates.find(clear) ?? originalSite);
+  }
 }
 
 /** Exact point-in-solid query (yaw-aware) for safe spawns and collectible placement. */

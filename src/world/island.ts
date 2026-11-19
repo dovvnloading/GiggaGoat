@@ -9,7 +9,7 @@ import {
 } from './terrain';
 import { makeRoads, makeBridgeDecks, MOUNTAIN_SPIRAL_TRAIL } from './roads';
 import { makeRoadsideProps } from './roadside-stops';
-import { populateProps } from './layouts';
+import { populateProps, seatDowntownStock } from './layouts';
 import { dressIsland } from './dressing';
 import { makeRelics, makeSpawns } from './collectibles';
 import { makeColliderDescriptors } from './colliders';
@@ -218,6 +218,7 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   island.spawns = makeSpawns(island);
   island.relics = makeRelics(island, rng);
   island.props.push(...makeRoadsideProps(island));
+  seatDowntownStock(island);
   island.colliders = makeColliderDescriptors(island);
   // The last round leaves only the mountain's highest scramble.
   const summit = island.pois.find(p => p.id === 'mt-gigga')!.center.y;

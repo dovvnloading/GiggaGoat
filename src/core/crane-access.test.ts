@@ -222,4 +222,47 @@ describe('Crane Yard public access', () => {
       game.dispose();
     }
   });
+
+  it.each([1, 7, 25, 60])('stops a sprint at the closed roof mouth after %i settle ticks', async settle => {
+    const game = await Game.create();
+    try {
+      const center = game.island.pois.find(poi => poi.id === 'crane-yard')!.center;
+      const roof = heightAt(game.island, center.x, center.z) + 24.23;
+      const x = center.x + .16274, z = center.z + 5.28628;
+      game.step();
+      game.teleport({ x, y: roof, z }, 0);
+      for (let tick = 0; tick < settle; tick++) game.step();
+
+      let rebound = 0, lift = 0, lowest = Infinity;
+      let ragdolled = false;
+      for (let tick = 0; tick < 215; tick++) {
+        game.step(tick < 174 ? { moveZ: 1, sprint: true, cameraYaw: 0 } : {});
+        const { y, z } = game.goat.torso.linvel();
+        rebound = Math.max(rebound, z);
+        lift = Math.max(lift, y);
+        lowest = Math.min(lowest, game.goat.torso.translation().y);
+        ragdolled ||= game.goat.isRagdoll;
+      }
+      const stopped = game.goat.torso.translation();
+      expect(stopped.z).toBeLessThan(z - .75);
+      expect(lowest).toBeGreaterThan(roof + .43);
+      expect(rebound).toBeLessThan(.8);
+      expect(lift).toBeLessThan(.8);
+      expect(ragdolled).toBe(false);
+      expect(game.goat.locomotion.grounded).toBe(true);
+
+      for (let tick = 0; tick < 19; tick++) {
+        game.step({ moveX: -.65, moveZ: 1, sprint: true, cameraYaw: 0 });
+      }
+      expect(game.goat.torso.translation().x).toBeLessThan(stopped.x - .3);
+      expect(game.goat.locomotion.grounded).toBe(true);
+      for (let tick = 0; tick < 24; tick++) game.step({ moveZ: -1, cameraYaw: 0 });
+      expect(game.goat.torso.translation().z).toBeGreaterThan(stopped.z + .7);
+      game.step({ jump: true });
+      expect(game.goat.torso.linvel().y).toBeGreaterThan(2);
+      expect(game.respawns).toBe(0);
+    } finally {
+      game.dispose();
+    }
+  });
 });
