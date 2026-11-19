@@ -133,6 +133,9 @@ export function updateHayHeist(
   }
 
   // Friendly bales can be rescued anywhere outside their home ring.
+  // Resolve simultaneous claims by distance, with IDs breaking exact ties.
+  const claims: { player: PlayerState; bale: Bale; distance: number }[] = [];
+  const pickupRadiusSquared = state.config.hayPickupRadius ** 2;
   for (const player of players) {
     const intent = intents[player.id] ?? {};
     if (!intent.tongue || intent.dropHay || player.stamina < 5 ||
@@ -140,12 +143,18 @@ export function updateHayHeist(
       heist.bales.some(b => b.carrierId === player.id)) continue;
     const pos = observations.get(player.id)!.position;
     const home = arena.barns.find(b => b.teamId === player.teamId);
-    const bale = heist.bales.filter(b => b.carrierId === null &&
-      (!home || b.homeTeam !== home.teamId || !isBaleInsideBarn(b, home)) &&
-      distanceSquared(pos, b.position) <= state.config.hayPickupRadius ** 2)
-      .sort((a, b) => distanceSquared(pos, a.position) - distanceSquared(pos, b.position) ||
-        compareIds(a.id, b.id))[0];
-    if (!bale) continue;
+    for (const bale of heist.bales) {
+      if (bale.carrierId !== null || (home && bale.homeTeam === home.teamId && isBaleInsideBarn(bale, home))) continue;
+      const distance = distanceSquared(pos, bale.position);
+      if (distance <= pickupRadiusSquared) claims.push({ player, bale, distance });
+    }
+  }
+  claims.sort((a, b) => a.distance - b.distance ||
+    compareIds(a.player.id, b.player.id) || compareIds(a.bale.id, b.bale.id));
+  const picked = new Set<string>();
+  for (const { player, bale } of claims) {
+    if (bale.carrierId !== null || picked.has(player.id)) continue;
+    picked.add(player.id);
     bale.carrierId = player.id;
     bale.lastTouchedTeam = player.teamId;
     emit({ type: 'hay.picked', baleId: bale.id, playerId: player.id });

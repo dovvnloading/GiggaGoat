@@ -188,7 +188,7 @@ class ChromePage {
       KeyW: ['w', 87], KeyA: ['a', 65], KeyS: ['s', 83], KeyD: ['d', 68],
       KeyB: ['b', 66], Digit3: ['3', 51],
       KeyI: ['i', 73], KeyK: ['k', 75],
-      KeyE: ['e', 69], KeyP: ['p', 80], Space: [' ', 32], Escape: ['Escape', 27],
+      KeyE: ['e', 69], KeyP: ['p', 80], Space: [' ', 32], Escape: ['Escape', 27], Tab: ['Tab', 9],
     };
     const [key, virtualKey] = keys[code] ?? [code, 0];
     await this.send('Input.dispatchKeyEvent', {
@@ -561,6 +561,63 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
       await page.tap('Escape');
       await page.waitFor('document.querySelector(".gg-shell")?.hidden === true',
         'gig board to close');
+
+      page.phase = 'active gig pause geometry';
+      const postedOffer = '.gg-shell:not([hidden]) [data-action^="offer:"]';
+      await page.tap('KeyE');
+      await page.waitFor(`!!document.querySelector(${JSON.stringify(postedOffer)})?.getClientRects().length`,
+        'visible Hoofington offer');
+      await page.click(postedOffer);
+      await page.waitFor('document.querySelector(".gg-shell")?.hidden === true', 'contract to start');
+      await page.tap('Escape');
+      await page.waitFor(`!!document.querySelector('.gg-pause-panel [data-action="abandon-gig"]')`,
+        'pause during the contract');
+      const pauseGeometry = () => {
+        const panel = document.querySelector<HTMLElement>('.gg-pause-panel')!;
+        const buttons = [...panel.querySelectorAll<HTMLButtonElement>('.gg-options button')];
+        const bounds = panel.getBoundingClientRect();
+        const rectangles = buttons.map(button => button.getBoundingClientRect());
+        const inside = (rect: DOMRect, frame: DOMRect) => rect.left >= frame.left - 1 &&
+          rect.top >= frame.top - 1 && rect.right <= frame.right + 1 && rect.bottom <= frame.bottom + 1;
+        const labelsAndTargetsFit = buttons.every((button, index) => {
+          const rect = rectangles[index]!;
+          const label = document.createRange();
+          label.selectNodeContents(button);
+          const text = label.getBoundingClientRect();
+          const otherButtons = rectangles.slice(index + 1);
+          return rect.width >= 44 && rect.height >= 44 && inside(rect, bounds) &&
+            text.width > 0 && text.height > 0 && inside(text, rect) &&
+            otherButtons.every(other => rect.right <= other.left || other.right <= rect.left ||
+              rect.bottom <= other.top || other.bottom <= rect.top);
+        });
+        return {
+          actions: buttons.map(button => button.dataset.action),
+          rows: new Set(rectangles.map(rect => Math.round(rect.top))).size,
+          labelsAndTargetsFit,
+          panelFits: inside(bounds, new DOMRect(0, 0, innerWidth, innerHeight)) &&
+            panel.scrollHeight <= panel.clientHeight && panel.scrollWidth <= panel.clientWidth,
+        };
+      };
+      const pauseActions = ['resume', 'abandon-gig', 'party', 'settings', 'title'];
+      try {
+        for (const [width, height] of [[1024, 576], [540, 360]] as const) {
+          await page.send('Emulation.setDeviceMetricsOverride',
+            { width, height, deviceScaleFactor: 1, mobile: false });
+          await page.waitFor(`innerWidth === ${width} && innerHeight === ${height}`, 'pause viewport');
+          expect(await page.evaluate('(' + pauseGeometry.toString() + ')()'), `${width}×${height} pause`).toEqual({
+            actions: pauseActions, rows: width === 540 ? 3 : 5, labelsAndTargetsFit: true, panelFits: true,
+          });
+          for (const action of [...pauseActions.slice(1), 'resume']) {
+            await page.tap('Tab');
+            await page.waitFor(`document.activeElement?.dataset.action === '${action}'`, `focus on ${action}`);
+          }
+        }
+      } finally {
+        await page.send('Emulation.clearDeviceMetricsOverride');
+      }
+      await page.click('[data-action="abandon-gig"]');
+      await page.waitFor('document.querySelector(".gg-shell")?.hidden === true', 'return from pause');
+      page.phase = 'free roam';
 
       // Drive native Chrome input, not Game.advance() or direct game state mutations.
       await page.key('KeyW', 'keyDown');

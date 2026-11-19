@@ -187,9 +187,18 @@ const CSS = `
 .gg-shell .gg-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;
   clip-path:inset(50%);white-space:nowrap}
 @media(max-height:660px) and (min-width:511px){
- .gg-shell .gg-title-actions .gg-art-button{min-height:54px;padding:2px 9px;border-width:14px;border-image-width:14px}
+ .gg-shell :is(.gg-title-actions,.gg-pause-panel) .gg-art-button{min-height:54px;
+   padding:2px 9px;border-width:14px;border-image-width:14px}
+ .gg-shell .gg-pause-panel h2{margin:3px 0 5px}
+ .gg-shell .gg-pause-panel p{margin:4px 0 10px}
+ .gg-shell .gg-pause-panel footer{margin-top:8px}
 }
 @media(max-height:460px) and (min-width:511px){
+ .gg-shell .gg-pause-panel{padding:8px 12px;border-width:20px;border-image-width:20px}
+ .gg-shell .gg-pause-panel .gg-options{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .gg-shell .gg-pause-panel .gg-primary{grid-column:1/-1}
+ .gg-shell .gg-pause-panel .gg-art-button{min-height:48px;padding:2px 9px;
+   border-width:12px;border-image-width:12px}
  .gg-shell .gg-party-grid{gap:7px 10px;margin:7px 0 9px}
  .gg-shell .gg-party-brief{padding:5px 7px}
  .gg-shell .gg-party-actions{grid-template-columns:1fr 1fr}
@@ -316,8 +325,7 @@ export class GameMenu {
         this.view.applySettings(this.settings);
         this.audio?.playMenuCue('ui-click');
         this.save();
-        this.render();
-        this.root.querySelector<HTMLButtonElement>('[data-setting-toggle]')?.focus();
+        this.render('[data-setting-toggle]');
         return;
       }
       const offer = target.closest<HTMLButtonElement>('[data-board-offer]');
@@ -413,7 +421,7 @@ export class GameMenu {
   }
 
   private save(): void { saveGame(this.game, this.settings); }
-  private setScreen(next: Screen): void {
+  private setScreen(next: Screen, focus?: string): void {
     if (this.screen === 'gig-results' && next !== 'gig-results') {
       this.game.acknowledgeGigResult();
       this.save();
@@ -438,7 +446,7 @@ export class GameMenu {
     if (next !== 'playing' && document.pointerLockElement === this.view.renderer.domElement) {
       document.exitPointerLock();
     }
-    this.render();
+    this.render(focus);
   }
   private resume(mouseClick = false): void {
     this.setScreen('playing');
@@ -478,7 +486,7 @@ export class GameMenu {
     } else if (key === 'back') this.back(mouseClick);
     else if (key === 'keep-gig' && this.screen === 'party-confirm') {
       if (this.partyReturn === 'playing') this.resume(mouseClick);
-      else this.setScreen(this.partyReturn);
+      else this.setScreen(this.partyReturn, '[data-action="party"]');
     } else if (key === 'start-party' || key === 'confirm-party') {
       const confirmed = key === 'confirm-party';
       if (this.screen !== (confirmed ? 'party-confirm' : 'party')) return;
@@ -531,15 +539,19 @@ export class GameMenu {
       return;
     }
     this.audio?.playMenuCue('ui-back');
-    if (this.screen === 'party-confirm') this.setScreen('party');
-    else if (this.screen === 'party') this.setScreen(this.partyReturn);
-    else if (this.screen === 'settings') this.setScreen(this.settingsReturn);
+    if (this.screen === 'party-confirm') this.setScreen('party', '[data-action="start-party"]');
+    else if (this.screen === 'party') this.setScreen(this.partyReturn, '[data-action="party"]');
+    else if (this.screen === 'settings') this.setScreen(this.settingsReturn, '[data-action="settings"]');
     else if (this.screen === 'board') this.resume(mouseClick);
     else if (this.screen === 'pause') this.resume(mouseClick);
     else if (this.screen === 'gig-results') this.resume(mouseClick);
     else this.setScreen('title');
   }
   private onKey(event: KeyboardEvent): void {
+    if (event.code === 'Tab' && !event.ctrlKey && !event.altKey && !event.metaKey && this.screen !== 'playing') {
+      this.wrapMenuTab(event);
+      return;
+    }
     if (event.repeat) return;
     if (event.code === 'Escape') {
       event.preventDefault(); event.stopPropagation();
@@ -578,17 +590,33 @@ export class GameMenu {
       this.adjustFocused(event.code === 'ArrowRight' ? 1 : -1);
     }
   }
+  private focusableItems(selector: string): HTMLElement[] {
+    return [...this.root.querySelectorAll<HTMLElement>(selector)].filter(item =>
+      item.tabIndex >= 0 && !item.matches(':disabled') && item.getClientRects().length > 0 &&
+      getComputedStyle(item).visibility === 'visible');
+  }
+  private wrapMenuTab(event: KeyboardEvent): void {
+    const stops = this.focusableItems('button,select,input,[tabindex]');
+    const current = stops.indexOf(document.activeElement as HTMLElement);
+    const boundary = event.shiftKey ? 0 : stops.length - 1;
+    if (current >= 0 && current !== boundary) return;
+    const next = event.shiftKey ? stops.at(-1) : stops[0];
+    if (!next) return;
+    event.preventDefault();
+    next.focus();
+  }
   private navigate(direction: number): void {
-    const items = [...this.root.querySelectorAll<HTMLElement>('button,select,input')];
+    const items = this.focusableItems('button,select,input');
     if (!items.length) return;
     const current = items.indexOf(document.activeElement as HTMLElement);
-    items[(current + direction + items.length) % items.length]!.focus();
+    const next = current < 0 && direction < 0 ? items.length - 1 :
+      (current + direction + items.length) % items.length;
+    items[next]!.focus();
   }
   private selectSettingsTab(tab: SettingsTab): void {
     this.settingsTab = tab;
     this.audio?.playMenuCue('ui-click');
-    this.render();
-    this.root.querySelector<HTMLButtonElement>('[data-tab="' + tab + '"]')?.focus();
+    this.render('[data-tab="' + tab + '"]');
   }
 
   /** D-pad / stick left and right edit tabs, native selects and ranges without a mouse. */
@@ -830,7 +858,7 @@ export class GameMenu {
       const hover = selected ? MENU_SPRITES.yellowHover : MENU_SPRITES.purpleHover;
       const pressed = selected ? MENU_SPRITES.yellowPressed : MENU_SPRITES.purplePressed;
       return `<button type="button" role="tab" id="gg-tab-${tab}" data-tab="${tab}"` +
-        ` aria-selected="${selected}" aria-controls="gg-settings-panel" class="gg-tab"` +
+        ` aria-selected="${selected}" aria-controls="gg-settings-panel" tabindex="${selected ? 0 : -1}" class="gg-tab"` +
         ` ${menuSkin(normal)} data-sprite-normal="${normal}"` +
         ` data-sprite-hover="${hover}" data-sprite-pressed="${pressed}">` +
         `<span>${nice(tab)}</span></button>`;
@@ -1017,7 +1045,7 @@ export class GameMenu {
       <div class="gg-options">${menuButton('leave-party','▶ FREE ROAM',true)}
       ${menuButton('title','⌂ TITLE')}</div>`;
   }
-  private render(): void {
+  private render(focus = 'button'): void {
     this.resultLayout?.disconnect();
     if (this.screen === 'playing') { this.root.hidden = true; this.root.style.display='none'; return; }
     this.root.hidden = false; this.root.style.display = 'grid';
@@ -1037,6 +1065,7 @@ export class GameMenu {
       this.screen === 'gig-results' ? this.gigResultsBody() : this.partyResultsBody();
     const partyResults = this.screen === 'party-results';
     const panel = this.screen === 'title' ? 'gg-shell-panel gg-title-panel' :
+      this.screen === 'pause' ? 'gg-shell-panel gg-pause-panel' :
       partyResults ? 'gg-shell-panel gg-party-results-panel' : 'gg-shell-panel';
     const dialogLabel = partyResults ? ' aria-labelledby="gg-party-result-title"' :
       this.screen === 'party-confirm' ?
@@ -1054,7 +1083,7 @@ export class GameMenu {
       const standings = this.root.querySelector('.gg-results');
       if (standings) this.resultLayout?.observe(standings);
     }
-    this.root.querySelector<HTMLElement>('button')?.focus();
+    this.root.querySelector<HTMLElement>(focus)?.focus();
   }
   dispose(): void {
     this.save();
