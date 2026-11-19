@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { climbStep } from '../physics/climb-gait';
-import type { RayHit } from '../physics';
+import type { PhysicsWorld, RayHit } from '../physics';
 import type { GoatRagdoll } from '../physics';
-import { GROUND_QUERY_GROUPS, RAPIER } from '../physics';
+import { GROUND_QUERY_GROUPS } from '../physics';
 import type { GoatVariant } from './rigged';
 import { HIP_BONES } from './skinned-ragdoll-pose';
 
@@ -46,7 +46,6 @@ export class SkinnedLegPose {
   private readonly wallRoot = new THREE.Vector3();
   private readonly wallRayOrigin = new THREE.Vector3();
   private readonly wallRayDir = new THREE.Vector3();
-  private readonly wallRay = new RAPIER.Ray(this.wallRayOrigin, this.wallRayDir);
   private readonly hip = new THREE.Vector3();
   private readonly knee = new THREE.Vector3();
   private readonly sole = new THREE.Vector3();
@@ -109,7 +108,7 @@ export class SkinnedLegPose {
   }
 
   applyClimb(model: THREE.Group, torso: { x: number; y: number; z: number },
-    wall: Contact | null, phase: number, size: number, dt: number): void {
+    wall: Contact | null, phase: number, size: number, dt: number, world?: PhysicsWorld): void {
     if (wall && this.groundedGait) {
       for (const leg of this.legs) leg.planted = false;
       this.groundedGait = false;
@@ -135,17 +134,36 @@ export class SkinnedLegPose {
       const step = climbStep(this.phase, i === 1 || i === 2);
       const target = leg.wallTarget.copy(this.origin).addScaledVector(this.right, leg.sole.x * size)
         .addScaledVector(this.down, (leg.sole.z + step.down) * size);
-      this.wallRayOrigin.copy(target).addScaledVector(this.normal, .5 * size);
-      const hit = wall?.collider?.castRay(this.wallRay, size, true);
-      const depth = hit !== undefined && hit >= 0 ? .5 * size - hit : 0;
-      target.addScaledVector(this.normal, depth + (.024 + step.lift) * size);
-      const plant = !!wall && step.lift === 0 && (hit === undefined || hit >= 0);
+      this.wallRayOrigin.copy(target).addScaledVector(this.normal, .8 * size);
+      // The torso can grip a drainpipe while the hooves straddle it and
+      // bear on a separate piece of the silo. Probe the world at each foot.
+      const surface = wall && world?.raycast(this.wallRayOrigin, this.wallRayDir, 1.6 * size, {
+        groups: GROUND_QUERY_GROUPS,
+        predicate: c => c.handle === wall.collider?.handle || !c.parent()?.isDynamic(),
+      });
+      let supported = !!surface || !world;
+      let depth = surface ? .8 * size - surface.distance : 0;
+      let support = surface?.collider.handle;
+      // On a narrow pole a forward probe can pass either side of the grip.
+      // Reach sideways to the real pole instead of planting in empty air.
+      const edge = wall?.collider && (!surface || depth < -.25 * size)
+        ? wall.collider.projectPoint(target, false) : null;
+      if (edge && target.distanceToSquared(edge.point) < (.38 * size) ** 2) {
+        depth = this.direction.subVectors(edge.point, target).dot(this.normal);
+        target.copy(edge.point);
+        support = wall?.collider?.handle;
+        supported = true;
+      } else target.addScaledVector(this.normal, depth);
+      target.addScaledVector(this.normal, (.028 + step.lift) * size);
+      const plant = !!wall && step.lift === 0 && supported;
       if (plant) {
-        if (!leg.planted || leg.foothold.distanceToSquared(target) > (.48 * size) ** 2) leg.foothold.copy(target);
+        if (!leg.planted || leg.supportHandle !== support ||
+            leg.foothold.distanceToSquared(target) > (.48 * size) ** 2) leg.foothold.copy(target);
+        leg.supportHandle = support;
         target.copy(leg.foothold);
       }
       leg.planted = plant;
-      recessed = Math.min(recessed, depth);
+      recessed = Math.min(recessed, Math.max(-.28 * size, depth));
     }
     // A raised band may support one pair while the other pair bears on the
     // recessed silo wall. Carry the hips within reach of both pairs and

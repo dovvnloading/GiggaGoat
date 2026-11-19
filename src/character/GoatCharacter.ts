@@ -367,7 +367,7 @@ export class GoatCharacter {
       if (goat.isRagdoll || rig.ragdoll?.weight) rig.legs?.reset();
       else if (rig.legs) {
         rig.legs.applyClimb(rig.model, this.torsoCentre, goat.locomotion.climbSurface,
-          goat.locomotion.climbPhaseAt(this.torsoCentre), goat.size, frameDt);
+          goat.locomotion.climbPhaseAt(this.torsoCentre), goat.size, frameDt, goat.world);
         rig.legs.applyLocomotion(rig.model, goat, frameDt, this.arcVelocity, selected === 'glide');
       }
       rig.ragdoll?.apply(rig.model, goat, interpolation);
