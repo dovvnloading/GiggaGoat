@@ -1,9 +1,94 @@
-import { HAY_HAUL_TAG_RADIUS, type GigRun, type Point } from '../gigs';
+import * as THREE from 'three';
+import { HAY_HAUL_TAG_RADIUS, type GigConfig, type GigRun, type Point } from '../gigs';
 import type { PartyMatch } from '../modes';
 import type { Game } from './Game';
 import type { InputDevice } from './GameInput';
 import { projectHudMap } from './GameHudState';
 import { HUD_SPRITES, hudSpriteUrl } from './HudSprites';
+
+type SplashDiveConfig = Extract<GigConfig, { kind: 'splash-dive' }>;
+
+function splashLandingTarget(config: SplashDiveConfig, radius: number): THREE.Mesh {
+  const positions: number[] = [], colors: number[] = [];
+  const sectors = 64;
+  const addBand = (inner: number, outer: number, color: number, broken = false): void => {
+    const paint = new THREE.Color(color);
+    const vertex = (distance: number, angle: number): void => {
+      positions.push(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
+      colors.push(paint.r, paint.g, paint.b);
+    };
+    for (let i = 0; i < sectors; i++) {
+      if (broken && i % 16 >= 13) continue;
+      const a = i * Math.PI * 2 / sectors;
+      const b = (i + 1) * Math.PI * 2 / sectors;
+      vertex(inner, a); vertex(outer, a); vertex(outer, b);
+      vertex(inner, a); vertex(outer, b); vertex(inner, b);
+    }
+  };
+  addBand(radius * .84, radius, 0x123754);
+  addBand(radius * .875, radius * .965, 0xcafff0, true);
+  addBand(radius * .18, radius * .245, 0x123754);
+  addBand(radius * .193, radius * .230, 0xcafff0);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, opacity: .94, depthWrite: false,
+    side: THREE.DoubleSide, forceSinglePass: true,
+  }));
+  mesh.name = 'splash-dive-water-target';
+  mesh.position.set(config.landing.x, config.waterY + .31, config.landing.z);
+  // Draw over the transparent sea, with normal depth testing against the deck.
+  mesh.renderOrder = 3;
+  return mesh;
+}
+
+function splashDirectionArrow(config: SplashDiveConfig, deckY: number, scale: number): THREE.Mesh {
+  const arrow = new THREE.Shape();
+  arrow.moveTo(0, .44);
+  arrow.lineTo(-.72, -.37);
+  arrow.lineTo(-.24, -.37);
+  arrow.lineTo(-.24, -1.32);
+  arrow.lineTo(.24, -1.32);
+  arrow.lineTo(.24, -.37);
+  arrow.lineTo(.72, -.37);
+  arrow.closePath();
+  const geometry = new THREE.ShapeGeometry(arrow);
+  geometry.rotateX(-Math.PI / 2);
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+    color: 0xcafff0, polygonOffset: true, polygonOffsetFactor: -1,
+  }));
+  mesh.name = 'splash-dive-water-direction';
+  const { jumpPoint, landing } = config;
+  mesh.position.set(jumpPoint.x, deckY + .04 * scale, jumpPoint.z);
+  mesh.scale.setScalar(scale);
+  mesh.rotation.y = Math.atan2(jumpPoint.x - landing.x, jumpPoint.z - landing.z);
+  return mesh;
+}
+
+export function createSplashDiveMarkers(config: SplashDiveConfig, radius: number,
+  deckY: number, approach: THREE.Sprite, scale = 1) {
+  const root = new THREE.Group();
+  root.name = 'splash-dive-markers';
+  approach.position.set(config.jumpPoint.x, deckY + 1.55 * scale, config.jumpPoint.z);
+  approach.name = 'splash-dive-launch';
+  const landing = new THREE.Group();
+  landing.name = 'splash-dive-landing';
+  landing.add(splashDirectionArrow(config, deckY, scale), splashLandingTarget(config, radius));
+  root.add(approach, landing);
+  root.visible = false;
+  return {
+    root,
+    update(run: GigRun | null): void {
+      const active = run?.status === 'running' && run.setup.config.kind === 'splash-dive';
+      // Launch is latched in the run, including saved attempts from before the HUD exposed it.
+      const reached = active && run.streetStarted;
+      root.visible = active;
+      approach.visible = active && !reached;
+      landing.visible = reached;
+    },
+  };
+}
 
 export interface HayMapGuidance {
   kind: 'pickup' | 'delivery';

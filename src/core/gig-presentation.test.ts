@@ -1,8 +1,99 @@
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
+import { GigDirector } from '../gigs';
 import { V } from '../physics';
 import { Game } from './Game';
+import { GameView } from './GameView';
 import { frame, goat, readyMatch } from '../modes/test-utils';
 import { hayHaulGuidance, hayHeistGuidance, gigMapPoint, separateMapObjective } from './GigPresentation';
+
+describe('Splash contract wayfinding', () => {
+  it.each(['splash-dive', 'dam-bomb'] as const)(
+    'switches %s from the approach label to the water target and resets on a retry', async id => {
+      const game = await Game.create({ resolution: 97 });
+      const markers = new THREE.Group();
+      const view = Object.assign(Object.create(GameView.prototype) as {
+        updateGigVisuals(alpha: number): void;
+      }, {
+        game, displayedGig: -1, gigMarkers: markers, gigProps: new Map(), textTextures: new Set(),
+        input: { device: 'keyboard-mouse' },
+        textSprite: (caption: string) => {
+          const sprite = new THREE.Sprite();
+          sprite.userData['caption'] = caption;
+          return sprite;
+        },
+      });
+      const update = (): void => view.updateGigVisuals(0);
+      const visible = (): string[] => {
+        const names: string[] = [];
+        markers.traverseVisible(object => {
+          if (object instanceof THREE.Sprite || object instanceof THREE.Mesh) names.push(object.name);
+        });
+        return names;
+      };
+      const boardId = game.gigs.catalog.info(id).poiId;
+      const board = game.gigs.boards.find(entry => entry.poiId === boardId)!;
+      try {
+        game.teleport(board.position);
+        game.step();
+        game.gigs.accept(game.gigs.board(boardId).find(offer => offer.gigId === id)!.id);
+        const run = game.gigs.active!;
+        const config = run.setup.config;
+        if (config.kind !== 'splash-dive') throw new Error('Expected a dive contract');
+        update();
+        expect(visible()).toEqual(['splash-dive-launch']);
+        expect(markers.getObjectByName('splash-dive-launch')?.userData['caption'])
+          .toBe(id === 'dam-bomb' ? 'FLOP FROM HERE' : 'LEAP SEAWARD');
+
+        const tick = (position = config.jumpPoint): void => {
+          game.gigs.director.step({ goat: { position, size: 1, grounded: true }, props: [] });
+        };
+        tick();
+        update();
+        expect(game.gigs.active?.objective).toMatchObject({ kind: 'splash', launchReached: true });
+        expect(visible()).toEqual(['splash-dive-water-direction', 'splash-dive-water-target']);
+
+        const water = markers.getObjectByName('splash-dive-water-target') as
+          THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+        expect(water.position.toArray()).toEqual([config.landing.x, config.waterY + .31, config.landing.z]);
+        expect(water.renderOrder).toBeGreaterThan(2);
+        expect(water.material).toMatchObject({ depthTest: true, depthWrite: false, forceSinglePass: true });
+        water.geometry.computeBoundingSphere();
+        expect(water.geometry.boundingSphere?.radius).toBeCloseTo(3.6);
+        const direction = markers.getObjectByName('splash-dive-water-direction')!;
+        direction.updateWorldMatrix(true, false);
+        const tip = direction.localToWorld(new THREE.Vector3(0, 0, -.44));
+        const from = config.jumpPoint;
+        const to = config.landing;
+        expect((tip.x - from.x) * (to.x - from.x) + (tip.z - from.z) * (to.z - from.z))
+          .toBeCloseTo(.44 * Math.hypot(to.x - from.x, to.z - from.z));
+
+        const oldSave = game.gigs.director.toJSON();
+        if (oldSave.run?.objective.kind === 'splash') delete oldSave.run.objective.launchReached;
+        const restore = GigDirector.fromJSON(oldSave, game.gigs.catalog);
+        const savedGame = {
+          ...view, game: { ...game, gigs: { ...game.gigs, active: restore.active } },
+          gigMarkers: new THREE.Group(), displayedGig: -1, gigProps: new Map(),
+        };
+        const restored = Object.assign(Object.create(GameView.prototype) as typeof view, savedGame);
+        restored.updateGigVisuals(0);
+        expect(restored.gigMarkers.getObjectByName('splash-dive-launch')?.visible).toBe(false);
+        expect(restored.gigMarkers.getObjectByName('splash-dive-landing')?.visible).toBe(true);
+
+        for (let tickIndex = 0; tickIndex < run.setup.maxTicks; tickIndex++) tick();
+        update();
+        expect(game.gigs.active?.status).toBe('failed');
+        expect(visible()).toEqual([]);
+        game.gigs.retryFailed();
+        update();
+        expect(visible()).toEqual(['splash-dive-launch']);
+        expect(game.gigs.active?.objective).toMatchObject({ launchReached: false });
+      } finally {
+        game.dispose();
+      }
+    },
+  );
+});
 
 describe('Hay Heist wayfinding', () => {
   it('points to the nearest available rival bale, then the team goal during a real delivery', () => {
