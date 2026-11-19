@@ -241,6 +241,22 @@ describe('in-game HUD state projection', () => {
     });
   });
 
+  it('keeps the board-side demolition cue alongside mass and time after the first hit', () => {
+    const state = input();
+    state.gig = {
+      title: 'Demolition Contract', status: 'running',
+      objective: { kind: 'displace', label: '', movedMass: 0, requiredMass: 39.6, headbutts: 0 },
+      elapsedTicks: 0, maxTicks: 3600, goldTicks: 1800, silverTicks: 2400,
+    };
+    expect(deriveHudState(state).gig).toMatchObject({
+      task: 'Headbutt from board side', detail: '0/40 kg MOVED · 60s LEFT',
+    });
+    state.gig.objective = { ...state.gig.objective, movedMass: 14.5, headbutts: 4 };
+    expect(deriveHudState(state).gig).toMatchObject({
+      task: 'Headbutt from board side', detail: '15/40 kg MOVED · 60s LEFT',
+    });
+  });
+
   it('formats each discriminated gig objective using verified progress fields', () => {
     expect(formatHudObjective({ kind: 'deliver', label: '', done: 2, required: 3,
       destination: { x: 0, y: 0, z: 0 } })).toBe('2 / 3 BALES');
