@@ -387,7 +387,8 @@ export class GameMenu {
         else if (element.id === 'gg-bots') this.botCount = Number(element.value);
         else this.difficulty = element.value as BotDifficulty;
         this.audio?.playMenuCue('ui-click');
-      } else if (element.type !== 'range') this.editSetting(element);
+      } else if (element.type === 'range') this.audio?.playMenuCue('ui-click');
+      else this.editSetting(element);
     });
     this.root.addEventListener('input', event => {
       const element = event.target as HTMLInputElement;
@@ -619,9 +620,11 @@ export class GameMenu {
     const current = items.indexOf(document.activeElement as HTMLElement);
     const next = current < 0 && direction < 0 ? items.length - 1 :
       (current + direction + items.length) % items.length;
+    if (next !== current) this.audio?.playMenuCue('ui-click');
     items[next]!.focus();
   }
   private selectSettingsTab(tab: SettingsTab): void {
+    if (this.settingsTab === tab) return;
     this.settingsTab = tab;
     this.audio?.playMenuCue('ui-click');
     this.render('[data-tab="' + tab + '"]');
@@ -704,7 +707,7 @@ export class GameMenu {
       key === 'fov' ? this.settings.fov + '°' : this.settings.mouseSensitivity.toFixed(2) + '×';
     this.view.applySettings(this.settings);
     if (isVolume) this.audio?.setVolumes(this.settings);
-    this.audio?.playMenuCue('ui-click');
+    if (element.type !== 'range') this.audio?.playMenuCue('ui-click');
     this.save();
   }
   private interact(): boolean {

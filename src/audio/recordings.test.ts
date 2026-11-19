@@ -31,8 +31,8 @@ function audioFixture() {
       return node;
     },
     decodeAudioData: vi.fn(async (bytes: ArrayBuffer) => ({
-      duration: new Uint8Array(bytes)[0] ?? 1,
-    } as AudioBuffer)),
+      duration: new Uint8Array(bytes)[0] ?? 1, sampleRate: 44100, getChannelData: () => Float32Array.of(.1),
+    } as unknown as AudioBuffer)),
   };
   return { context, sources, output: gain() as unknown as GainNode };
 }
@@ -48,7 +48,7 @@ it('decodes the recorded effects and substitutes the correct source for a game c
   expect(sources[0]?.playbackRate.value).toBe(1.05);
   expect(recorded.render('headbutt-impact', output, {})).toBeNull();
   expect(recorded.render('headbutt-impact', output, { when: 13 }, 'headbutt-wood')?.duration).toBe(3);
-  expect(sources[1]?.start).toHaveBeenCalledWith(13);
+  expect(sources[1]?.start).toHaveBeenCalledWith(13, 0);
   expect(recorded.render('jump', output, {})?.duration).toBe(7);
   expect(recorded.render('ui-click', output, {})?.duration).toBe(8);
   recorded.dispose();
@@ -99,5 +99,24 @@ it('retries a failed soundtrack when the player returns to that music region', a
     expect(sources[0]?.loop).toBe(true);
   });
   expect(fetchTrack).toHaveBeenCalledTimes(2);
+  recorded.dispose();
+});
+
+it('plays three material-specific hoof edits from one decoded bank without a repeated attack', async () => {
+  const {context, sources, output} = audioFixture();
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true,
+    arrayBuffer: async () => Uint8Array.of(5).buffer })));
+  const recorded = new RecordedAudio(context as unknown as AudioContext, {
+    ...assets, foley: { url: '/foley.wav', contacts: {
+      'landing-wood': [[.1,.12],[.3,.14],[.5,.11]],
+    } },
+  }, output);
+  await vi.waitFor(() => expect(context.decodeAudioData).toHaveBeenCalledTimes(9));
+  for (const duration of [.12,.14,.11,.12]) {
+    expect(recorded.render('landing', output, { surface: 'wood' })?.duration).toBe(duration);
+  }
+  expect(sources.map(source => source.start.mock.calls[0])).toEqual([
+    [12,.1,.12],[12,.3,.14],[12,.5,.11],[12,.1,.12],
+  ]);
   recorded.dispose();
 });

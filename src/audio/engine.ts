@@ -8,6 +8,7 @@ import type {
 import { ProceduralSynth } from './synth';
 import type { SfxOptions } from './synth';
 import { AdaptiveMusic, IslandAmbience } from './music';
+import { ZoneAmbience } from './zone-ambience';
 import { RecordedAudio } from './recordings';
 import type { RecordedAssets, RecordedEffect } from './recordings';
 import { mapLaneEvent } from './events';
@@ -48,7 +49,7 @@ export interface CameraAudioPose {
 }
 export interface WalkingGoat {
   id: string; position: Vec3; size: number;
-  grounded: boolean; speed: number; surface: Surface;
+  grounded: boolean; speed: number; surface: Surface; gait?: 'walk' | 'gallop' | 'still' | 'climb';
 }
 export interface AudioFrame {
   dt: number;
@@ -122,6 +123,7 @@ export class VoiceManager {
     const spatial = opts.position ? distanceGain(d) : 1;
     const level = clamp(opts.intensity ?? .7, 0, 1);
     const loudness = spatial * (level * .8 + .2);
+    if (spatial <= 0) return false;
     const priority = opts.priority ?? soundPriority(sound);
     const result = decideVoice(this.tickets, sound, priority, loudness, this.maxVoices);
     if (!result.allowed) return false;
@@ -233,7 +235,7 @@ export class AudioEngine {
   private voiceManager: VoiceManager | null = null;
   private musicPlayer: AdaptiveMusic | null = null;
   private recordings: RecordedAudio | null = null;
-  private ambiencePlayer: IslandAmbience | null = null;
+  private ambiencePlayer: ZoneAmbience | IslandAmbience | null = null;
   private synth: ProceduralSynth | null = null;
   private buses: Record<AudioBus, GainNode> | null = null;
   private master: GainNode | null = null;
@@ -254,8 +256,9 @@ export class AudioEngine {
   private currentState: MusicState = { ...DEFAULT_MUSIC_STATE };
   private camera: Vec3 = { x: 0, y: 0, z: 0 };
   private lastDuckAt = -Infinity;
-  private readonly stepPhases = new Map<string, { distance: number; seenAt: number }>();
+  private readonly stepPhases = new Map<string, { distance: number; seenAt: number; soundedAt: number }>();
   private elapsed = 0;
+  private cameraPosition: Vec3 = { x: 0, y: 0, z: 0 };
   private readonly lastPlayed = new Map<SoundId, number>();
 
   constructor(options: AudioEngineOptions = {}) {
@@ -302,6 +305,12 @@ export class AudioEngine {
     this.menuOnly = enabled;
     if (enabled && !this.resultTail) this.voiceManager?.stopWorldVoices();
     this.applySettings();
+  }
+
+  stopCue(sound: SoundId): void {
+    for (const voice of this.voiceManager?.tickets ?? []) {
+      if (voice.sound === sound) this.voiceManager?.stop(voice.id);
+    }
   }
 
   /** Disconnect active one-shots so backgrounding cannot replay them on return. */
@@ -366,7 +375,9 @@ export class AudioEngine {
     this.recordings = this.recordedAssets ? new RecordedAudio(ctx, this.recordedAssets, buses.music) : null;
     this.voiceManager = new VoiceManager(ctx, this.synth, buses, this.maxVoices, this.recordings ?? undefined);
     this.musicPlayer = new AdaptiveMusic(ctx, this.synth, this.recordings?.proceduralOutput ?? buses.music, this.seed);
-    this.ambiencePlayer = new IslandAmbience(ctx, this.synth, buses.ambience, this.seed);
+    this.ambiencePlayer = this.recordedAssets?.ambience
+      ? new ZoneAmbience(ctx, buses.ambience, this.recordedAssets.ambience)
+      : new IslandAmbience(ctx, this.synth, buses.ambience, this.seed);
     this.applySettings();
   }
 
@@ -404,13 +415,13 @@ export class AudioEngine {
     if (this.disposed || !this.voiceManager) return false;
     if ((this.menuOnly || this.resultTail) && !sound.startsWith('ui-')) return false;
     const now = this.context?.currentTime ?? 0;
-    const cooldown = sound === 'climb' || sound.startsWith('footstep-') ? .085 :
-      sound === 'domino' ? .028 : sound === 'ui-click' ? .035 : 0;
+    const cooldown = sound === 'domino' ? .028 : sound === 'ui-click' ? .035 : 0;
     if (cooldown && now - (this.lastPlayed.get(sound) ?? -Infinity) < cooldown) return false;
     const result = this.voiceManager.play(sound, options);
     if (result) {
       this.lastPlayed.set(sound, now);
-      if (isBigMoment(sound, options.intensity)) {
+      if (isBigMoment(sound, options.intensity) && (!options.position ||
+        distance(options.position, this.cameraPosition) < 26)) {
         this.lastDuckAt = now - .05; // start on the plateau; ramp by setTarget is click-free.
         this.duck?.gain.setTargetAtTime(.34, now, .022);
       }
@@ -432,7 +443,8 @@ export class AudioEngine {
       // first observed goat is the local player (documented host convention).
       const owner = input.goatId ?? input.playerId;
       const observed = owner ? frame.goats?.find(goat => goat.id === owner) : frame.goats?.[0];
-      const location = input.position ??
+      const screenCue = input.sound.startsWith('ui-') || !!input.result;
+      const location = screenCue ? undefined : input.position ??
         (input.bodyHandle !== undefined ? frame.positionForBody?.(input.bodyHandle) : undefined) ??
         (owner ? frame.positionForGoat?.(owner) : undefined) ??
         observed?.position ?? frame.goatPosition;
@@ -443,14 +455,18 @@ export class AudioEngine {
       );
       return {
         position: location, intensity: input.intensity, pitch: input.pitch,
-        combo: input.combo, result: input.result, recordedEffect,
+        combo: input.combo, result: input.result, recordedEffect, surface: observed?.surface,
         when: input.delay === undefined ? undefined : audioNow + Math.max(0, input.delay),
         size: input.size ??
           (owner ? frame.sizeForGoat?.(owner) : undefined) ?? observed?.size,
       };
     };
     const playLane = (lane: LaneAudioEvent): void => {
-      for (const sound of mapLaneEvent(lane)) this.play(sound.sound, resolve(sound));
+      for (const sound of mapLaneEvent(lane)) {
+        if (sound.bodyHandle !== undefined && !sound.goatId && !sound.position &&
+            frame.positionForBody && !frame.positionForBody(sound.bodyHandle)) continue;
+        this.play(sound.sound, resolve(sound));
+      }
     };
     for (const event of frame.physics ?? []) playLane({ lane: 'physics', event });
     for (const event of frame.gameplay ?? []) playLane({ lane: 'gameplay', event });
@@ -475,26 +491,29 @@ export class AudioEngine {
   private updateFootsteps(goat: WalkingGoat, dt: number): void {
     let state = this.stepPhases.get(goat.id);
     if (!state) {
-      state = { distance: 0, seenAt: this.elapsed };
+      state = { distance: 0, seenAt: this.elapsed, soundedAt: -Infinity };
       this.stepPhases.set(goat.id, state);
     }
     state.seenAt = this.elapsed;
-    if (!goat.grounded || goat.speed < .65) { state.distance = 0; return; }
-    const step = stepLength(goat.size);
+    const climbing = goat.gait === 'climb';
+    if ((!goat.grounded && !climbing) || goat.gait === 'still' || goat.speed < (climbing ? .18 : .65)) { state.distance = 0; return; }
+    const stride = climbing ? 1.12 : goat.gait === 'gallop' ? 1.95 : 1.5;
+    const step = goat.gait ? stride * goat.size / 2 : stepLength(goat.size);
     state.distance += Math.max(0, goat.speed) * Math.min(dt, .12);
-    let count = 0;
-    while (state.distance >= step && count++ < 2) {
-      state.distance -= step;
-      this.play(('footstep-' + goat.surface) as SoundId, {
+    if (state.distance >= step) {
+      state.distance %= step; // A stalled frame never replays a pile of missed hoof contacts.
+      if (this.elapsed - state.soundedAt < .105) return;
+      state.soundedAt = this.elapsed;
+      this.play(climbing ? 'climb' : ('footstep-' + goat.surface) as SoundId, {
         position: goat.position, size: goat.size,
         intensity: clamp(.23 + goat.speed / 13, .24, .92),
-        pitch: this.rng.range(.94, 1.07),
+        pitch: clamp(Math.pow(goat.size, -.22), .74, 1.15) * this.rng.range(.94, 1.07),
       });
     }
-    if (count > 2) state.distance %= step;
   }
 
   private updateListener(camera: CameraAudioPose): void {
+    this.cameraPosition = camera.position;
     this.camera = camera.position;
     const ctx = this.context;
     if (!ctx) return;

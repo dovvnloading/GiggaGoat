@@ -1,6 +1,8 @@
 # Gigga-Goat audio
 
-The browser game plays three zone tracks generated with Suno Studio and 36 gameplay and menu recordings generated with ElevenLabs. The soundtrack loads by zone. Game mixes combine individual generated layers for jumps, landings, tongue actions, construction, and material impacts. Party music and ambience use Web Audio synthesis, which also supplies fallback cues when recordings are unavailable. Playback starts after a user gesture. [Suno Studio](https://suno.com/) · [ElevenLabs Sound Effects](https://elevenlabs.io/sound-effects)
+Billy Isle uses four newly arranged instrumental cues. Gate Latch Reel plays around the farm and forest, Switchyard Shuffle in the yard, city and dam, Glasswater on the coast and summit, and Last Bale Standing in party rounds. The arrangements use the project’s three existing Suno Studio masters for sampled percussion, new written parts, and GeneralUser GS instruments. The original recordings remain available to the offline render scripts. [Instrument library and music-use license](https://github.com/mrbumpy409/GeneralUser-GS/blob/main/documentation/LICENSE.txt)
+
+Each of the eight zones loads its own stereo environment. The farm and forest also have evening mixes. A separate contact bank edits the existing ElevenLabs recordings into three variants per surface for hoofbeats, takeoffs and landings. The sound, instrument and ambience source scripts are in `tools/audio`. Browser playback starts after a user gesture.
 
 ## Minimal integration — one call per render frame
 

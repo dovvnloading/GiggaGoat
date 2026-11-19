@@ -14,7 +14,7 @@ export const DEFAULT_AUDIO_SETTINGS: Readonly<AudioSettings> = Object.freeze({
   master: .85, music: .52, sfx: .88, ui: .7, ambience: .43, muted: false,
 });
 export const SOUND_IDS = [
-  'bleat', 'headbutt-charge', 'headbutt-impact',
+  'graze', 'checkpoint', 'bleat', 'headbutt-charge', 'headbutt-impact',
   'tongue-shoot', 'tongue-stick', 'tongue-reel', 'tongue-snap',
   'footstep-grass', 'footstep-sand', 'footstep-wood', 'footstep-rock',
   'footstep-metal', 'footstep-water', 'jump', 'flip-whoosh', 'landing',

@@ -10,18 +10,27 @@ import type { GameSettings } from './Persistence';
 
 /** The narrow audio interface allows a fake AudioEngine in headless core tests. */
 export type AudioSink = Pick<AudioEngine, 'updateFrame' | 'setSettings' | 'audioContext' |
-  'beginResultAudio' | 'endResultAudio' | 'setMenuAudio' | 'clearVoices' | 'play'>;
+  'beginResultAudio' | 'endResultAudio' | 'setMenuAudio' | 'clearVoices' | 'stopCue' | 'play'>;
 
 type MenuSound = Extract<SoundId, `ui-${string}`>;
 
-function surfaceAt(game: Game, position: Vec3): Surface {
+function surfaceAt(game: Game, position: Vec3, goat: GoatRagdoll): Surface {
+  const body = goat.locomotion.groundHit?.body;
+  const support = body && game.physics.bodyData(body.handle);
+  if (support?.kind === 'build-piece') return 'wood';
+  switch (support?.data) {
+    case 'log': case 'ramp': case 'crate': case 'deck': case 'dock':
+    case 'bridge': case 'pier': case 'scaffold': return 'wood';
+    case 'container': case 'beam': case 'crane': case 'ac-unit': return 'metal';
+    case 'ledge': case 'rock': case 'dam-wall': return 'rock';
+    case 'hay-bale': return 'grass';
+  }
   if (position.y <= game.water.seaLevel + .25) return 'water';
   if (game.isAbovePierDeck(position)) return 'wood';
   const biome = biomeAt(game.island, position.x, position.z);
   if (biome === 'ocean' || biome === 'freshwater') return 'water';
   if (biome === 'beach') return 'sand';
-  if (zoneAt(game.island, position.x, position.z) === 'baa-ardwalk') return 'wood';
-  if (biome === 'industrial') return 'metal';
+  if (biome === 'industrial') return 'rock';
   if (biome === 'cliff' || biome === 'highlands' || biome === 'town') return 'rock';
   return 'grass';
 }
@@ -31,9 +40,10 @@ function observeGoat(game: Game, goat: GoatRagdoll): WalkingGoat {
   const velocity = goat.torso.linvel();
   return {
     id: goat.id, position, size: goat.size,
-    speed: Math.hypot(velocity.x, velocity.z),
-    grounded: goat.locomotion.grounded,
-    surface: surfaceAt(game, position),
+    speed: goat.locomotion.isClinging ? Math.abs(velocity.y) : Math.hypot(velocity.x, velocity.z),
+    grounded: goat.locomotion.grounded && !goat.isRagdoll && !goat.locomotion.isClinging,
+    gait: goat.locomotion.isClinging ? 'climb' : goat.pose === 'gallop' ? 'gallop' : goat.pose === 'walk' ? 'walk' : 'still',
+    surface: surfaceAt(game, position, goat),
   };
 }
 
@@ -69,7 +79,10 @@ export class GameAudio {
     for (const cue of cues) this.cues.push({ ...cue, ...contact });
     return false;
   };
+  private objectiveAttempt = -1;
+  private objectiveCount = 0;
   private charging = false;
+  private reeling = false;
   private hidden = false;
   private pendingMenuCue: { sound: MenuSound; expiresAt: number } | null = null;
   private wasUnlocked = false;
@@ -104,6 +117,7 @@ export class GameAudio {
     this.audio.setSettings({
       master: settings.volume, music: settings.musicVolume, sfx: settings.effectsVolume,
       ui: settings.effectsVolume * DEFAULT_AUDIO_SETTINGS.ui / DEFAULT_AUDIO_SETTINGS.sfx,
+      ambience: settings.effectsVolume * DEFAULT_AUDIO_SETTINGS.ambience / DEFAULT_AUDIO_SETTINGS.sfx,
     });
   }
 
@@ -123,7 +137,12 @@ export class GameAudio {
 
   /** Charge start is an input-only edge; gameplay's release is still authoritative. */
   onInput(intent: PlayerIntent): void {
-    const charging = !!intent.chargeHeadbutt;
+    const charging = !!intent.chargeHeadbutt && !this.game.buildMode;
+    const reeling = !!intent.reelTongue && !!this.game.goat.interactions.tongueBody;
+    if (!charging && this.charging) this.audio.stopCue('headbutt-charge');
+    if (!reeling && this.reeling) this.audio.stopCue('tongue-reel');
+    if (reeling && !this.reeling) this.queueCue({ sound: 'tongue-reel', intensity: .5 });
+    this.reeling = reeling;
     if (charging && !this.charging) this.queueCue({ sound: 'headbutt-charge', intensity: .35 });
     this.charging = charging;
   }
@@ -131,7 +150,7 @@ export class GameAudio {
   setMenuOpen(open: boolean): void {
     this.audio.setMenuAudio(open);
     this.audio.endResultAudio();
-    if (open) this.charging = false;
+    if (open) { this.charging = false; this.reeling = false; }
   }
 
   playResultAudio(result: ResultAudioKind): void {
@@ -145,6 +164,7 @@ export class GameAudio {
     if (hidden) {
       this.charging = false;
       this.pendingMenuCue = null;
+      this.reeling = false;
       this.cues.length = 0;
       this.audio.endResultAudio();
       this.audio.clearVoices();
@@ -200,6 +220,22 @@ export class GameAudio {
     const tide = match?.mode === 'rising-tide'
       ? Math.max(0, Math.min(1, (match.tideLevel - low) / Math.max(.001, high - low))) : 0;
 
+    const gigs = this.game.gigs.director.drainEvents();
+    for (const event of gigs) {
+      if (event.type !== 'objective.progress') continue;
+      if (event.attemptId !== this.objectiveAttempt) {
+        this.objectiveAttempt = event.attemptId;
+        this.objectiveCount = 0;
+      }
+      const goal = event.objective;
+      const count = 'reached' in goal ? goal.reached : goal.kind === 'coverage' ? goal.eaten :
+        goal.kind === 'deliver' ? goal.done : 0;
+      if (count > this.objectiveCount) {
+        this.queueCue({ sound: goal.kind === 'coverage' ? 'graze' : 'checkpoint', intensity: .62 });
+      }
+      this.objectiveCount = count;
+    }
+
     // These are the sole drain sites for audio. Do not read latestEvents (which
     // only retains the last catch-up tick), or drain a queue again this frame.
     this.audio.updateFrame({
@@ -219,7 +255,7 @@ export class GameAudio {
       ],
       gameplay: this.gameplay.splice(0),
       modes: match?.drainEvents() ?? [],
-      gigs: this.game.gigs.director.drainEvents(),
+      gigs,
       cues: this.cues.splice(0),
       goats,
       goatPosition: player.position,

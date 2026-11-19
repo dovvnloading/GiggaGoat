@@ -80,9 +80,9 @@ export function mapPhysics(event: PhysicsEvent): AudioCue[] {
     }
     case 'impact':
       return event.impulse > 5 ?
-        [cue('headbutt-impact', { goatId, intensity: clamp(event.impulse / 60),
+        [cue('landing', { goatId, intensity: clamp(event.impulse / 70),
           bodyHandle: event.otherBodyHandle ?? undefined })] : [];
-    case 'flipped': return [cue('flip-whoosh', { goatId, intensity: clamp(event.rotations / 2) })];
+    case 'flipped': return []; // Counts a completed rotation. The ability starts the whoosh.
     case 'jumped': return [cue('jump', { goatId, intensity: .56 })];
     case 'airtimeStart':
     case 'airtimeEnd': return [];
@@ -93,7 +93,7 @@ export function mapPhysics(event: PhysicsEvent): AudioCue[] {
     case 'tongueAttach': return [cue('tongue-stick', { goatId, bodyHandle: event.bodyHandle })];
     case 'tongueDetach':
       return event.reason === 'replaced' ? [] :
-        [cue(event.reason === 'released' ? 'tongue-reel' : 'tongue-snap', { goatId })];
+        [cue('tongue-snap', { goatId, intensity: event.reason === 'released' ? .22 : .75 })];
     case 'knockedBody':
       return [cue('headbutt-impact', { goatId, bodyHandle: event.bodyHandle,
         intensity: clamp(event.impulse / 70) })];
@@ -116,21 +116,20 @@ export function mapGameplay(event: GameplayAudioEvent): AudioCue[] {
     case 'ability:used': {
       const e = event.data;
       switch (e.name) {
-        case 'headbutt': return [cue('headbutt-charge', { intensity: clamp(e.power ?? .6) })];
+        case 'headbutt': return []; // Wind-up starts on press. Contact owns the impact.
         case 'tongue-attach': return [cue('tongue-shoot')];
-        case 'tongue-fling': return [cue('tongue-snap')];
+        case 'tongue-fling': return []; // Physical detachment owns the snap.
         case 'bleat': return [cue('bleat')];
         case 'flop': return []; // The physical ragdoll start owns the flop cue.
         case 'flip': return [cue('flip-whoosh')];
-        case 'wall-kick': return [cue('jump')];
+        case 'wall-kick': return []; // Physical takeoff owns the jump.
       }
       return [];
     }
     case 'balance:knockdown':
     case 'balance:recovered': return [];
-    case 'traversal': return [cue('climb', { intensity: clamp(event.data.metres * 2) })];
-    case 'inventory:changed': return event.data.after > event.data.before ?
-      [cue('build-snap', { intensity: .24 })] : [];
+    case 'traversal': return []; // Climbing contact follows the measured stride.
+    case 'inventory:changed': return []; // Harvesting and placement carry their own sounds.
     case 'material:harvested': return [cue('build-snap', { intensity: .35 })];
     case 'build:placed': return [cue('build-place')];
     case 'build:edited': return [cue('build-snap')];
@@ -149,7 +148,7 @@ export function mapGameplay(event: GameplayAudioEvent): AudioCue[] {
 }
 export function mapChaos(event: ChaosEvent): AudioCue[] {
   switch (event.type) {
-    case 'enter': return [cue('footstep-water', { bodyHandle: event.bodyHandle, intensity: .3 })];
+    case 'enter': return []; // Bobbing props are not hoofsteps. Water impact owns the splash.
     case 'exit': return [];
     case 'splash': return [cue('splash', {
       bodyHandle: event.bodyHandle, intensity: clamp(event.impactSpeed / 14 + event.mass / 240),
@@ -157,7 +156,7 @@ export function mapChaos(event: ChaosEvent): AudioCue[] {
     case 'destruction': return [cue(event.cause === 'soda' ? 'soda-pop' :
       event.mass >= 120 ? 'prop-break' : 'crate-break',
       { bodyHandle: event.bodyHandle, position: event.position, intensity: clamp(event.mass / 180) })];
-    case 'knock': return [cue('domino', { bodyHandle: event.bodyHandle, intensity: .5 })];
+    case 'knock': return []; // A chain can start on the same tick as a deliberate strike.
     case 'topple': return [cue('domino', { bodyHandle: event.bodyHandle,
       intensity: clamp(event.tiltRadians / 1.6) })];
     case 'sodaPop': return [cue('soda-pop', { bodyHandle: event.bodyHandle, intensity: .85 })];
@@ -171,8 +170,7 @@ export function mapMode(event: MatchEvent): AudioCue[] {
   switch (event.type) {
     case 'player.joined': return [cue('ui-confirm', { playerId: event.playerId })];
     case 'player.ready': return [cue('ui-click', { playerId: event.playerId })];
-    case 'phase.changed': return event.to === 'countdown' ?
-      [cue('party-countdown')] : [];
+    case 'phase.changed': return []; // The numbered countdown emits its own beat.
     case 'countdown': return [cue('party-countdown', { intensity: event.seconds <= 1 ? 1 : .45,
       pitch: event.seconds <= 1 ? 1.32 : 1 })];
     case 'tide.warning': return [cue('tide-warning', { intensity: .9 })];
@@ -181,7 +179,7 @@ export function mapMode(event: MatchEvent): AudioCue[] {
     case 'goat.knockout': return [cue('headbutt-impact', { playerId: event.victimId, intensity: .8 })];
     case 'peak.contested': return [cue('ui-back', { intensity: .25 })];
     case 'peak.control': return event.playerId ? [cue('ui-confirm', { playerId: event.playerId })] : [];
-    case 'peak.scored': return [cue('coin', { playerId: event.playerId })];
+    case 'peak.scored': return []; // Holding the hill awards points every second.
     case 'hay.picked': return [cue('tongue-stick', { playerId: event.playerId })];
     case 'hay.dropped': return [cue('tongue-snap', { playerId: event.playerId })];
     case 'hay.punted': return [cue('headbutt-impact', { playerId: event.playerId, intensity: .5 })];
@@ -191,9 +189,9 @@ export function mapMode(event: MatchEvent): AudioCue[] {
 }
 export function mapGig(event: GigEvent): AudioCue[] {
   switch (event.type) {
-    case 'board.rotated': return [cue('ui-click', { intensity: .22 })];
-    case 'gig.accepted': return [cue('ui-confirm')];
-    case 'objective.progress': return [cue('ui-click', { intensity: .22 })];
+    case 'board.rotated': return [];
+    case 'gig.accepted': return []; // The accept button confirms the selection.
+    case 'objective.progress': return []; // Continuous distance and mass updates are silent.
     case 'gig.failed': return [cue('gig-fail', { result: 'gig' })];
     case 'gig.abandoned': return [cue('gig-fail', { intensity: .3 })];
     case 'gig.completed': return [

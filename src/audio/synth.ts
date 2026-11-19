@@ -2,6 +2,7 @@ import { AudioRandom, clamp, goatPitch } from './logic';
 import type { GoatVoice, SoundId } from './logic';
 
 export interface SfxOptions {
+  surface?: import('./logic').Surface;
   when?: number; intensity?: number; size?: number; pitch?: number;
   voice?: GoatVoice; combo?: number;
 }
@@ -233,6 +234,12 @@ export class ProceduralSynth {
       case 'build-place':
         t(0, 145, .22, .2, 'triangle', 85);
         n(0, .1, .17, 1400);
+        break;
+      case 'graze':
+        n(0, .09, .13, 1850); n(.07, .06, .08, 2300);
+        break;
+      case 'checkpoint':
+        t(0, 660, .11, .15, 'sine'); t(.07, 880, .20, .1, 'sine');
         break;
       case 'build-snap':
         t(0, 540, .15, .17, 'triangle', 310);
