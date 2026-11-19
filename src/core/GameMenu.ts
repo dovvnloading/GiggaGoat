@@ -898,6 +898,9 @@ export class GameMenu {
     const success = run.status === 'completed';
     const status = success ? 'GIG CLEARED' + (run.rating ? ' · ' + nice(run.rating) : '') : 'GIG ENDED';
     const canRetry = this.game.gigs.retryableOffer !== null;
+    const cosmetic = run.setup.info.cosmetic;
+    const goldReward = success && run.rating === 'gold' &&
+      this.game.gigs.director.ownedCosmetics.includes(cosmetic.id);
     const objective = run.objective;
     const progress = hudObjectiveParts(objective);
     if (objective.kind === 'deliver') progress.unit = 'BALES DELIVERED';
@@ -908,8 +911,8 @@ export class GameMenu {
     }
     return `<div class="gg-shell-eyebrow">${status}</div>
       <h2>${esc(run.setup.info.title)}</h2>
-      <p>${esc(success?'That was a solid run. Now go cause more trouble.':
-        run.failReason ?? 'Try a different route and go again.')}</p>
+      ${goldReward ? `<p><strong>GOLD REWARD</strong> · ${esc(cosmetic.name)}</p>` : ''}
+      ${success ? '' : `<p>${esc(run.failReason ?? 'Try a different route and go again.')}</p>`}
       <div class="gg-stats">
         <div class="gg-stat gg-gig-progress" ${menuSkin(MENU_SPRITES.stat)}>
           <strong>${esc(progress.measure)}</strong><span>${esc(progress.unit)}</span></div>
