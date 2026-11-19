@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { CollisionLayer, collisionGroups } from './CollisionGroups';
+import { Game } from '../core/Game';
+import { CollisionLayer, collisionGroups, GROUND_QUERY_GROUPS } from './CollisionGroups';
 import { GoatRagdoll, GOAT_SIZES, type GoatSize } from './GoatRagdoll';
 import { PhysicsWorld } from './PhysicsWorld';
 import { dot, forward, rotate, sub, V } from './math';
@@ -101,6 +102,102 @@ describe('real Rapier physics simulation', () => {
     simulate(w, 2.6);
     expect(g.balanceValue).toBeGreaterThan(.6);
     expect(rotate(g.torso.rotation(),V(0,1,0)).y).toBeGreaterThan(.55);
+  });
+
+  it.each([
+    ['Downtown', 3, 143.60, 126.26, Math.PI / 2],
+    ['Downtown Big', 1.6, 143.60, 126.26, Math.PI / 2],
+    ['coast slope', 3, 99, 219, 2.69],
+  ] as const)('recovers a planted flop at %s without launching or scoring airtime', async (site, size, x, z, cameraYaw) => {
+    const game = await Game.create({ seed: 'billy-isle' });
+    try {
+      const g = game.goat;
+      game.water.untrack(g.torso);
+      g.resize(size);
+      game.water.track(g.torso, { buoyancyScale: .7, paddleSpeed: 2.6 });
+      const down = new RAPIER.Ray(V(x, 65, z), V(0, -1, 0));
+      const surfaces = [game.colliders.terrain, ...game.colliders.paths];
+      const hits = surfaces.map(surface => surface.castRay(down, 75, false)).filter(hit => hit >= 0);
+      game.teleport(V(x, 65 - Math.min(...hits), z), -cameraYaw);
+      for (let tick = 0; tick < 145; tick++) game.step({ cameraYaw });
+      expect(g.locomotion.grounded).toBe(true);
+      const standing = g.torso.translation().y;
+      const score = game.rules.style.score;
+      let highest = standing, lowest = standing;
+      let jumped = 0, longestFlight = 0;
+      const events: string[] = [];
+      g.events.on(event => {
+        if (event.type === 'landed') longestFlight = Math.max(longestFlight, event.airtime);
+        if (event.type === 'jumped') jumped++;
+        if (event.type === 'ragdollStart' || event.type === 'ragdollEnd') events.push(event.type);
+      });
+      for (let tick = 0; tick < 206; tick++) {
+        game.step({ cameraYaw, flop: tick === 0 });
+        const y = g.torso.translation().y;
+        highest = Math.max(highest, y);
+        lowest = Math.min(lowest, y);
+      }
+      expect(standing - lowest).toBeGreaterThan(.24 * size);
+      expect(highest - standing, site).toBeLessThan(.22);
+      expect(longestFlight).toBeLessThan(.25);
+      expect(events).toEqual(['ragdollStart', 'ragdollEnd']);
+      expect(jumped).toBe(0);
+      expect(game.rules.style.score).toBe(score);
+      expect(g.balance.hipRecoveryGain).toBe(1);
+      expect(g.locomotion.grounded).toBe(true);
+      expect(rotate(g.torso.rotation(), V(0, 1, 0)).y).toBeGreaterThan(.94);
+      expect(game.respawns).toBe(0);
+
+      // A genuine grounded jump is available on the pressed tick.
+      game.step({ cameraYaw, jump: true });
+      expect(jumped).toBe(1);
+      expect(g.torso.linvel().y).toBeGreaterThan(3);
+    } finally {
+      game.dispose();
+    }
+  });
+
+  it('responds to movement as soon as flop control returns, while the hips are still settling', async () => {
+    const w = await scene(), g = goat(w, 3);
+    simulate(w, 1.7);
+    g.flop();
+    for (let tick = 0; tick < 90 && g.isRagdoll; tick++) w.step(1 / 60);
+    expect(g.isRagdoll).toBe(false);
+    expect(g.balance.hipRecoveryGain).toBe(0);
+    const start = g.torso.translation();
+    const speed = g.torso.linvel().z;
+    g.locomotion.setInput({ z: 1, cameraYaw: 0 });
+    w.step(1 / 60);
+    expect(g.torso.linvel().z - speed).toBeLessThan(-.06);
+    simulate(w, .27);
+    expect(start.z - g.torso.translation().z).toBeGreaterThan(.25);
+  });
+
+  it('guards a loaded hoof on a ledge while leaving the unsupported torso free to fall', async () => {
+    const w = await scene();
+    w.raw.createCollider(RAPIER.ColliderDesc.cuboid(4, .15, 9)
+      .setTranslation(-4, 2.85, 0).setCollisionGroups(collisionGroups('terrain')));
+    const g = new GoatRagdoll(w, { size: 3, position: V(-.16, 3, 0) });
+    goats.push(g);
+    simulate(w, 105 / 60);
+    expect(g.locomotion.groundHit?.point.y).toBeCloseTo(3);
+    let limited = false;
+    g.events.on(event => {
+      if (event.type !== 'ragdollEnd') return;
+      // The center now sees the lower ground, with two folded hooves
+      // still over the high ledge.
+      expect(g.locomotion.groundHit?.point.y).toBeCloseTo(0);
+      const ledgeFeet = g.legs.filter(leg =>
+        (w.raycast(leg.translation(), V(0, -1, 0), .48 * g.size, { groups: GROUND_QUERY_GROUPS })?.point.y ?? 0) > 2.9);
+      expect(ledgeFeet).toHaveLength(2);
+      limited = g.balance.hipRecoveryGain === 0;
+    });
+    g.flop();
+    simulate(w, 3.5);
+    expect(limited).toBe(true);
+    expect(g.balance.hipRecoveryGain).toBe(1);
+    expect(g.torso.translation().x).toBeGreaterThan(.9);
+    expect(g.torso.translation().y).toBeLessThan(3.4);
   });
 
   it('still enters ragdoll when a moving crate strikes a planted goat', async () => {

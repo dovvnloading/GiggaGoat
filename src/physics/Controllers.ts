@@ -3,6 +3,9 @@ import { CollisionLayer, GROUND_QUERY_GROUPS } from './CollisionGroups';
 import { add, clamp, clampLength, cross, dot, forward, length, mul, normalize, right, rotate, sub, V, type Vec3 } from './math';
 import type { GoatRagdoll } from './GoatRagdoll';
 
+const HIP_RECOVERY_HOLD_LIMIT = .65;
+const HIP_RECOVERY_HANDOFF_SECONDS = .55;
+
 export interface BalanceTuning {
   uprightStiffness: number;
   uprightDamping: number;
@@ -27,9 +30,38 @@ export class BalanceController {
   value = 1;
   isRagdoll = false;
   private remaining = 0;
-  private timeSinceRecovery = 0;
+  private hipSupportFloor: number | null = null;
+  private hipHoldStarted = 0;
+  private hipReturnStarted = -Infinity;
   private lastImpactAt = -Infinity;
   constructor(private readonly goat: GoatRagdoll) {}
+
+  get hipRecoveryGain(): number {
+    if (this.hipSupportFloor !== null) return 0;
+    const t = clamp((this.goat.world.time - this.hipReturnStarted) / HIP_RECOVERY_HANDOFF_SECONDS, 0, 1);
+    return t * t * (3 - 2 * t);
+  }
+
+  private fixedFooting(hit: RayHit | null): hit is RayHit {
+    return !!hit && hit.normal.y >= this.goat.locomotion.minWalkingNormalY &&
+      (!hit.body || hit.body.isFixed());
+  }
+
+  private recoverySupportFloor(): number | null {
+    const g = this.goat;
+    if (g.torso.linvel().y >= 1.6) return null;
+    const ground = g.locomotion.groundHit;
+    if (this.fixedFooting(ground) && ground.distance <= (this.tuning.rideHeight + .26) * g.size) {
+      return ground.point.y;
+    }
+    // At a ledge the torso ray can miss a platform still bearing a folded leg.
+    let floor = -Infinity;
+    for (const leg of g.legs) {
+      const hit = g.world.raycast(leg.translation(), V(0, -1, 0), .48 * g.size, { groups: GROUND_QUERY_GROUPS });
+      if (this.fixedFooting(hit)) floor = Math.max(floor, hit.point.y);
+    }
+    return Number.isFinite(floor) ? floor : null;
+  }
 
   handleImpact(impulse: number, otherBodyHandle: number | null): void {
     const g = this.goat;
@@ -49,6 +81,8 @@ export class BalanceController {
     this.remaining = this.tuning.ragdollSeconds;
     if (!this.isRagdoll) {
       this.isRagdoll = true;
+      this.hipSupportFloor = null;
+      this.hipReturnStarted = -Infinity;
       this.goat.setPose('flop');
       this.goat.events.emit({ type: 'ragdollStart', goatId: this.goat.id,
         time: this.goat.world.time, reason });
@@ -61,19 +95,31 @@ export class BalanceController {
       if (this.remaining <= 0 && length(g.torso.linvel()) < 6) {
         this.isRagdoll = false;
         this.value = Math.max(this.value,.52);
-        this.timeSinceRecovery = 0;
+        this.hipSupportFloor = this.recoverySupportFloor();
+        this.hipHoldStarted = g.world.time;
         g.events.emit({ type: 'ragdollEnd', goatId: g.id, time: g.world.time });
       }
       return;
     }
-    this.timeSinceRecovery += dt;
     this.value = clamp(this.value + this.tuning.recoveryPerSecond*dt,0,1);
-    // A deliberate airborne flip owns rotation until the turn is complete.
-    if (g.locomotion.isFlipping) return;
     const torso = g.torso;
     const q = torso.rotation();
-    const omega = torso.angvel();
     const bodyUp = rotate(q, V(0, 1, 0));
+    if (this.hipSupportFloor !== null) {
+      const ground = g.locomotion.groundHit;
+      if (this.fixedFooting(ground) && ground.distance <= (this.tuning.rideHeight + .26) * g.size) {
+        this.hipSupportFloor = ground.point.y;
+      }
+      const height = torso.translation().y - this.hipSupportFloor;
+      const upright = bodyUp.y >= .97 && height >= (this.tuning.rideHeight - .02) * g.size;
+      if (upright || g.world.time - this.hipHoldStarted >= HIP_RECOVERY_HOLD_LIMIT) {
+        this.hipSupportFloor = null;
+        this.hipReturnStarted = g.world.time;
+      }
+    }
+    // A deliberate airborne flip owns rotation until the turn is complete.
+    if (g.locomotion.isFlipping) return;
+    const omega = torso.angvel();
     const tilt = cross(bodyUp, V(0, 1, 0));
     const currentForward = rotate(q, V(0, 0, -1));
     const wanted = forward(g.locomotion.heading);
