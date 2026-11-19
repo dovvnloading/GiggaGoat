@@ -191,7 +191,7 @@ export function selectMusic(state: MusicState): MusicPlan {
     drums: party || combo >= 2 || meter >= .22,
     bass: party || combo >= 3 || meter >= .38,
     lead: party ? tide >= .22 || combo >= 3 : combo >= 5 || meter >= .64,
-    rhythm: party || combo >= 1 || meter >= .12,
+    rhythm: !state.night || party || combo >= 1 || meter >= .12,
     tension, brightness: state.night ? .52 : 1,
     intensity: clamp(.36 + .25 * Math.min(1, combo / 6) + .24 * meter + .15 * tension, .25, 1),
     mode: state.mode, poi: state.poi, night: state.night,

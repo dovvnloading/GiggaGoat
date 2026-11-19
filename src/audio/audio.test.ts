@@ -35,7 +35,7 @@ describe('deterministic audio logic', () => {
 
   it('selects real added music layers as combo and GIGGA meter grow', () => {
     const base = selectMusic({ ...DEFAULT_MUSIC_STATE });
-    expect([base.rhythm, base.drums, base.bass, base.lead]).toEqual([false, false, false, false]);
+    expect([base.rhythm, base.drums, base.bass, base.lead]).toEqual([true, false, false, false]);
     const early = selectMusic({ ...DEFAULT_MUSIC_STATE, combo: 2 });
     expect([early.rhythm, early.drums, early.bass, early.lead]).toEqual([true, true, false, false]);
     const middle = selectMusic({ ...DEFAULT_MUSIC_STATE, combo: 3 });
@@ -56,6 +56,7 @@ describe('deterministic audio logic', () => {
     expect(party.drums && party.bass).toBe(true);
     const night = selectMusic({ ...DEFAULT_MUSIC_STATE, night: true });
     expect(night.bpm).toBe(106);
+    expect(night.rhythm).toBe(false);
     expect(night.brightness).toBeLessThan(free.brightness);
     expect(locationFlavor('hoofington')).toBe('farm');
     expect(locationFlavor('baa-ardwalk')).toBe('coast');
