@@ -3,8 +3,8 @@ import { GoatRagdoll, forward, type PhysicsContact, type Vec3 } from '../physics
 import { heightAt, landAreaAtTideLevel } from '../world';
 import {
   PartyMatch, BotBrain, arenaFromBillyIsle,
-  type Difficulty, type GoatContact, type GoatObservation, type MatchEvent,
-  type ModeId, type ModeInputIntent, type RulesConfig,
+  type Difficulty, type GoatContact, type GoatHeadbutt, type GoatObservation, type MatchEvent,
+  type ModeId, type ModeInputIntent, type Point, type RulesConfig,
 } from '../modes';
 import type { Game, PlayerIntent } from './Game';
 
@@ -26,6 +26,7 @@ export class PartySession {
   latestEvents: MatchEvent[] = [];
   private readonly game: Game;
   private readonly contacts: GoatContact[] = [];
+  private readonly headbutts: GoatHeadbutt[] = [];
   private readonly intents: Record<string, ModeInputIntent> = {};
   private readonly chargeTicks = new Map<string, number>();
   private readonly onContactOff: () => void;
@@ -152,10 +153,18 @@ export class PartySession {
     const match = this.match;
     if (!match || match.phase === 'results') return;
     this.latestEvents = match.step({
-      goats: this.observe(), intents: { ...this.intents }, contacts: this.contacts,
+      goats: this.observe(), intents: { ...this.intents }, contacts: this.contacts, headbutts: this.headbutts,
     });
     this.contacts.length = 0;
+    this.headbutts.length = 0;
     if (match.toJSON().phase === 'results') this.finished = true;
+  }
+
+  noteHeadbutt(attackerId: string, facing: Point): void {
+    const match = this.match;
+    if (match?.mode === 'hay-heist' && (match.phase === 'playing' || match.phase === 'overtime')) {
+      this.headbutts.push({ attackerId, facing });
+    }
   }
 
   private onContact(event: PhysicsContact): void {
@@ -188,6 +197,7 @@ export class PartySession {
     this.bots.clear();
     this.chargeTicks.clear();
     this.contacts.length = 0;
+    this.headbutts.length = 0;
     this.latestEvents = [];
     this.match = null;
     this.finished = false;

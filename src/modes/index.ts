@@ -6,7 +6,7 @@ export type { BillyIsleReaders } from './world-adapter';
 export { TICKS_PER_SECOND } from './internal';
 export type {
   Point, Position, ModeId, Phase, Difficulty, PlayerSpec, PlayerState, Barn, ModeArena,
-  GoatObservation, ModeInputIntent, GoatContact, ModeFrame, RulesConfig, MatchOptions,
+  GoatObservation, ModeInputIntent, GoatContact, GoatHeadbutt, ModeFrame, RulesConfig, MatchOptions,
   Placement, TeamPlacement, Bale, MatchEvent, MatchSnapshot, MatchView, GoatModeEffect,
   TideState, PeakState, HeistState,
 } from './types';

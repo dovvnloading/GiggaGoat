@@ -62,6 +62,8 @@ export interface PropDescriptor {
   breakable: boolean;
   lickable: boolean;
   climbable: boolean;
+  /** Optional upper bound on the bounce of a contact with this prop. */
+  restitution?: number;
   color?: number;
 }
 
@@ -133,6 +135,7 @@ export interface PropColliderDescriptor {
   transform: Transform;
   size: Vec3;
   body: BodyDescriptor;
+  restitution?: number;
   /** Hull vertices are local metres, in x/y/z triples. */
   vertices?: Float32Array;
 }

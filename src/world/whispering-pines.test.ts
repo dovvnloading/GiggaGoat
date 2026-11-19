@@ -178,3 +178,67 @@ it('draws the same supported bank treads with fallback and loaded log art', asyn
     });
   }
 });
+
+it.each(seeds)('paints only the terrain at both log approaches for $seed', options => {
+  const island = generateIsland(options);
+  const bridge = island.props.find(p => p.poiId === 'whispering-pines' && p.kind === 'log-bridge')!;
+  const scale = island.size / 600;
+  const view = createWorldScene(island);
+  try {
+    const material = view.chunks[0]!.material as THREE.MeshToonMaterial;
+    const shader = { ...THREE.ShaderLib.toon, uniforms: {} } as THREE.WebGLProgramParametersWithUniforms;
+    material.onBeforeCompile(shader, null as unknown as THREE.WebGLRenderer);
+    expect(shader.fragmentShader).toContain(
+      'diffuseColor.rgb = pinesApronGround(diffuseColor.rgb, vWorld.xz, uTerrainScale);');
+    expect(shader.fragmentShader).toContain('return terrain;');
+    const frames = shader.uniforms['uPinesApronFrame']!.value as THREE.Vector4[];
+    const limits = shader.uniforms['uPinesApronLimit']!.value as THREE.Vector3[];
+    expect(frames).toHaveLength(2);
+    expect(limits).toHaveLength(2);
+    const { smoothstep, lerp, clamp } = THREE.MathUtils;
+    const at = (frame: THREE.Vector4, limit: THREE.Vector3, x: number, z: number) => {
+      const dx = (x - frame.x) / scale, dz = (z - frame.y) / scale;
+      const along = dx * frame.z + dz * frame.w;
+      const across = Math.abs(dz * frame.z - dx * frame.w);
+      const width = lerp(limit.x, limit.y, clamp(along / limit.z, 0, 1));
+      return (1 - smoothstep(across, width - .22, width + .03)) *
+        smoothstep(along, -1.25, -.70) * (1 - smoothstep(along, limit.z - .42, limit.z));
+    };
+    for (const [i, entry] of pinesLogEntries(island, bridge).entries()) {
+      const frame = frames[i]!, limit = limits[i]!;
+      const toe = sectionCenter(entry.sections[0]);
+      const joint = sectionCenter(entry.sections[1]);
+      const length = Math.hypot(joint.x - toe.x, joint.z - toe.z);
+      expect(frame.toArray()).toEqual([toe.x, toe.z, (joint.x - toe.x) / length, (joint.z - toe.z) / length]);
+      expect(limit.z).toBeCloseTo(entry.side < 0 ? 1.927 : .987);
+      const sample = (along: number, across: number) => at(frame, limit,
+        toe.x + scale * (along * frame.z - across * frame.w),
+        toe.z + scale * (along * frame.w + across * frame.z));
+      expect(sample(0, 0)).toBe(1);
+      expect(sample(-.96, 0)).toBeGreaterThan(.25);
+      expect(sample(-.96, 0)).toBeLessThan(.75);
+      expect(sample(0, limit.x - .08)).toBeGreaterThan(.35);
+      expect(sample(0, limit.x - .08)).toBeLessThan(.65);
+      expect(sample(0, limit.x + .075)).toBe(0);
+      expect(sample(-1.35, 0)).toBe(0);
+      expect(at(frame, limit, joint.x, joint.z)).toBe(0);
+      expect(sample(length / scale + 4, 0)).toBe(0);
+    }
+    if (options.seed === 'billy-isle') {
+      // The measured raised turf on the south entrance stays in the brown
+      // tread approach, even across the high side of the crossfall.
+      expect(at(frames[0]!, limits[0]!, -120.170, -150.057)).toBe(1);
+      expect(at(frames[0]!, limits[0]!, -119.009, -149.999)).toBeGreaterThan(.65);
+      expect(at(frames[0]!, limits[0]!, -119.099, -150.620)).toBeGreaterThan(.75);
+    }
+    const camera = new THREE.PerspectiveCamera(60, 1.75, .1, 2000);
+    camera.position.set(0, 800 * scale, 0);
+    camera.lookAt(bridge.transform.position.x, 0, bridge.transform.position.z);
+    const near = view.chunks[0]!.geometry;
+    view.updateCulling(camera);
+    expect(view.chunks[0]!.geometry).not.toBe(near);
+    expect(view.chunks[0]!.material).toBe(material);
+  } finally {
+    view.dispose();
+  }
+});

@@ -1,11 +1,18 @@
 import type {
-  Bale, Barn, GoatObservation, HeistState, MatchSnapshot, ModeArena, ModeInputIntent, PlayerState, Position,
+  Bale, Barn, GoatObservation, HeistState, MatchSnapshot, ModeArena, ModeInputIntent, PlayerState, Point, Position,
 } from './types';
 import type { Emit, RuleOutcome } from './internal';
 import { direction, distanceSquared, TICKS_PER_SECOND, compareIds } from './internal';
 
 const KICK_COOLDOWN = 24;
 const STAMINA_RECOVERY_PER_SECOND = 7;
+
+function inHeadbuttReach(origin: Position, target: Position, facing: Point, reach: number): boolean {
+  const x = target.x - origin.x, z = target.z - origin.z;
+  const horizontal = x * x + z * z;
+  return horizontal + (target.y - origin.y) ** 2 <= reach ** 2 &&
+    x * facing.x + z * facing.z >= Math.sqrt(horizontal) * Math.SQRT1_2;
+}
 
 function baleHomeSlot(barn: Barn, index: number, count: number): Position {
   const angle = Math.PI * 2 * index / count;
@@ -30,7 +37,7 @@ export function makeHeistState(players: readonly PlayerState[], arena: ModeArena
     }
   }
   return {
-    bales, scores, previousHeadbutt: Object.fromEntries(players.map(p => [p.id, false])),
+    bales, scores,
     lastKickTick: Object.fromEntries(players.map(p => [p.id, -KICK_COOLDOWN])),
     pickupBlockedUntil: Object.fromEntries(players.map(p => [p.id, 0])),
     overtimeScore: false,
@@ -67,6 +74,7 @@ export function updateHayHeist(
   arena: ModeArena,
   observations: Map<string, GoatObservation>,
   intents: Readonly<Record<string, ModeInputIntent>>,
+  headbutts: ReadonlyMap<string, Point> | undefined,
   emit: Emit,
 ): RuleOutcome {
   const heist = state.heist!;
@@ -92,30 +100,29 @@ export function updateHayHeist(
     }
   }
 
-  // A headbutt knocks a rival's cargo loose first; otherwise it punts the
-  // nearest loose bale. No damage/health, just extremely stealable groceries.
+  // A resolved headbutt prioritizes the nearest carrier in front of the goat.
   for (const player of players) {
-    const intent = intents[player.id] ?? {};
-    const rising = !!intent.chargeHeadbutt && !heist.previousHeadbutt[player.id];
-    heist.previousHeadbutt[player.id] = !!intent.chargeHeadbutt;
-    if (!rising || state.tick - (heist.lastKickTick[player.id] ?? -KICK_COOLDOWN) < KICK_COOLDOWN) continue;
-    const self = observations.get(player.id)!;
-    const victim = players.filter(other => other.teamId !== player.teamId &&
-      other.id !== player.id && distanceSquared(self.position, observations.get(other.id)!.position) <= 2.6 ** 2)
-      .map(other => heist.bales.find(b => b.carrierId === other.id))
-      .find((b): b is Bale => b !== undefined);
+    const aim = headbutts?.get(player.id);
+    if (!aim || state.tick - (heist.lastKickTick[player.id] ?? -KICK_COOLDOWN) < KICK_COOLDOWN) continue;
+    const origin = observations.get(player.id)!.position;
+    const facing = direction(aim);
+    const victim = players
+      .filter(other => other.teamId !== player.teamId &&
+        heist.bales.some(bale => bale.carrierId === other.id) &&
+        inHeadbuttReach(origin, observations.get(other.id)!.position, facing, 2.6))
+      .sort((a, b) => distanceSquared(origin, observations.get(a.id)!.position) -
+        distanceSquared(origin, observations.get(b.id)!.position) || compareIds(a.id, b.id))[0];
     if (victim) {
-      const other = players.find(p => p.id === victim.carrierId)!;
-      drop(victim, other, 'shoved', state, emit);
+      const cargo = heist.bales.find(bale => bale.carrierId === victim.id)!;
+      drop(cargo, victim, 'shoved', state, emit);
       heist.lastKickTick[player.id] = state.tick;
       continue;
     }
     const bale = heist.bales.filter(b => b.carrierId === null &&
-      distanceSquared(self.position, b.position) <= state.config.hayPickupRadius ** 2)
-      .sort((a, b) => distanceSquared(self.position, a.position) -
-        distanceSquared(self.position, b.position) || compareIds(a.id, b.id))[0];
+      inHeadbuttReach(origin, b.position, facing, state.config.hayPickupRadius))
+      .sort((a, b) => distanceSquared(origin, a.position) -
+        distanceSquared(origin, b.position) || compareIds(a.id, b.id))[0];
     if (bale) {
-      const facing = direction(self.facing);
       bale.position.x += facing.x * state.config.hayKickDistance;
       bale.position.z += facing.z * state.config.hayKickDistance;
       bale.position.y = arena.elevationAt(bale.position.x, bale.position.z) + 0.7;

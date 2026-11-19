@@ -830,6 +830,7 @@ export class Game {
       // nearby crate. Retain its torso lunge, then resolve an explicitly dynamic
       // forward target in core when that ray did not find one.
       const facing = forward(g.locomotion.heading);
+      if (!g.isRagdoll) this.party.noteHeadbutt(g.id, facing);
       const origin = add(g.head.translation(), V(0, .04 * g.size, 0));
       const range = g.interactions.tuning.headbuttRange * g.size;
       const preferred = this.physics.shapeCast(origin, g.head.rotation(), facing,

@@ -40,7 +40,7 @@ export interface GoatObservation {
   position: Position;
   /** Height of the actual goat's head, NOT its root transform. */
   headY: number;
-  /** Horizontal facing, used to resolve bale headbutts. */
+  /** Horizontal facing of the observed goat. */
   facing: Point;
 }
 export interface ModeInputIntent extends GoatIntent {
@@ -50,11 +50,14 @@ export interface ModeInputIntent extends GoatIntent {
   dropHay?: boolean;
 }
 export interface GoatContact { attackerId: string; victimId: string }
+export interface GoatHeadbutt { attackerId: string; facing: Point }
 export interface ModeFrame {
   goats: readonly GoatObservation[];
   intents?: Readonly<Record<string, ModeInputIntent>>;
   /** Goat-to-goat physical contacts, already filtered by the host physics adapter. */
   contacts?: readonly GoatContact[];
+  /** Headbutts executed by the host during this tick, with their action-time facing. */
+  headbutts?: readonly GoatHeadbutt[];
 }
 export interface RulesConfig {
   countdownTicks: number;
@@ -115,7 +118,6 @@ export interface PeakState {
 export interface HeistState {
   bales: Bale[];
   scores: Record<string, number>;
-  previousHeadbutt: Record<string, boolean>;
   lastKickTick: Record<string, number>;
   /** Prevent instant re-latching after a shove, exhaustion or deliberate drop. */
   pickupBlockedUntil: Record<string, number>;

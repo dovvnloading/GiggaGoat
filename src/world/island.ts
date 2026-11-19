@@ -297,6 +297,7 @@ export function hashIsland(island: IslandData): string {
     if (prop.transform.rotationX !== undefined) update(prop.transform.rotationX);
     update(prop.size.x); update(prop.size.y); update(prop.size.z);
     update(prop.body.type === 'dynamic' ? prop.body.mass : 0);
+    if (prop.restitution !== undefined) update(prop.restitution);
   }
   for (const p of island.spawns) {
     update(p.position.x); update(p.position.y); update(p.position.z);

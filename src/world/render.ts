@@ -21,6 +21,7 @@ import { buildLighthouseVisuals, makeCapeLighting } from './visual-lighthouse';
 import { buildHoofingtonVisuals } from './visual-hoofington';
 import { buildDowntownVisuals } from './visual-downtown';
 import { buildMountainWayfinding } from './visual-mountain';
+import { paintPinesLogAprons } from './visual-pines-log-access';
 import { MOUNTAIN_SPIRAL_BRIDGE_PREFIX } from './roads';
 import { buildSkyVisuals, type LightingPreset } from './visual-sky';
 
@@ -308,6 +309,7 @@ if (rock > 0.0) {
     villagePaint.apply(shader);
     paintDowntownGround(shader, island);
     paintRoadsideGravel(shader, island);
+    paintPinesLogAprons(shader, island);
     capeLighting.paint(shader);
   };
   const lookup = roadGrid(island, 22);

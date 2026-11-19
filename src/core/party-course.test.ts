@@ -2,6 +2,65 @@ import { describe, expect, it } from 'vitest';
 import { Game } from './Game';
 
 describe('live party courses on Rapier', () => {
+  it('punts a bale only when a charged headbutt goes off in its direction', async () => {
+    const game = await Game.create();
+    try {
+      const match = game.party.start('hay-heist', 3, 'easy');
+      const stock = () => match.bales.find(bale => bale.id === 'red-hay-2')!;
+      const bearingToBale = () => {
+        const actor = game.goat.torso.translation(), bale = stock().position;
+        return Math.atan2(bale.x - actor.x, actor.z - bale.z);
+      };
+      const ticks = (count: number, input: Parameters<Game['step']>[0] = {}) => {
+        for (let tick = 0; tick < count; tick++) game.step(input);
+      };
+      const charge = { chargeHeadbutt: true };
+      let headbutts = 0;
+      game.onVisualCue(cue => {
+        if (cue.goatId === 'player' && cue.action === 'headbutt') headbutts++;
+      });
+      ticks(match.config.countdownTicks);
+      const initial = stock().position;
+
+      // Get into reach, then turn toward the outside of the barn ring.
+      ticks(25, { moveZ: 1, cameraYaw: bearingToBale() });
+      ticks(20);
+      ticks(24, { moveZ: .38, cameraYaw: Math.PI });
+      ticks(10);
+      const goat = game.goat.torso.translation();
+      expect(goat.z).toBeGreaterThan(initial.z);
+      expect(Math.hypot(goat.x - initial.x, goat.z - initial.z)).toBeLessThan(match.config.hayPickupRadius);
+      game.step(charge);
+      game.step();
+      expect(headbutts).toBe(0);
+      expect(stock().position).toEqual(initial);
+      ticks(18, charge);
+      game.step();
+      expect(headbutts).toBe(1);
+      expect(stock().position).toEqual(initial);
+
+      // Walk around the same bale, face it and charge without moving the stock.
+      ticks(38, { moveZ: 1, cameraYaw: 0 });
+      ticks(20);
+      ticks(18, { moveZ: .28, cameraYaw: bearingToBale() });
+      ticks(12);
+      game.step(charge);
+      game.step();
+      expect(headbutts).toBe(1);
+      expect(stock().position).toEqual(initial);
+      ticks(18, charge);
+      expect(headbutts).toBe(1);
+      expect(stock().position).toEqual(initial);
+      game.step();
+      expect(headbutts).toBe(2);
+      expect(game.party.latestEvents).toContainEqual(expect.objectContaining({
+        type: 'hay.punted', baleId: stock().id, playerId: 'player', tick: match.tick,
+      }));
+      const punted = stock().position;
+      expect(Math.hypot(punted.x - initial.x, punted.z - initial.z)).toBeCloseTo(match.config.hayKickDistance);
+    } finally { game.dispose(); }
+  }, 90_000);
+
   it('lets the player claim summit points against the standard three bots', async () => {
     const game = await Game.create();
     try {
