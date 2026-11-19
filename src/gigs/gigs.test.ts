@@ -303,6 +303,66 @@ describe('Gig boards and real world integration', () => {
     });
   });
 
+  it.each(DIFFICULTIES)('stages the %s demolition approach on the board side of both bases', difficulty => {
+    const setup = catalog.build(catalog.makeOffer('demolition-contract', difficulty));
+    const tower = configOf(setup, 'demolition-contract');
+    const [left, right] = setup.spawns;
+    const approach = setup.markers[0]!;
+    const scale = island.size / 600;
+    expect(setup.markers).toHaveLength(1);
+    expect(approach).toMatchObject({ id: 'tower', label: 'BOARD-SIDE APPROACH', type: 'start' });
+    expect(approach.label.length).toBeLessThanOrEqual(20);
+    expect(setup.info.instruction).toMatch(/board side.*headbutt at each bottom crate/);
+    expect(approach.position.x).toBeCloseTo((left!.position.x + right!.position.x) / 2, 6);
+    expect(approach.position.y).toBeCloseTo(heightAt(island, approach.position.x, approach.position.z), 6);
+    const boardSideEdge = left!.position.z - left!.size.z / 2;
+    expect(boardSideEdge - (approach.position.z + approach.radius)).toBeGreaterThan(.5 * scale);
+    expect(left!.position.z - approach.position.z).toBeCloseTo(3.2 * scale, 6);
+    expect(tower.pieces.slice(0, 2).map(piece => piece.id)).toEqual([left!.id, right!.id]);
+  });
+
+  it('updates the old apron marker while preserving a partly demolished Hard tower', () => {
+    const director = new GigDirector(catalog);
+    const current = director.startPractice('demolition-contract', 'hard');
+    const first = current.spawns[0]!;
+    director.step({ ...frame(current.start),
+      abilities: [{ type: 'headbutt', targetId: first.id }],
+      props: [{ id: first.id, position: shifted(first.position, 4) }] });
+    const snapshot = director.toJSON();
+    const previous = snapshot.run!;
+    previous.setup.info.instruction =
+      'Hold and release headbutt against the marked tower’s bottom row to topple it.';
+    previous.setup.markers = [{
+      id: 'tower', label: 'Hit the base', position: { x: current.start.x,
+        y: first.position.y - first.size.y / 2 + 3, z: first.position.z },
+      radius: 5, type: 'destination',
+    }];
+
+    const restored = GigDirector.fromJSON(snapshot, catalog);
+    expect(restored.active).toMatchObject({
+      attemptId: previous.attemptId, status: 'running', elapsedTicks: 1,
+      metrics: previous.metrics, objective: { kind: 'displace', headbutts: 1, movedMass: 4.5, requiredMass: 39.6 },
+    });
+    expect(restored.active?.setup).toEqual(current);
+    expect(restored.active?.setup.spawns).toEqual(previous.setup.spawns);
+    expect(GigDirector.fromJSON(restored.toJSON(), catalog).active).toEqual(restored.active);
+  });
+
+  it('still restarts running demolition saves from before the current tower placement', () => {
+    const director = new GigDirector(catalog);
+    const current = director.startPractice('demolition-contract', 'hard');
+    const snapshot = director.toJSON();
+    const previous = snapshot.run!;
+    previous.setup = catalog['buildVariant'](current.offer, true);
+    previous.elapsedTicks = 90;
+    previous.metrics.displacedMass = 12;
+    previous.metrics.headbutts = 2;
+    expect(GigDirector.fromJSON(snapshot, catalog).active).toMatchObject({
+      setup: current, attemptId: previous.attemptId, status: 'running', elapsedTicks: 0,
+      metrics: { displacedMass: 0, headbutts: 0 },
+    });
+  });
+
   it('preserves an active gnome escort saved with the previous instructions', () => {
     const director = new GigDirector(catalog);
     const setup = director.startPractice('escort-the-gnome', 'easy');

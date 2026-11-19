@@ -15,6 +15,9 @@ import type {
 export const TICKS_PER_SECOND = 60;
 export const BOARD_CYCLE_TICKS = 180 * TICKS_PER_SECOND;
 
+const PREVIOUS_DEMOLITION_INSTRUCTION =
+  'Hold and release headbutt against the marked tower’s bottom row to topple it.';
+
 /** Cosmetic ownership is tracked in gigs; gameplay's shop does not expose a grant operation. */
 export const GIG_INFO: Readonly<Record<GigId, GigInfo>> = {
   'hay-haul': {
@@ -34,7 +37,7 @@ export const GIG_INFO: Readonly<Record<GigId, GigInfo>> = {
   'demolition-contract': {
     id: 'demolition-contract', title: 'DEMOLITION CONTRACT', poiId: 'crane-yard',
     pitch: 'The official building inspector is a goat.',
-    instruction: 'Hold and release headbutt against the marked tower’s bottom row to topple it.',
+    instruction: 'From the board side, charge and release a headbutt at each bottom crate.',
     verbs: ['headbutt', 'bleat'], baseCoins: 80,
     cosmetic: { id: 'safety-horns', name: 'Safety Third Horns', slot: 'horns', color: '#FF891E' },
   },
@@ -174,6 +177,14 @@ for (let z = 39; z <= 68; z++) {
 MOW_LAWN_CANDIDATES.sort((a, b) =>
   a.distance - b.distance || a.z - b.z || Number(a.x > 0) - Number(b.x > 0) ||
   Math.abs(a.x) - Math.abs(b.x));
+
+/** Demolition can refresh its approach cue while keeping the saved course and bodies. */
+export function gigSetupRelocated(saved: GigSetup, current: GigSetup): boolean {
+  if (saved === current) return false;
+  const comparable = current.config.kind === 'demolition-contract'
+    ? { ...saved, info: current.info, markers: current.markers } : saved;
+  return JSON.stringify(comparable) !== JSON.stringify(current);
+}
 
 /** Data is captured at construction so another team can mutate world visuals without changing a run. */
 export class GigCatalog {
@@ -393,6 +404,11 @@ export class GigCatalog {
         JSON.stringify({ ...current, info: { ...current.info, instruction: saved.info.instruction } }) === serialized) {
       return saved;
     }
+    if (current.config.kind === 'demolition-contract' &&
+        saved.info?.instruction === PREVIOUS_DEMOLITION_INSTRUCTION &&
+        !gigSetupRelocated(saved, current)) {
+      return current;
+    }
     if (current.config.kind === 'hay-haul') {
       const fieldSupply = this.buildVariant(saved.offer, false, true);
       if (JSON.stringify(fieldSupply) === serialized) return saved;
@@ -521,8 +537,14 @@ export class GigCatalog {
         }
         config = { kind: 'demolition-contract', pieces, requiredFraction: [0.56, 0.64, 0.72][tier]! };
         start = plus(anchor, 0, 1, legacyLayout ? 9 : 7 * scale);
-        markers = [marker('tower', legacyLayout ? 'Topple me' : 'Hit the base',
-          plus(anchor, 0, 3, 0), 5, 'destination')];
+        if (legacyLayout) {
+          markers = [marker('tower', 'Topple me', plus(anchor, 0, 3, 0), 5, 'destination')];
+        } else {
+          // Stage on the board side of the staggered stack, with room to line up either base.
+          const approach = plus(anchor, 0, 0, -3.2 * scale);
+          approach.y = this.terrainY(approach.x, approach.z);
+          markers = [marker('tower', 'BOARD-SIDE APPROACH', approach, 1.8 * scale, 'start')];
+        }
         break;
       }
       case 'mow-down': {

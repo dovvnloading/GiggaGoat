@@ -1,5 +1,5 @@
 import type { PoiId } from '../world';
-import { BOARD_CYCLE_TICKS, GIG_INFO, GigCatalog, TICKS_PER_SECOND } from './catalog';
+import { BOARD_CYCLE_TICKS, GIG_INFO, GigCatalog, gigSetupRelocated, TICKS_PER_SECOND } from './catalog';
 import { HAY_HAUL_TAG_RADIUS } from './types';
 import type {
   Difficulty, GigAward, GigBest, GigConfig, GigEvent, GigFrame,
@@ -525,10 +525,10 @@ export class GigDirector {
         !run.metrics || Object.values(run.metrics).some(n => !finite(n) || n < 0)) {
         throw new RangeError('Malformed active gig snapshot');
       }
-      const relocated = expected !== run.setup && [
+      const relocated = [
         'rooftop-express', 'splash-dive', 'summit-sprint', 'escort-the-gnome', 'beacon-bleat',
         'demolition-contract', 'stack-up',
-      ].includes(expected.offer.gigId);
+      ].includes(expected.offer.gigId) && gigSetupRelocated(run.setup, expected);
       restoredRun = relocated && run.status === 'running' ? freshRun(expected, run.attemptId) : clone(run);
       if (!relocated) {
         restoredRun.setup = expected;

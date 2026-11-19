@@ -45,7 +45,11 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
       // The old implementation duplicated a draw call per kind per 96-m chunk.
       expect(instances.count, kind).toBe(props.length);
       instances.geometry.computeBoundingBox();
-      const bounds = instances.geometry.boundingBox!;
+      // Pine feet move below the model's nominal box. Check the base envelope
+      // here; the Pine regression test checks the drawn morph against terrain.
+      const bounds = kind === 'deck-stilts'
+        ? new THREE.Box3().setFromBufferAttribute(instances.geometry.getAttribute('position') as THREE.BufferAttribute)
+        : instances.geometry.boundingBox!;
       const span = bounds.getSize(new THREE.Vector3());
       const log = kind === 'log-bridge' ? props[0]! : undefined;
       const logEntries = log ? 2 * PINES_LOG_ENTRY_LENGTH * (island.size / 600) / log.size.z : 0;
