@@ -707,6 +707,10 @@ export class Game {
     };
     const result = sim.update(dt, rulesIntent, facts);
     const commands = result.commands[0]!;
+    if (player && !match && facts.grounded && !goat.isRagdoll && sim.abilities.headbuttCharge > 0 &&
+        Math.hypot(mx, mz) <= .08 && !commands.jump && !commands.ragdoll) {
+      this.faceDemolitionCharge(goat, cameraYaw);
+    }
     const parcelHeld = towingParcel && commands.tongue?.action !== 'fling';
     const safetyRail = !commands.jump && !commands.ragdoll
       ? this.nearbySafetyRail(goat, wish) : undefined;
@@ -722,6 +726,21 @@ export class Game {
         this.gigs.active?.setup.config.kind === 'mow-down') {
       this.gigs.noteAbility({ type: 'eat' });
     }
+  }
+
+  /** Turn the grounded body during the charge when a contract crate is in reach and in view. */
+  private faceDemolitionCharge(goat: GoatRagdoll, look: number): void {
+    const run = this.gigs.active;
+    if (run?.status !== 'running' || run.setup.config.kind !== 'demolition-contract') return;
+    const torso = goat.torso.translation();
+    const head = goat.head.translation();
+    const reach = goat.interactions.tuning.headbuttRange * goat.size +
+      Math.hypot(head.x - torso.x, head.z - torso.z);
+    const hit = this.physics.raycast(V(torso.x, head.y, torso.z), forward(look), reach, {
+      predicate: collider => !goat.ownsBody(collider.parent()),
+    });
+    const owner = hit?.body && this.physics.bodyData(hit.body.handle)?.owner;
+    if (owner && run.setup.config.pieces.some(piece => piece.id === owner)) goat.locomotion.heading = look;
   }
 
   private nearbySafetyRail(goat: GoatRagdoll, wish: Vec3): MovementInput['safetyRail'] {
