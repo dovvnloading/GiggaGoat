@@ -85,7 +85,7 @@ export function keeperCottagePiers(island: IslandData, cottage: PropDescriptor):
   const sill = position.y - cottage.size.y / 2;
   const cap = sill + .04 * scale;
   return [-1, 1].flatMap(side => {
-    // The rendered sill ends at local x = .46 and z = ±.425 of the descriptor.
+    // The rendered sill ends at local x = .46 and z = plus or minus .425 of the descriptor.
     // Set the feet on final terrain, after the channel has been carved.
     const near = side < 0 ? -.425 : .27;
     const far = side < 0 ? -.27 : .425;
