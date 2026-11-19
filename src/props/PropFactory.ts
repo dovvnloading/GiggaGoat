@@ -17,6 +17,12 @@ export interface Size3 { x: number; y: number; z: number }
 export type WorldLibraryPropKind =
   'crate' | 'barrel' | 'hay-bale' | 'fence' | 'ramp' | 'trampoline' | 'gnome';
 
+interface WorldArtFit {
+  yaw: number;
+  /** Tread plane elevations at the model's ends, relative to its initial fitted floor and height. */
+  treadElevations: readonly [toe: number, crest: number];
+}
+
 /** Same descriptor colours as the World Lab's procedural loading placeholders. */
 const WORLD_PROP_COLORS: Readonly<Record<WorldLibraryPropKind, number>> = {
   crate: 0xc4915f, barrel: 0xe67d5d, 'hay-bale': 0xf2c14f,
@@ -254,7 +260,7 @@ export class PropFactory {
   }
 
   private fittedWorld(prototype: THREE.Object3D, kind: WorldLibraryPropKind,
-    size: Size3, color?: number): THREE.Group | null {
+    size: Size3, color: number | undefined, artFit?: WorldArtFit): THREE.Group | null {
     let geometry = this.worldGeometries.get(kind);
     if (!geometry) {
       // Use the same multi-mesh/atlas/vertex-colour baker as World Lab.
@@ -281,7 +287,7 @@ export class PropFactory {
     mesh.receiveShadow = true;
     const fitted = new THREE.Group();
     fitted.name = 'world-library-fitted';
-    fitted.rotation.y = fit.yaw;
+    fitted.rotation.y = fit.yaw + (artFit?.yaw ?? 0);
     fitted.scale.copy(fit.scale);
     fitted.add(mesh);
     fitted.updateMatrixWorld(true);
@@ -293,12 +299,19 @@ export class PropFactory {
       -(bounds.min.x + bounds.max.x) / 2,
       -size.y / 2 - bounds.min.y,
       -(bounds.min.z + bounds.max.z) / 2);
+    if (artFit) {
+      const [toe, crest] = artFit.treadElevations;
+      // Fit the walkable tread from the collider floor to its crest.
+      const verticalScale = 1 / (crest - toe);
+      fitted.scale.y *= verticalScale;
+      fitted.position.y = -size.y / 2 - (bounds.min.y + size.y * toe) * verticalScale;
+    }
     return fitted;
   }
 
   /** Draw one placeholder, then swap in the exact World Lab GLB. */
   createWorldProp(kind: WorldLibraryPropKind, size: Size3, color: number | undefined,
-    legacyFallback?: () => THREE.Group): THREE.Group {
+    legacyFallback?: () => THREE.Group, artFit?: WorldArtFit): THREE.Group {
     const root = this.root('world-' + kind, size);
     const slot = new THREE.Group();
     slot.name = 'library-slot';
@@ -323,7 +336,7 @@ export class PropFactory {
       if (this.disposed || !this.instances.has(root)) return;
       let model: THREE.Group | null = null;
       try {
-        if (prototype) model = this.fittedWorld(prototype, kind, size, color);
+        if (prototype) model = this.fittedWorld(prototype, kind, size, color, artFit);
       } catch {
         // A malformed GLB is treated exactly like a failed network request.
       }

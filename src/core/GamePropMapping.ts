@@ -44,10 +44,14 @@ function legacyWorldProp(factory: PropFactory,
 
 /** World instances use the World Lab GLB, centred on their collider and yaw. */
 export function createWorldLibraryProp(factory: PropFactory,
-  prop: Pick<PropDescriptor, 'kind' | 'size' | 'color'>): THREE.Group | null {
+  prop: Pick<PropDescriptor, 'kind' | 'size' | 'color'> & { id?: string }): THREE.Group | null {
   if (!WORLD_LIBRARY_KINDS.has(prop.kind)) return null;
+  // Timber model rises toward local -Z. The main tread plane runs from
+  // 5.48% to 100.31% of its overall fitted height at the two ends.
+  const artFit = prop.kind === 'ramp' && prop.id?.startsWith('downtown-bleatsville-ramp-')
+    ? { yaw: Math.PI, treadElevations: [.0548, 1.0031] as const } : undefined;
   return factory.createWorldProp(prop.kind as WorldLibraryPropKind, prop.size, prop.color,
-    () => legacyWorldProp(factory, prop));
+    () => legacyWorldProp(factory, prop), artFit);
 }
 
 export function createBoardLibraryProp(factory: PropFactory): THREE.Group {

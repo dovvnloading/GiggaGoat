@@ -118,7 +118,7 @@ describe('Billy Isle roadside stops', () => {
   it('uses the selected entrances for both terrain LODs', () => {
     const island = generateIsland({ resolution: 97 });
     const shader = {
-      uniforms: {}, fragmentShader: '#include <common>\ndiffuseColor.rgb = mix(diffuseColor.rgb, uStone, rock);',
+      uniforms: {}, fragmentShader: THREE.ShaderLib.toon!.fragmentShader,
     } as THREE.WebGLProgramParametersWithUniforms;
     paintRoadsideGravel(shader, island);
     expect(shader.fragmentShader).toContain('roadsideGravel(diffuseColor.rgb, vWorld.xz, uTerrainScale)');

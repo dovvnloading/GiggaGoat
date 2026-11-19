@@ -104,7 +104,10 @@ describe('Downtown paved corners and service lanes', () => {
     } as WebGLProgramParametersWithUniforms;
     terrain.onBeforeCompile(shader, {} as THREE.WebGLRenderer);
     scene.dispose();
+    // Both surface passes run after the cliff branch even when the rock mask is zero.
+    expect(shader.fragmentShader).toMatch(/uStone, rock\);\s*}\s*diffuseColor\.rgb = downtownGround\(/);
     expect(shader.fragmentShader).toContain('downtownGround(diffuseColor.rgb, (vWorld.xz - uDowntownOrigin) / uTerrainScale)');
+    expect(shader.fragmentShader).toMatch(/uTerrainScale\);\s*diffuseColor\.rgb = roadsideGravel\(/);
     expect((shader.uniforms['uDowntownServiceCourt']!.value as THREE.Vector3).toArray())
       .toEqual([-40, -35, 14.8]);
     expect(shader.fragmentShader).toContain('length(point - uDowntownServiceCourt.xy)');

@@ -1,10 +1,11 @@
 import { readFile } from 'node:fs/promises';
+import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { describe, expect, it, vi } from 'vitest';
 import { PropFactory, BUILD_PIECE_SIZES, DEFAULT_CRATE_SIZE } from '../props';
 import { HEIST_BALE_SIZE, type WorldLibraryPropKind } from '../props/PropFactory';
-import { createWorldScene, generateIsland } from '../world';
+import { buildRapierColliders, createWorldScene, generateIsland } from '../world';
 import * as hoofingtonArt from '../world/visual-hoofington';
 import { PROP_LIBRARY_MODELS } from '../world/library-props';
 import { fitLibraryModel, isAuthoredLibraryAsset } from '../world/library-fit';
@@ -289,6 +290,53 @@ describe('world props use World Lab art rather than gig/build toys', () => {
     expect(fence.getObjectByName('prop-build-wall')).toBeUndefined();
     expect(fence.getObjectByName('prop-wall')).toBeUndefined();
     f.dispose();
+  });
+
+  it('aligns the four Downtown service ramp models with their walkable colliders', async () => {
+    await RAPIER.init();
+    const island = generateIsland();
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    const path = PROP_LIBRARY_MODELS.ramp;
+    const bytes = await readFile(new URL('../../public/' + path, import.meta.url));
+    const { scene } = await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, '');
+    const f = new PropFactory({ loadModel: async () => scene, assetBaseUrl: assetBase });
+    try {
+      const { props } = buildRapierColliders(world, island);
+      const ramps = island.props.filter(prop => prop.kind === 'ramp'
+        && prop.id.startsWith('downtown-bleatsville-ramp-'));
+      expect(ramps.map(prop => prop.id)).toEqual([41, 43, 51, 53]
+        .map(index => 'downtown-bleatsville-ramp-' + index));
+      const models = ramps.map(prop => {
+        const root = createWorldLibraryProp(f, prop)!;
+        const { position, rotationY } = prop.transform;
+        root.position.set(position.x, position.y, position.z);
+        root.rotation.y = rotationY;
+        return root;
+      });
+      await f.whenReady();
+      const down = new THREE.Vector3(0, -1, 0);
+      for (const [index, prop] of ramps.entries()) {
+        const collider = props.get(prop.id)!;
+        const root = models[index]!;
+        expect(root.userData.assetStatus, prop.id).toBe('ready');
+        root.updateMatrixWorld(true);
+        const treads = [.005, .02, .05, .25, .75, .95, .98, .995].map(fraction => {
+          const origin = new THREE.Vector3(0, prop.size.y, (fraction - .5) * prop.size.z)
+            .applyMatrix4(root.matrixWorld);
+          const ray = new THREE.Raycaster(origin, down);
+          const tread = ray.intersectObject(root, true)[0];
+          const support = collider.castRay(new RAPIER.Ray(origin, down), prop.size.y * 2, false);
+          expect(tread, prop.id).toBeDefined();
+          expect(support, prop.id).toBeGreaterThan(0);
+          expect(Math.abs(tread!.distance - support), prop.id + ':' + fraction).toBeLessThan(.01);
+          return tread!.point.y;
+        });
+        expect(treads.at(-1)!, prop.id).toBeGreaterThan(treads[0]!);
+      }
+    } finally {
+      f.dispose();
+      world.free();
+    }
   });
 
   it('fits every Hoofington picket fence on the default island, including yaw', async () => {
