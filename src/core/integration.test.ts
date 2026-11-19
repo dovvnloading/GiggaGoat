@@ -689,10 +689,17 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
     { dx: 5.64, dz: .71, facing: -1.8, input: { moveX: -1, cameraYaw: -.353 } },
     { dx: .14, dz: 8.04, facing: 2.24, ticksToRun: 260, input: { moveZ: 1, cameraYaw: -.12 } },
     { dx: 6.5, dz: 7.83, facing: 2.20, ticksToRun: 280, input: { moveX: -1, cameraYaw: .6265 } },
-  ])('keeps a continuous grip on the Hoofington silo from ($dx, $dz)', async ({ dx, dz, facing, input, ticksToRun = 180 }) => {
+    { dx: 8, dz: -.25, facing: 0, billy: true, ticksToRun: 275, input: { moveX: -1, cameraYaw: .02 } },
+  ])('keeps a continuous grip on the Hoofington silo from ($dx, $dz)', async ({ dx, dz, facing, input, billy, ticksToRun = 180 }) => {
     const game = await Game.create();
     try {
+      if (billy) {
+        game.rules.awardStyle({ type: 'flip' });
+        game.rules.awardStyle({ type: 'destruction' });
+        game.rules.awardStyle({ type: 'topple' });
+      }
       ticks(game, 90);
+      if (billy) expect(game.goat.size).toBe(1);
       const silo = game.island.props.find(prop => prop.kind === 'silo')!;
       const { x, z } = silo.transform.position;
       const startX = x + dx;
