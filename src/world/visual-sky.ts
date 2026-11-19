@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { cloudTexture, type IslandWeather } from './island-weather';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CLOUD_LIBRARY_MODELS, loadLibraryCloudGeometry } from './library-props';
 
@@ -31,7 +32,7 @@ export type LightingPreset = 'day' | 'golden-hour' | 'night';
 export interface SkyVisuals {
   group: THREE.Group;
   atmosphere: ReturnType<typeof skyUniforms>;
-  update(phase: number): { daylight: number; altitude: number;
+  update(phase: number, weather?: IslandWeather): { daylight: number; altitude: number;
     direction: THREE.Vector3; golden: number; horizon: THREE.Color };
 }
 
@@ -39,6 +40,10 @@ const DOME_RADIUS = 1800;
 
 export function skyUniforms() {
   return {
+    uCloudField: { value: cloudTexture() },
+    uCover: { value: 0 }, uWet: { value: 0 }, uRain: { value: 0 },
+    uWind: { value: new THREE.Vector2() },
+    uStormSky: { value: new THREE.Color() },
     uDay: { value: 1 },
     uGolden: { value: 0 },
     uSun: { value: new THREE.Vector3(0, 1, 0) },
@@ -52,7 +57,10 @@ export function skyUniforms() {
 
 /** The sea uses the same view ray and painted gradient as the dome at its edge. */
 export const skyColorGLSL = /* glsl */ `
-uniform float uDay, uGolden, uSunGlowStrength;
+uniform float uDay, uGolden, uSunGlowStrength, uCover;
+uniform sampler2D uCloudField;
+uniform vec2 uWind;
+uniform vec3 uStormSky;
 uniform vec3 uSun, uHorizon, uSunsetHorizon, uSunsetMid, uSunsetZenith;
 vec3 skyColor(vec3 worldPosition) {
   vec3 ray = normalize(worldPosition - cameraPosition);
@@ -69,7 +77,27 @@ vec3 skyColor(vec3 worldPosition) {
   float glow = max(dot(dir, normalize(uSun)), 0.0);
   glow *= glow; glow *= glow; glow *= glow; glow *= glow; glow *= glow;
   dayColor += vec3(1.0, 0.72, 0.36) * glow * uSunGlowStrength;
-  return mix(night, dayColor, max(uDay, uGolden));
+  vec3 base = mix(night, dayColor, max(uDay, uGolden));
+  if (uCover <= 0.0) return base;
+  float storm = smoothstep(0.46, 0.96, uCover);
+  base = mix(base, uStormSky * (1.0 - 0.30 * horizon), storm * 0.83);
+  return base;
+}`;
+
+const cloudDeckGLSL = /* glsl */ `
+vec3 cloudDeck(vec3 dir, vec3 base) {
+  if (uCover <= 0.0 || dir.y <= .002) return base;
+  float storm = smoothstep(0.46, 0.96, uCover);
+  vec2 plane = (cameraPosition.xz + dir.xz * 140.0 / max(0.048, dir.y)) * 0.0018 + uWind;
+  float density = texture2D(uCloudField, plane).r;
+  float edge = 0.69 - uCover * 0.38;
+  float mass = smoothstep(edge - 0.07, edge + 0.08, density);
+  float rim = density - texture2D(uCloudField, plane + uSun.xz * 0.023).r;
+  vec3 cloud = mix(vec3(0.80, 0.87, 0.96), vec3(1.00, 0.84, 0.67), uGolden);
+  cloud = mix(cloud, vec3(0.34, 0.43, 0.56), clamp(storm * 0.66 + 0.32 * mass - rim, 0.0, 1.0));
+  cloud *= mix(vec3(0.28, 0.34, 0.49), vec3(1.0), max(uDay, uGolden));
+  cloud += max(0.0, rim) * vec3(0.44, 0.37, 0.27) * uDay;
+  return mix(base, cloud, mass * smoothstep(0.002, 0.115, dir.y) * 0.94);
 }`;
 
 /** Gradient dome with an actual sun disc, cloud banks and softly glowing night stars. */
@@ -89,9 +117,9 @@ export function buildSkyVisuals(): SkyVisuals {
       ].join('\n'),
       fragmentShader: [
         'varying vec3 vSkyWorld;',
-        skyColorGLSL,
+        skyColorGLSL, cloudDeckGLSL,
         'void main() {',
-        '  gl_FragColor = sRGBTransferEOTF(vec4(skyColor(vSkyWorld), 1.0));',
+        '  gl_FragColor = sRGBTransferEOTF(vec4(cloudDeck(normalize(vSkyWorld), skyColor(vSkyWorld)), 1.0));',
         '  #include <colorspace_fragment>',
         '}',
       ].join('\n'),
@@ -167,7 +195,13 @@ export function buildSkyVisuals(): SkyVisuals {
     new THREE.MeshBasicMaterial({ color: 0xffe6a0, fog: false }));
   sun.name = 'visible-sun';
   group.add(sun);
+  const moon = new THREE.Mesh(new THREE.SphereGeometry(19, 20, 12),
+    new THREE.MeshBasicMaterial({ color: 0xe5edff, fog: false }));
+  moon.name = 'island-moon';
+  group.add(moon);
+  dome.material.addEventListener('dispose', () => uniforms.uCloudField.value.dispose());
 
+  const stormCloudColor = new THREE.Color(0x78889d);
   const starPositions: number[] = [];
   for (let i = 0; i < 320; i++) {
     const a = rand() * Math.PI * 2;
@@ -199,7 +233,7 @@ export function buildSkyVisuals(): SkyVisuals {
   const dayHorizon = new THREE.Color();
   const horizon = new THREE.Color();
 
-  function update(phase: number): { daylight: number; altitude: number;
+  function update(phase: number, weather?: IslandWeather): { daylight: number; altitude: number;
     direction: THREE.Vector3; golden: number; horizon: THREE.Color } {
     const angle = phase * Math.PI * 2 - Math.PI / 2;
     const altitude = Math.sin(angle);
@@ -214,6 +248,17 @@ export function buildSkyVisuals(): SkyVisuals {
     // Diagonal warm key, not a nearly vertical noon light that erases facade relief.
     const direction = new THREE.Vector3(Math.cos(angle) * 0.7 + 0.48 * daylight,
       altitude * 0.87, -0.63).normalize();
+    const storm = THREE.MathUtils.smoothstep(weather?.cloud ?? 0, .46, .96);
+    uniforms.uCover.value = weather?.cloud ?? 0;
+    uniforms.uWind.value.set((weather?.time ?? 0) * .00052, (weather?.time ?? 0) * -.00019);
+    uniforms.uRain.value = weather?.rain ?? 0;
+    uniforms.uWet.value = weather?.wet ?? 0;
+    uniforms.uStormSky.value.setRGB(.50, .59, .70).multiplyScalar(.38 + .62 * daylight);
+    if (storm > 0) {
+      horizon.convertLinearToSRGB().lerp(uniforms.uStormSky.value, storm * .83).convertSRGBToLinear();
+    }
+    moon.position.copy(direction).multiplyScalar(-940);
+    moon.visible = altitude < -.04;
     uniforms.uDay.value = daylight;
     uniforms.uGolden.value = golden;
     // At golden hour this is 1.65× the original glow; at noon it is 0.29.
@@ -223,7 +268,11 @@ export function buildSkyVisuals(): SkyVisuals {
     sun.visible = altitude > -0.07;
     cloudMaterial.opacity = 0.18 + daylight * 0.76;
     cloudMaterial.color.setHex(golden > 0.32 ? 0xffcdb6 : 0xffffff);
-    starMaterial.opacity = (1 - daylight) * 0.94;
+    if (weather) {
+      cloudMaterial.color.lerp(stormCloudColor, storm * .74);
+      cloudMaterial.emissiveIntensity = .09 + .21 * daylight * (1 - storm);
+    }
+    starMaterial.opacity = (1 - daylight) * 0.94 * (1 - .94 * storm);
     stars.visible = daylight < 0.7;
     return { daylight, altitude, direction, golden, horizon };
   }

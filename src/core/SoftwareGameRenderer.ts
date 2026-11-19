@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import type { IslandWeather } from '../world/island-weather';
+import { SoftwareAtmosphere } from './SoftwareAtmosphere';
 import { SoftwareFrame, pixel, type ClipVertex, type SoftwareTexture } from './SoftwareFrame';
 import { softwareGeometry } from './software-geometry';
 import { surfacePaintMaps } from '../world/surface-paint';
@@ -47,13 +49,26 @@ export class SoftwareGameRenderer {
   private readonly boneMatrix = new THREE.Matrix4();
   private bonePalette = new Float32Array(0);
   private readonly textures = new WeakMap<THREE.Texture, { version: number; image: SoftwareTexture }>();
-  private readonly groundTints = new WeakMap<SoftwareGeometry, Uint32Array>();
+  private groundTints = new WeakMap<SoftwareGeometry, Uint32Array>();
   private readonly faceTints = new WeakMap<THREE.Mesh, ShadedFaces[]>();
   private readonly diffuse = new THREE.Color();
   private readonly srgb = Uint8Array.from({ length: 4097 }, (_, i) =>
     Math.round(255 * THREE.ColorManagement.workingToColorSpace(
       new THREE.Color(i / 4096, 0, 0), THREE.SRGBColorSpace).r));
+  private weather?: IslandWeather;
+  private readonly air = new SoftwareAtmosphere();
+  private lightStep = -1;
+  private rain?: THREE.LineSegments;
   private near = .1;
+
+  setEnvironment(weather: IslandWeather, key: THREE.Vector3, target: THREE.Vector3): void {
+    this.weather = weather;
+    const step = Math.floor(weather.phase * 96);
+    if (step === this.lightStep) return;
+    this.lightStep = step;
+    this.sun.subVectors(key, target).normalize();
+    this.groundTints = new WeakMap();
+  }
   private focalPixels = 1;
 
   constructor(readonly domElement: HTMLCanvasElement, private readonly ctx: {
@@ -112,10 +127,16 @@ export class SoftwareGameRenderer {
     const horizon = scene.fog?.color ?? this.clearColour;
     frame.clear(horizon.getHex(), scene.background instanceof THREE.Color
       ? scene.background.getHex() : horizon.getHex());
+    this.rain = undefined;
+    if (this.weather) this.air.sky(frame, camera, this.weather, horizon.getHex());
     scene.traverseVisible(object => {
+      if (object instanceof THREE.LineSegments && object.name === 'island-rain') this.rain = object;
       if (object instanceof THREE.Mesh) this.drawMesh(object);
       else if (object instanceof THREE.Sprite) this.drawSprite(object);
     });
+    if (this.weather) this.air.grade(frame, this.weather, horizon.getHex(),
+      scene.fog instanceof THREE.FogExp2 ? scene.fog.density : .002);
+    if (this.rain) this.air.drops(frame, this.rain, camera);
     this.ctx.putImageData(frame.image, 0, 0);
   }
 
@@ -221,7 +242,7 @@ export class SoftwareGameRenderer {
         }
       }
       const light = normal ? this.position.fromBufferAttribute(normal, source).dot(this.sun) : 1;
-      const shade = .79 + .21 * Math.max(-.6, light);
+      const shade = .75 + .27 * Math.max(-.6, light);
       tint[i] = pixel(this.channel(r, shade), this.channel(g, shade), this.channel(b, shade));
     }
     this.groundTints.set(data, tint);
@@ -234,7 +255,7 @@ export class SoftwareGameRenderer {
     this.sphere.copy(geometry.boundingSphere!).applyMatrix4(matrix);
     if (this.sphere.radius <= 0 || !this.frustum.intersectsSphere(this.sphere)) return;
     const distance = this.cameraPosition.distanceTo(this.sphere.center);
-    const sky = mesh.name === 'visible-sun' || mesh.name.startsWith('puffy-cloud-banks');
+    const sky = mesh.name === 'visible-sun' || mesh.name === 'island-moon' || mesh.name.startsWith('puffy-cloud-banks');
     if (!sky && distance - this.sphere.radius > 245) return;
     const radius = this.focalPixels * this.sphere.radius / Math.max(1, distance - this.sphere.radius);
     if (radius < 1.05) return;
@@ -335,7 +356,7 @@ export class SoftwareGameRenderer {
       }
       let colour = ground ? 0 : faceTints?.[face];
       if (colour === undefined) {
-        const shade = paint.unlit ? 1 : .79 + .21 * Math.max(-.6,
+        const shade = paint.unlit ? 1 : .75 + .27 * Math.max(-.6,
           normals[k]! * light.x + normals[k + 1]! * light.y + normals[k + 2]! * light.z);
         const vertex = paint.material.vertexColors ? colours : undefined;
         const base = paint.colour;
@@ -374,7 +395,7 @@ export class SoftwareGameRenderer {
     const normals = data.normals, vertex = paint.material.vertexColors ? data.colours : undefined;
     for (let i = 0; i < entry.colours.length; i++) {
       const k = i * 3;
-      const shade = paint.unlit ? 1 : .79 + .21 * Math.max(-.6,
+      const shade = paint.unlit ? 1 : .75 + .27 * Math.max(-.6,
         normals[k]! * light.x + normals[k + 1]! * light.y + normals[k + 2]! * light.z);
       entry.colours[i] = pixel(this.channel(tint.r * (vertex ? vertex[k]! : 1), shade),
         this.channel(tint.g * (vertex ? vertex[k + 1]! : 1), shade),

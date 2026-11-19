@@ -1,6 +1,7 @@
 import { downtownPublicSpaceAt, downtownPublicSpaces } from './downtown-public-space';
 import { roadsideGravelAt, roadsideStops } from './roadside-stops';
 import * as THREE from 'three';
+import type { skyUniforms } from './visual-sky';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { IslandData } from './types';
@@ -55,7 +56,7 @@ function makeGrassBlades(): THREE.BufferGeometry {
  * Already collidable grass, flowers, crates and hay remain in island.props.
  * No extra rigid bodies are created for tiny cosmetic details.
  */
-export function buildMeadowScatter(island: IslandData): THREE.Group {
+export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof skyUniforms>): THREE.Group {
   const group = new THREE.Group();
   group.name = 'island-meadow-and-wildflowers';
   const rng = new SeededRandom(String(island.seed) + ':storybook-meadow');
@@ -176,6 +177,18 @@ export function buildMeadowScatter(island: IslandData): THREE.Group {
   const axis = new THREE.Vector3(0, 1, 0);
   function instances(geometry: THREE.BufferGeometry, samples: Sprig[],
     name: string, material: THREE.MeshToonMaterial): THREE.InstancedMesh {
+    if (sky) material.onBeforeCompile = shader => {
+      shader.uniforms['uWind'] = sky.uWind;
+      shader.uniforms['uCover'] = sky.uCover;
+      shader.vertexShader = shader.vertexShader.replace('#include <common>',
+        '#include <common>\nuniform vec2 uWind; uniform float uCover;')
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vec2 base = instanceMatrix[3].xz;
+        float gust = sin(dot(base,vec2(.14,.08)) + uWind.x*2200.0);
+        vec2 wind = vec2(.84,-.36) * (.12 + .19*uCover) * (.55+.45*gust);
+        transformed.xz += vec2(dot(normalize(instanceMatrix[0].xz),wind),
+          dot(normalize(instanceMatrix[2].xz),wind)) * position.y*position.y;`);
+    };
     const mesh = new THREE.InstancedMesh(geometry, material, samples.length);
     mesh.name = name;
     mesh.castShadow = false;

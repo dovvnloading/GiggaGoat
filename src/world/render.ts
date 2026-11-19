@@ -24,7 +24,10 @@ import { buildMountainWayfinding } from './visual-mountain';
 import { paintPinesLogAprons } from './visual-pines-log-access';
 import { isPinesDeckStilt } from './visual-pines-deck-stilts';
 import { DAM_PINES_BRIDGE_PREFIX, MOUNTAIN_SPIRAL_BRIDGE_PREFIX } from './roads';
-import { buildSkyVisuals, type LightingPreset } from './visual-sky';
+import type { IslandWeather } from './island-weather';
+import { pinesFireflies } from './pines-fireflies';
+import { weatherSurface } from './weather-surfaces';
+import { buildSkyVisuals, skyUniforms, type LightingPreset } from './visual-sky';
 
 export { isDowntownRoadOverlay, isHoofingtonTrailOverlay } from './road-ribbons';
 
@@ -46,7 +49,7 @@ export interface WorldScene {
   /** Actual sky-dome horizon colour, kept in sync on each lighting update. */
   fogColor: THREE.Color;
   /** Phase 0..1, midpoint is noon; backward-compatible with the original lane. */
-  setDayNight(phase: number): void;
+  setDayNight(phase: number, weather?: IslandWeather): void;
   /** Day, painterly golden hour and starry night bookmarks. */
   setLightingPreset(preset: LightingPreset): void;
   /** Set the sea level. The Lab shows escape cues above baseline unless the host opts out. */
@@ -244,7 +247,7 @@ function terrainGeometry(
   return geometry;
 }
 function buildTerrain(island: IslandData, segments: number,
-  capeLighting: ReturnType<typeof makeCapeLighting>): Chunk[] {
+  capeLighting: ReturnType<typeof makeCapeLighting>, atmosphere: ReturnType<typeof skyUniforms>): Chunk[] {
   const n = island.resolution;
   const material = new THREE.MeshToonMaterial({
     vertexColors: true, gradientMap: TERRAIN_RAMP, side: THREE.FrontSide,
@@ -312,6 +315,7 @@ if (rock > 0.0) {
     paintRoadsideGravel(shader, island);
     paintPinesLogAprons(shader, island);
     capeLighting.paint(shader);
+    weatherSurface(shader, atmosphere, false);
   };
   const lookup = roadGrid(island, 22);
   const chunks: Chunk[] = [];
@@ -354,7 +358,7 @@ function isHoofingtonCrossingDash(
     Math.abs(z - (farm.z - 18 * scale)) < 3.25 * scale + 1.3;
 }
 
-function buildRoads(island: IslandData, terrain: readonly Chunk[]): THREE.Group {
+function buildRoads(island: IslandData, terrain: readonly Chunk[], atmosphere: ReturnType<typeof skyUniforms>): THREE.Group {
   const group = new THREE.Group();
   group.name = 'graded-ring-road-and-trails';
   const forward = new THREE.Vector3(0, 0, 1);
@@ -382,6 +386,11 @@ function buildRoads(island: IslandData, terrain: readonly Chunk[]): THREE.Group 
     if (type === 'road') {
       geometry.setAttribute('roadCrossSection', new THREE.Float32BufferAttribute(crossSections, 2));
       paintAsphalt(material, island);
+      const paint = material.onBeforeCompile;
+      material.onBeforeCompile = (shader, renderer) => {
+        paint.call(material, shader, renderer);
+        weatherSurface(shader, atmosphere, true);
+      };
     }
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'paths-' + type;
@@ -415,9 +424,10 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.name = 'Billy Isle';
   const segments = Math.max(4, Math.floor(options.chunkSegments ?? 32));
   const capeLighting = makeCapeLighting(island);
-  const chunks = buildTerrain(island, segments, capeLighting);
+  const sky = buildSkyVisuals();
+  const chunks = buildTerrain(island, segments, capeLighting, sky.atmosphere);
   for (const chunk of chunks) group.add(chunk.mesh);
-  const roads = buildRoads(island, chunks);
+  const roads = buildRoads(island, chunks, sky.atmosphere);
   group.add(roads);
   const roadsideSigns = buildRoadsideSigns(island);
   if (roadsideSigns) group.add(roadsideSigns);
@@ -428,12 +438,13 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(buildStreetDetails(island));
   // Coalesce unchanged ground decals to keep the extra zebra mesh within the draw budget.
   group.add(buildGroundDetails(island, 192));
-  group.add(buildMeadowScatter(island));
+  group.add(buildMeadowScatter(island, sky.atmosphere));
+  const fireflies = pinesFireflies(island);
+  group.add(fireflies.swarm);
   const external = options.externallyRenderedPropKinds;
   const scenery = external?.size
     ? { ...island, props: island.props.filter(prop => !external.has(prop.kind)) }
     : island;
-  const sky = buildSkyVisuals();
   const waterVisuals = buildWaterVisuals(island, sky.atmosphere);
   const boardwalkRails = buildBoardwalkRailVisuals(scenery);
   if (boardwalkRails) group.add(boardwalkRails.mesh);
@@ -499,9 +510,12 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   let tide = island.seaLevel;
   let elapsed = 0;
 
-  function setDayNight(phase: number): void {
-    const state = sky.update(((phase % 1) + 1) % 1);
-    waterVisuals.setLighting(state.daylight, state.golden);
+  const sunsetKey = new THREE.Color(0xffbc80), moonKey = new THREE.Color(0xaabdf9);
+  function setDayNight(phase: number, weather?: IslandWeather): void {
+    const state = sky.update(((phase % 1) + 1) % 1, weather);
+    const storm = weather ? THREE.MathUtils.smoothstep(weather.cloud, .46, .96) : 0;
+    waterVisuals.setLighting(state.daylight * (1 - .33 * storm), state.golden * (1 - storm));
+    fireflies.update(weather?.time ?? elapsed, state.daylight, weather?.rain ?? 0);
     dam.refreshWaterLight();
     capeLighting.setSun(state.golden, state.direction);
     lighthouse.setLighting(state.daylight, state.golden);
@@ -510,6 +524,15 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     sun.intensity = 0.07 + state.daylight * 1.55;
     fill.intensity = 0.19 + state.daylight * 0.98;
     sun.color.setHex(state.altitude < 0.38 ? 0xffb87f : 0xffebcb);
+    if (weather) {
+      const moon = THREE.MathUtils.smoothstep(-state.altitude, .02, .30);
+      if (state.altitude < 0) sun.position.negate();
+      sun.position.y = Math.max(95, sun.position.y);
+      sun.intensity = (.25 + 1.75 * state.daylight + .40 * moon) * (1 - .77 * storm);
+      fill.intensity = .50 + .45 * state.daylight + .30 * storm;
+      fill.color.setRGB(.46 + .15 * state.daylight, .61 + .16 * state.daylight, .92);
+      sun.color.setHex(0xffeac9).lerp(sunsetKey, state.golden).lerp(moonKey, moon);
+    }
   }
   function setLightingPreset(preset: LightingPreset): void {
     const phases: Record<LightingPreset, number> = {
