@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { WebGLRenderer } from 'three';
 import { forward, rotate, V, RAPIER } from '../physics';
-import type { Game } from './Game';
+import { Game } from './Game';
 import { bootGame } from './boot';
+import { createGameRenderer } from './game-renderer';
 
 /**
  * Vite's real bootGame and the real GameMenu need a small DOM in Node.
@@ -44,24 +46,34 @@ class ElementStub {
   }
 }
 
+vi.mock('./game-renderer', () => ({
+  createGameRenderer: vi.fn(() => ({
+    domElement: document.createElement('canvas'),
+    dispose: vi.fn(),
+  })),
+}));
+
 vi.mock('./GameView', async () => {
   const { GameInput } = await import('./GameInput');
   const { SPAWN_CAMERA_YAW_OFFSET } = await import('./GoatCamera');
   return {
     GameView: class {
-      readonly renderer = { domElement: document.createElement('canvas') };
       readonly input: InstanceType<typeof GameInput>;
       readonly hud = { setVisible(_visible: boolean): void {} };
       paused = false;
       onFrame: (() => void) | null = null;
       onInteract: (() => boolean) | null = null;
-      constructor(_host: HTMLElement, game: Game) {
+      constructor(_host: HTMLElement, game: Game,
+        readonly renderer: Pick<WebGLRenderer, 'domElement' | 'dispose'>) {
         this.input = new GameInput(this.renderer.domElement,
           -game.island.spawns[0]!.heading + SPAWN_CAMERA_YAW_OFFSET);
       }
       alignCameraForPlay(): void {}
       applySettings(_settings: unknown): void {}
-      dispose(): void { this.input.dispose(); }
+      dispose(): void {
+        this.input.dispose();
+        this.renderer.dispose();
+      }
     },
   };
 });
@@ -90,6 +102,7 @@ describe('production title-screen PLAY boot', () => {
     const app = await bootGame(host as unknown as HTMLElement);
     try {
       const { game, menu, view } = app;
+      expect(view.renderer).toBe(vi.mocked(createGameRenderer).mock.results.at(-1)?.value);
       expect(game.island.seed).toBe('billy-isle');
       expect(game.island.resolution).toBe(193);
       expect(game.physics.stepCount).toBe(0);
@@ -155,5 +168,19 @@ describe('production title-screen PLAY boot', () => {
     vi.stubGlobal('document', documentStub);
     vi.stubGlobal('window', windowStub);
     app.dispose();
+    expect(app.view.renderer.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('disposes the acquired renderer if island creation fails', async () => {
+    vi.stubGlobal('document', { createElement: () => new ElementStub() });
+    const failure = new Error('Island creation failed');
+    const createIsland = vi.spyOn(Game, 'create').mockRejectedValueOnce(failure);
+    try {
+      await expect(bootGame(new ElementStub() as unknown as HTMLElement)).rejects.toBe(failure);
+      const renderer = vi.mocked(createGameRenderer).mock.results.at(-1)?.value;
+      expect(renderer?.dispose).toHaveBeenCalledTimes(1);
+    } finally {
+      createIsland.mockRestore();
+    }
   });
 });
