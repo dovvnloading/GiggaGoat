@@ -88,9 +88,12 @@ export type MaterialAudioContact =
   | { type: 'break'; event: DestructionEvent; material: SceneryAudioMaterial; position: Vec3 }
   | { type: 'gnome-break'; position: Vec3 };
 
-function sceneryAudioMaterial(kind: unknown): SceneryAudioMaterial | undefined {
-  switch (kind) {
-    case 'crate': case 'barrel': case 'fence': case 'sign': case 'bench': case 'log':
+function sceneryAudioMaterial(prop: PropDescriptor | undefined): SceneryAudioMaterial | undefined {
+  switch (prop?.kind) {
+    case 'barrel':
+      // Downtown's numbered stock uses the painted steel drum.
+      return /^downtown-bleatsville-barrel-\d+$/.test(prop.id) ? 'metal' : 'wood';
+    case 'crate': case 'fence': case 'sign': case 'bench': case 'log':
     case 'pallet-stack': case 'cable-spool':
       return 'wood';
     case 'rock': case 'ledge': case 'dam-wall': case 'planter': case 'gnome':
@@ -251,7 +254,7 @@ export class Game {
     }));
     this.off.push(this.breakables.events.on(event => {
       const prop = this.propByBody.get(event.bodyHandle);
-      const material = sceneryAudioMaterial(prop?.kind);
+      const material = sceneryAudioMaterial(prop);
       if (material && event.cause !== 'soda') {
         this.sendMaterialAudio({ type: 'break', event, material, position: event.position });
       }
@@ -1041,7 +1044,7 @@ export class Game {
           : contact && !contact.body?.isDynamic() ? this.island.props.find(item =>
             this.colliders.props.get(item.id)?.handle === contact.collider.handle) : undefined;
         const role = struck && !prop ? this.physics.bodyData(struck.handle)?.data : undefined;
-        const material = role === 'tower' || role === 'stack-crate' ? 'wood' : sceneryAudioMaterial(prop?.kind);
+        const material = role === 'tower' || role === 'stack-crate' ? 'wood' : sceneryAudioMaterial(prop);
         const position = struck?.translation() ?? contact?.point;
         if (material && material !== 'hay' && position) {
           this.sendMaterialAudio({ type: 'headbutt', event: knock, material, position: { ...position },
@@ -1112,8 +1115,8 @@ export class Game {
     }
   }
 
-  /** The authored pier extends beyond the normal offshore rescue boundary. */
-  private isAbovePierDeck(p: Vec3): boolean {
+  /** The authored decking is raised above both the coastline and the offshore rescue boundary. */
+  isAbovePierDeck(p: Vec3): boolean {
     return this.pierDecks.some(deck => {
       const { position, rotationY } = deck.transform;
       if (p.y < position.y) return false;

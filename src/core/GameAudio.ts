@@ -16,6 +16,7 @@ type MenuSound = Extract<SoundId, `ui-${string}`>;
 
 function surfaceAt(game: Game, position: Vec3): Surface {
   if (position.y <= game.water.seaLevel + .25) return 'water';
+  if (game.isAbovePierDeck(position)) return 'wood';
   const biome = biomeAt(game.island, position.x, position.z);
   if (biome === 'ocean' || biome === 'freshwater') return 'water';
   if (biome === 'beach') return 'sand';

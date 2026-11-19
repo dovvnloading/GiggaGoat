@@ -44,6 +44,7 @@ function fixture() {
       size: 10, resolution: 2, seaLevel: 0, tideLevels: [0, 10],
       biomeMap: new Uint8Array(4).fill(2), zoneMap: new Uint8Array(4).fill(1), pois: [],
     },
+    isAbovePierDeck: () => false,
     goat, rules: { events, style: { combo: { count: 3 }, meter: 67 } },
     party: { bots: new Map(), match: { mode: 'rising-tide', tideLevel: 5,
       drainEvents: modes.drain } },
@@ -132,6 +133,17 @@ describe('core audio render bridge', () => {
     } finally { bridge.dispose(); }
   });
 
+  it('uses timber footfalls on the raised pier even over the ocean biome', () => {
+    const f = fixture();
+    f.game.island.biomeMap.fill(0);
+    vi.spyOn(f.game, 'isAbovePierDeck').mockReturnValue(true);
+    const bridge = new GameAudio(f.game, f.audio);
+    try {
+      bridge.frame(1 / 60, { position: V(), forward: V(0, 0, -1) }, false);
+      expect(f.audio.updateFrame.mock.calls[0]![0].goats?.[0]?.surface).toBe('wood');
+    } finally { bridge.dispose(); }
+  });
+
   it('uses recorded materials only for the exact hit or break that supplied them', () => {
     const f = fixture();
     const bridge = new GameAudio(f.game, f.audio);
@@ -174,30 +186,43 @@ describe('core audio render bridge', () => {
     } finally { bridge.dispose(); }
   });
 
-  it('retains impact and wood fracture recordings when a real charged headbutt removes the target', async () => {
+  it.each([
+    { material: 'wood', kind: 'crate', id: /^hoofington-verge-north-crate$/ },
+    { material: 'metal', kind: 'barrel', id: /^downtown-bleatsville-barrel-\d+$/ },
+  ])('keeps $material impact and fracture recordings when a charged headbutt shatters a $kind', async ({
+    material, kind, id,
+  }) => {
     const game = await Game.create({ seed: 'first-playable-test', resolution: 97 });
     const { audio } = fixture();
     const bridge = new GameAudio(game, audio);
     try {
-      const crate = game.colliders.bodies.get('hoofington-verge-north-crate')!;
-      const handle = crate.handle;
-      crate.setTranslation(V(0, 1000, 0), true);
-      crate.setLinvel(V(), true);
+      const target = game.island.props.find(prop => prop.kind === kind && id.test(prop.id) &&
+        prop.breakable && !prop.id.endsWith('0'))!;
+      const body = game.colliders.bodies.get(target.id)!;
+      const handle = body.handle;
+      body.setTranslation(V(0, 1000, 0), true);
+      body.setLinvel(V(), true);
+      // Stage Big through the normal style system so the stock break threshold
+      // is hit without replacing the authored prop or changing its physics.
+      for (const type of ['flip', 'knockback', 'destruction', 'big-splash'] as const) {
+        game.rules.style.ingest({ type, quality: 2 });
+      }
       for (let tick = 0; tick < 125; tick++) game.step();
-      for (let tick = 0; tick < 35; tick++) game.step({ chargeHeadbutt: true });
+      expect(game.rules.style.tier).toBe('Big');
+      for (let tick = 0; tick < 90; tick++) game.step({ chargeHeadbutt: true });
       const head = game.goat.head.translation(), direction = forward(game.goat.locomotion.heading);
-      crate.setTranslation(V(head.x + direction.x * 1.2, head.y - .06, head.z + direction.z * 1.2), true);
-      crate.setLinvel(V(), true);
-      crate.setAngvel(V(), true);
-      game.breakables.register(crate, { impulseThreshold: 1, chunks: 1 });
-      // Put the crate into the query acceleration structure before releasing.
+      body.setTranslation(V(head.x + direction.x * 1.8, head.y - .06, head.z + direction.z * 1.8), true);
+      body.setLinvel(V(), true);
+      body.setAngvel(V(), true);
+      // Put the body into the query acceleration structure before releasing.
       game.step({ chargeHeadbutt: true });
       game.step({ chargeHeadbutt: false });
+      expect(game.destroyedProps.has(target.id)).toBe(true);
       expect(game.physics.bodyData(handle)).toBeUndefined();
       bridge.frame(1 / 60, { position: head, forward: direction }, false);
       const frame = audio.updateFrame.mock.calls[0]![0];
       expect(frame.cues?.filter(cue => cue.bodyHandle === handle).map(cue => cue.recordedEffect))
-        .toEqual(['headbutt-wood', 'break-wood']);
+        .toEqual(['headbutt-' + material, 'break-' + material]);
       expect(frame.physics?.some(event => event.type === 'knockedBody' && event.bodyHandle === handle)).toBe(false);
     } finally {
       bridge.dispose();

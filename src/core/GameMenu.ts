@@ -56,15 +56,24 @@ const CSS = `
 .gg-shell label.gg-select-label::after{content:"▾";position:absolute;right:15px;
   bottom:12px;color:#ffe257;font-size:17px;pointer-events:none;text-shadow:1px 1px #45243f}
 .gg-shell .gg-range{display:flex;align-items:center;gap:13px}
-.gg-shell input.gg-slider{appearance:none;-webkit-appearance:none;flex:1;min-width:0;
-  height:29px;border:3px solid #b87437;border-radius:30px;cursor:pointer;
-  background:linear-gradient(90deg,#96f62c 0 var(--gg-pct),#48303f var(--gg-pct) 100%);
-  box-shadow:inset 0 2px 4px #261821,0 0 0 2px #f7c875}
+.gg-shell input.gg-slider{--gg-thumb:34px;--gg-thumb-radius:17px;
+  --gg-fill-stop:calc(var(--gg-thumb-radius) + (100% - var(--gg-thumb)) * var(--gg-ratio));
+  --gg-track-fill:linear-gradient(180deg,#fff3 0%,transparent 59%,#27112738 100%),
+    linear-gradient(90deg,#93ed2f 0 var(--gg-fill-stop),#3d283e var(--gg-fill-stop) 100%);
+  --gg-thumb-art:var(--gg-sprite) -200px -3px/383px 42px no-repeat;
+  appearance:none;-webkit-appearance:none;flex:1;min-width:0;margin:0;
+  height:42px;border:0;border-radius:11px;padding:0;cursor:pointer;background:transparent}
+.gg-shell input.gg-slider::-webkit-slider-runnable-track{box-sizing:border-box;
+  height:26px;border:2px solid #f4c772;border-radius:100px;background:var(--gg-track-fill);
+  box-shadow:inset 0 2px 4px #2d1923,0 1px 2px #190d2f}
+.gg-shell input.gg-slider::-moz-range-track{box-sizing:border-box;
+  height:26px;border:2px solid #f4c772;border-radius:100px;background:var(--gg-track-fill);
+  box-shadow:inset 0 2px 4px #2d1923,0 1px 2px #190d2f}
 .gg-shell input.gg-slider::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;
-  width:42px;height:42px;border:0;background:var(--gg-sprite) 56.6% center/380px 42px no-repeat;
-  filter:drop-shadow(0 2px 1px #31203c)}
-.gg-shell input.gg-slider::-moz-range-thumb{width:42px;height:42px;border:0;
-  background:var(--gg-sprite) 56.6% center/380px 42px no-repeat}
+  width:var(--gg-thumb);height:var(--gg-thumb);margin-top:-6px;border:0;border-radius:50%;
+  background:var(--gg-thumb-art);box-shadow:0 2px 2px #261328d9}
+.gg-shell input.gg-slider::-moz-range-thumb{width:var(--gg-thumb);height:var(--gg-thumb);
+  border:0;border-radius:50%;background:var(--gg-thumb-art);box-shadow:0 2px 2px #261328d9}
 .gg-shell output{min-width:52px;text-align:right;color:#ffe153;font-size:15px;font-variant-numeric:tabular-nums}
 .gg-shell .gg-board-offers{display:grid;gap:7px;margin:0 0 10px}
 .gg-shell .gg-board-choice{
@@ -167,6 +176,7 @@ const CSS = `
 .gg-shell .gg-tab>span{pointer-events:none}
 .gg-shell .gg-settings-content{min-height:210px;padding:4px 2px}
 .gg-shell .gg-settings-content>.gg-setting{margin:0 0 20px}
+.gg-shell .gg-settings-content select{appearance:none;padding-right:26px;background:transparent}
 .gg-shell .gg-setting-row{display:flex;align-items:center;justify-content:space-between;
   min-height:64px;gap:14px;margin-bottom:16px;font-size:13px;letter-spacing:.7px}
 .gg-shell .gg-switch{flex:0 0 auto;width:106px;height:54px;padding:0;border:0;
@@ -651,8 +661,7 @@ export class GameMenu {
     const isVolume = key === 'volume' || key === 'musicVolume' || key === 'effectsVolume';
     if (element instanceof HTMLInputElement && element.type === 'range') {
       const min = Number(element.min), max = Number(element.max);
-      element.style.setProperty('--gg-pct', ((Number(element.value) - min) /
-        (max - min) * 100) + '%');
+      element.style.setProperty('--gg-ratio', String((Number(element.value) - min) / (max - min)));
     }
     const output = element.parentElement?.querySelector<HTMLOutputElement>('output');
     if (output) output.textContent = isVolume ? Math.round(Number(element.value) * 100) + '%' :
@@ -809,10 +818,10 @@ export class GameMenu {
     const s = this.settings;
     const slider = (key: string, label: string, min: number, max: number, step: number,
       value: number, output: string): string => {
-      const pct = ((value - min) / (max - min) * 100).toFixed(2);
+      const ratio = (value - min) / (max - min);
       return `<label class="gg-setting">${label}<div class="gg-range">` +
         `<input class="gg-slider" id="gg-setting-${key}" type="range" min="${min}" max="${max}"` +
-        ` step="${step}" value="${value}" ${menuSkin(MENU_SPRITES.slider, '--gg-pct:' + pct + '%;')}>` +
+        ` step="${step}" value="${value}" ${menuSkin(MENU_SPRITES.slider, '--gg-ratio:' + ratio + ';')}>` +
         `<output for="gg-setting-${key}">${output}</output></div></label>`;
     };
     const tabs = SETTINGS_TABS.map(tab => {
