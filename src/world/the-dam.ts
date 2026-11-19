@@ -22,6 +22,9 @@ export const DAM_FRONT_GUARD = {
   top: 20.21,
 } as const;
 
+const PLATFORM_GUARD = 'front-guard-platform';
+export const DAM_PLATFORM_GUARD_ID = 'the-dam-' + PLATFORM_GUARD;
+
 export const DAM_ACCESS_ID = 'the-dam-access-';
 export const DAM_ACCESS_GUARD_ID = DAM_ACCESS_ID + 'guard-';
 export const DAM_ACCESS_SUPPORT_ID = 'the-dam-access-support-';
@@ -33,7 +36,7 @@ export const DAM_BACK_GUARD = {
   top: 20.21,
 } as const;
 
-export function getDamPlacement(island: IslandData): DamPlacement {
+export function getDamPlacement(island: Pick<IslandData, 'size' | 'reservoir'>): DamPlacement {
   const scale = island.size / 600;
   const lake = island.reservoir;
   // Keep the original dam wall anchor and original walkable deck elevation.
@@ -125,7 +128,8 @@ export function makeDamColliderDescriptors(island: IslandData): PropColliderDesc
   const colliders: PropColliderDescriptor[] = [
     // Recess the wall below the deck so the spillway drop stays clear.
     makeBox('wall', 0, 9, -1.6, 58, 18, 2.4),
-    makeBox('deck', 0, 18.35, 0, 60, 0.9, 7.4),
+    // Dam_Deck includes the rear lip and the last tread at the spillway edge.
+    makeBox('deck', 0, 18.4, -.2, 61, .8, 8.2),
     ...DAM_FRONT_GUARD.spans.map(([left, right], index) =>
       makeBox('front-guard-' + index, (left + right) / 2,
         (DAM_DECK_HEIGHT + DAM_FRONT_GUARD.top) / 2, DAM_FRONT_GUARD.z,
@@ -141,8 +145,13 @@ export function makeDamColliderDescriptors(island: IslandData): PropColliderDesc
     // Four openings and five masonry piers as visible in the hero art.
     ...[-12, -2, 8, 18, 28].map((x, i) =>
       makeBox('pier-' + i, x, 8.7, 1.8, 2.6, 17.4, 4.8)),
-    // House sits on the right-hand end of the deck; its roof is solid.
-    makeBox('control-house', 23.5, 23.4, -0.7, 12.5, 9.2, 9),
+    // Match the baked ControlHouse_* model nodes. The house sits on a
+    // separate platform beyond the east end of Dam_Deck.
+    makeBox('control-house-pillar', 36, 8.9, -1.5, 11, 17.8, 8),
+    makeBox('control-house-platform', 36, 18.3, -1, 14, 1, 11.5),
+    makeBox('control-house', 36.5, 23, -1.1, 12, 8.4, 9.3),
+    makeBox('control-house-roof', 36.5, 27.575, -1.1, 13.2, .75, 10.5),
+    makeBox(PLATFORM_GUARD, 36, 19.505, 4.5, 13.7, 1.41, .30),
     // Narrow vertical ladder rails and separate footholds, rather than
     // an impassable full-height ladder collision box.
     makeBox('ladder-left', -17.3, 9.4, 3.15, 0.18, 17.8, 0.25),

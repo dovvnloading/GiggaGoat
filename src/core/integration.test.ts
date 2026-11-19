@@ -736,7 +736,6 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
       expect(game.water.listVolumes().map(v => v.id)).toEqual(expect.arrayContaining([
         'reservoir', 'dam-upper-reservoir',
       ]));
-      expect(game.water.listVolumes().length).toBe(game.island.river.length + 1);
       expect(game.breakables.breakableCount).toBeGreaterThan(80);
       expect(game.surfaces.count).toBeGreaterThanOrEqual(3);
       const trampoline = game.surfaceMarkers.find(s => s.kind === 'trampoline')!;

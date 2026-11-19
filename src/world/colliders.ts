@@ -35,6 +35,58 @@ function hull(prop: PropDescriptor): Float32Array {
   ]);
 }
 
+type CavePoint = readonly [x: number, y: number, z: number];
+type CaveBlock = readonly [part: string, min: CavePoint, max: CavePoint];
+
+// The sea cave's visible jambs, liners and lintel in makeSeaCave. Y here is
+// measured from the descriptor centre (the renderer starts at its floor).
+const SEA_CAVE_BLOCKS: readonly CaveBlock[] = [
+  ['left-jamb', [-.51, -.5, -.535], [-.31, .22, .535]],
+  ['right-jamb', [.31, -.5, -.535], [.51, .22, .535]],
+  ['left-liner', [-.335, -.47, -.43], [-.265, .15, .07]],
+  ['right-liner', [.265, -.47, -.43], [.335, .15, .07]],
+  ['lintel', [-.54, .18, -.56], [.54, .50, .56]],
+];
+
+// Solid rockDark blocks measured in cave-arch.glb. The rough perimeter
+// stones and hanging lantern can overhang these structural cores.
+const MOUNTAIN_CAVE_BLOCKS: readonly CaveBlock[] = [
+  ['left-jamb', [-5.06, 0, -3.05], [-2.86, 6.4, 2.05]],
+  ['right-jamb', [2.86, 0, -3.05], [5.06, 6.4, 2.05]],
+  ['lintel', [-5.225, 6.6, -2.75], [5.225, 8, 2.35]],
+];
+
+function fitMountainCavePoint([x, y, z]: CavePoint): CavePoint {
+  // Match bakeLibraryPropGeometry's centred 98% fit, including the
+  // lantern at +Z in the source bounds.
+  return [x * .98 / 11, (y - 4.005) * .98 / 8.01, (z - .385) * .98 / 6.87];
+}
+
+function caveArchColliders(prop: PropDescriptor): PropColliderDescriptor[] {
+  const { position, rotationY } = prop.transform;
+  const { size } = prop;
+  const cos = Math.cos(rotationY), sin = Math.sin(rotationY);
+  const mountain = prop.poiId === 'mt-gigga';
+  const blocks = mountain ? MOUNTAIN_CAVE_BLOCKS : SEA_CAVE_BLOCKS;
+  return blocks.map(([part, low, high]) => {
+    const min = mountain ? fitMountainCavePoint(low) : low;
+    const max = mountain ? fitMountainCavePoint(high) : high;
+    const x = (min[0] + max[0]) * size.x / 2;
+    const y = (min[1] + max[1]) * size.y / 2;
+    const z = (min[2] + max[2]) * size.z / 2;
+    return {
+      id: prop.id + '-' + part, shape: 'cuboid', body: prop.body,
+      transform: {
+        position: { x: position.x + cos * x + sin * z, y: position.y + y,
+          z: position.z - sin * x + cos * z },
+        rotationY,
+      },
+      size: { x: (max[0] - min[0]) * size.x, y: (max[1] - min[1]) * size.y,
+        z: (max[2] - min[2]) * size.z },
+    };
+  });
+}
+
 /** Plain geometry for the Rapier adapter and for debugging/integration. */
 export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[] {
   const n = island.resolution;
@@ -66,8 +118,6 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
       size.x = Math.min(0.76, prop.size.x);
       size.z = size.x;
     }
-    // Cave entrances are open arches: the solid primitive is their recessed back wall,
-    // not a box sealing the passage. The visual rock pillars form the side boundaries.
     let transform = prop.transform;
     if (prop.kind === 'lighthouse') {
       const depth = lighthouseFoundationDepth(island, prop);
@@ -86,6 +136,8 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
       colliders.push(...keeperCottagePierColliders(island, prop));
     }
     if (prop.kind === 'cave-mouth') {
+      // The jambs and lintel leave the centre open all the way to the existing back wall.
+      colliders.push(...caveArchColliders(prop));
       size.x = prop.size.x * 0.65;
       size.y = prop.size.y * 0.72;
       size.z = prop.size.z * 0.12;

@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData, PropDescriptor, RiverPoint, Vec2, Vec3 } from './types';
 import { gridIndex, gridSample, segmentProjection } from './terrain';
 import { skyColorGLSL, skyUniforms } from './visual-sky';
-import { damHeadwaterSurface, getDamHeadwater } from './dam-landscape';
+import { DAM_FOREST_RIVER_START, DAM_UPSTREAM_RIVER_END, damHeadwaterSurface, getDamHeadwater } from './dam-landscape';
 import { findBookmark } from './viewer/bookmarks';
 
 /**
@@ -313,7 +313,6 @@ function resampleRiver(points: readonly RiverPoint[], spacing: number): RiverPoi
   return stations;
 }
 
-const FOREST_OUTFLOW_START = 11;
 export const PINES_GLADE_CASCADE = 'whispering-pines-glade-cascade';
 
 function riverMaterial(stream: THREE.ShaderMaterial, tide: { value: number }): THREE.ShaderMaterial {
@@ -386,7 +385,7 @@ function riverRibbonSections(points: readonly RiverPoint[], scale: number) {
 
 /** Clearance from the XZ footprint built by the forest river mesh. */
 export function makeForestOutflowClearance(island: IslandData): (x: number, z: number, radius: number) => boolean {
-  const sections = riverRibbonSections(island.river.slice(FOREST_OUTFLOW_START), island.size / 600);
+  const sections = riverRibbonSections(island.river.slice(DAM_FOREST_RIVER_START), island.size / 600);
   const triangles: THREE.Triangle[] = [];
   const vertex = (point: Vec2) => new THREE.Vector3(point.x, 0, point.z);
   for (let i = 1; i < sections.length; i++) {
@@ -1070,10 +1069,10 @@ export function buildWaterVisuals(island: IslandData,
   // The bespoke Dam plunge-pool surface occupies the middle reaches. Do
   // not draw the old thin river ribbon over it: its extra side vertices
   // make a bright diagonal sheet across the otherwise sculpted pool.
-  const upstream = riverMesh(island.river.slice(0, 5), riverPaint,
+  const upstream = riverMesh(island.river.slice(0, DAM_UPSTREAM_RIVER_END), riverPaint,
     island, damPlot?.center);
   upstream.name = 'rippling-river';
-  const forestOutflow = forestRiverMesh(island.river.slice(FOREST_OUTFLOW_START), riverPaint,
+  const forestOutflow = forestRiverMesh(island.river.slice(DAM_FOREST_RIVER_START), riverPaint,
     island, damPlot?.center);
   forestOutflow.name = 'forest-river-after-dam';
   // Both reaches use the same animated shader. Merge their disconnected
