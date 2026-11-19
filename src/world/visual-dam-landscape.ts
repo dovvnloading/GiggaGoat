@@ -4,7 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData } from './types';
 import { SeededRandom } from './random';
 import { gridSample, segmentProjection } from './terrain';
-import { damChannelAt, DAM_CHANNEL, DAM_WATER_SURFACE_LIFT } from './dam-landscape';
+import { damChannelAt, DAM_CHANNEL, DAM_POOL_EXIT, DAM_WATER_SURFACE_LIFT } from './dam-landscape';
 import { getDamPlacement } from './the-dam';
 import { cascadePoolCentre, makeForestOutflowClearance } from './visual-water';
 import { publicAssetUrl } from './public-assets';
@@ -39,6 +39,12 @@ export interface DamLandscapeVisuals {
   update(seconds: number): void;
   setWaterLevel(tide: number): void;
   dispose(): void;
+}
+
+function overlapsPoolExit(x: number, z: number, extent: number): boolean {
+  const { left, right, near, far } = DAM_POOL_EXIT;
+  return x + extent > left && x - extent < right &&
+    z + extent > near - 1 && z - extent < far + 3;
 }
 
 function channelWater(light: THREE.Vector3, tide: { value: number }, scale: number) {
@@ -291,6 +297,7 @@ function cliffUnderpainting(
     const height = rng.range(3.0, 6.8);
     const depth = rng.range(2.7, 5.5);
     if (side < 0 && z > 22 && z < 94) continue;
+    if (overlapsPoolExit(x, z, Math.max(width, depth))) continue;
     pieces.push({ x, y, z, width, height, depth, yaw,
       tint: [0x9da5a6, 0xa8aba1, 0x818c8d, 0xb6b2a2][i % 4]! });
   }
@@ -452,15 +459,17 @@ function movePinesToDryBanks(island: IslandData, pines: Placement[], origin: THR
   const discarded = new Set<Placement>();
 
   for (const pine of pines) {
-    const radius = (Math.min(.9, pine.width * .2) + .5) * scale;
+    const trunkRadius = Math.min(.9, pine.width * .2);
+    const radius = (trunkRadius + .5) * scale;
+    const clearsExit = (x: number, z: number): boolean => !overlapsPoolExit(x, z, trunkRadius);
     const clearWater = (x: number, z: number): boolean =>
       clearsOutflow(x, z, radius) &&
       (!cascade || !pool || Math.hypot(x - pool.x, z - pool.z) >= cascade.size.x / 2 + radius);
     const worldX = origin.x + pine.x * scale, worldZ = origin.z + pine.z * scale;
-    if (clearWater(worldX, worldZ)) continue;
+    if (clearWater(worldX, worldZ) && clearsExit(pine.x, pine.z)) continue;
     const drySpot = (x: number, z: number): boolean => {
       const point = { x: origin.x + x * scale, z: origin.z + z * scale };
-      if (!clearWater(point.x, point.z)) return false;
+      if (!clearWater(point.x, point.z) || !clearsExit(x, z)) return false;
       const channel = damChannelAt(z);
       if (Math.abs(x - channel.x) < channel.halfWidth + radius / scale) return false;
       if (gridSample(island, point.x, point.z) <= island.seaLevel + .5 * scale) return false;
@@ -624,12 +633,15 @@ export function buildDamLandscape(
   fallbackBuoys.computeBoundingSphere();
   group.add(fallbackBuoys);
 
+  // Keep the graded route open through both the placeholder and loaded scenery.
+  const clearBank = ({ x, z, width, depth }: Placement): boolean =>
+    !overlapsPoolExit(x, z, Math.hypot(width, depth) / 2);
   const sets: AssetSet[] = [
     { name: 'dam-kenney-cliff-faces',
-      path: 'kenney/nature-kit/rock_largeA.glb', placements: cliffs, stone: true },
+      path: 'kenney/nature-kit/rock_largeA.glb', placements: cliffs.filter(clearBank), stone: true },
     { name: 'dam-quaternius-rock-boulders',
       path: 'quaternius/stylized-nature-megakit/rock-medium_JQxF95498B.glb',
-      placements: riverRocks, stone: true },
+      placements: riverRocks.filter(clearBank), stone: true },
     { name: 'dam-quaternius-pines',
       path: 'custom/pines/pine.glb',
       placements: pines.filter(pine => !wetPines.has(pine)) },
@@ -638,7 +650,7 @@ export function buildDamLandscape(
       placements: fullPines.filter(pine => !wetPines.has(pine)) },
     { name: 'dam-grassy-bank-shrubs',
       path: 'kenney/nature-kit/plant_bushDetailed.glb',
-      placements: shrubs, tint: 0x72ad55 },
+      placements: shrubs.filter(clearBank), tint: 0x72ad55 },
     { name: 'dam-kenney-purple-wildflowers',
       path: 'kenney/nature-kit/flower_purpleA.glb',
       placements: flowers, tint: 0xc59ae8 },

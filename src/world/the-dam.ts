@@ -22,6 +22,26 @@ export const DAM_FRONT_GUARD = {
   top: 20.21,
 } as const;
 
+// Between the four spillway recesses cut into the Dam_Wall front face (local +Z).
+const DAM_WALL_FRONT_DIVIDERS = [
+  [-30, -13.4], [-7, -4.6], [1.8, 4.2], [10.6, 13], [19.4, 30],
+] as const;
+
+// Y/Z profiles at the two widths of the GLB Pier_0 through Pier_4 bevel.
+const DAM_PIER_PROFILES = [
+  { halfWidth: 1.2, points: [
+    [.15, 3.35], [.15, 7.2456], [10.3626, 6.951], [14.8802, 4.6922], [15.3835, 3.35],
+  ] },
+  { halfWidth: 1.05, points: [
+    [0, 3.35], [0, 7.25], [.1499, 7.3957], [.15, 3.2], [10.4, 7.1],
+    [14.8658, 4.8671], [15.0527, 4.6596], [15.45, 3.2], [15.5473, 3.3404],
+  ] },
+] as const;
+const DAM_PIER_CENTERS = [-14.6, -5.8, 3, 11.8, 20.6] as const;
+const DAM_PIER_HEIGHT = 15.5473;
+const DAM_PIER_BACK = 3.2;
+const DAM_PIER_FRONT = 7.3957;
+
 const PLATFORM_GUARD = 'front-guard-platform';
 export const DAM_PLATFORM_GUARD_ID = 'the-dam-' + PLATFORM_GUARD;
 
@@ -30,7 +50,7 @@ export const DAM_ACCESS_GUARD_ID = DAM_ACCESS_ID + 'guard-';
 export const DAM_ACCESS_SUPPORT_ID = 'the-dam-access-support-';
 export const DAM_BACK_GUARD = {
   prefix: 'the-dam-back-guard-',
-  spans: [[-29.85, -13.1], [-6.9, 27.65]],
+  spans: [[-29.85, -14.5], [-6.9, 27.65]],
   z: -3.75,
   depth: .30,
   top: 20.21,
@@ -69,7 +89,7 @@ export function damAccess(island: IslandData): [ramp: AccessSection[], transfer:
     ({ outer: at(outside, DAM_DECK_HEIGHT, z), inner: at(-7.2, DAM_DECK_HEIGHT, z) });
   return [
     [ramp(11.75, base), ramp(-7.2, DAM_DECK_HEIGHT), ramp(turnEnd, DAM_DECK_HEIGHT)],
-    [landing(-6.04, turnEnd), landing(-3.58, -13.0)],
+    [landing(-6.04, turnEnd), landing(-3.58, turnEnd)],
   ];
 }
 
@@ -111,6 +131,18 @@ export function makeDamColliderDescriptors(island: IslandData): PropColliderDesc
     size: { x: width * scale, y: height * scale, z: depth * scale },
   });
 
+  const pierMidY = DAM_PIER_HEIGHT / 2;
+  const pierMidZ = (DAM_PIER_BACK + DAM_PIER_FRONT) / 2;
+  const pierVertices = new Float32Array(DAM_PIER_PROFILES.flatMap(({ halfWidth, points }) =>
+    [-halfWidth, halfWidth].flatMap(x => points.flatMap(([y, z]) =>
+      [x * scale, (y - pierMidY) * scale, (z - pierMidZ) * scale]))));
+  const piers = DAM_PIER_CENTERS.map((x, i): PropColliderDescriptor => ({
+    ...makeBox('pier-' + i, x, pierMidY, pierMidZ,
+      2 * DAM_PIER_PROFILES[0].halfWidth, DAM_PIER_HEIGHT, DAM_PIER_FRONT - DAM_PIER_BACK),
+    shape: 'convex',
+    vertices: pierVertices,
+  }));
+
   const access = damAccess(island);
   const start = access[0]![0]!.outer;
   const crest = access[0]![1]!.outer;
@@ -126,8 +158,12 @@ export function makeDamColliderDescriptors(island: IslandData): PropColliderDesc
     });
   });
   const colliders: PropColliderDescriptor[] = [
-    // Recess the wall below the deck so the spillway drop stays clear.
-    makeBox('wall', 0, 9, -1.6, 58, 18, 2.4),
+    // Dam_Wall is recessed from local Z 3.5 to 2 inside each opening at Y 12–15.4.
+    makeBox('wall', 0, 9, -.75, 60, 18, 5.5),
+    makeBox('wall-front-lower', 0, 6, 2.75, 60, 12, 1.5),
+    makeBox('wall-front-upper', 0, 16.7, 2.75, 60, 2.6, 1.5),
+    ...DAM_WALL_FRONT_DIVIDERS.map(([left, right], i) =>
+      makeBox('wall-front-divider-' + i, (left + right) / 2, 13.7, 2.75, right - left, 3.4, 1.5)),
     // Dam_Deck includes the rear lip and the last tread at the spillway edge.
     makeBox('deck', 0, 18.4, -.2, 61, .8, 8.2),
     ...DAM_FRONT_GUARD.spans.map(([left, right], index) =>
@@ -142,9 +178,7 @@ export function makeDamColliderDescriptors(island: IslandData): PropColliderDesc
     ...damAccessGuards(access, scale).flatMap((path, i) =>
       accessSlabs(DAM_ACCESS_GUARD_ID + i + '-', path, 1.22 * scale)),
     ...supports,
-    // Four openings and five masonry piers as visible in the hero art.
-    ...[-12, -2, 8, 18, 28].map((x, i) =>
-      makeBox('pier-' + i, x, 8.7, 1.8, 2.6, 17.4, 4.8)),
+    ...piers,
     // Match the baked ControlHouse_* model nodes. The house sits on a
     // separate platform beyond the east end of Dam_Deck.
     makeBox('control-house-pillar', 36, 8.9, -1.5, 11, 17.8, 8),

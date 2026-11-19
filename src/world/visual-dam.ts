@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData } from './types';
@@ -31,6 +32,20 @@ function namedPart(object: THREE.Object3D, prefix: RegExp): boolean {
     if (prefix.test(part.name)) return true;
   }
   return false;
+}
+
+/** The splash route passes beside the water sheets at arm's length. */
+function softenNearSpillway(material: THREE.Material): void {
+  material.transparent = true;
+  material.depthWrite = false;
+  material.forceSinglePass = true;
+  material.onBeforeCompile = shader => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <opaque_fragment>', [
+      // Perspective clip W is view-space depth in world metres.
+      'diffuseColor.a *= smoothstep(0.65, 2.60, 1.0 / gl_FragCoord.w);',
+      '#include <opaque_fragment>',
+    ].join('\n'));
+  };
 }
 
 /** The authored rocks are only needed where the island has no existing cliff. */
@@ -104,6 +119,7 @@ export function prepareDamModel(root: THREE.Object3D, island: IslandData): DamMe
     const material = original.clone();
     // GLTF's falling-water streaks have a texture. Isolate it before scrolling
     // so any shared reservoir/foam texture stays stationary.
+    softenNearSpillway(material);
     const textured = material as THREE.MeshStandardMaterial;
     if (textured.map) {
       textured.map = textured.map.clone();
@@ -212,9 +228,19 @@ function buildProceduralDamFallback(island: IslandData): THREE.Group {
     const platformRail = collider.id === DAM_PLATFORM_GUARD_ID;
     if (!platformRail && [DAM_FRONT_GUARD.prefix, DAM_BACK_GUARD.prefix, DAM_ACCESS_ID]
       .some(prefix => collider.id.startsWith(prefix))) continue;
-    const geometry = new THREE.BoxGeometry(
-      collider.size.x / scale, collider.size.y / scale, collider.size.z / scale,
-    );
+    let geometry: THREE.BufferGeometry;
+    if (collider.shape === 'convex') {
+      const vertices = collider.vertices!;
+      const points: THREE.Vector3[] = [];
+      for (let i = 0; i < vertices.length; i += 3) {
+        points.push(new THREE.Vector3(vertices[i]! / scale, vertices[i + 1]! / scale, vertices[i + 2]! / scale));
+      }
+      geometry = new ConvexGeometry(points);
+    } else {
+      geometry = new THREE.BoxGeometry(
+        collider.size.x / scale, collider.size.y / scale, collider.size.z / scale,
+      );
+    }
     geometry.translate(
       (collider.transform.position.x - position.x) / scale,
       (collider.transform.position.y - position.y) / scale,
@@ -223,8 +249,18 @@ function buildProceduralDamFallback(island: IslandData): THREE.Group {
     const color = platformRail ? 0xf2c12e :
       collider.id === 'the-dam-control-house' || collider.id === 'the-dam-control-house-roof' ? 0xf3eee0 :
       collider.id === 'the-dam-deck' || collider.id === 'the-dam-control-house-platform' ? 0xd6d6c9 : undefined;
-    if (color === undefined) stoneParts.push(geometry);
-    else deckAndHouse.push({ geometry, color });
+    if (color === undefined) {
+      // ConvexGeometry contains only unindexed positions and normals.
+      if (geometry.index) {
+        const indexed = geometry;
+        geometry = indexed.toNonIndexed();
+        geometry.deleteAttribute('uv');
+        indexed.dispose();
+      }
+      stoneParts.push(geometry);
+    } else {
+      deckAndHouse.push({ geometry, color });
+    }
   }
 
   function addBatch(name: string, material: THREE.Material,
@@ -251,6 +287,7 @@ function buildProceduralDamFallback(island: IslandData): THREE.Group {
     color: 0x40c9e6, transparent: true, opacity: 0.88,
     side: THREE.DoubleSide, depthWrite: false,
   });
+  softenNearSpillway(water);
   const { x: outlets, z: impactZ, halfWidth } = DAM_SPILLWAY_IMPACTS;
   const impactY = damChannelAt(impactZ).level + 0.20;
   const lipY = 12.68, lipZ = 3.7;
