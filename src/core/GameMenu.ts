@@ -41,6 +41,13 @@ const CSS = `
 .gg-shell .gg-options{display:grid;gap:7px}
 .gg-toy-catalog{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .gg-toy-card{display:grid;grid-template-columns:46px 1fr;align-items:center;gap:8px;padding:7px;text-align:left;color:#fff1d6;font:inherit;cursor:pointer;border:1px solid #8862a2;border-radius:9px;background:#33204c}
+@media(max-height:420px) and (min-width:420px){
+ .gg-shell .gg-toy-panel{padding:3px 8px;border-width:18px;max-height:calc(100dvh - 10px)}
+ .gg-shell .gg-toy-panel h2{font-size:24px;margin:0}.gg-shell .gg-toy-panel p{margin:2px 0 5px}
+ .gg-shell .gg-toy-panel .gg-settings-head{margin:0}
+ .gg-shell .gg-toy-panel .gg-toy-card{min-height:0;padding:4px}
+ .gg-shell .gg-toy-panel .gg-toy-catalog{gap:4px}
+}
 .gg-toy-card:hover,.gg-toy-card:focus-visible{outline:2px solid #ffda66;background:#583269}
 .gg-toy-card[aria-pressed=true]{border-color:#ffd766}
 .gg-toy-card i{width:46px;height:46px;border-radius:7px;background:var(--toy-icons) 0 0/300% 200%}
@@ -1103,7 +1110,8 @@ export class GameMenu {
            this.game.rules.wallet.coins >= TUNING.progression.unlockCosts.glide ?
            menuButton('unlock-glide', 'UNLOCK GLIDE · ' + TUNING.progression.unlockCosts.glide + ' CUD COINS') : ''}
          ${menuButton('settings','⚙ CONTROLS &amp; SETTINGS')}${menuButton('title','⌂ QUIT TO TITLE')}</div>` :
-      this.screen === 'toybox' ? `<h2>TOY BOX</h2><p>Pick a toy to equip it. Use X or D-pad up in free roam.</p>
+      this.screen === 'toybox' ? `<div class="gg-settings-head"><h2 id="gg-toy-title">TOY BOX</h2>
+        <button type="button" data-action="back" class="gg-settings-back" aria-label="Back to free roam">← Back</button></div><p>Pick a toy to equip it. Use X or D-pad up in free roam.</p>
         <div class="gg-toy-catalog" style="--toy-icons:url('${toyIcons}')">${TOYS.map((toy,i) =>
           `<button class="gg-toy-card" data-action="toy-${i}" aria-pressed="${this.game.toys.index===i}">
           <i aria-hidden="true" style="background-position:${(i%3)*50}% ${Math.floor(i/3)*100}%"></i>
@@ -1115,9 +1123,10 @@ export class GameMenu {
       this.screen === 'gig-results' ? this.gigResultsBody() : this.partyResultsBody();
     const partyResults = this.screen === 'party-results';
     const panel = this.screen === 'title' ? 'gg-shell-panel gg-title-panel' :
+      this.screen === 'toybox' ? 'gg-shell-panel gg-toy-panel' :
       this.screen === 'pause' ? 'gg-shell-panel gg-pause-panel' :
       partyResults ? 'gg-shell-panel gg-party-results-panel' : 'gg-shell-panel';
-    const dialogLabel = partyResults ? ' aria-labelledby="gg-party-result-title"' :
+    const dialogLabel = this.screen === 'toybox' ? ' aria-labelledby="gg-toy-title"' : partyResults ? ' aria-labelledby="gg-party-result-title"' :
       this.screen === 'party-confirm' ?
         ' aria-labelledby="gg-party-confirm-title" aria-describedby="gg-party-confirm-detail"' : '';
     const footer = partyResults

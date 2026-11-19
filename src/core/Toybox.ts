@@ -101,7 +101,15 @@ export class Toybox {
       case 'duck': {
         if (this.duck) {
           const anchor = this.duck;
+          const clearance = new RAPIER.Capsule(.33 * goat.size, .37 * goat.size);
+          const center = add(anchor.position, V(0, .98 * goat.size, 0));
+          const obstruction = g.physics.raw.intersectionWithShape(center, {x:0,y:0,z:0,w:1}, clearance,
+            RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, undefined, undefined, undefined, c => !goat.ownsBody(c.parent()));
           this.duck = null;
+          if (obstruction || anchor.position.y < g.water.seaLevel + .2) {
+            this.say('Duck spot blocked · plant a new marker');
+            return;
+          }
           g.teleport(anchor.position, anchor.heading);
           this.emit(id, anchor.position);
           this.say('Quack! Back at your marker');

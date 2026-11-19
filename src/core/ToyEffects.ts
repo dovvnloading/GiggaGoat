@@ -11,11 +11,19 @@ export class ToyEffects {
   private readonly materials = new Map<number, THREE.MeshToonMaterial>();
   private readonly duck = new THREE.Group();
   private readonly glob: THREE.Mesh;
+  private readonly can = new THREE.Group();
+  private readonly pickle = new THREE.Group();
+  private readonly cylinder = new THREE.CylinderGeometry(1,1,1,16);
+  private readonly coil = new THREE.TorusGeometry(.19,.035,6,16);
+  private pickleAge = 10;
+  private sipAge = 10;
   private readonly motes: { mesh: THREE.Mesh; velocity: THREE.Vector3; age: number; radius: number }[] = [];
   private slot = 0;
   private trailAt = 0;
   private lastTime = -1;
   private readonly pulse = (cue: ToyCue) => {
+    if (cue.toy === 'pogo') this.pickleAge = 0;
+    if (cue.toy === 'brew') this.sipAge = 0;
     const count = cue.toy === 'gas' ? 16 : 7;
     for (let i=0; i<count; i++) {
       const a = i * 2.39996;
@@ -28,6 +36,25 @@ export class ToyEffects {
       const mesh = new THREE.Mesh(this.ball, this.material(color));
       mesh.position.set(x,y,z); mesh.scale.set(sx,sy,sz); parent.add(mesh); return mesh;
     };
+    const tin = (color:number, y:number, radius:number, height:number) => {
+      const mesh=new THREE.Mesh(this.cylinder,this.material(color));
+      mesh.position.y=y; mesh.scale.set(radius,height,radius);
+      this.can.add(mesh);
+    };
+    tin(0xdf2887,0,.20,.55);
+    tin(0xe4ece7,.29,.21,.033); tin(0xf2d6ca,-.29,.21,.036);
+    tin(0xfce08e,-.07,.204,.12);
+    bulb(this.can,0x64344f,0,.31,-.055,.078,.012,.046);
+    bulb(this.pickle,0x6eaf29,0,.12,0,.26,.19,.50);
+    for (let i=0;i<5;i++) {
+      const ring=new THREE.Mesh(this.coil,this.material(0xd9d7e2));
+      ring.position.y=-.04-i*.075; ring.rotation.x=Math.PI/2+.12;
+      this.pickle.add(ring);
+    }
+    bulb(this.pickle,0xe59828,0,-.39,0,.22,.042,.22);
+    for (const side of [-1,1]) bulb(this.pickle,0x97cd4a,side*.19,.22,.13,.073,.057,.074);
+    this.can.visible=this.pickle.visible=false;
+    this.root.add(this.can,this.pickle);
     this.root.name='Free-roam toys';
     this.root.add(this.duck);
     bulb(this.duck,0xffbd19,0,.33,0,.49,.31,.62);
@@ -57,9 +84,21 @@ export class ToyEffects {
     m.mesh.position.set(p.x,p.y,p.z);m.mesh.scale.setScalar(radius*.55);
     m.mesh.material=this.material(color);m.mesh.visible=true;
   }
-  update(now:number, p:Vec3):void {
+  update(now:number, p:Vec3, size:number, heading:number, grounded:boolean):void {
     const dt=this.lastTime<0 ? 0 : Math.min(.1, Math.max(0,now-this.lastTime));
     this.lastTime=now;
+    this.sipAge+=dt; this.pickleAge+=dt;
+    const sn=Math.sin(heading), cs=Math.cos(heading);
+    this.can.visible=this.sipAge<.72 && this.toys.brew>0;
+    if(this.can.visible) {
+      this.can.position.set(p.x+(.8*sn+.34*cs)*size,p.y+.55*size,p.z+(-.8*cs+.34*sn)*size);
+      this.can.scale.setScalar(size); this.can.rotation.set(.28,-heading,-.9*Math.sin(this.sipAge/.72*Math.PI));
+    }
+    this.pickle.visible=this.pickleAge<2.4 && (!grounded || this.pickleAge<.10);
+    if(this.pickle.visible) {
+      this.pickle.position.set(p.x,p.y-.65*size,p.z); this.pickle.rotation.y=-heading;
+      this.pickle.scale.set(size*1.25, size*(.75+.24*Math.min(1,this.pickleAge/.14)),size*1.25);
+    }
     this.root.visible=this.toys.available;
     this.duck.visible=!!this.toys.duck;
     if(this.toys.duck) {
@@ -76,7 +115,11 @@ export class ToyEffects {
     }
     if(now>=this.trailAt) {
       this.trailAt=now+.08;
-      if(this.toys.brew>0) this.spawn(p,Math.floor(now*12)%2 ? 0xff76c6 : 0x50e8ec,.20,0,-1,0);
+      if(this.toys.brew>0) {
+        const side = Math.floor(now*12)%2 ? 1 : -1;
+        const at = {x:p.x+(.34*side*cs-.52*sn)*size, y:p.y-.16*size, z:p.z+(.34*side*sn+.52*cs)*size};
+        this.spawn(at,side>0 ? 0xff86d0 : 0x83f1ef,.075*size,cs*side*.8,.4,sn*side*.8);
+      }
       if(this.toys.magnet>0) {
         const a=now*7;
         this.spawn({x:p.x+2*Math.cos(a),y:p.y+.4,z:p.z+2*Math.sin(a)},PALETTE.sock,.14,-Math.cos(a)*2,0,-Math.sin(a)*2);
@@ -93,7 +136,7 @@ export class ToyEffects {
   }
   dispose():void {
     this.toys.listeners.delete(this.pulse);
-    this.root.removeFromParent();this.ball.dispose();
+    this.root.removeFromParent();this.ball.dispose(); this.cylinder.dispose(); this.coil.dispose();
     for(const m of this.materials.values()) m.dispose();
   }
 }
