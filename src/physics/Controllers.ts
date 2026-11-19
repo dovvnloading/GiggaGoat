@@ -409,18 +409,27 @@ export class LocomotionController {
    * reach when the centreline probes on either side of it pass through air. */
   private reachableClimbEdge(wall: RayHit, torso: Vec3): RayHit | null {
     if (Math.abs(wall.normal.y) >= .22 || !wall.collider.isValid()) return null;
+    const { size, world } = this.goat;
+    const held = sub(wall.point, torso);
+    const query = { groups: GROUND_QUERY_GROUPS };
+    // The supporting hoof stays on its old rung while its partner reaches.
+    // Recheck that exact piece of wall and release it once it is out of reach.
+    if (Math.abs(held.y) <= .78 * size && length(held) <= 1.3 * size) {
+      const skin = .035 * size;
+      const anchor = world.raycast(add(wall.point, mul(wall.normal, skin)), mul(wall.normal, -1), 2 * skin, query);
+      if (anchor && anchor.collider.handle === wall.collider.handle && dot(anchor.normal, wall.normal) > .9) return anchor;
+    }
     const closest = wall.collider.projectPoint(torso, false);
     if (!closest) return null;
     const delta = sub(closest.point, torso);
     const horizontal = Math.hypot(delta.x, delta.z);
-    const { size, world } = this.goat;
     // The hind hip is .4 body lengths aft and its lower leg spans another .38.
     if (horizontal < .001 || length(delta) > 1.3 * size || Math.abs(delta.y) > .78 * size) return null;
     const inward = V(delta.x / horizontal, 0, delta.z / horizontal);
     // Sample just inside a lip to verify its side. A horizontal top or
     // overhang alone cannot supply climbing traction.
     const at = V(torso.x, closest.point.y + Math.sign(delta.y) * .025 * size, torso.z);
-    const side = world.raycast(at, inward, horizontal + .08 * size, { groups: GROUND_QUERY_GROUPS });
+    const side = world.raycast(at, inward, horizontal + .08 * size, query);
     return side && Math.abs(side.normal.y) < .22 && side.collider.handle === wall.collider.handle ? side : null;
   }
 
