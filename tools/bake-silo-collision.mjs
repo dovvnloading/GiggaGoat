@@ -4,7 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // Keep the static world available synchronously, before the district art loads.
 // Re-run with node tools/bake-silo-collision.mjs when the shipped silo changes.
-const source = new URL('../public/assets/library/custom/hoofington-props/silo.glb', import.meta.url);
+const source = new URL('../public/assets/library/custom/hoofington-props/climbable-silo.glb', import.meta.url);
 const target = new URL('../src/world/silo-collision.json', import.meta.url);
 const bytes = await readFile(source);
 const { scene } = await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, '');

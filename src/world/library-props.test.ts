@@ -268,7 +268,7 @@ describe('library prop catalog', () => {
       bench: 'custom/town/park-bench.glb',
       fence: 'custom/hoofington-props/picket-fence.glb',
       mailbox: 'custom/hoofington-props/mailbox.glb',
-      silo: 'custom/hoofington-props/silo.glb',
+      silo: 'custom/hoofington-props/climbable-silo.glb',
       windmill: 'custom/hoofington-props/windmill.glb',
       crate: 'platformer-kit/crate.glb',
       barrel: 'survival-kit/barrel.glb',
