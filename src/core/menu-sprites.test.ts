@@ -197,7 +197,7 @@ function setup(audio?: ConstructorParameters<typeof GameMenu>[4]) {
   vi.stubGlobal('navigator', { getGamepads: () => [] });
   const host = new NodeStub(doc);
   const game = {
-    rules: { wallet: { coins: 20 } },
+    rules: { unlocks: { isUnlocked: () => false }, wallet: { coins: 20 } },
     gigs: { director: { ownedCosmetics: [], board: vi.fn<(poi: PoiId) => GigBoard>() },
       active: null as GigRun | null, catalog: null as GigCatalog | null,
       nearBoard: vi.fn<() => PoiId | null>(), accept: vi.fn() },

@@ -364,5 +364,53 @@
   "w": 458,
   "h": 165,
   "sheet": "03_menus"
+ },
+ "player/growth_frame": {
+  "file": "assets/ui/sprites/player/growth_frame.png",
+  "w": 1050,
+  "h": 329,
+  "sheet": "standalone"
+ },
+ "player/growth_fill": {
+  "file": "assets/ui/sprites/player/growth_fill.png",
+  "w": 900,
+  "h": 77,
+  "sheet": "standalone"
+ },
+ "player/stamina_dial": {
+  "file": "assets/ui/sprites/player/stamina_dial.png",
+  "w": 511,
+  "h": 512,
+  "sheet": "standalone"
+ },
+ "player/hoof_emblem": {
+  "file": "assets/ui/sprites/player/hoof_emblem.png",
+  "w": 180,
+  "h": 147,
+  "sheet": "standalone"
+ },
+ "player/goat_kid": {
+  "file": "assets/ui/sprites/player/goat_kid.png",
+  "w": 265,
+  "h": 320,
+  "sheet": "standalone"
+ },
+ "player/goat_billy": {
+  "file": "assets/ui/sprites/player/goat_billy.png",
+  "w": 240,
+  "h": 320,
+  "sheet": "standalone"
+ },
+ "player/goat_big": {
+  "file": "assets/ui/sprites/player/goat_big.png",
+  "w": 306,
+  "h": 320,
+  "sheet": "standalone"
+ },
+ "player/goat_gigga": {
+  "file": "assets/ui/sprites/player/goat_gigga.png",
+  "w": 311,
+  "h": 320,
+  "sheet": "standalone"
  }
 }

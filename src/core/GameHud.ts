@@ -19,23 +19,24 @@ const CSS = `
 /* Composited panel art stays in its natural proportions. The only painted
    interiors are live state (meter, stamina and charge) over the empty sprites. */
 .gg-meter{position:absolute;left:clamp(12px,1.35vw,25px);top:clamp(10px,1.2vw,21px);width:clamp(365px,31.5vw,535px);height:clamp(150px,11.8vw,205px);background:var(--gg-sizeMeterFrame) center/100% 100% no-repeat}
-/* Align the live layers with the four slots in the 542 × 272 illustrated frame. */
-.gg-meter-label{position:absolute;inset:8% 15% auto;height:17%;display:grid;place-items:center;white-space:nowrap;color:#ffdf68;font-size:clamp(16px,1.55vw,25px);line-height:1;letter-spacing:.4px;text-shadow:0 1px 2px #572b46}
-.gg-meter-icons,.gg-meter-stage-labels{position:absolute;left:7.4%;right:5.5%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
-.gg-meter-icons{top:29%;height:24.5%;grid-template-rows:minmax(0,1fr);align-items:end}
+.gg-meter-label{position:absolute;inset:2% 15% auto;height:18%;display:grid;place-items:center;background:var(--gg-growthBanner) center/100% 100% no-repeat;white-space:nowrap;color:#ffdf68;font-size:clamp(16px,1.5vw,24px);line-height:1;letter-spacing:.4px;text-shadow:0 1px 2px #572b46}
+.gg-meter-icons,.gg-meter-stage-labels{position:absolute;left:5%;right:5%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.gg-meter-icons{top:21%;height:44%;grid-template-rows:minmax(0,1fr);align-items:end}
 .gg-meter-stage{min-width:0;min-height:0;height:100%;display:flex;align-items:end;justify-content:center;opacity:.83}
 .gg-meter-stage .gg-goat-art{width:100%;height:var(--goat-height,100%);object-position:center bottom}
 .gg-meter-stage:nth-child(1){--goat-height:78%}
 .gg-meter-stage:nth-child(2){--goat-height:88%}
 .gg-meter-stage:nth-child(3){--goat-height:95%}
 .gg-meter-stage.is-active{opacity:1}
-.gg-meter-track,.gg-meter-caption{position:absolute;left:6.7%;right:6.1%;top:57.6%;height:12.9%}
-.gg-meter-track{border-radius:99px;background:#412f42;box-shadow:inset 0 1px 3px #241b33}
-.gg-meter-fill{height:100%;border-radius:inherit;background:linear-gradient(90deg,#62e94d,#dae94c 42%,#ffbd53 72%,#ff655f);transition:width .12s linear}
-.gg-meter-ticks{position:absolute;inset:0;border-radius:inherit;overflow:hidden;background:linear-gradient(90deg,transparent 24.8%,#6d5264 24.8% 25.2%,transparent 25.2% 49.8%,#6d5264 49.8% 50.2%,transparent 50.2% 74.8%,#6d5264 74.8% 75.2%,transparent 75.2%)}
-.gg-meter-arrow{position:absolute;top:118%;transform:translateX(-50%);height:32%;aspect-ratio:1.8;background:#ffedac;clip-path:polygon(50% 0,100% 100%,0 100%);transition:left .12s linear}
-.gg-meter-stage-labels{top:77%;height:15%;align-items:center}
-.gg-meter-stage-labels span{text-align:center;white-space:nowrap;color:#fff8dd;font-size:clamp(12px,1.1vw,18px);line-height:1;text-shadow:0 1px 2px #4f3041}
+.gg-meter-track,.gg-meter-caption{position:absolute;left:5%;right:5%;top:68%;height:12%}
+.gg-meter-fill{background:var(--gg-growthFill) center/100% 100% no-repeat}
+.gg-meter-track{isolation:isolate}
+.gg-meter-track::before{content:"";position:absolute;inset:0;z-index:-1;background:var(--gg-growthFill) center/100% 100% no-repeat;filter:grayscale(.94) brightness(.42)}
+.gg-meter-fill{height:100%;clip-path:inset(0 calc(100% - var(--gg-growth,0%)) 0 0);transition:clip-path .12s linear}
+.gg-meter-stage-labels{top:81%;height:15%;align-items:stretch}
+.gg-meter-stage-labels span{display:grid;place-items:center;margin-inline:6%;background:var(--gg-tierPurple) center/100% 100% no-repeat;white-space:nowrap;color:#fff8dd;font-size:clamp(12px,1.1vw,18px);line-height:1;text-shadow:0 1px 2px #4f3041}
+.gg-meter-stage-labels span:nth-child(3){background-image:var(--gg-tierBrown)}
+.gg-meter-stage-labels span:nth-child(4){background-image:var(--gg-tierGold)}
 .gg-meter-stage-labels span.is-active{color:#fff2a3}
 .gg-meter-caption{display:grid;place-items:center;color:#fff9db;font-size:clamp(9px,1.05vw,17px);font-variant-numeric:tabular-nums;line-height:1;text-shadow:none;white-space:nowrap}
 .gg-meter-caption [data-meter]{display:block;padding:0 6px;border-radius:6px;background:#301f33ed}
@@ -171,17 +172,17 @@ const CSS = `
  }
  .gg-gig-footer .gg-coin{width:var(--gg-coin-size);height:var(--gg-coin-size)}
 }
-/* The rim, sweep and centre stack share one proportional face at every scale. */
-.gg-stamina{position:absolute;left:clamp(11px,1.5vw,29px);bottom:clamp(10px,1.5vw,26px);width:clamp(138px,12.7vw,215px);aspect-ratio:243/252;container-type:inline-size;background:var(--gg-staminaRing) center/100% 100% no-repeat}
-.gg-stamina::before{content:"";position:absolute;inset:23% 23% 24%;border-radius:50%;background:#382b36}
-.gg-stamina-progress{position:absolute;inset:0;background:linear-gradient(155deg,#fff2,transparent 45%,#39223922),conic-gradient(from 229deg at 50% 49%,var(--gg-stamina-color,#a7e657) 0 calc(var(--gg-stamina,100%) * .72),#493b50 0 72%,transparent 0);mask:radial-gradient(circle closest-side at 50% 49%,transparent 55%,#000 56% 85%,transparent 86%)}
+/* Dim only the spent part of the painted green enamel; the bezel and its centre stay visible. */
+.gg-stamina{position:absolute;left:clamp(11px,1.5vw,29px);bottom:clamp(10px,1.5vw,26px);width:clamp(138px,12.7vw,215px);aspect-ratio:1;container-type:inline-size;background:var(--gg-staminaRing) center/100% 100% no-repeat}
+.gg-stamina-progress{position:absolute;inset:0;background:var(--gg-staminaRing) center/100% 100% no-repeat;mask:radial-gradient(circle closest-side,transparent 62%,#000 64% 89%,transparent 91%);filter:var(--gg-stamina-tint,none)}
+.gg-stamina-progress::after{content:"";position:absolute;inset:0;background:inherit;filter:grayscale(.93) brightness(.4);mask:conic-gradient(transparent var(--gg-stamina,100%),#000 0)}
 .gg-stamina-inner{position:absolute;inset:27% 17% 27%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.3cqw;text-shadow:none}
-.gg-hoof{width:21cqw;height:16cqw}
+.gg-hoof{width:26cqw;height:20cqw}
 .gg-stamina-label,.gg-stamina-value{margin:0;line-height:1;white-space:nowrap}
 .gg-stamina-label{color:#ffe8ad;font-size:8cqw;letter-spacing:.02em}
 .gg-stamina-value{font-size:8.5cqw;color:#fff9e6;font-variant-numeric:tabular-nums}
 @media(min-width:1101px){.gg-stamina-value{font-size:max(13px,8.5cqw)}}
-.gg-stamina[data-low="true"] .gg-stamina-progress{--gg-stamina-color:#ff926f}
+.gg-stamina[data-low="true"] .gg-stamina-progress{--gg-stamina-tint:hue-rotate(-58deg)}
 .gg-stamina[data-low="true"] .gg-stamina-label{font-size:0}
 .gg-stamina[data-low="true"] .gg-stamina-label::after{content:"LOW";font-size:8cqw;color:#ffad92}
 .gg-hotbar{position:absolute;left:50%;bottom:clamp(3px,.6vw,10px);transform:translateX(-50%);width:clamp(500px,40vw,665px);height:clamp(126px,10.35vw,186px);isolation:isolate}
@@ -374,9 +375,8 @@ const CSS = `
  .gg-prompt-copy{min-width:0}
  .gg-stamina{left:8px;bottom:5px;width:var(--gg-landscape-stamina-width)}
  /* At 52–68px the ring fits the icon. Stack the two readings below the rim. */
- .gg-stamina{height:calc(var(--gg-landscape-stamina-width) * 252 / 243 + 25px);aspect-ratio:auto;background-size:100% auto;background-position:top}
- .gg-stamina::before{inset:24cqw 23% auto;height:53cqw}
- .gg-stamina-progress{inset:0 0 auto;aspect-ratio:243/252}
+ .gg-stamina{height:calc(var(--gg-landscape-stamina-width) + 25px);aspect-ratio:auto;background-size:100% auto;background-position:top}
+ .gg-stamina-progress{inset:0 0 auto;aspect-ratio:1}
  .gg-stamina-inner{inset:auto 0 0;height:26px;gap:2px;border-radius:6px;background:#382b36f5}
  .gg-stamina-inner .gg-hoof{position:absolute;bottom:calc(25px + 30cqw);width:28cqw;height:30cqw}
  .gg-stamina-label,.gg-stamina[data-low="true"] .gg-stamina-label::after{font-size:9px}
@@ -449,17 +449,12 @@ const CSS = `
   bottom:auto;width:var(--gg-portrait-left-width);height:34px;aspect-ratio:auto;border:1px solid #d5a15c;
   border-radius:9px;background:#352b3c;filter:none;text-shadow:none
  }
- .gg-stamina::before{content:none}
- .gg-stamina-progress{
-  inset:auto 6px 5px;height:4px;border-radius:4px;--gg-portrait-stamina-color:#a2ed57;
-  background:linear-gradient(90deg,var(--gg-portrait-stamina-color) 0 var(--gg-stamina,100%),#66536a var(--gg-stamina,100%) 100%);
-  mask:none;-webkit-mask:none
- }
+ .gg-stamina-progress{inset:auto 6px 5px;height:5px;border-radius:3px;overflow:hidden;background:var(--gg-growthFill) center/100% 100% no-repeat;mask:none}
+ .gg-stamina-progress::after{mask:none;clip-path:inset(0 0 0 var(--gg-stamina,100%))}
  .gg-stamina-inner{inset:4px 6px auto;display:flex;flex-direction:row;justify-content:space-between;gap:2px}
  .gg-stamina-inner .gg-hoof{display:none}
  .gg-stamina-label,.gg-stamina-value{margin:0;font-size:clamp(9px,2.55vw,11px);line-height:1.15;transform:none;text-shadow:none}
  .gg-stamina-value{font-variant-numeric:tabular-nums;white-space:nowrap}
- .gg-stamina[data-low="true"] .gg-stamina-progress{--gg-portrait-stamina-color:#ff926f}
  .gg-stamina[data-low="true"] .gg-stamina-label{font-size:clamp(9px,2.55vw,11px)}
  .gg-stamina[data-low="true"] .gg-stamina-label::after{content:" LOW";font-size:inherit;color:#ffac93}
  .gg-prompts{
@@ -503,7 +498,6 @@ export class GameHud {
   private readonly styles = document.createElement('style');
   private readonly fill: HTMLElement;
   private readonly meterText: HTMLElement;
-  private readonly needle: HTMLElement;
   private readonly stages: HTMLElement[];
   private readonly stageLabels: HTMLElement[];
   private readonly comboTitle: HTMLElement;
@@ -583,7 +577,7 @@ export class GameHud {
       '<div class="gg-meter-label">GIGGA SIZE METER</div>' +
       '<div class="gg-meter-icons">' + stageHtml + '</div>' +
       '<div class="gg-meter-track"><div class="gg-meter-fill" data-fill></div>' +
-      '<div class="gg-meter-ticks"></div><div class="gg-meter-arrow" data-needle></div></div>' +
+      '</div>' +
       '<div class="gg-meter-stage-labels">' + stageLabels + '</div>' +
       '<div class="gg-meter-caption"><b data-meter>0 / 100</b></div></section>' +
       '<section class="gg-combo" data-sprite="' + HUD_SPRITES.scoreStarburst +
@@ -650,7 +644,6 @@ export class GameHud {
       return element;
     };
     this.fill = get('fill'); this.meterText = get('meter');
-    this.needle = get('needle');
     this.stages = Array.from(this.root.querySelectorAll<HTMLElement>('[data-stage]'));
     this.stageLabels = Array.from(this.root.querySelectorAll<HTMLElement>('[data-stage-label]'));
     this.stageElements = this.stages.concat(this.stageLabels);
@@ -826,8 +819,7 @@ export class GameHud {
       } : null,
     });
 
-    this.fill.style.width = state.meter.toFixed(2) + '%';
-    this.needle.style.left = state.meter.toFixed(2) + '%';
+    this.fill.style.setProperty('--gg-growth', state.meter.toFixed(2) + '%');
     this.meterText.textContent = Math.floor(state.meter) + ' / 100';
     for (const element of this.stageElements) {
       const label = element.getAttribute('data-stage') ?? element.getAttribute('data-stage-label');
