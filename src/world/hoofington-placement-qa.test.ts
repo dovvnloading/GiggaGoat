@@ -1,4 +1,6 @@
 import { expect, it } from 'vitest';
+import { Game } from '../core/Game';
+import { HOOFINGTON_HAUL_CONNECTOR } from './hoofington-entrances';
 import type { PropDescriptor, Vec3 } from './types';
 import { generateIsland } from './island';
 import { makeLocalStreets } from './roads';
@@ -198,6 +200,42 @@ it('preserves the fence IDs across distinct yard openings and stages usable prop
         expect(neighbours.map(p => p.id), prop.id + ' on ' + seed).toEqual([]);
       }
     }
+  }
+});
+
+it('keeps the seeded garden gnomes outside the west loading turn and lets a Kid walk or sprint through', async () => {
+  const game = await Game.create();
+  try {
+    const farm = game.island.pois.find(p => p.id === 'hoofington')!.center;
+    const yard = game.island.props.filter(p => p.poiId === 'hoofington' && p.collidable);
+    const gnomes = yard.filter(p => p.kind === 'gnome').map(asPlaced);
+    const { x, z, length, width } = HOOFINGTON_HAUL_CONNECTOR;
+    const connector: Placed = {
+      id: 'hoofington-haul-connector', kind: 'passage',
+      position: { x: farm.x + x, y: farm.y, z: farm.z + z },
+      size: { x: length, y: 1, z: width }, yaw: 0,
+    };
+    expect(gnomes).toHaveLength(13);
+    for (const id of ['detail-hoofington-gnome-18', 'detail-hoofington-gnome-22']) {
+      const gnome = gnomes.find(p => p.id === id)!;
+      expect(game.colliders.props.get(id)?.isEnabled(), id).toBe(true);
+      expect(yard.map(asPlaced).filter(p => p.id !== id && overlaps(p, gnome)).map(label), id).toEqual([]);
+    }
+    expect(gnomes.filter(gnome => overlaps(connector, gnome)).map(label)).toEqual([]);
+
+    // Reproduce the live input from where the two static gnomes trapped the goat.
+    const start = { x: farm.x - 21.89, z: farm.z - 18.75 };
+    const cameraYaw = -2.05352;
+    for (const sprint of [false, true]) {
+      game.teleport({ ...start, y: gridSample(game.island, start.x, start.z) }, -cameraYaw);
+      for (let tick = 0; tick < 30; tick++) game.step({ cameraYaw });
+      for (let tick = 0; tick < 80; tick++) game.step({ moveZ: 1, cameraYaw, sprint });
+      expect(game.goat.torso.translation().x).toBeLessThan(farm.x - 25.8);
+      expect(game.goat.locomotion.grounded).toBe(true);
+      expect(game.respawns).toBe(0);
+    }
+  } finally {
+    game.dispose();
   }
 });
 

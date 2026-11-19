@@ -4,7 +4,8 @@ import { downtownPublicSpaceAt, downtownPublicSpaces } from './downtown-public-s
 import { gridSample, MOUNTAIN_CAVE_ANCHOR, riverAt, segmentProjection, stampPlot } from './terrain';
 import { getDamPlacement } from './the-dam';
 import { HOOFINGTON_FIELD_ENTRANCES, HOOFINGTON_FIELD_RAILS,
-  HOOFINGTON_HAUL_LANE, HOOFINGTON_YARD_ENTRANCES } from './hoofington-entrances';
+  HOOFINGTON_HAUL_CONNECTOR, HOOFINGTON_HAUL_DROP_APRON, HOOFINGTON_HAUL_LANE,
+  HOOFINGTON_YARD_ENTRANCES } from './hoofington-entrances';
 import { roadSideOffset } from './roads';
 import { damChannelAt } from './dam-landscape';
 import { overlapsPinesLogEntry } from './pines-log-access';
@@ -166,10 +167,14 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     return true;
   }
   const farmCenter = sites.get(farm)!;
-  const farmEntrances: Footprint[] = [...HOOFINGTON_FIELD_ENTRANCES, ...HOOFINGTON_YARD_ENTRANCES, HOOFINGTON_HAUL_LANE]
-    .map(p => ({ x: farmCenter.x + p.x * scale, z: farmCenter.z + p.z * scale,
-      sx: (p.length + ('towing' in p && p.towing ? 2.3 : 1.5)) * scale,
-      sz: p.width * scale, yaw: 0 }));
+  const farmPassage = (p: { x: number; z: number; length: number; width: number; towing?: boolean }): Footprint =>
+    ({ x: farmCenter.x + p.x * scale, z: farmCenter.z + p.z * scale,
+      sx: (p.length + (p.towing ? 2.3 : 1.5)) * scale, sz: p.width * scale, yaw: 0 });
+  const haulConnector = farmPassage(HOOFINGTON_HAUL_CONNECTOR);
+  const haulDropApron = farmPassage(HOOFINGTON_HAUL_DROP_APRON);
+  const farmEntrances = [...HOOFINGTON_FIELD_ENTRANCES, ...HOOFINGTON_YARD_ENTRANCES, HOOFINGTON_HAUL_LANE]
+    .map(farmPassage);
+  farmEntrances.push(haulConnector);
   const inFarmEntrance = (x: number, z: number, width: number, yaw: number): boolean =>
     farmEntrances.some(gate => Math.abs(x - gate.x) < gate.sx / 2 + width &&
       Math.abs(z - gate.z) < gate.sz / 2 + width &&
@@ -195,6 +200,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       .filter(p => p !== source && p.poiId === farm &&
         (['barn', 'house', 'cottage', 'silo', 'windmill'].includes(p.kind) ||
           p.id.startsWith('hoofington-verge-') ||
+          (kind === 'gnome' && p.collidable) ||
           // Keep dense foliage off the low pickets and each mailbox face.
           (kind === 'bush' && (p.kind === 'fence' || p.kind === 'mailbox')) ||
           (blocksEntrance && ['fence', 'flower', 'bush', 'tree-pine', 'tree-oak'].includes(p.kind))))
@@ -203,6 +209,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     const free = (px: number, pz: number): boolean => {
       const f = { x: px, z: pz, sx: width, sz: width, yaw };
       return !inFarmEntrance(px, pz, width, yaw) &&
+        !(kind === 'gnome' && footprintOverlaps(f, haulDropApron)) &&
         !occupied.some(b => footprintOverlaps(f, b)) &&
         !hoofRoads.some(r => footprintOverlaps(f, r));
     };
@@ -223,12 +230,15 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   }
 
   // Garden groups were placed before the two fence runs were available.
-  // Pull back only planting that closes an intended gap.
+  // Keep their art and physics, moving only props that close the reserved gaps.
   for (const prop of result) {
-    if (prop.poiId !== farm || (prop.kind !== 'flower' && prop.kind !== 'bush')) continue;
+    if (prop.poiId !== farm || !['flower', 'bush', 'gnome'].includes(prop.kind)) continue;
     const { position, rotationY } = prop.transform;
     const width = Math.max(prop.size.x, prop.size.z);
-    if (!inFarmEntrance(position.x, position.z, width, rotationY)) continue;
+    const blocksPassage = prop.kind === 'gnome'
+      ? footprintOverlaps({ x: position.x, z: position.z, sx: width, sz: width, yaw: rotationY }, haulConnector)
+      : inFarmEntrance(position.x, position.z, width, rotationY);
+    if (!blocksPassage) continue;
     const next = clearHoofingtonFoliage(position.x, position.z, width, rotationY, prop.kind, prop);
     position.x = next.x;
     position.z = next.z;
