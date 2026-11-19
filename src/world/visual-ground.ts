@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import type { IslandData, PoiId } from './types';
+import { makeLocalStreets } from './roads';
 import { gridSample } from './terrain';
 import { TOON_RAMP } from './visual-props';
+import { downtownSidewalkEdge } from './visual-streets';
 
 interface ChunkBuffer {
   positions: number[];
@@ -164,14 +166,40 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Gr
         10 * scale, 0.75 * scale, CROP_ROW, 0, undefined, 0.02);
     }
   }
-  // The actual central street is already rendered by buildRoads, while
-  // these compact sidewalk tiles make both rows accessible and inviting.
+  // Storefront slabs meet the exact sidewalk edge without overlapping it.
   const city = site('downtown-bleatsville');
-  for (const side of [-1, 1]) {
+  const street = makeLocalStreets(island).find(road => road.from === 'downtown-bleatsville')!;
+  for (const side of [-1, 1] as const) {
+    const edge = downtownSidewalkEdge(island, street, side);
+    const shopX = city.x + side * 10.45 * scale;
+    const originalSlabX = city.x + side * 6.35 * scale;
     for (let z = -40; z < 42; z += 5.8) {
-      quad(city.x + side * 8.4 * scale,
-        city.z + (z + 2.8) * scale,
-        4.1 * scale, 5.55 * scale, z % 2 ? STONE : TILE);
+      const centreZ = city.z + (z + 2.8) * scale;
+      const near = centreZ - 2.775 * scale, far = centreZ + 2.775 * scale;
+      const stations = [near, ...edge.points.filter(point => point.z > near && point.z < far)
+        .map(point => point.z), far];
+      const bucket = verticesAt(city.x + side * 8.4 * scale, centreZ);
+      const color = z % 2 ? STONE : TILE;
+      const first = bucket.positions.length / 3;
+      for (const station of stations) {
+        const next = edge.points.findIndex(point => point.z >= station);
+        // Keep the last courtyard slab's full reach where the sidewalk ends.
+        const inner = next < 0 ? originalSlabX : edge.x;
+        let innerY = gridSample(island, inner, station) + .075 * scale;
+        if (next > 0) {
+          const a = edge.points[next - 1]!, b = edge.points[next]!;
+          innerY = THREE.MathUtils.lerp(a.y, b.y, (station - a.z) / (b.z - a.z));
+        }
+        const shopY = gridSample(island, shopX, station) + .075 * scale;
+        const t = (station - near) / (far - near);
+        if (side < 0) bucket.positions.push(shopX, shopY, station, inner, innerY, station);
+        else bucket.positions.push(inner, innerY, station, shopX, shopY, station);
+        bucket.colors.push(...colour(color, .965 + .03 * t), ...colour(color, .98 - .015 * t));
+      }
+      for (let i = 1; i < stations.length; i++) {
+        const a = first + (i - 1) * 2, b = a + 2;
+        bucket.indices.push(a, b, a + 1, a + 1, b, b + 1);
+      }
     }
     for (const z of [-29, -1, 27]) {
       quad(city.x + side * 12.7 * scale, city.z + z * scale,

@@ -166,6 +166,31 @@ function downtownMaterial(color: number): THREE.MeshToonMaterial {
     polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
 }
 
+function downtownRoadIntervals(road: RoadDescriptor) {
+  return road.points.slice(1).map((b, index) => {
+    const a = road.points[index]!;
+    return { length: b.z - a.z, z: a.z, y: a.y + .20, grade: (b.y - a.y) / (b.z - a.z) };
+  });
+}
+
+function downtownRoadStations(road: RoadDescriptor, intervals = downtownRoadIntervals(road)) {
+  return [...intervals.flatMap(({ z, y, grade, length }) => [0, 1 / 3, 2 / 3].map(t => ({
+    z: z + length * t, asphalt: y + grade * length * t,
+  }))), { z: road.points.at(-1)!.z, asphalt: road.points.at(-1)!.y + .20 }];
+}
+
+/** Literal outer mesh edge, shared with the abutting shopfront paving. */
+export function downtownSidewalkEdge(island: IslandData, road: RoadDescriptor, side: -1 | 1,
+  stations = downtownRoadStations(road)) {
+  const scale = island.size / 600;
+  const x = road.points[0]!.x + side * (road.width / 2 + 2.34 * scale);
+  const points = stations.map(({ z }) => {
+    const ground = groundTriangle(island, x, z);
+    return { z, ground, y: ground + .055 * scale };
+  });
+  return { x, points };
+}
+
 /** Extend each grade through the adjoining curb, sidewalk, and pavement paint. */
 function buildDowntownVerge(island: IslandData, road: RoadDescriptor, group: THREE.Group, scale: number): void {
   const kerb: StreetSurface = { positions: [], indices: [] };
@@ -174,38 +199,33 @@ function buildDowntownVerge(island: IslandData, road: RoadDescriptor, group: THR
   const edge = road.width / 2;
   const centre = road.points[0]!;
   // The local asphalt's plane is piecewise linear with a fixed 20 cm surface lift.
-  const intervals = road.points.slice(1).map((b, index) => {
-    const a = road.points[index]!;
-    return { length: b.z - a.z, z: a.z, y: a.y + .20, grade: (b.y - a.y) / (b.z - a.z) };
-  });
+  const intervals = downtownRoadIntervals(road);
   // Three spans per street interval keep the outer paving fitted to the bank.
-  const stations = [...intervals.flatMap(({ z, y, grade, length }) => [0, 1 / 3, 2 / 3].map(t => ({
-    z: z + length * t, asphalt: y + grade * length * t,
-  }))), { z: road.points.at(-1)!.z, asphalt: road.points.at(-1)!.y + .20 }];
-  for (const side of [-1, 1]) {
+  const stations = downtownRoadStations(road, intervals);
+  for (const side of [-1, 1] as const) {
     const inner = centre.x + side * (edge + .02 * scale);
     const seam = centre.x + side * (edge + .36 * scale);
-    const outer = centre.x + side * (edge + 2.34 * scale);
+    const { x: outer, points } = downtownSidewalkEdge(island, road, side, stations);
     const reverse = side < 0;
-    const rows = stations.map(({ z, asphalt }) => {
+    const rows = points.map(({ z, ground, y }, i) => {
+      const { asphalt } = stations[i]!;
       const curbGround = groundTriangle(island, inner, z);
       const seamGround = groundTriangle(island, seam, z);
-      const verge = groundTriangle(island, outer, z);
       const top = Math.max(asphalt + .105 * scale, curbGround + .055 * scale, seamGround + .055 * scale);
       return { z, top, base: Math.min(asphalt, curbGround) - .04 * scale,
-        paving: top - .025 * scale, verge };
+        paving: top - .025 * scale, outerTop: y, outerBase: ground - .03 * scale };
     });
     appendStreetStrip(kerb, rows.map(({ z, top }) => [z, inner, top, seam, top]), reverse);
     appendStreetStrip(kerb, rows.map(({ z, top, base }) => [z, inner, base, inner, top]), reverse);
     appendStreetStrip(kerb, rows.map(({ z, top, paving }) => [z, seam, top, seam, paving]), reverse);
-    appendStreetStrip(walk, rows.map(({ z, paving, verge }) => [z, seam, paving, outer, verge + .055 * scale]), reverse);
-    appendStreetStrip(walk, rows.map(({ z, verge }) => [z, outer, verge + .055 * scale, outer, verge - .03 * scale]), reverse);
+    appendStreetStrip(walk, rows.map(({ z, paving, outerTop }) => [z, seam, paving, outer, outerTop]), reverse);
+    appendStreetStrip(walk, rows.map(({ z, outerTop, outerBase }) => [z, outer, outerTop, outer, outerBase]), reverse);
     for (const [south, row] of [[false, rows[0]!], [true, rows.at(-1)!]] as const) {
-      const { z, top, base, paving, verge } = row;
+      const { z, top, base, paving, outerTop, outerBase } = row;
       const baseSeam = Math.min(paving, groundTriangle(island, seam, z) - .03 * scale);
       appendStreetEnd(kerb, [z, inner, top, seam, top], [z, inner, base, seam, paving], reverse !== south);
-      appendStreetEnd(walk, [z, seam, paving, outer, verge + .055 * scale],
-        [z, seam, baseSeam, outer, verge - .03 * scale], reverse !== south);
+      appendStreetEnd(walk, [z, seam, paving, outer, outerTop],
+        [z, seam, baseSeam, outer, outerBase], reverse !== south);
     }
 
     // Preserve the original breaks in the paint, including at the street mouths.

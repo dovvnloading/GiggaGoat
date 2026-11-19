@@ -4,6 +4,7 @@ import { generateIsland } from './island';
 import { gridSample } from './terrain';
 import type { IslandData } from './types';
 import { buildGroundDetails } from './visual-ground';
+import { buildStreetDetails } from './visual-streets';
 
 interface DetailVertex {
   x: number; y: number; z: number;
@@ -247,6 +248,55 @@ describe('Hoofington HF-9 vegetable patches', () => {
         QUAD_SHADES.some(shade => shadeOf(vertex, OLD_GARDEN, shade)))).toBe(false);
       expect(details.vertices.every(vertex =>
         Object.values(vertex).every(Number.isFinite))).toBe(true);
+    }
+  });
+});
+
+describe('Downtown storefront paving', () => {
+  it('meets the graded sidewalk on both sides while retaining the shop edge and slab gaps', () => {
+    const island = generateIsland();
+    const city = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
+    const ground = buildGroundDetails(island, 192);
+    const streets = buildStreetDetails(island);
+    const sidewalk = streets.getObjectByName('paved-village-sidewalks')!;
+    const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
+    const sample = (object: THREE.Object3D, x: number, z: number) => {
+      ray.ray.origin.set(x, 40, z);
+      return ray.intersectObject(object).map(hit => hit.point.y);
+    };
+    try {
+      for (const side of [-1, 1]) {
+        const pavementX = city.x + side * 6.88;
+        const approachX = city.x + side * 6.90;
+        for (let i = 0; i < 15; i++) {
+          const near = city.z - 39.975 + i * 5.8;
+          for (let offset = .2; offset < 5.55; offset += .35) {
+            const z = near + offset;
+            if (z >= city.z + 43) continue;
+            const inside = sample(sidewalk, pavementX, z);
+            const outside = sample(ground, approachX, z);
+            const label = 'side ' + side + ' at Z ' + z.toFixed(2);
+            expect(inside, label).toHaveLength(1);
+            expect(outside, label).toHaveLength(1);
+            expect(sample(ground, pavementX, z), label).toEqual([]);
+            expect(sample(sidewalk, approachX, z), label).toEqual([]);
+            expect(Math.abs(inside[0]! - outside[0]!), label).toBeLessThan(.01);
+          }
+          expect(sample(ground, city.x + side * 10.44, near + 2.775)).toHaveLength(1);
+          expect(sample(ground, city.x + side * 10.46, near + 2.775)).toEqual([]);
+          if (i < 14) expect(sample(ground, city.x + side * 8.4, near + 5.675)).toEqual([]);
+        }
+        // The last slab continues beyond the sidewalk's south cap to the courtyard.
+        expect(sample(ground, city.x + side * 6.40, city.z + 46.65)).toHaveLength(1);
+      }
+    } finally {
+      const materials = new Set<THREE.Material>();
+      for (const group of [ground, streets]) group.traverse(object => {
+        if (!(object instanceof THREE.Mesh)) return;
+        object.geometry.dispose();
+        if (object.material instanceof THREE.Material) materials.add(object.material);
+      });
+      materials.forEach(material => material.dispose());
     }
   });
 });
