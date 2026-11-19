@@ -197,6 +197,10 @@ export class GoatRagdoll {
     if (mineA === mineB) return; // self-contact and non-goat contacts are not damage.
     const other = mineA ? contact.bodyB : contact.bodyA;
     const fixed = other === null || this.world.raw.getRigidBody(other)?.isFixed();
+    const otherCollider = mineA ? contact.colliderB : contact.colliderA;
+    // The fixed face currently carrying the climbing gait pushes back on its
+    // planted limbs. That support impulse is expected and must not trigger a flop.
+    if (fixed && this.locomotion.climbSurface?.collider.handle === otherCollider) return;
     // Keep the real solid-body stop. Only hard collisions can knock the goat
     // down, so holding movement against a rail cannot chain ragdolls.
     if (fixed && this.plantedAtWalkingSpeed) return;

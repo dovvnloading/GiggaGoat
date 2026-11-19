@@ -343,8 +343,20 @@ export class LocomotionController {
     // At a lip the shoulders clear first. Keep pushing only while a lower
     // foothold can still reach the same face.
     if (this.climbSurface) {
+      const { normal, collider } = this.climbSurface;
       const hind = g.world.raycast(add(torso, V(0, -.48 * g.size, 0)), wish, reach, query);
-      if (canClimb(hind) && hind.collider.handle === this.climbSurface.collider.handle) return hind;
+      if (canClimb(hind) && hind.collider.handle === collider.handle) return hind;
+      if (Math.abs(normal.y) < .22 && dot(wish, normal) < -.45) {
+        // At an oblique angle to a column, the forehead can bear against the
+        // wall while a ray pointing with the input passes beside it.
+        const inward = normalize(V(-normal.x, 0, -normal.z));
+        const head = g.head;
+        const contactReach = dot(sub(head.translation(), torso), inward) + head.collider(0).radius() + .10 * g.size;
+        for (const offset of [.09, -.48]) {
+          const grip = g.world.raycast(add(torso, V(0, offset * g.size, 0)), inward, Math.max(reach, contactReach), query);
+          if (canClimb(grip) && grip.collider.handle === collider.handle) return grip;
+        }
+      }
     }
 
     // The leading head can already touch a slope even when the chest ray
@@ -505,7 +517,14 @@ export class LocomotionController {
       // The small Rapier leg boxes take a portion of the supporting load.
       // Keep peak impulses below the hips' holding strength at contact.
       const footShare = pull > 0 ? .12 : 0;
-      torso.applyImpulse(add(mul(traction, 1 - footShare), mul(normal, -5 * dt * g.mass)), true);
+      let grip = mul(normal, -5 * dt);
+      if (Math.abs(normal.y) < .22) {
+        const sideways = cross(ascent, normal);
+        const velocity = torso.linvel();
+        grip = sub(grip, mul(normal, clamp(dot(velocity, normal), 0, .35)));
+        grip = sub(grip, mul(sideways, clamp(dot(velocity, sideways), -9 * dt, 9 * dt)));
+      }
+      torso.applyImpulse(add(mul(traction, 1 - footShare), mul(grip, g.mass)), true);
       if (footShare) {
         const first = climbStep(this.climbPhase, false).lift === 0;
         const second = climbStep(this.climbPhase, true).lift === 0;

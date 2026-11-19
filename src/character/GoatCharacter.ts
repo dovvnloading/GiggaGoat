@@ -337,7 +337,8 @@ export class GoatCharacter {
 
     rig.climb?.restore();
     rig.ragdoll?.restore();
-    rig.ragdoll?.blend(goat, frameDt);
+    if (goat?.locomotion.climbSurface && !goat.isRagdoll) rig.ragdoll?.reset();
+    else rig.ragdoll?.blend(goat, frameDt);
     rig.mixer.update(frameDt);
     if (goat) {
       if (selected === 'stand') this.settleIdleRig(rig, goat, 1 - (rig.ragdoll?.weight ?? 0));
