@@ -204,7 +204,7 @@ describe('Hoofington sourced village model integration', () => {
     const authored: Partial<Record<HoofModel, string>> = {
       fence: 'picket-fence.glb',
       mailbox: 'mailbox.glb',
-      silo: 'silo.glb',
+      silo: 'climbable-silo.glb',
       windmill: 'windmill.glb',
       flowerPink: 'flowers-pink.glb',
       flowerPurple: 'flowers-purple.glb',

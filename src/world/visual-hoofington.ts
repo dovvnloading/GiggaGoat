@@ -22,7 +22,7 @@ export const HOOFINGTON_MODELS = {
   farmhouse: 'assets/library/custom/hoofington-houses/house-c-white.glb',
   cottage: 'assets/library/custom/hoofington-houses/house-r-sky.glb',
   barn: 'assets/library/polypizza/barn/barn_A6UkPq33aZ.glb',
-  silo: 'assets/library/custom/hoofington-props/silo.glb',
+  silo: 'assets/library/custom/hoofington-props/climbable-silo.glb',
   windmill: 'assets/library/custom/hoofington-props/windmill.glb',
   fence: 'assets/library/custom/hoofington-props/picket-fence.glb',
   mailbox: 'assets/library/custom/hoofington-props/mailbox.glb',

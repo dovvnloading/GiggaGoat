@@ -54,7 +54,7 @@ export const PROP_LIBRARY_MODELS = {
   'buoy': 'assets/library/custom/props/buoy.glb',
   'platform': 'assets/library/custom/pines/timber-deck.glb',
   'deck-stilts': 'assets/library/custom/pines/deck-stilts.glb',
-  'silo': 'assets/library/custom/hoofington-props/silo.glb',
+  'silo': 'assets/library/custom/hoofington-props/climbable-silo.glb',
   'mailbox': 'assets/library/custom/hoofington-props/mailbox.glb',
   'gnome': 'assets/library/custom/town/gnome.glb',
   'trampoline': 'assets/library/custom/baaardwalk/trampoline.glb',
