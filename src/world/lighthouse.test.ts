@@ -24,6 +24,21 @@ function renderedCapeSurface(view: ReturnType<typeof createWorldScene>, scale: n
 }
 
 describe('Old Lighthouse painting rebuild', () => {
+  it('ships the rowboat hull and its authored colour palette in the same response', () => {
+    const pack = 'public/assets/library/kenney/watercraft-kit/';
+    const model = readFileSync(pack + 'boat-row-small.glb');
+    const jsonEnd = 20 + model.readUInt32LE(12);
+    const gltf = JSON.parse(model.toString('utf8', 20, jsonEnd));
+    const paint = gltf.materials[0].pbrMetallicRoughness.baseColorTexture;
+    const image = gltf.images[gltf.textures[paint.index].source];
+    expect(image.uri).toBeUndefined();
+    expect(image.mimeType).toBe('image/png');
+    const view = gltf.bufferViews[image.bufferView];
+    expect(view.buffer).toBe(0);
+    const start = jsonEnd + 8 + view.byteOffset;
+    expect(model.subarray(start, start + view.byteLength)).toEqual(readFileSync(pack + 'Textures/colormap.png'));
+  });
+
   it('keeps the full painted chevrons flush across the curved ramp triangles', () => {
     const island = generateIsland();
     const scale = island.size / 600;
