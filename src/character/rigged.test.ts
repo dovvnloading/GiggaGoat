@@ -23,6 +23,85 @@ async function attachCheckedInRig(art: GoatCharacter): Promise<void> {
   (art as unknown as { attachRig(gltf: GLTF): void }).attachRig(gltf);
 }
 
+it.each(GOAT_SIZES)('articulates the rendered feet through a complete jump at size %s', async size => {
+  const world = await PhysicsWorld.create();
+  world.createGround();
+  const goat = new GoatRagdoll(world, { size });
+  const art = GOAT_VARIANTS.map(variant => new GoatCharacter(goat, { variant }));
+  try {
+    vi.stubGlobal('self', globalThis);
+    vi.stubGlobal('createImageBitmap', async () => ({ width: 1, height: 1, close() {} }));
+    const fits = await Promise.all(art.map(async character => {
+      await attachCheckedInRig(character);
+      const model = character.root.getObjectByName('rigged goat | ' + character.variant)!;
+      const skin = model.getObjectByProperty('isSkinnedMesh', true) as THREE.SkinnedMesh;
+      const positions = skin.geometry.getAttribute('position');
+      const feet = [[], [], [], []] as number[][];
+      for (let i = 0; i < positions.count; i++) {
+        if (positions.getY(i) < .022 && Math.abs(positions.getZ(i)) > .12 && Math.abs(positions.getX(i)) > .08)
+          feet[Number(positions.getX(i) > 0) + 2 * Number(positions.getZ(i) > 0)]!.push(i);
+      }
+      const point = new THREE.Vector3();
+      const soles = () => feet.map(vertices => {
+        const centre = new THREE.Vector3();
+        for (const index of vertices) centre.add(skin.getVertexPosition(index, point).applyMatrix4(skin.matrixWorld));
+        return centre.divideScalar(vertices.length);
+      });
+      const heights = () => soles().map(p => model.worldToLocal(p).y);
+      return { character, heights, soles, apex: [] as number[], reached: [] as number[] };
+    }));
+    for (let i = 0; i < 90; i++) world.step(1 / 60);
+    goat.locomotion.requestJump();
+    let airborne = false;
+    for (let i = 0; i < 240; i++) {
+      world.step(1 / 60);
+      const vy = goat.torso.linvel().y / Math.sqrt(size);
+      for (const fit of fits) {
+        fit.character.update(1 / 60, 1);
+        fit.character.root.updateMatrixWorld(true);
+        if (!goat.locomotion.grounded && Math.abs(vy) < .24 && !fit.apex.length) fit.apex = fit.heights();
+        if (!goat.locomotion.grounded && vy < -.3 && fit.apex.length) fit.reached = fit.heights();
+      }
+      if (goat.locomotion.grounded && airborne) break;
+      airborne ||= !goat.locomotion.grounded;
+    }
+    expect(goat.locomotion.grounded).toBe(true);
+    for (const fit of fits) {
+      expect(fit.apex.length).toBe(4);
+      expect(fit.reached.length).toBe(4);
+      for (const [i, y] of fit.apex.entries()) {
+        expect(y, fit.character.variant + ' tucked hoof ' + i).toBeGreaterThan(.27);
+        expect(y - fit.reached[i]!, 'descent reach ' + i).toBeGreaterThan(.12);
+      }
+    }
+    for (const sprint of [false, true]) {
+      goat.locomotion.setInput({ z: 1, cameraYaw: 0, sprint });
+      const contacts = fits.map(() => [0, 0, 0, 0]);
+      const previous = fits.map(fit => fit.soles());
+      for (let i = 0; i < 96; i++) {
+        world.step(1 / 60);
+        for (const [j, fit] of fits.entries()) {
+          fit.character.update(1 / 60, 1);
+          fit.character.root.updateMatrixWorld(true);
+          const feet = fit.soles();
+          for (const [k, foot] of feet.entries()) {
+            if (i > 20 && Math.abs(foot.y) < .07 * size &&
+                foot.distanceTo(previous[j]![k]!) < .018 * size) contacts[j]![k]!++;
+          }
+          previous[j] = feet;
+        }
+      }
+      for (const [j, counts] of contacts.entries())
+        expect(Math.min(...counts), fits[j]!.character.variant + ' planted ' + (sprint ? 'gallop' : 'walk') + ' ' + counts)
+          .toBeGreaterThan(4);
+    }
+  } finally {
+    for (const c of art) c.dispose();
+    world.dispose();
+    vi.unstubAllGlobals();
+  }
+});
+
 describe('GLB variant selection', () => {
   it('reserves the hero for the player, with an explicit override when requested', () => {
     expect(selectGoatVariant()).toBe('hero');
@@ -330,14 +409,17 @@ it('seats all four rendered idle soles and their marks on the live asphalt at ev
     const pose = game.physics.getInterpolatedTransform(game.goat.torso, game.physics.alpha);
     const rotation = new THREE.Quaternion(pose.rotation.x, pose.rotation.y,
       pose.rotation.z, pose.rotation.w);
-    const expected = new THREE.Vector3(0, -.92 * game.goat.size, 0).applyQuaternion(rotation)
-      .add(new THREE.Vector3(pose.translation.x, pose.translation.y, pose.translation.z));
+    const expected = new THREE.Vector3().copy(pose.translation);
     for (const character of art) {
       character.update(1 / 60, game.physics.alpha);
       expect(character.idleSolePosition(0, mark)).toBe(false);
       const model = character.root.getObjectByName('rigged goat | ' + character.variant)!;
-      expect(model.position.distanceTo(expected)).toBeLessThan(1e-6);
-      expect(model.quaternion.angleTo(rotation)).toBeLessThan(.001);
+      expect(model.localToWorld(new THREE.Vector3(0, .92, 0)).distanceTo(expected)).toBeLessThan(1e-6);
+      // Pitch around the physical torso as the forelegs lift.
+      const localLean = rotation.clone().invert().multiply(model.quaternion);
+      expect(localLean.x).toBeGreaterThan(0);
+      expect(Math.abs(localLean.y) + Math.abs(localLean.z)).toBeLessThan(.001);
+      expect(model.quaternion.angleTo(rotation)).toBeLessThanOrEqual(.241);
     }
   } finally {
     for (const character of art) character.dispose();

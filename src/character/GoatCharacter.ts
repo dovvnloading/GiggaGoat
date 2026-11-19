@@ -8,7 +8,7 @@ import {
 } from './motion';
 import { LegacyGoatCharacter } from './LegacyGoatCharacter';
 import { SkinnedRagdollPose } from './skinned-ragdoll-pose';
-import { SkinnedClimbPose } from './skinned-climb-pose';
+import { SkinnedLegPose } from './skinned-leg-pose';
 import {
   GOAT_CLIPS, GOAT_GLB_FILES, clipForAction, goatPublicAssetUrl,
   locomotionBlend, selectGoatVariant, type GoatCharacterOptions,
@@ -46,7 +46,7 @@ type Rig = {
   weights: { Idle: number; Walk: number; Run: number };
   shot: Shot | null;
   ragdoll: SkinnedRagdollPose | null;
-  climb: SkinnedClimbPose | null;
+  legs: SkinnedLegPose | null;
   previewing: boolean;
 };
 
@@ -115,7 +115,8 @@ export class GoatCharacter {
   private previewAction: CharacterAction = 'stand';
   private previewClip: GoatClip = 'Idle';
   private override: { action: CharacterAction; remaining: number } | null = null;
-  private lastGrounded = false;
+  private flightBlend = 0;
+  private arcVelocity = 1;
   private clock = 0;
   private generation = 0;
   private disposed = false;
@@ -163,7 +164,8 @@ export class GoatCharacter {
     this.bound = goat;
     this.legacy.bind(goat);
     this.override = null;
-    this.lastGrounded = goat?.locomotion.grounded ?? false;
+    this.flightBlend = 0;
+    this.arcVelocity = 1;
     if (goat) {
       this.tierValue = tierFromPhysicsScale(goat.size);
       const variant = selectGoatVariant(goat, this.options);
@@ -284,9 +286,6 @@ export class GoatCharacter {
         transform.translation.z).add(this.offset.set(0, -.92 * goat.size, 0)
           .applyQuaternion(rig.model.quaternion));
       rig.model.scale.setScalar(goat.size);
-      if (!goat.locomotion.grounded && this.lastGrounded && goat.pose === 'jumpTuck' &&
-          !rig.shot && !rig.ragdoll?.weight) this.startShot(rig, 'Jump', 1);
-      this.lastGrounded = goat.locomotion.grounded;
     } else {
       rig.model.position.set(0, 0, 0);
       rig.model.quaternion.identity();
@@ -321,7 +320,30 @@ export class GoatCharacter {
       // cadence size-independent while still responding to actual ground speed.
       const velocity = goat.torso.linvel();
       const speed = Math.hypot(velocity.x, velocity.z) / goat.size ** .16;
-      const groundedStride = goat.locomotion.grounded && !goat.isRagdoll;
+      const groundedStride = !goat.isRagdoll && (goat.locomotion.grounded ||
+        goat.pose === 'walk' || goat.pose === 'gallop');
+      const airborne = !groundedStride && !goat.isRagdoll && goat.pose === 'jumpTuck';
+      const launch = Math.sqrt(2 * 9.81 * goat.locomotion.tuning.jumpHeight * goat.size);
+      if (airborne) {
+        this.arcVelocity = Math.min(this.arcVelocity, velocity.y / launch);
+        const floor = goat.locomotion.groundHit;
+        if (floor && velocity.y < -.35) {
+          const clearance = floor.distance / goat.size - goat.balance.tuning.rideHeight;
+          this.arcVelocity = Math.min(this.arcVelocity, -(1 - THREE.MathUtils.smoothstep(clearance, .16, .70)));
+        }
+      } else this.arcVelocity = 1;
+      this.flightBlend = THREE.MathUtils.damp(this.flightBlend, airborne ? 1 : 0, airborne ? 24 : 20, frameDt);
+      if (rig.shot?.clip !== 'Jump') {
+        const jump = rig.actions.Jump;
+        if (airborne || this.flightBlend > .002) {
+          jump.play();
+          jump.paused = true;
+          const phase = airborne ? .12 + .68 * clamp01((1 - this.arcVelocity) * .5) : .90;
+          jump.time = phase * jump.getClip().duration;
+          jump.setEffectiveWeight(this.flightBlend * (1 - shotWeight));
+          shotWeight += this.flightBlend * (1 - shotWeight);
+        } else if (jump.paused) jump.stop();
+      }
       const desired = locomotionBlend(groundedStride ? speed : 0, goat.pose === 'gallop');
       const smoothing = frameDt ? 1 - Math.exp(-12 * frameDt) : 1;
       for (const clip of LOCOMOTION) {
@@ -335,21 +357,24 @@ export class GoatCharacter {
       rig.actions[this.previewClip].setEffectiveWeight(1);
     }
 
-    rig.climb?.restore();
+    rig.legs?.restore();
     rig.ragdoll?.restore();
     if (goat?.locomotion.climbSurface && !goat.isRagdoll) rig.ragdoll?.reset();
     else rig.ragdoll?.blend(goat, frameDt);
     rig.mixer.update(frameDt);
     if (goat) {
       if (selected === 'stand') this.settleIdleRig(rig, goat, 1 - (rig.ragdoll?.weight ?? 0));
-      if (goat.isRagdoll || rig.ragdoll?.weight) rig.climb?.reset();
-      else rig.climb?.apply(rig.model, this.torsoCentre, goat.locomotion.climbSurface,
-        goat.locomotion.climbPhaseAt(this.torsoCentre), goat.size, frameDt);
+      if (goat.isRagdoll || rig.ragdoll?.weight) rig.legs?.reset();
+      else if (rig.legs) {
+        rig.legs.applyClimb(rig.model, this.torsoCentre, goat.locomotion.climbSurface,
+          goat.locomotion.climbPhaseAt(this.torsoCentre), goat.size, frameDt);
+        rig.legs.applyLocomotion(rig.model, goat, frameDt, this.arcVelocity, selected === 'glide');
+      }
       rig.ragdoll?.apply(rig.model, goat, interpolation);
     } else if (selected === 'wall-climb') {
       const size = rig.model.scale.x;
       this.torsoCentre.set(0, size, 0);
-      rig.climb?.apply(rig.model, this.torsoCentre, { point: { x: 0, y: 0, z: 0 },
+      rig.legs?.applyClimb(rig.model, this.torsoCentre, { point: { x: 0, y: 0, z: 0 },
         normal: { x: 0, y: 0, z: 1 } }, this.clock * 2.4, size, frameDt);
     }
     return sampleMotion(selected, this.clock);
@@ -447,7 +472,7 @@ export class GoatCharacter {
       this.rig = {
         model, skeleton, mixer, actions, shot: null, previewing: !this.bound,
         ragdoll: SkinnedRagdollPose.create(model, this.variantValue),
-        climb: SkinnedClimbPose.create(model, this.variantValue, IDLE_SOLES[this.variantValue]),
+        legs: SkinnedLegPose.create(model, this.variantValue, IDLE_SOLES[this.variantValue]),
         weights: { Idle: 1, Walk: 0, Run: 0 },
       };
       this.configureActions(this.rig);
@@ -468,7 +493,7 @@ export class GoatCharacter {
   }
 
   private configureActions(rig: Rig): void {
-    rig.climb?.reset();
+    rig.legs?.reset();
     rig.ragdoll?.reset();
     rig.mixer.stopAllAction();
     rig.shot = null;
