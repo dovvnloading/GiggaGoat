@@ -28,6 +28,41 @@ function acceptAtBoard(game: Game, poi: 'old-lighthouse' | 'the-dam'): void {
   game.gigs.accept(game.gigs.board(poi)[0]!.id);
 }
 
+it('walks the coast road shoulder without sustained airtime on sloping turf', async () => {
+  const game = await Game.create({ seed: 'billy-isle' });
+  try {
+    const cameraYaw = 2.69;
+    game.teleport({ x: 91.039, y: 5.205, z: 213.618 }, -cameraYaw);
+    settle(game, 80, { cameraYaw });
+    expect(game.goat.locomotion.grounded).toBe(true);
+    const start = game.goat.torso.translation();
+    const score = game.rules.style.score;
+    const landings: number[] = [];
+    game.goat.events.on(event => { if (event.type === 'landed') landings.push(event.airtime); });
+    let slopeSteps = 0;
+    for (let tick = 0; tick < 131; tick++) {
+      game.step({ moveZ: 1, cameraYaw });
+      const { z } = game.goat.torso.translation();
+      if (z > 219.1 && z < 221) {
+        expect(game.goat.locomotion.groundHit?.collider.handle).toBe(game.colliders.terrain.handle);
+        expect(game.goat.locomotion.grounded).toBe(true);
+        expect(game.goat.pose).toBe('walk');
+        slopeSteps++;
+      }
+    }
+    settle(game, 79, { cameraYaw });
+    const end = game.goat.torso.translation();
+    expect(slopeSteps).toBeGreaterThan(24);
+    expect(end.z).toBeGreaterThan(221);
+    expect(end.y).toBeLessThan(start.y - .9);
+    expect(Math.max(0, ...landings)).toBeLessThan(.4);
+    expect(game.rules.style.score).toBe(score);
+    expect(game.respawns).toBe(0);
+  } finally {
+    game.dispose();
+  }
+});
+
 describe('Beacon and Dam access from their playable boards', () => {
   it('reaches the beacon from the board and retreats from the north tower wall', async () => {
     const game = await Game.create();
