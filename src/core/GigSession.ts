@@ -2,6 +2,7 @@ import type { Collider, CoefficientCombineRule, RigidBody } from '@dimforge/rapi
 import { GigCatalog, GigDirector, GigGameplayBridge, type AbilityFact, type GigEvent,
   type GigOffer, type GigRun, type GigPropSpawn, type GigSetup, type GigSnapshot,
   type PropFact, type StyleFact } from '../gigs';
+import { gigSetupRelocated } from '../gigs/catalog';
 import { RAPIER, V, collisionGroups, type GoatRagdoll, type PhysicsContact, type RayHit, type Vec3 } from '../physics';
 import { lerp, distance, forward, Q, slerp, sub } from '../physics/math';
 import { heightAt, type PoiId, type RoadPoint } from '../world';
@@ -96,7 +97,7 @@ export class GigSession {
     if (run?.status === 'running') {
       const previous = snapshot?.run?.setup;
       const relocated = previous && run.setup.config.kind !== 'hay-haul' &&
-        run.setup.config.kind !== 'mow-down' && JSON.stringify(previous) !== JSON.stringify(run.setup);
+        run.setup.config.kind !== 'mow-down' && gigSetupRelocated(previous, run.setup);
       this.spawn(run.setup.spawns, relocated ? [] : bodies);
       const saved = !relocated && gigPlayerPose?.attemptId === run.attemptId ? gigPlayerPose : undefined;
       if (run.setup.config.kind === 'rooftop-express') {

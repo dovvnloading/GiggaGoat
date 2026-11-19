@@ -115,7 +115,7 @@ function runningGigText(run: NonNullable<HudInput['gig']>): Pick<HudState['gig']
     }
     case 'displace':
       return {
-        task: objective.movedMass > 0 ? 'Topple the rest of the tower' : 'Charge a hit at the base',
+        task: 'Headbutt from board side',
         detail: Math.round(objective.movedMass) + '/' + Math.round(objective.requiredMass) +
           ' kg MOVED · ' + remaining,
       };

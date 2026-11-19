@@ -40,6 +40,44 @@ describe('retrying a failed gig', () => {
     } finally { game.dispose(); }
   });
 
+  it('reloads the saved demolition crate bodies and goat pose when updating the approach cue', async () => {
+    const game = await create();
+    try {
+      const board = game.gigs.boards.find(entry => entry.poiId === 'crane-yard')!;
+      game.teleport(board.position);
+      const offer = game.gigs.board(board.poiId).find(entry => entry.gigId === 'demolition-contract')!;
+      game.gigs.accept(offer.id);
+      const { attemptId, setup } = game.gigs.active!;
+      const approach = setup.markers[0]!.position;
+      game.teleport(approach, -.45);
+      const crate = setup.spawns[0]!;
+      const body = game.gigs.props.get(crate.id)!.body;
+      body.setTranslation({ ...crate.position, z: crate.position.z + 3.5 }, true);
+      body.setLinvel({ x: .4, y: .2, z: .3 }, true);
+      game.gigs.noteAbility({ type: 'headbutt', targetId: crate.id });
+      game.step();
+
+      const progress = game.exportProgress();
+      const saved = progress.gigs!.run!;
+      const { position, heading } = progress.gigPlayerPose!;
+      saved.setup.info.instruction =
+        'Hold and release headbutt against the marked tower’s bottom row to topple it.';
+      saved.setup.markers = [{ id: 'tower', label: 'Hit the base', radius: 5, type: 'destination',
+        position: { x: setup.start.x, y: crate.position.y - crate.size.y / 2 + 3, z: crate.position.z } }];
+      expect(saved.metrics).toMatchObject({ displacedMass: 4.5, headbutts: 1 });
+
+      const restored = await Game.create({ resolution: 97, progress });
+      try {
+        expect(restored.gigs.active).toMatchObject({
+          attemptId, setup, elapsedTicks: saved.elapsedTicks, metrics: saved.metrics, status: 'running',
+        });
+        expect(restored.gigs.saveBodies()).toEqual(progress.gigBodies);
+        expect(restored.goat.torso.translation()).toMatchObject({ x: position.x, z: position.z });
+        expect(restored.goat.locomotion.heading).toBeCloseTo(heading, 5);
+      } finally { restored.dispose(); }
+    } finally { game.dispose(); }
+  });
+
   it('restarts the exact posted Hay Haul offer from the field and saves only the new attempt', async () => {
     const game = await create();
     try {
