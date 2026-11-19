@@ -17,6 +17,7 @@ interface LedgeSite {
 const TIERS = [[27, 35], [46, 55], [64, 74], [82, 92]] as const;
 const LEDGE_MARGIN = .55;
 const SEARCH_ARC = 42;
+const MOUNTAIN_DRESSING = 'detail-mt-gigga-';
 
 function trailFaces(island: IslandData): TrailFace[] {
   const { positions, indices } = roadRibbonData(island, 'trail');
@@ -112,7 +113,8 @@ function nearbySites(island: IslandData, summit: Vec3, ledge: PropDescriptor): L
     const angle = bearing + turn;
     const cos = Math.cos(angle), sin = Math.sin(angle);
     for (let band = inner; band <= outer; band += .5) {
-      const x = summit.x + band * scale * cos, z = summit.z + band * scale * sin;
+      const tier = Math.max(inner + .001, Math.min(outer - .001, band)) * scale;
+      const x = summit.x + tier * cos, z = summit.z + tier * sin;
       const y = gridSample(island, x, z) + ledge.size.y / 2 + lift;
       if (Math.abs(y - position.y) > 4.5 * scale) continue;
       const candidate = { x, y, z }, yaw = rotationY + turn;
@@ -135,7 +137,10 @@ export function clearMountainLedges(island: IslandData): Record<string, Vec3> {
     Math.hypot(prop.transform.position.x - summit.x, prop.transform.position.z - summit.z) < 115 * scale + 20);
   const blocked = solids.filter(ledge => ledge.poiId === 'mt-gigga' && ledge.kind === 'ledge' &&
     crossesTrail(faces, ledge.transform.position, ledge.transform.rotationY, ledge.size, LEDGE_MARGIN));
-  const fitsOtherProps = (ledge: PropDescriptor, site: LedgeSite) =>
+  const planted = solids.filter(prop => prop.id.startsWith(MOUNTAIN_DRESSING + 'tree-pine-') ||
+    prop.id.startsWith(MOUNTAIN_DRESSING + 'bush-'));
+  const fitsOtherProps = (ledge: PropDescriptor, site: LedgeSite) => planted.every(({ transform: { position } }) =>
+    Math.hypot(site.position.x - position.x, site.position.z - position.z) >= 5 * scale) &&
     solids.every(other => other === ledge || !overlapsProp(other, site.position, site.yaw, ledge.size, .20));
   const range = (SEARCH_ARC + 14) * scale;
   const plans = blocked.map(ledge => {
