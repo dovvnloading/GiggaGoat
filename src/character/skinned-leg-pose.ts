@@ -281,6 +281,13 @@ export class SkinnedLegPose {
         this.target.y += fore ? .20 + .32 * tuck - .18 * reach : .04 + .48 * tuck + .05 * reach;
         this.target.z += fore ? .25 * tuck - .29 * reach : .36 * Math.max(0, vy) - .32 * tuck;
         model.localToWorld(this.target);
+        // The leading hoof can reach uphill pavement before the torso's
+        // grounded transition. Bend that leg as soon as its sole touches.
+        if (vy < 0 && floor && floor.distance < 1.5 * size) {
+          const hit = this.groundUnderHoof(goat.world, size);
+          if (hit && hit.normal.y >= .65) this.target.y = Math.max(this.target.y,
+            this.origin.y - hit.distance - this.hoofContact.halfHeight + .022 * size);
+        }
         leg.planted = false;
       } else if (floor) {
         const phase = (this.stride + (gallop ? GALLOP_PHASE : TROT_PHASE)[i]!) % 1;
@@ -295,12 +302,7 @@ export class SkinnedLegPose {
         }
         const n = floor.normal, p = floor.point;
         this.target.y = p.y - ((this.target.x - p.x) * n.x + (this.target.z - p.z) * n.z) / n.y;
-        this.origin.copy(this.target).y += .38 * size;
-        // A hoof can straddle the asphalt lip while its center is still over
-        // the lower terrain. Sweep the width of the sole for the step height.
-        this.hoofContact.radius = .055 * size;
-        const hit = goat.world.shapeCast(this.origin, UPRIGHT, DOWN, this.hoofContact,
-          .82 * size, { groups: GROUND_QUERY_GROUPS });
+        const hit = this.groundUnderHoof(goat.world, size);
         if (hit && hit.normal.y >= .65) this.target.y = this.origin.y - hit.distance - this.hoofContact.halfHeight;
         this.target.y += size * (.014 + (plant ? 0 : stepAmount * (gallop ? .34 : .23) * Math.sin(Math.PI * swing)));
         if (plant) {
@@ -316,6 +318,14 @@ export class SkinnedLegPose {
       this.solve(leg, fore, weight);
     }
     this.groundedGait = !flight;
+  }
+
+  private groundUnderHoof(world: PhysicsWorld, size: number) {
+    // A hoof can straddle the asphalt lip while its center is over the dirt.
+    this.origin.copy(this.target).y += .38 * size;
+    this.hoofContact.radius = .055 * size;
+    return world.shapeCast(this.origin, UPRIGHT, DOWN, this.hoofContact,
+      .82 * size, { groups: GROUND_QUERY_GROUPS });
   }
 
   private solve(leg: RigLeg, fore: boolean, weight = this.weight): void {
