@@ -1,10 +1,11 @@
-import { DEFAULT_AUDIO_SETTINGS, GAMEPLAY_EVENT_TYPES } from '../audio';
+import { DEFAULT_AUDIO_SETTINGS, GAMEPLAY_EVENT_TYPES, mapChaos, mapPhysics } from '../audio';
 import type {
-  AudioCue, AudioEngine, CameraAudioPose, GameplayAudioEvent, ResultAudioKind, SoundId, Surface, WalkingGoat,
+  AudioCue, AudioEngine, CameraAudioPose, ChaosEvent, GameplayAudioEvent, ResultAudioKind,
+  SoundId, Surface, WalkingGoat,
 } from '../audio';
 import { biomeAt, zoneAt } from '../world';
-import type { GoatRagdoll, Vec3 } from '../physics';
-import type { Game, PlayerIntent } from './Game';
+import type { GoatRagdoll, PhysicsEvent, Vec3 } from '../physics';
+import type { Game, MaterialAudioContact, PlayerIntent } from './Game';
 import type { GameSettings } from './Persistence';
 
 /** The narrow audio interface allows a fake AudioEngine in headless core tests. */
@@ -15,6 +16,7 @@ type MenuSound = Extract<SoundId, `ui-${string}`>;
 
 function surfaceAt(game: Game, position: Vec3): Surface {
   if (position.y <= game.water.seaLevel + .25) return 'water';
+  if (game.isAbovePierDeck(position)) return 'wood';
   const biome = biomeAt(game.island, position.x, position.z);
   if (biome === 'ocean' || biome === 'freshwater') return 'water';
   if (biome === 'beach') return 'sand';
@@ -42,6 +44,8 @@ function observeGoat(game: Game, goat: GoatRagdoll): WalkingGoat {
 export class GameAudio {
   private readonly gameplay: GameplayAudioEvent[] = [];
   private readonly cues: AudioCue[] = [];
+  private readonly materialContacts = new WeakMap<PhysicsEvent | ChaosEvent,
+    Pick<AudioCue, 'position' | 'recordedEffect'>>();
   private readonly off: Array<() => void> = [];
   private readonly positions = new Map<string, Vec3>();
   private readonly sizes = new Map<string, number>();
@@ -54,12 +58,16 @@ export class GameAudio {
     const p = body.translation();
     return { x: p.x, y: p.y, z: p.z };
   };
-  private readonly audioKindForBody = (handle: number): 'goat' | 'wood' | undefined => {
-    const body = this.game.physics.bodyData(handle);
-    if (body?.kind === 'goat') return 'goat';
-    if (body?.data === 'crate' || body?.data === 'tower' || body?.data === 'stack-crate' ||
-      body?.data === 'pallet-stack') return 'wood';
-    return undefined;
+  private readonly audioKindForBody = (handle: number): 'goat' | undefined =>
+    this.game.physics.bodyData(handle)?.kind === 'goat' ? 'goat' : undefined;
+
+  private readonly useUnmodifiedCue = (event: PhysicsEvent | ChaosEvent): boolean => {
+    if (event.type !== 'knockedBody' && event.type !== 'destruction') return true;
+    const contact = this.materialContacts.get(event);
+    if (!contact) return true;
+    const cues = event.type === 'knockedBody' ? mapPhysics(event) : mapChaos(event);
+    for (const cue of cues) this.cues.push({ ...cue, ...contact });
+    return false;
   };
   private charging = false;
   private hidden = false;
@@ -68,12 +76,29 @@ export class GameAudio {
   private transition: Promise<void> | null = null;
 
   constructor(private readonly game: Game, private readonly audio: AudioSink) {
+    this.off.push(game.onMaterialAudio(this.onMaterialContact));
     for (const type of GAMEPLAY_EVENT_TYPES) {
       this.off.push(game.rules.events.on(type, data => {
         this.gameplay.push({ type, data } as GameplayAudioEvent);
       }));
     }
   }
+
+  private readonly onMaterialContact = (contact: MaterialAudioContact): void => {
+    const { position } = contact;
+    if (contact.type === 'gnome-break') {
+      this.cues.push({ sound: 'crate-break', position, intensity: .9, recordedEffect: 'break-stone', result: 'gig' });
+      return;
+    }
+    if (contact.type === 'headbutt') {
+      const recordedEffect = `headbutt-${contact.material}` as const;
+      if (contact.event) this.materialContacts.set(contact.event, { position, recordedEffect });
+      else this.cues.push({ sound: 'headbutt-impact', position, recordedEffect,
+        goatId: contact.goatId, intensity: contact.intensity });
+      return;
+    }
+    this.materialContacts.set(contact.event, { position, recordedEffect: `break-${contact.material}` });
+  };
 
   setVolumes(settings: GameSettings): void {
     this.audio.setSettings({
@@ -185,10 +210,10 @@ export class GameAudio {
         meter: this.game.rules.style.meter,
         tide, poi, night,
       },
-      physics,
+      physics: physics.filter(this.useUnmodifiedCue),
       chaos: [
         ...this.game.water.events.drain(),
-        ...this.game.breakables.events.drain(),
+        ...this.game.breakables.events.drain().filter(this.useUnmodifiedCue),
         ...this.game.chains.events.drain(),
         ...this.game.surfaces.events.drain(),
       ],

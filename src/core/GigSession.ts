@@ -657,7 +657,10 @@ export class GigSession {
           // Keep the larger size only while those contacts settle.
           const carrySize = Math.max(this.game.goat.size, this.courierShrink?.previousSize ?? 0);
           const testedImpact = (impact - pressure) + pressure / (1 + 4 * carrySize ** 3);
-          if (testedImpact >= threshold) entry.broken = true;
+          if (testedImpact >= threshold && !entry.broken) {
+            entry.broken = true;
+            if (gnome) this.game.reportGnomeBreak(position);
+          }
         }
         props.push({ id, position: { ...position }, velocity: { ...body.linvel() },
           tilt: Math.acos(up), impact, heldByTongue: held === body.handle,
