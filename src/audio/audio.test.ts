@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   AudioEngine, AudioRandom, CULL_DISTANCE, DEFAULT_AUDIO_SETTINGS,
   DEFAULT_MUSIC_STATE, SOUND_IDS, GAMEPLAY_EVENT_TYPES, PHYSICS_EVENT_TYPES,
@@ -346,6 +346,63 @@ describe('mocked WebAudio integration', () => {
     audio.dispose();
     expect(audio.status.unlocked).toBe(false);
     expect(await audio.unlock()).toBe(false);
+  });
+
+  it('keeps screen feedback on the UI bus and stops the world mix in visible menus', async () => {
+    const ctx = new MockContext();
+    const audio = new AudioEngine({ contextFactory: () => ctx.asAudioContext() });
+    try {
+      audio.setMenuAudio(true);
+      expect(audio.audioContext).toBeNull();
+      await audio.unlock();
+      const [master, , music, sfx, ui, ambience] = ctx.gains;
+      audio.setSettings({ master: .6, ui: .3 });
+      expect(master!.gain.value).toBe(.6);
+      expect(ui!.gain.value).toBe(.3);
+      expect([music, sfx, ambience].map(bus => bus!.gain.value)).toEqual([0, 0, 0]);
+      audio.updateFrame({ dt: .01, camera: {
+        position: { x: 900, y: 0, z: 0 }, forward: { x: 0, y: 0, z: -1 },
+      }, gigs: [gigFixtures[5]!] });
+      expect(audio.voiceTickets).toEqual([]);
+      expect(ctx.oscillators).toHaveLength(0);
+      expect(audio.play('ui-click')).toBe(true);
+      expect(ctx.panners).toHaveLength(0);
+      expect(ctx.gains.some(gain => gain.connected.includes(ui))).toBe(true);
+      expect(audio.play('bleat')).toBe(false);
+
+      audio.setMenuAudio(false);
+      expect([music, sfx, ambience].map(bus => bus!.gain.value)).toEqual([
+        DEFAULT_AUDIO_SETTINGS.music, DEFAULT_AUDIO_SETTINGS.sfx, DEFAULT_AUDIO_SETTINGS.ambience,
+      ]);
+      const beforeBleat = ctx.oscillators.length;
+      expect(audio.play('bleat', { position: { x: 901, y: 0, z: 0 } })).toBe(true);
+      expect(ctx.panners).toHaveLength(1);
+      audio.setMenuAudio(true);
+      expect(audio.voiceTickets.map(ticket => ticket.sound)).toEqual(['ui-click']);
+      expect(ctx.oscillators.slice(beforeBleat).every(source => source.stopsAt === 0)).toBe(true);
+      audio.clearVoices();
+      expect(audio.voiceTickets).toEqual([]);
+    } finally { audio.dispose(); }
+  });
+
+  it('ignores scripted clicks and unlocks only on trusted input', async () => {
+    const ctx = new MockContext();
+    const audio = new AudioEngine({ contextFactory: () => ctx.asAudioContext() });
+    const listeners = new Map<string, (event: Event) => void>();
+    const target = {
+      addEventListener: (type: string, fn: (event: Event) => void) => listeners.set(type, fn),
+      removeEventListener: (type: string) => listeners.delete(type),
+    };
+    const unlocked = vi.fn();
+    audio.unlockOnFirstInput(target as unknown as EventTarget, unlocked);
+    try {
+      listeners.get('click')!(new Event('click'));
+      expect(audio.audioContext).toBeNull();
+      listeners.get('pointerup')!({ isTrusted: true } as Event);
+      await vi.waitFor(() => expect(unlocked).toHaveBeenCalledOnce());
+      expect(audio.audioContext).toBe(ctx);
+      expect(listeners.size).toBe(0);
+    } finally { audio.dispose(); }
   });
 
   it.each([

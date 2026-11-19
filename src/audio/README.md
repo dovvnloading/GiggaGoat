@@ -1,6 +1,6 @@
-# Gigga-Goat • procedural audio lane
+# Gigga-Goat audio
 
-**All audio is Web Audio synthesis.** No samples, MP3s, fetched assets or added npm packages; other lanes remain unmodified. Browser audio stays silent until a genuine user gesture. Design target: punchy squishes, comic overtones, size-scaled bleats, airy island ambience, and upbeat music that rewards stylish play.
+The browser game plays three zone tracks generated with [Suno Studio](https://suno.com/) and six gameplay effects generated with [ElevenLabs](https://elevenlabs.io/). The soundtrack is loaded by zone. Party music, menu feedback, ambience, and the other effects use Web Audio synthesis. The synthesizer also supplies a cue if a recording is unavailable. All playback starts after a genuine user gesture.
 
 ## Minimal integration — one call per render frame
 

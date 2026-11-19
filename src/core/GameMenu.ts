@@ -297,16 +297,14 @@ export class GameMenu {
       const target = event.target as HTMLElement;
       const tab = target.closest<HTMLButtonElement>('[data-tab]');
       if (tab) {
-        this.settingsTab = tab.dataset.tab as SettingsTab;
-        this.render();
-        this.root.querySelector<HTMLButtonElement>('[data-tab="' + this.settingsTab + '"]')?.focus();
+        this.selectSettingsTab(tab.dataset.tab as SettingsTab);
         return;
       }
       const toggle = target.closest<HTMLButtonElement>('[data-setting-toggle]');
       if (toggle) {
         this.settings.invertY = !this.settings.invertY;
         this.view.applySettings(this.settings);
-        this.audio?.queueCue({ sound: 'ui-click' });
+        this.audio?.playMenuCue('ui-click');
         this.save();
         this.render();
         this.root.querySelector<HTMLButtonElement>('[data-setting-toggle]')?.focus();
@@ -318,6 +316,7 @@ export class GameMenu {
         return;
       }
       if (target.closest('[data-fullscreen]')) {
+        this.audio?.playMenuCue('ui-click');
         void this.toggleFullscreen();
         return;
       }
@@ -361,13 +360,17 @@ export class GameMenu {
     });
     this.root.addEventListener('change', event => {
       const element = event.target as HTMLInputElement | HTMLSelectElement;
-      if (element.id === 'gg-mode') this.selectPartyMode(element.value);
-      if (element.id === 'gg-bots') this.botCount = Number(element.value);
-      if (element.id === 'gg-difficulty') this.difficulty = element.value as BotDifficulty;
-      this.editSetting(element);
+      if (element.id === 'gg-mode' || element.id === 'gg-bots' || element.id === 'gg-difficulty') {
+        if (element.id === 'gg-mode') this.selectPartyMode(element.value);
+        else if (element.id === 'gg-bots') this.botCount = Number(element.value);
+        else this.difficulty = element.value as BotDifficulty;
+        this.audio?.playMenuCue('ui-click');
+      } else if (element.type !== 'range') this.editSetting(element);
     });
-    this.root.addEventListener('input', event =>
-      this.editSetting(event.target as HTMLInputElement));
+    this.root.addEventListener('input', event => {
+      const element = event.target as HTMLInputElement;
+      if (element.type === 'range') this.editSetting(element);
+    });
     this.keyHandler = event => this.onKey(event);
     window.addEventListener('keydown', this.keyHandler, true);
     this.pageHide = () => { this.save(); };
@@ -386,7 +389,7 @@ export class GameMenu {
       const locked = document.pointerLockElement === this.view.renderer.domElement;
       if (this.wasPointerLocked && !locked) {
         this.pointerLockNeedsUserRequest = true;
-        this.setScreen('pause');
+        this.pause();
       }
       if (locked) this.pointerLockNeedsUserRequest = false;
       this.wasPointerLocked = locked;
@@ -418,7 +421,7 @@ export class GameMenu {
     if (!document.hidden && (next === 'gig-results' || next === 'party-results')) {
       this.audio?.playResultAudio(next === 'gig-results' ? 'gig' : 'party');
     } else {
-      this.audio?.setPaused(this.view.paused || !!document.hidden);
+      this.audio?.setMenuOpen(this.view.paused);
     }
     this.view.input.setActive(next === 'playing');
     this.view.hud.setVisible(next === 'playing');
@@ -435,13 +438,17 @@ export class GameMenu {
       void this.view.input.requestPointerLock();
     }
   }
+  private pause(): void {
+    this.audio?.playMenuCue('ui-back');
+    this.setScreen('pause');
+  }
   private action(key: string, mouseClick = false): void {
-    if (key !== 'back') this.audio?.queueCue({ sound: key === 'pause' ? 'ui-back' : 'ui-confirm' });
+    if (key !== 'back' && key !== 'pause') this.audio?.playMenuCue('ui-confirm');
     if (key === 'play') {
       this.view.alignCameraForPlay();
       this.resume(mouseClick);
     } else if (key === 'resume') this.resume(mouseClick);
-    else if (key === 'pause') this.setScreen('pause');
+    else if (key === 'pause') this.pause();
     else if (key === 'title') {
       this.game.party.returnToFreeRoam();
       this.game.gigs.abandon();
@@ -509,21 +516,24 @@ export class GameMenu {
   }
   private back(mouseClick = false): void {
     if (this.screen === 'title') return;
-    this.audio?.queueCue({ sound: 'ui-back' });
+    if (this.screen === 'party-results') {
+      this.action('leave-party', mouseClick);
+      return;
+    }
+    this.audio?.playMenuCue('ui-back');
     if (this.screen === 'party-confirm') this.setScreen('party');
     else if (this.screen === 'party') this.setScreen(this.partyReturn);
     else if (this.screen === 'settings') this.setScreen(this.settingsReturn);
     else if (this.screen === 'board') this.resume(mouseClick);
     else if (this.screen === 'pause') this.resume(mouseClick);
     else if (this.screen === 'gig-results') this.resume(mouseClick);
-    else if (this.screen === 'party-results') this.action('leave-party', mouseClick);
     else this.setScreen('title');
   }
   private onKey(event: KeyboardEvent): void {
     if (event.repeat) return;
     if (event.code === 'Escape') {
       event.preventDefault(); event.stopPropagation();
-      if (this.screen === 'playing') this.setScreen('pause');
+      if (this.screen === 'playing') this.pause();
       else this.back();
       return;
     }
@@ -564,15 +574,20 @@ export class GameMenu {
     const current = items.indexOf(document.activeElement as HTMLElement);
     items[(current + direction + items.length) % items.length]!.focus();
   }
+  private selectSettingsTab(tab: SettingsTab): void {
+    this.settingsTab = tab;
+    this.audio?.playMenuCue('ui-click');
+    this.render();
+    this.root.querySelector<HTMLButtonElement>('[data-tab="' + tab + '"]')?.focus();
+  }
+
   /** D-pad / stick left and right edit tabs, native selects and ranges without a mouse. */
   private adjustFocused(direction: number): boolean {
     const active = document.activeElement;
     if (active instanceof HTMLButtonElement && active.dataset.tab) {
       const current = SETTINGS_TABS.indexOf(active.dataset.tab as SettingsTab);
-      this.settingsTab = SETTINGS_TABS[(current + direction + SETTINGS_TABS.length) %
-        SETTINGS_TABS.length]!;
-      this.render();
-      this.root.querySelector<HTMLButtonElement>('[data-tab="' + this.settingsTab + '"]')?.focus();
+      this.selectSettingsTab(SETTINGS_TABS[
+        (current + direction + SETTINGS_TABS.length) % SETTINGS_TABS.length]!);
       return true;
     }
     if (active instanceof HTMLSelectElement) {
@@ -644,7 +659,7 @@ export class GameMenu {
       key === 'fov' ? this.settings.fov + '°' : this.settings.mouseSensitivity.toFixed(2) + '×';
     this.view.applySettings(this.settings);
     if (isVolume) this.audio?.setVolumes(this.settings);
-    this.audio?.queueCue({ sound: 'ui-click' });
+    this.audio?.playMenuCue('ui-click');
     this.save();
   }
   private interact(): boolean {
@@ -652,6 +667,7 @@ export class GameMenu {
     const poi = this.game.gigs.nearBoard();
     if (!poi) return false;
     this.boardPoi = poi;
+    this.audio?.playMenuCue('ui-confirm');
     this.setScreen('board');
     return true;
   }
@@ -694,7 +710,7 @@ export class GameMenu {
       const scroll = pad.axes[3] ?? 0;
       if (Math.abs(scroll) > .2) this.menuScrollRegion()?.scrollBy(0, scroll * 14);
       if (menu && !this.padMenu) {
-        if (this.screen === 'playing') this.setScreen('pause'); else this.back();
+        if (this.screen === 'playing') this.pause(); else this.back();
       }
       if (this.screen !== 'playing') {
         if (dir && dir !== this.padDirection) this.navigate(dir);
@@ -864,7 +880,7 @@ export class GameMenu {
     }
     note.textContent = choice.dataset.boardInstruction ?? '';
     accept.setAttribute('data-action', 'offer:' + offerId);
-    this.audio?.queueCue({ sound: 'ui-click' });
+    this.audio?.playMenuCue('ui-click');
   }
 
   private boardBody(): string {
