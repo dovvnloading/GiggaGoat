@@ -266,6 +266,7 @@ export class LocomotionController {
     this.input.z = clamp(this.input.z,-1,1);
   }
   get groundSupportAge(): number { return this.clock - this.lastGroundAt; }
+  get jumpedFromSupport(): boolean { return this.jumpConsumed && !this.grounded; }
   /** Sample the same stride at the interpolated visual torso position. */
   climbPhaseAt(point: Vec3): number {
     if (!this.climbSurface) return this.climbPhase;
