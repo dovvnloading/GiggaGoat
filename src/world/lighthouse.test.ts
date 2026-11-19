@@ -101,6 +101,7 @@ describe('Old Lighthouse painting rebuild', () => {
       'lighthouse-leaning-shipwreck-fallback',
       'lighthouse-cliff-boulders',
       'lighthouse-lookout-cliff-braces-and-landing',
+      'lighthouse-keeper-stair',
     ]) {
       expect(view.group.getObjectByName(name), name).toBeDefined();
     }

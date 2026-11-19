@@ -19,6 +19,24 @@ describe('Gigga-Goat art contracts / pure deterministic motion', () => {
     expect(TIER_PROFILES.BILLY.glow).toBe(0);
   });
 
+  it('omits inactive fallback lights and keeps the GIGGA glow', () => {
+    const character = new GoatCharacter();
+    try {
+      const visibleLightCount = () => {
+        let count = 0;
+        character.root.traverseVisible(object => {
+          if (object.type === 'PointLight') count++;
+        });
+        return count;
+      };
+      expect(visibleLightCount()).toBe(0);
+      character.setPreview('stand', 'GIGGA');
+      expect(visibleLightCount()).toBe(1);
+      character.setPreview('stand', 'KID');
+      expect(visibleLightCount()).toBe(0);
+    } finally { character.dispose(); }
+  });
+
   it('prioritizes ragdoll, tether, climb and airborne over ordinary sprint', () => {
     const base = {
       ragdoll: false, tongueAttached: false, clinging: false,

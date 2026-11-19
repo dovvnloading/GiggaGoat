@@ -23,6 +23,7 @@ export const DAM_FRONT_GUARD = {
 } as const;
 
 export const DAM_ACCESS_ID = 'the-dam-access-';
+export const DAM_ACCESS_GUARD_ID = DAM_ACCESS_ID + 'guard-';
 export const DAM_ACCESS_SUPPORT_ID = 'the-dam-access-support-';
 export const DAM_BACK_GUARD = {
   prefix: 'the-dam-back-guard-',
@@ -48,7 +49,7 @@ export function getDamPlacement(island: IslandData): DamPlacement {
 }
 
 /** A shore-level approach on the road side of the wall. */
-export function damAccess(island: IslandData): AccessSection[][] {
+export function damAccess(island: IslandData): [ramp: AccessSection[], transfer: AccessSection[]] {
   const { position, scale } = getDamPlacement(island);
   const at = (x: number, y: number, z: number): Vec3 => ({
     x: position.x + x * scale,
@@ -60,17 +61,28 @@ export function damAccess(island: IslandData): AccessSection[][] {
   const base = (grade - position.y) / scale;
   const ramp = (x: number, y: number): AccessSection =>
     ({ outer: at(x, y, -11), inner: at(x, y, -6) });
-  const landing = (z: number): AccessSection =>
-    ({ outer: at(-12.8, DAM_DECK_HEIGHT, z), inner: at(-7.2, DAM_DECK_HEIGHT, z) });
+  const turnEnd = -14.35;
+  const landing = (z: number, outside: number): AccessSection =>
+    ({ outer: at(outside, DAM_DECK_HEIGHT, z), inner: at(-7.2, DAM_DECK_HEIGHT, z) });
   return [
-    [ramp(11.75, base), ramp(-7.2, DAM_DECK_HEIGHT), ramp(-12.8, DAM_DECK_HEIGHT)],
-    [landing(-6.03), landing(-3.61)],
+    [ramp(11.75, base), ramp(-7.2, DAM_DECK_HEIGHT), ramp(turnEnd, DAM_DECK_HEIGHT)],
+    [landing(-6.04, turnEnd), landing(-3.58, -13.0)],
   ];
 }
 
-export function damAccessGuards(path: AccessSection[], scale: number): AccessSection[][] {
-  const slope = path.slice(0, 2);
-  return [accessGuard(slope, 'outer', scale), accessGuard(slope, 'inner', scale)];
+export function damAccessGuards([ramp, transfer]: ReturnType<typeof damAccess>,
+  scale: number): AccessSection[][] {
+  const westEnd = ramp.at(-1)!.outer;
+  const westTurn = [{
+    outer: westEnd,
+    inner: { ...transfer[0]!.inner, z: westEnd.z },
+  }, ...transfer];
+  return [
+    accessGuard(ramp, 'outer', scale),
+    accessGuard(ramp.slice(0, 2), 'inner', scale),
+    accessGuard(westTurn, 'outer', scale),
+    accessGuard(transfer, 'inner', scale),
+  ];
 }
 
 /**
@@ -123,8 +135,8 @@ export function makeDamColliderDescriptors(island: IslandData): PropColliderDesc
         (DAM_DECK_HEIGHT + DAM_BACK_GUARD.top) / 2, DAM_BACK_GUARD.z,
         right - left, DAM_BACK_GUARD.top - DAM_DECK_HEIGHT, DAM_BACK_GUARD.depth)),
     ...access.flatMap((path, i) => accessSlabs(DAM_ACCESS_ID + i + '-', path, .38 * scale)),
-    ...damAccessGuards(access[0]!, scale).flatMap((path, i) =>
-      accessSlabs(DAM_ACCESS_ID + 'guard-' + i + '-', path, 1.22 * scale)),
+    ...damAccessGuards(access, scale).flatMap((path, i) =>
+      accessSlabs(DAM_ACCESS_GUARD_ID + i + '-', path, 1.22 * scale)),
     ...supports,
     // Four openings and five masonry piers as visible in the hero art.
     ...[-12, -2, 8, 18, 28].map((x, i) =>

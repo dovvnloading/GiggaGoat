@@ -158,9 +158,9 @@ describe('GameView factory prop mapping', () => {
     }
   });
 
-  it('routes all currently defined gig spawn roles to sized library supplies', () => {
+  it('routes parcel, tower and stack-crate roles to their sized supplies', () => {
     const f = factory();
-    const roles: GigPropSpawn['role'][] = ['parcel', 'gnome', 'tower', 'stack-crate'];
+    const roles: GigPropSpawn['role'][] = ['parcel', 'tower', 'stack-crate'];
     for (const role of roles) {
       const root = createSpawnLibraryProp(f, { role, size: { x: 2.1, y: .8, z: 1.3 } });
       expect(root.userData.propKind).toBe('crate');
@@ -169,12 +169,35 @@ describe('GameView factory prop mapping', () => {
     }
     f.dispose();
   });
+
+  it('centres the shipped Escort gnome on the full rigid-body envelope', async () => {
+    const path = PROP_LIBRARY_MODELS.gnome;
+    const bytes = await readFile(new URL('../../public/' + path, import.meta.url));
+    const { scene } = await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, '');
+    const loadModel = vi.fn(async () => scene);
+    const f = new PropFactory({ loadModel, assetBaseUrl: assetBase });
+    try {
+      const size = { x: .8, y: 1.6, z: .8 };
+      const root = createSpawnLibraryProp(f, { role: 'gnome', size });
+      expect(root.userData.propKind).toBe('world-gnome');
+      expect(root.getObjectByName('gig-gnome-placeholder')).toBeInstanceOf(THREE.Mesh);
+      await f.whenReady();
+      expect(loadModel).toHaveBeenCalledWith(assetBase + path);
+      expect(root.userData.assetStatus).toBe('ready');
+      const bounds = new THREE.Box3().setFromObject(loadedMesh(root));
+      for (const axis of ['x', 'y', 'z'] as const) {
+        expect(bounds.min[axis]).toBeCloseTo(-size[axis] / 2, 4);
+        expect(bounds.max[axis]).toBeCloseTo(size[axis] / 2, 4);
+      }
+      expect(WORLD_LIBRARY_KINDS.has('gnome')).toBe(false);
+    } finally { f.dispose(); }
+  });
 });
 
 const worldKinds = [
   'crate', 'barrel', 'hay-bale', 'fence', 'ramp', 'trampoline',
 ] as const satisfies readonly WorldLibraryPropKind[];
-const native: Record<WorldLibraryPropKind, [number, number, number]> = {
+const native: Record<(typeof worldKinds)[number], [number, number, number]> = {
   crate: [2, 1, 1], barrel: [1, 2, 1], 'hay-bale': [1.8, 1.1, .9],
   fence: [4, 1, .4], ramp: [1.7, .5, 2.2], trampoline: [2, .3, 2],
 };

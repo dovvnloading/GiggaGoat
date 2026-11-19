@@ -3,6 +3,7 @@ import { gridSample } from './terrain';
 import { sectionCenter, type AccessSection } from './access-path';
 
 export const LIGHTHOUSE_ACCESS_ID = 'lighthouse-access-';
+export const LIGHTHOUSE_ACCESS_GUARD_ID = LIGHTHOUSE_ACCESS_ID + 'guard-';
 const STEPS = 36;
 
 /** The keeper's sloped stair begins on the board side and rises outside the tower shell. */

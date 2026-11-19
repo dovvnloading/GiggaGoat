@@ -5,12 +5,15 @@ import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { dumpChromeDom } from '../test-utils/chrome';
 import { GameHud } from './GameHud';
+import { GameMenu } from './GameMenu';
 import { fitGigCardText } from './GigCardLayout';
+import { DEFAULT_SETTINGS } from './Persistence';
 
 /** Constructor-only DOM stub; Chromium does all real CSS layout measurements. */
 class ElementStub {
   className = '';
   textContent = '';
+  style = { display: '' };
   readonly children: ElementStub[] = [];
   private html = '';
   private nodes: ElementStub[] = [];
@@ -32,11 +35,14 @@ class ElementStub {
   get innerHTML(): string { return this.html; }
   appendChild(child: ElementStub): ElementStub { this.children.push(child); return child; }
   remove(): void {}
+  addEventListener(): void {}
+  removeEventListener(): void {}
   setAttribute(_key: string, _value: string): void {}
   querySelector<T = ElementStub>(selector: string): T | null {
     return this.querySelectorAll<T>(selector)[0] ?? null;
   }
   querySelectorAll<T = ElementStub>(selector: string): T[] {
+    if (selector === 'button') return [];
     if (selector.startsWith('.')) return this.nodes.filter(node =>
       node.className.split(/\s+/).includes(selector.slice(1))) as T[];
     if (selector.startsWith('[data-') && selector.endsWith(']')) return this.nodes.filter(node =>
@@ -161,6 +167,78 @@ function inside(inner: Rect, outer: Rect, tolerance = 1): boolean {
     inner.right <= outer.right + tolerance && inner.bottom <= outer.bottom + tolerance;
 }
 
+type PartyGeometry = {
+  panel: Rect; standings: Rect; actions: Rect[]; footer: Rect; rowCount: number;
+  panelScroll: boolean; standingsScroll: boolean; finalRowReachable: boolean;
+};
+
+function measurePartyResults(width: number, height: number): PartyGeometry {
+  const head = new ElementStub();
+  const host = new ElementStub();
+  vi.stubGlobal('document', { head, createElement: () => new ElementStub(),
+    addEventListener() {}, removeEventListener() {} });
+  vi.stubGlobal('window', { addEventListener() {}, removeEventListener() {} });
+  const players = ['player', 'Sprocket', 'Nova', 'Noodle', 'Pickles', 'Waffles', 'Beans', 'Clover']
+    .map((id, index) => ({ id, name: id, eliminatedAt: index === 0 ? null : index < 3 ? 3500 : 3400 - index }));
+  const placements = players.map(({ id }, index) =>
+    ({ playerId: id, rank: index === 2 ? 2 : index + 1 }));
+  const game = {
+    rules: { wallet: { coins: 0 } }, gigs: { director: { ownedCosmetics: [] } },
+    party: { title: 'Rising Tide', match: { tideLevel: 12, toJSON: () => ({
+      mode: 'rising-tide', players, placements, tick: 3500, playTicks: 3330,
+    }) } },
+  };
+  const view = {
+    renderer: { domElement: new ElementStub() }, input: { setActive() {} },
+    hud: { setVisible() {} }, applySettings() {},
+  };
+  const menu = new GameMenu(host as unknown as HTMLElement,
+    game as unknown as ConstructorParameters<typeof GameMenu>[1],
+    view as unknown as ConstructorParameters<typeof GameMenu>[2], { ...DEFAULT_SETTINGS });
+  (menu as unknown as { setScreen(next: string): void }).setScreen('party-results');
+  const css = head.children[0]!.textContent;
+  const markup = host.children[0]!.innerHTML;
+  menu.dispose();
+  vi.unstubAllGlobals();
+
+  const js = `
+    const panel = document.querySelector('.gg-party-results-panel');
+    const list = panel.querySelector('.gg-results');
+    const buttons = [...panel.querySelectorAll('button')];
+    const bounds = node => node.getBoundingClientRect().toJSON();
+    list.scrollTop = list.scrollHeight;
+    const last = bounds(list.lastElementChild);
+    const box = bounds(list);
+    parent.document.querySelector('output').textContent = JSON.stringify({
+      panel: bounds(panel), standings: box, actions: buttons.map(bounds),
+      footer: bounds(panel.querySelector('footer')), rowCount: list.children.length,
+      panelScroll: panel.scrollHeight > panel.clientHeight + 1,
+      standingsScroll: list.scrollHeight > list.clientHeight + 1,
+      finalRowReachable: last.top >= box.top - 1 && last.bottom <= box.bottom + 1
+    });
+  `;
+  // A sized frame has the requested media-query and dvh dimensions even if
+  // desktop Chromium imposes a minimum top-level browser window width.
+  const frame = ('<!doctype html><meta charset="utf-8"><style>html,body{margin:0}' + css +
+    '</style><div class="gg-shell">' + markup + '</div><script>' + js + '</script>')
+    .replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+  const html = '<!doctype html><meta charset="utf-8"><output id="geometry-result"></output>' +
+    '<iframe style="border:0;width:' + width + 'px;height:' + height + 'px" srcdoc="' + frame + '"></iframe>';
+  const directory = mkdtempSync(join(tmpdir(), 'party-results-dom-'));
+  try {
+    const file = join(directory, 'fixture.html');
+    writeFileSync(file, html);
+    const result = dumpChromeDom(pathToFileURL(file).href, {
+      width, height, expectedOutput: '<output id="geometry-result">{', timeoutMs: 35000,
+    });
+    const raw = result.match(/<output id="geometry-result">([^<]+)<\/output>/)?.[1];
+    if (!raw) throw new Error('Chrome did not return party results geometry');
+    return JSON.parse(raw) as PartyGeometry;
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
 function artRegion(card: Rect, left: number, top: number, right: number, bottom: number): Rect {
   return {
     left: card.left + left * card.width, right: card.left + right * card.width,
@@ -186,6 +264,29 @@ function expectWithinCream({ card, title, task, detail, footer, wallet, mode, co
 }
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe('party results layout', () => {
+  it.each([[540, 360], [1024, 576], [390, 844]])(
+    'keeps both exits outside the standings scroll at %ix%i', (width, height) => {
+      const geometry = measurePartyResults(width, height);
+      const { panel, standings, actions, footer, rowCount, panelScroll, standingsScroll,
+        finalRowReachable } = geometry;
+      expect(rowCount).toBe(8);
+      expect(actions).toHaveLength(2);
+      expect(panelScroll).toBe(false);
+      expect(finalRowReachable).toBe(true);
+      expect(inside(standings, panel)).toBe(true);
+      expect(inside(footer, panel)).toBe(true);
+      for (const action of actions) {
+        expect(inside(action, panel)).toBe(true);
+        expect(action.top).toBeGreaterThanOrEqual(standings.bottom);
+        expect(action.bottom).toBeLessThanOrEqual(footer.top);
+      }
+      if (height === 360) expect(standingsScroll).toBe(true);
+    },
+    90_000,
+  );
+});
 
 describe('live gig card text box geometry (headless browser DOM)', () => {
   it.each([[1101, 641], [1280, 720], [1512, 797], [1863, 883], [1920, 540], [1920, 1080]])(

@@ -44,6 +44,7 @@ interface LibraryWorldVisual {
 const lerpAlpha = (speed: number, dt: number): number => 1 - Math.exp(-speed * dt);
 const vec = (p: Vec3): THREE.Vector3 => new THREE.Vector3(p.x, p.y, p.z);
 const CAMERA_COLLISION_SKIN = .04;
+const PAUSED_SCENE_INTERVAL_MS = 1000 / 12;
 
 /** All graphics, time sampling, DOM and input live outside the headless Game. */
 export class GameView {
@@ -113,6 +114,11 @@ export class GameView {
   private readonly dummy = new THREE.Object3D();
   private readonly onResize: () => void;
   private lastTimestamp = 0;
+  private lastSceneTimestamp = 0;
+  private nextPausedRender = 0;
+  private readonly resetFrameClock = (): void => {
+    this.lastTimestamp = this.lastSceneTimestamp = this.nextPausedRender = 0;
+  };
   private fps = 60;
   private simMs = 0;
   private frameMs = 16.67;
@@ -180,8 +186,10 @@ export class GameView {
         this.applyCameraFraming(this.desiredCameraFraming());
       }
       this.renderer.setSize(width, height, false);
+      this.nextPausedRender = 0;
     };
     window.addEventListener('resize', this.onResize);
+    document.addEventListener('visibilitychange', this.resetFrameClock);
     this.onResize();
     this.renderer.setAnimationLoop(time => { this.frame(time); });
   }
@@ -584,6 +592,7 @@ export class GameView {
 
   /** Settings now control the same render budgets, including draw distance. */
   applySettings(settings: GameSettings): void {
+    if (this.currentSettings.fov !== settings.fov) this.nextPausedRender = 0;
     this.currentSettings = { ...settings };
     this.input.sensitivity = settings.mouseSensitivity;
     this.input.invertY = settings.invertY;
@@ -810,14 +819,14 @@ export class GameView {
   }
 
   private frame(timestamp: number): void {
-    if (this.disposed) return;
-    const dt = this.lastTimestamp ?
-      Math.min(.07, Math.max(0, (timestamp - this.lastTimestamp) / 1000)) : 1 / 60;
+    if (this.disposed || document.hidden) return;
+    const elapsed = this.lastTimestamp ?
+      Math.max(0, (timestamp - this.lastTimestamp) / 1000) : 1 / 60;
+    const dt = Math.min(.07, elapsed);
     this.lastTimestamp = timestamp;
-    if (dt > 0) {
-      const smoothing = lerpAlpha(2.6, dt);
-      this.fps += ((1 / dt) - this.fps) * smoothing;
-      this.frameMs += (dt * 1000 - this.frameMs) * smoothing;
+    if (!this.paused && elapsed > 0) {
+      this.frameMs += (elapsed * 1000 - this.frameMs) * lerpAlpha(2.6, dt);
+      this.fps = 1000 / this.frameMs;
     }
     let alpha = this.game.physics.alpha;
     if (!this.paused) {
@@ -833,9 +842,23 @@ export class GameView {
         this.simMs += (performance.now() - start - this.simMs) * lerpAlpha(5, dt);
       }
     }
+    const dayPhase = .5 + Math.sin(this.game.physics.time / 150) * .035;
+    const night = dayPhase < .25 || dayPhase > .75;
+    const throttleScene = this.paused && !this.titleCamera;
+    if (throttleScene && timestamp < this.nextPausedRender) {
+      // Keep menu gamepad input and audio context transitions on the browser frame loop.
+      this.audio?.frame(dt, this.audioPose, night);
+      this.onFrame?.();
+      return;
+    }
+    this.nextPausedRender = throttleScene ? timestamp + PAUSED_SCENE_INTERVAL_MS : 0;
+
+    const sceneDt = throttleScene && this.lastSceneTimestamp ?
+      Math.min(.1, (timestamp - this.lastSceneTimestamp) / 1000) : dt;
+    this.lastSceneTimestamp = timestamp;
     const range = GRAPHICS_PRESETS[this.currentSettings.graphics].drawDistance;
-    this.characters.update(dt, alpha, this.camera, range);
-    this.vfx.frame(dt, this.camera, range);
+    this.characters.update(sceneDt, alpha, this.camera, range);
+    this.vfx.frame(sceneDt, this.camera, range);
     this.updatePartyVisuals(alpha);
     this.updateBoardMarkers();
     this.updateGigVisuals(alpha);
@@ -850,14 +873,13 @@ export class GameView {
       this.world.setTideLevel(this.lastTide, showTideRoutes);
     }
     this.world.update(this.game.physics.time);
-    const dayPhase = .5 + Math.sin(this.game.physics.time / 150) * .035;
     this.world.setDayNight(dayPhase);
     if (this.scene.fog) this.scene.fog.color.copy(this.world.fogColor);
     this.renderer.setClearColor(this.world.fogColor);
-    this.updateCamera(alpha, dt);
-    this.updateCameraFraming(dt);
+    this.updateCamera(alpha, sceneDt);
+    this.updateCameraFraming(sceneDt);
     // Keep live HUD text and counters current without rebuilding them every frame.
-    this.hudTimer += dt;
+    this.hudTimer += sceneDt;
     if (this.hudTimer >= .05) {
       this.hudTimer = 0;
       this.updateHud();
@@ -865,17 +887,20 @@ export class GameView {
     this.world.updateCulling(this.camera);
     this.limitDrawDistance();
     this.instancedProps.update(this.camera, range);
-    this.shadowTimer += dt;
+    this.shadowTimer += sceneDt;
     if (this.shadowTimer >= .1 && this.renderer.shadowMap.enabled) {
       this.shadowTimer = 0;
       this.refreshShadowCasters();
       this.renderer.shadowMap.needsUpdate = true;
     }
     this.camera.getWorldDirection(this.audioForward);
-    this.audio?.frame(dt, this.audioPose, dayPhase < .25 || dayPhase > .75);
+    this.audio?.frame(dt, this.audioPose, night);
     const renderStart = performance.now();
     this.renderer.render(this.scene, this.camera);
-    this.renderMs += (performance.now() - renderStart - this.renderMs) * lerpAlpha(5, dt);
+    const renderElapsed = performance.now() - renderStart;
+    if (!this.paused) {
+      this.renderMs += (renderElapsed - this.renderMs) * lerpAlpha(5, dt);
+    }
     const info = this.renderer.info;
     this.perfStats.fps = this.fps;
     this.perfStats.frameMs = this.frameMs;
@@ -885,8 +910,7 @@ export class GameView {
     this.perfStats.triangles = info.render.triangles;
     this.perfStats.textures = info.memory.textures;
     this.perfStats.pixelRatio = this.renderer.getPixelRatio();
-    const nextRatio = this.resolution.sample(this.frameMs, this.renderMs, dt,
-      !this.paused && !document.hidden);
+    const nextRatio = this.resolution.sample(elapsed * 1000, renderElapsed, elapsed, !this.paused);
     if (nextRatio !== null) {
       this.renderer.setPixelRatio(nextRatio);
       this.onResize();
@@ -899,6 +923,7 @@ export class GameView {
     this.disposed = true;
     this.renderer.setAnimationLoop(null);
     window.removeEventListener('resize', this.onResize);
+    document.removeEventListener('visibilitychange', this.resetFrameClock);
     this.input.dispose();
     this.hud.dispose();
     this.buildGhost.dispose();

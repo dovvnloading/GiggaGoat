@@ -72,9 +72,19 @@ describe('Beacon and Dam access from their playable boards', () => {
     try {
       acceptAtBoard(game, 'the-dam');
       const [ramp, landing] = damAccess(game.island);
-      for (const section of [...ramp!, landing![1]!]) walkTo(game, sectionCenter(section));
-      const { position } = getDamPlacement(game.island);
-      const approach = sectionCenter(landing![1]!);
+      for (const section of ramp.slice(0, 2)) walkTo(game, sectionCenter(section));
+      const { position, scale } = getDamPlacement(game.island);
+      const formerEdge = { ...sectionCenter(ramp[2]!), x: position.x - 12.65 * scale };
+      walkTo(game, formerEdge, .35);
+      settle(game, 100, { moveZ: 1, cameraYaw: -Math.PI / 2 });
+      const railContact = game.goat.torso.translation();
+      expect(railContact.x).toBeLessThan(formerEdge.x - .25 * scale);
+      expect(railContact.y).toBeGreaterThan(formerEdge.y);
+      settle(game, 135, { moveZ: 1, cameraYaw: Math.PI });
+      const transfer = game.goat.torso.translation();
+      expect(transfer.y).toBeGreaterThan(formerEdge.y);
+      expect(transfer.z).toBeGreaterThan(landing[0]!.outer.z);
+      const approach = sectionCenter(landing[1]!);
       walkTo(game, { ...approach, z: position.z }, .4);
       const config = game.gigs.active?.setup.config;
       if (config?.kind !== 'splash-dive') throw new Error('Expected Dam Bomb dive configuration');

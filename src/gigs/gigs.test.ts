@@ -303,6 +303,21 @@ describe('Gig boards and real world integration', () => {
     });
   });
 
+  it('preserves an active gnome escort saved with the previous instructions', () => {
+    const director = new GigDirector(catalog);
+    const setup = director.startPractice('escort-the-gnome', 'easy');
+    const config = configOf(setup, 'escort-the-gnome');
+    const first = config.route[0]!;
+    director.step({ ...frame(first), props: [{ id: config.gnomeId, position: first }] });
+    const snapshot = director.toJSON();
+    const run = snapshot.run!;
+    run.setup.info.instruction = 'Walk behind the gnome to nudge it through the flags, or hold lick and back away. Avoid headbutts.';
+
+    const restored = GigDirector.fromJSON(snapshot, catalog).active;
+    expect(restored).toMatchObject({ attemptId: run.attemptId, status: 'running', elapsedTicks: 1, checkpointIndex: 1 });
+    expect(restored?.setup.config).toEqual(config);
+  });
+
   it('grounds generated mowing and gnome routes on actual island terrain', () => {
     const mow = configOf(catalog.build(catalog.makeOffer('mow-down', 'hard')), 'mow-down');
     for (const p of mow.patches) expect(p.y).toBeCloseTo(heightAt(island, p.x, p.z) + 0.15, 4);

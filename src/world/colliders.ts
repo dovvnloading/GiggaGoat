@@ -6,7 +6,8 @@ import { makeDamColliderDescriptors } from './the-dam';
 import { makeGradedBridgeColliders } from './roads';
 import { roadRibbonData } from './road-ribbons';
 import { accessGuard, accessSlabs } from './access-path';
-import { LIGHTHOUSE_ACCESS_ID, lighthouseAccess, lighthouseFoundationDepth } from './lighthouse-access';
+import { LIGHTHOUSE_ACCESS_GUARD_ID, LIGHTHOUSE_ACCESS_ID, lighthouseAccess,
+  lighthouseFoundationDepth } from './lighthouse-access';
 import { gridSample } from './terrain';
 
 function hull(prop: PropDescriptor): Float32Array {
@@ -76,7 +77,7 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
       const scale = island.size / 600;
       const outerGuard = accessGuard(path, 'outer', scale);
       colliders.push(...accessSlabs(LIGHTHOUSE_ACCESS_ID, path, .34 * scale),
-        ...accessSlabs(LIGHTHOUSE_ACCESS_ID + 'guard-', outerGuard, 1.22 * scale));
+        ...accessSlabs(LIGHTHOUSE_ACCESS_GUARD_ID, outerGuard, 1.22 * scale));
     }
     if (prop.kind === 'cave-mouth') {
       size.x = prop.size.x * 0.65;
