@@ -19,26 +19,25 @@ const CSS = `
 /* Composited panel art stays in its natural proportions. The only painted
    interiors are live state (meter, stamina and charge) over the empty sprites. */
 .gg-meter{position:absolute;left:clamp(12px,1.35vw,25px);top:clamp(10px,1.2vw,21px);width:clamp(365px,31.5vw,535px);height:clamp(150px,11.8vw,205px);background:var(--gg-sizeMeterFrame) center/100% 100% no-repeat}
-.gg-meter-label{position:absolute;left:15%;right:14%;top:5%;height:18%;display:grid;place-items:center;white-space:nowrap;color:#ffdd40;font-size:clamp(16px,1.6vw,26px);line-height:1;letter-spacing:.5px;-webkit-text-stroke:.65px #8c4251;text-shadow:2px 3px 0 #74304a,0 -1px #fff4a9}
-.gg-meter-icons{position:absolute;left:9%;right:8%;top:15%;height:48%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:end}
-.gg-meter-stage{position:relative;min-width:0;height:100%;display:flex;justify-content:center;align-items:end;opacity:.82;transition:opacity .14s,transform .14s}
-.gg-meter-stage .gg-goat-art{width:90%;height:84%;object-position:center bottom;filter:drop-shadow(0 2px 1px #44254c9c)}
-.gg-meter-stage:nth-child(2) .gg-goat-art{height:100%}
-.gg-meter-stage:nth-child(3) .gg-goat-art{height:110%}
-.gg-meter-stage:nth-child(4) .gg-goat-art{height:131%;width:110%}
-.gg-meter-stage.is-active{opacity:1;transform:translateY(-3px);filter:drop-shadow(0 0 7px #ffef81)}
-.gg-meter-track{position:absolute;left:6%;right:5.8%;top:58%;height:14.8%;border-radius:99px;background:#3d3041dd;overflow:visible;box-shadow:inset 0 2px 4px #241b33}
-.gg-meter-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,#52f143 0%,#d9f130 33%,#ffb52f 65%,#ff3653 100%);box-shadow:inset 0 2px 3px #fff8b6;transition:width .12s linear}
-.gg-meter-ticks{position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,transparent 25%,#6a3445 25%,#6a3445 25.6%,transparent 25.6%,transparent 50%,#6a3445 50%,#6a3445 50.6%,transparent 50.6%,transparent 75%,#6a3445 75%,#6a3445 75.6%,transparent 75.6%);opacity:.7}
-.gg-meter-arrow{position:absolute;top:100%;left:0;transform:translateX(-50%) rotate(180deg);width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:13px solid #fff9be;filter:drop-shadow(0 2px 1px #592944);transition:left .12s linear}
-.gg-meter-stage-labels{position:absolute;left:8%;right:6%;top:80%;height:13%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:center}
-.gg-meter-stage-labels span{text-align:center;white-space:nowrap;color:#fff8dd;font-size:clamp(12px,1.1vw,19px);line-height:1;text-shadow:1px 2px 1px #42304f}
-.gg-meter-stage-labels span.is-active{color:#fffbd1;text-shadow:0 0 7px #fff5ac,1px 2px 1px #56264a}
-.gg-meter-caption{
- position:absolute;top:58%;height:14.8%;left:6%;right:5.8%;display:grid;place-items:center;
- color:#fff9db;font-size:clamp(9px,1.05vw,18px);font-variant-numeric:tabular-nums;
- line-height:1;text-shadow:none;white-space:nowrap
-}
+/* Align the live layers with the four slots in the 542 × 272 illustrated frame. */
+.gg-meter-label{position:absolute;inset:8% 15% auto;height:17%;display:grid;place-items:center;white-space:nowrap;color:#ffdf68;font-size:clamp(16px,1.55vw,25px);line-height:1;letter-spacing:.4px;text-shadow:0 1px 2px #572b46}
+.gg-meter-icons,.gg-meter-stage-labels{position:absolute;left:7.4%;right:5.5%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.gg-meter-icons{top:29%;height:24.5%;grid-template-rows:minmax(0,1fr);align-items:end}
+.gg-meter-stage{min-width:0;min-height:0;height:100%;display:flex;align-items:end;justify-content:center;opacity:.83}
+.gg-meter-stage .gg-goat-art{width:100%;height:var(--goat-height,100%);object-position:center bottom}
+.gg-meter-stage:nth-child(1){--goat-height:78%}
+.gg-meter-stage:nth-child(2){--goat-height:88%}
+.gg-meter-stage:nth-child(3){--goat-height:95%}
+.gg-meter-stage.is-active{opacity:1}
+.gg-meter-track,.gg-meter-caption{position:absolute;left:6.7%;right:6.1%;top:57.6%;height:12.9%}
+.gg-meter-track{border-radius:99px;background:#412f42;box-shadow:inset 0 1px 3px #241b33}
+.gg-meter-fill{height:100%;border-radius:inherit;background:linear-gradient(90deg,#62e94d,#dae94c 42%,#ffbd53 72%,#ff655f);transition:width .12s linear}
+.gg-meter-ticks{position:absolute;inset:0;border-radius:inherit;overflow:hidden;background:linear-gradient(90deg,transparent 24.8%,#6d5264 24.8% 25.2%,transparent 25.2% 49.8%,#6d5264 49.8% 50.2%,transparent 50.2% 74.8%,#6d5264 74.8% 75.2%,transparent 75.2%)}
+.gg-meter-arrow{position:absolute;top:118%;transform:translateX(-50%);height:32%;aspect-ratio:1.8;background:#ffedac;clip-path:polygon(50% 0,100% 100%,0 100%);transition:left .12s linear}
+.gg-meter-stage-labels{top:77%;height:15%;align-items:center}
+.gg-meter-stage-labels span{text-align:center;white-space:nowrap;color:#fff8dd;font-size:clamp(12px,1.1vw,18px);line-height:1;text-shadow:0 1px 2px #4f3041}
+.gg-meter-stage-labels span.is-active{color:#fff2a3}
+.gg-meter-caption{display:grid;place-items:center;color:#fff9db;font-size:clamp(9px,1.05vw,17px);font-variant-numeric:tabular-nums;line-height:1;text-shadow:none;white-space:nowrap}
 .gg-meter-caption [data-meter]{display:block;padding:0 6px;border-radius:6px;background:#301f33ed}
 /* Reserve the combo slot so its artwork can appear without moving surrounding controls. */
 .gg-combo{position:absolute;left:50%;top:clamp(4px,.7vw,12px);transform:translateX(-50%);width:clamp(377px,32.3vw,545px);height:clamp(155px,12.7vw,217px);text-align:center}
@@ -172,25 +171,19 @@ const CSS = `
  }
  .gg-gig-footer .gg-coin{width:var(--gg-coin-size);height:var(--gg-coin-size)}
 }
-/* Progress is a live masked conic arc painted on top of the illustrated ring. */
-.gg-stamina{position:absolute;left:clamp(11px,1.5vw,29px);bottom:clamp(10px,1.5vw,26px);width:clamp(138px,12.7vw,215px);aspect-ratio:243/252;background:var(--gg-staminaRing) center/100% 100% no-repeat}
-.gg-stamina-progress{position:absolute;inset:8%;border-radius:50%;background:conic-gradient(from -90deg,var(--gg-stamina-color,#9aff33) 0 var(--gg-stamina,100%),#3c304c var(--gg-stamina,100%) 100%);-webkit-mask:radial-gradient(farthest-side,transparent 60%,#000 63% 84%,transparent 87%);mask:radial-gradient(farthest-side,transparent 60%,#000 63% 84%,transparent 87%)}
-.gg-stamina-inner{position:absolute;inset:23% 17% 17%;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.gg-hoof{width:56%;height:55%;filter:drop-shadow(0 2px 1px #422c3b)}
-.gg-stamina-label{margin-top:2px;color:#ffe8ad;font-size:clamp(13px,1.2vw,20px);line-height:1.1;transform:rotate(6deg);text-shadow:2px 2px #4b2840}
-.gg-stamina-value{font-size:clamp(8px,.72vw,12px);color:#fff7c9;margin-top:2px}
-@media(min-width:761px),(orientation:landscape){
- .gg-stamina-inner{inset:21% 13% 16%;gap:2px}
- .gg-hoof{width:50%;height:42%;min-height:0}
- .gg-stamina-label{transform:none;margin:0;white-space:nowrap}
- .gg-stamina-value{
-  margin:0;padding:1px 4px;border-radius:6px;background:#302338ed;text-shadow:none;
-  font-size:clamp(10px,1.05vw,18px);line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap
- }
- .gg-stamina[data-low="true"] .gg-stamina-progress{--gg-stamina-color:#ff926f}
- .gg-stamina[data-low="true"] .gg-stamina-label::after{content:" LOW";color:#ffac93}
- .gg-stamina[data-low="true"] .gg-stamina-value{background:#512c38;color:#ffe4d3}
-}
+/* The rim, sweep and centre stack share one proportional face at every scale. */
+.gg-stamina{position:absolute;left:clamp(11px,1.5vw,29px);bottom:clamp(10px,1.5vw,26px);width:clamp(138px,12.7vw,215px);aspect-ratio:243/252;container-type:inline-size;background:var(--gg-staminaRing) center/100% 100% no-repeat}
+.gg-stamina::before{content:"";position:absolute;inset:23% 23% 24%;border-radius:50%;background:#382b36}
+.gg-stamina-progress{position:absolute;inset:0;background:linear-gradient(155deg,#fff2,transparent 45%,#39223922),conic-gradient(from 229deg at 50% 49%,var(--gg-stamina-color,#a7e657) 0 calc(var(--gg-stamina,100%) * .72),#493b50 0 72%,transparent 0);mask:radial-gradient(circle closest-side at 50% 49%,transparent 55%,#000 56% 85%,transparent 86%)}
+.gg-stamina-inner{position:absolute;inset:27% 17% 27%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.3cqw;text-shadow:none}
+.gg-hoof{width:21cqw;height:16cqw}
+.gg-stamina-label,.gg-stamina-value{margin:0;line-height:1;white-space:nowrap}
+.gg-stamina-label{color:#ffe8ad;font-size:8cqw;letter-spacing:.02em}
+.gg-stamina-value{font-size:8.5cqw;color:#fff9e6;font-variant-numeric:tabular-nums}
+@media(min-width:1101px){.gg-stamina-value{font-size:max(13px,8.5cqw)}}
+.gg-stamina[data-low="true"] .gg-stamina-progress{--gg-stamina-color:#ff926f}
+.gg-stamina[data-low="true"] .gg-stamina-label{font-size:0}
+.gg-stamina[data-low="true"] .gg-stamina-label::after{content:"LOW";font-size:8cqw;color:#ffad92}
 .gg-hotbar{position:absolute;left:50%;bottom:clamp(3px,.6vw,10px);transform:translateX(-50%);width:clamp(500px,40vw,665px);height:clamp(126px,10.35vw,186px);isolation:isolate}
 /* Continue the outer rim beneath the clipped button artwork without moving the tray slots. */
 .gg-hotbar[data-active="true"]::before,.gg-hotbar[data-active="true"]::after{content:"";position:absolute;pointer-events:none}
@@ -237,7 +230,6 @@ const CSS = `
  .gg-meter{left:6px;top:8px;width:min(270px,51vw);height:clamp(105px,21vw,128px)}
  .gg-meter-label{font-size:clamp(10px,2vw,15px)}
  .gg-meter-stage-labels span{font-size:9px}
- .gg-meter-arrow{border-left-width:5px;border-right-width:5px;border-top-width:8px}
  .gg-combo{left:35%;top:130px;width:min(290px,56vw);height:126px}
  .gg-combo-title{font-size:clamp(16px,3.6vw,24px);-webkit-text-stroke:.6px #802847}
  .gg-combo-count{font-size:8px}
@@ -250,7 +242,6 @@ const CSS = `
  .gg-gig-title,.gg-gig-detail{font-size:7px}
  .gg-gig-footer{font-size:7px}
  .gg-stamina{left:7px;bottom:125px;width:102px}
- .gg-stamina-label{font-size:11px}.gg-stamina-value{font-size:8px}
  .gg-hotbar{width:calc(100% - 9px);height:115px;bottom:2px}
  .gg-hotbar-header{font-size:clamp(12px,3vw,19px)}
  .gg-slot{border-width:7px;border-image-width:7px}
@@ -276,7 +267,6 @@ const CSS = `
  .gg-meter{left:10px;top:9px;width:clamp(226px,29vw,319px);height:auto;aspect-ratio:535/205}
  .gg-meter-label{font-size:clamp(13px,1.45vw,17px)}
  .gg-meter-stage-labels span{font-size:clamp(10px,1.12vw,13px)}
- .gg-meter-arrow{border-left-width:6px;border-right-width:6px;border-top-width:9px}
  .gg-combo{top:9px;width:clamp(226px,29vw,319px);height:var(--gg-compact-score-height)}
  .gg-combo-title{font-size:clamp(17px,2.15vw,24px);-webkit-text-stroke:.8px #802847}
  .gg-combo-count{font-size:clamp(8px,1vw,11px)}
@@ -316,7 +306,6 @@ const CSS = `
  .gg-coin{width:12px;height:12px}
 
  .gg-stamina{left:12px;bottom:10px;width:clamp(95px,11.5vw,122px)}
- .gg-stamina-label{font-size:clamp(10px,1.13vw,13px)}
  .gg-hotbar{bottom:8px;width:clamp(366px,46vw,490px);height:auto;aspect-ratio:4/1}
  .gg-hotbar-header{padding-left:clamp(19px,3.2vw,33px);font-size:clamp(13px,1.45vw,16px)}
  .gg-slot{border-width:9px;border-image-width:9px}
@@ -384,12 +373,14 @@ const CSS = `
  }
  .gg-prompt-copy{min-width:0}
  .gg-stamina{left:8px;bottom:5px;width:var(--gg-landscape-stamina-width)}
- .gg-stamina-inner{gap:1px}
- .gg-hoof{height:36%}
- .gg-stamina-label{font-size:clamp(8px,1.66vw,10px)}
- .gg-stamina-value{padding:0 2px;font-size:clamp(8px,1.48vw,10px)}
- .gg-stamina[data-low="true"] .gg-stamina-label{font-size:0}
- .gg-stamina[data-low="true"] .gg-stamina-label::after{content:"LOW";font-size:clamp(8px,1.66vw,10px)}
+ /* At 52–68px the ring fits the icon. Stack the two readings below the rim. */
+ .gg-stamina{height:calc(var(--gg-landscape-stamina-width) * 252 / 243 + 25px);aspect-ratio:auto;background-size:100% auto;background-position:top}
+ .gg-stamina::before{inset:24cqw 23% auto;height:53cqw}
+ .gg-stamina-progress{inset:0 0 auto;aspect-ratio:243/252}
+ .gg-stamina-inner{inset:auto 0 0;height:26px;gap:2px;border-radius:6px;background:#382b36f5}
+ .gg-stamina-inner .gg-hoof{position:absolute;bottom:calc(25px + 30cqw);width:28cqw;height:30cqw}
+ .gg-stamina-label,.gg-stamina[data-low="true"] .gg-stamina-label::after{font-size:9px}
+ .gg-stamina-value{font-size:10px}
  .gg-hotbar{
    bottom:4px;width:min(calc(100% - 2 * (var(--gg-landscape-stamina-width) + 18px)),460px);
    height:var(--gg-landscape-tray-height)
@@ -409,10 +400,7 @@ const CSS = `
  }
  .gg-meter{left:8px;top:8px;width:var(--gg-portrait-meter-width);height:var(--gg-portrait-meter-height)}
  .gg-meter-label{font-size:clamp(10px,2.7vw,14px)}
- .gg-meter-caption{
-  top:58%;height:14.8%;left:6%;right:5.8%;display:grid;place-items:center;
-  color:#fff9db;font-size:clamp(9px,2.65vw,12px);letter-spacing:0;font-variant-numeric:tabular-nums;text-shadow:none
- }
+ .gg-meter-caption{font-size:clamp(9px,2.5vw,12px)}
  .gg-meter-caption [data-meter]{display:block;padding:0 4px;border-radius:6px;background:#301f33db}
  .gg-map-panel{top:8px;right:8px;width:var(--gg-portrait-map-width)}
  .gg-map-location{
@@ -461,6 +449,7 @@ const CSS = `
   bottom:auto;width:var(--gg-portrait-left-width);height:34px;aspect-ratio:auto;border:1px solid #d5a15c;
   border-radius:9px;background:#352b3c;filter:none;text-shadow:none
  }
+ .gg-stamina::before{content:none}
  .gg-stamina-progress{
   inset:auto 6px 5px;height:4px;border-radius:4px;--gg-portrait-stamina-color:#a2ed57;
   background:linear-gradient(90deg,var(--gg-portrait-stamina-color) 0 var(--gg-stamina,100%),#66536a var(--gg-stamina,100%) 100%);
@@ -471,7 +460,8 @@ const CSS = `
  .gg-stamina-label,.gg-stamina-value{margin:0;font-size:clamp(9px,2.55vw,11px);line-height:1.15;transform:none;text-shadow:none}
  .gg-stamina-value{font-variant-numeric:tabular-nums;white-space:nowrap}
  .gg-stamina[data-low="true"] .gg-stamina-progress{--gg-portrait-stamina-color:#ff926f}
- .gg-stamina[data-low="true"] .gg-stamina-label::after{content:" LOW";color:#ffac93}
+ .gg-stamina[data-low="true"] .gg-stamina-label{font-size:clamp(9px,2.55vw,11px)}
+ .gg-stamina[data-low="true"] .gg-stamina-label::after{content:" LOW";font-size:inherit;color:#ffac93}
  .gg-prompts{
   left:8px;top:calc(var(--gg-portrait-second-row) + var(--gg-portrait-score-height) + 50px);
   width:var(--gg-portrait-left-width);transform:none;align-items:stretch;gap:5px
