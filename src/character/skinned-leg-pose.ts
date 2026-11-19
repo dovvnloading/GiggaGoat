@@ -188,6 +188,20 @@ export class SkinnedLegPose {
       leg.hipAnimation.copy(leg.hip.quaternion);
       leg.kneeAnimation.copy(leg.knee.quaternion);
       this.solve(leg, i < 2);
+      // At a pipe edge the articulated toe can sweep sideways over a proud
+      // seam even when its intended end point clears it. Check the solved
+      // sole there before presenting the frame.
+      if (wall && world && !leg.planted && this.weight === 1) {
+        leg.toe.localToWorld(this.sole.copy(leg.toeOffset));
+        this.wallRayOrigin.copy(this.sole).addScaledVector(this.normal, .55 * size);
+        const obstacle = world.raycast(this.wallRayOrigin, this.wallRayDir, .55 * size, {
+          groups: GROUND_QUERY_GROUPS, predicate: c => c.handle === wall.collider?.handle || !c.parent()?.isDynamic(),
+        });
+        if (obstacle && this.normal.dot(obstacle.normal) > .4) {
+          this.target.copy(this.sole).addScaledVector(this.normal, .58 * size - obstacle.distance);
+          this.solve(leg, i < 2);
+        }
+      }
     }
   }
 
