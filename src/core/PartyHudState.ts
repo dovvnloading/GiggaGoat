@@ -50,7 +50,10 @@ export function derivePartyHudState(
     ];
     goal = phase === 'overtime' ? 'Highest perch at time' : 'Last goat standing';
     const ticksUntilRise = tide.nextRiseTick - tide.modeTicks;
-    if (phase === 'playing' && tide.warned) {
+    if (you?.eliminatedAt != null) {
+      goal = 'Round still in progress';
+      status = 'YOU WERE ELIMINATED';
+    } else if (phase === 'playing' && tide.warned) {
       status = 'TIDE RISES IN ' + secondsLeft(ticksUntilRise) + 's';
       urgent = true;
     } else if (tide.levelIndex > 0 &&
