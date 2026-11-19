@@ -4,14 +4,21 @@ import type { SfxOptions, SoundRender } from './synth';
 import type { RECORDED_EFFECTS } from './recorded-effects';
 
 export type RecordedEffect = keyof typeof RECORDED_EFFECTS;
-type Track = 'farm' | 'town' | 'coast';
+type Region = 'farm' | 'town' | 'coast';
+type Track = Region | 'party';
 
+interface FoleyBank {
+  url: string;
+  contacts: Readonly<Record<string, ReadonlyArray<ReadonlyArray<number>>>>;
+}
 export interface RecordedAssets {
-  music: Readonly<Record<Track, string>>;
+  foley?: FoleyBank;
+  ambience?: import('./zone-ambience').AmbienceLibrary;
+  music: Readonly<Record<Region, string> & { party?: string }>;
   effects: Readonly<Partial<Record<RecordedEffect, string>>>;
 }
 
-const TRACKS: Readonly<Record<AudioLocation, Track>> = {
+const TRACKS: Readonly<Record<AudioLocation, Region>> = {
   hoofington: 'farm', 'whispering-pines': 'farm', 'crane-yard': 'town',
   'downtown-bleatsville': 'town', 'the-dam': 'town', 'baa-ardwalk': 'coast',
   'old-lighthouse': 'coast', 'mt-gigga': 'coast',
@@ -33,53 +40,91 @@ const EFFECTS: Partial<Record<SoundId, RecordedEffect>> = {
 /** Use the same unlocked context, volumes, and voice limits as the synthesized mix. */
 export class RecordedAudio {
   readonly proceduralOutput: GainNode;
-  private readonly effects = new Map<RecordedEffect, AudioBuffer>();
+  private readonly effects = new Map<RecordedEffect, { buffer: AudioBuffer; offset: number }>();
+  private foley?: AudioBuffer;
+  private readonly foleyRequest = new AbortController();
+  private readonly variations = new Map<string, number>();
   private loadFailed = false;
-  private target: Track | null = null;
+  private target?: Track | null;
   private due = 0;
   private pending: AbortController | null = null;
   private ready: { track: Track; buffer: AudioBuffer } | null = null;
-  private playing: { track: Track; source: AudioBufferSourceNode; gain: GainNode } | null = null;
+  private readonly positions = new Map<Track, number>();
+  private playing: { track: Track; source: AudioBufferSourceNode; gain: GainNode; origin: number } | null = null;
   private disposed = false;
 
   constructor(private readonly context: AudioContext, private readonly assets: RecordedAssets,
     private readonly output: AudioNode) {
     this.proceduralOutput = context.createGain();
+    this.proceduralOutput.gain.value = 0; // No unrelated intro while the selected track decodes.
     this.proceduralOutput.connect(output);
     void this.decodeEffects();
+    if (assets.foley) void this.decodeFoley(assets.foley.url);
+  }
+
+  private async decodeFoley(url: string): Promise<void> {
+    try {
+      const res = await fetch(url, { signal: this.foleyRequest.signal });
+      if (!res.ok) return;
+      const buffer = await this.context.decodeAudioData(await res.arrayBuffer());
+      if (!this.disposed) this.foley = buffer;
+    } catch { /* The individually embedded recordings remain playable. */ }
   }
 
   private async decodeEffects(): Promise<void> {
     // These are small one-shots. Decode them once after the first real interaction.
-    for (const [name, data] of Object.entries(this.assets.effects)) {
+    const entries = Object.entries(this.assets.effects).sort(([a], [b]) => Number(b.startsWith('ui-')) - Number(a.startsWith('ui-')));
+    for (const [name, data] of entries) {
       if (this.disposed) break;
       try {
         const bytes = Uint8Array.from(atob(data), byte => byte.charCodeAt(0));
         const buffer = await this.context.decodeAudioData(bytes.buffer);
-        if (!this.disposed) this.effects.set(name as RecordedEffect, buffer);
+        // Keep the recorded attack and remove encoder padding before time-critical cues.
+        const samples = buffer.getChannelData(0);
+        const limit = Math.min(samples.length, Math.floor(buffer.sampleRate * .13));
+        let first = 0;
+        while (first < limit && Math.abs(samples[first]!) < .004) first++;
+        const offset = first === limit ? 0 : Math.max(0, first / buffer.sampleRate - .005);
+        if (!this.disposed) this.effects.set(name as RecordedEffect, { buffer, offset });
       } catch { /* A synthesized cue is available while a recording is unavailable. */ }
     }
   }
 
   render(sound: SoundId, output: AudioNode, opts: SfxOptions, selected?: RecordedEffect): SoundRender | null {
     const effect = selected ?? EFFECTS[sound];
-    const buffer = effect && this.effects.get(effect);
-    if (!buffer || this.disposed || (sound === 'bleat' && opts.voice)) return null;
+    if (this.disposed || (sound === 'bleat' && opts.voice)) return null;
+    const key = !selected && opts.surface && (sound === 'jump' || sound === 'landing')
+      ? sound + '-' + opts.surface : selected ?? sound;
+    const variants = this.assets.foley?.contacts[key];
+    let clip = effect && this.effects.get(effect);
+    let length: number | undefined;
+    if (this.foley && variants?.length) {
+      const index = this.variations.get(key) ?? 0;
+      const [offset, duration] = variants[index]!;
+      this.variations.set(key, (index + 1) % variants.length);
+      if (offset !== undefined && duration !== undefined) {
+        clip = { buffer: this.foley, offset };
+        length = duration;
+      }
+    }
+    if (!clip) return null;
     const source = this.context.createBufferSource();
     const when = Math.max(this.context.currentTime, opts.when ?? 0);
     const pitch = (sound === 'bleat' ? goatPitch(opts.size ?? 1) : 1) * (opts.pitch ?? 1);
     const rate = clamp(pitch, .55, 1.75);
+    const { buffer, offset } = clip;
     source.buffer = buffer;
     source.playbackRate.value = rate;
     source.connect(output);
     source.onended = () => source.disconnect();
-    source.start(when);
-    return { sources: [source], duration: buffer.duration / rate };
+    if (length !== undefined) source.start(when, offset, length);
+    else source.start(when, offset);
+    return { sources: [source], duration: (length ?? buffer.duration - offset) / rate };
   }
 
   updateMusic(state: MusicState): void {
     if (this.disposed) return;
-    const next = state.mode === 'free' ? TRACKS[state.poi] : null;
+    const next = state.mode === 'free' ? TRACKS[state.poi] : this.assets.music.party ? 'party' : null;
     const now = this.context.currentTime;
     if (next !== this.target) {
       this.pending?.abort();
@@ -103,7 +148,9 @@ export class RecordedAudio {
     const pending = new AbortController();
     this.pending = pending;
     try {
-      const response = await fetch(this.assets.music[track], { signal: pending.signal });
+      const url = this.assets.music[track];
+      if (!url) return;
+      const response = await fetch(url, { signal: pending.signal });
       if (!response.ok) throw new Error('Soundtrack unavailable');
       const buffer = await this.context.decodeAudioData(await response.arrayBuffer());
       if (!pending.signal.aborted && !this.disposed) this.ready = { track, buffer };
@@ -118,7 +165,7 @@ export class RecordedAudio {
   }
 
   private startTrack(track: Track, buffer: AudioBuffer): void {
-    this.stopTrack(.6);
+    this.stopTrack(1.4);
     const source = this.context.createBufferSource();
     const gain = this.context.createGain();
     const now = this.context.currentTime;
@@ -128,10 +175,11 @@ export class RecordedAudio {
     source.connect(gain);
     gain.connect(this.output);
     source.onended = () => { source.disconnect(); gain.disconnect(); };
-    source.start(now);
-    gain.gain.setTargetAtTime(.50, now, .14);
+    const offset = (this.positions.get(track) ?? 0) % buffer.duration;
+    source.start(now, offset);
+    gain.gain.setTargetAtTime(.50, now, .38);
     this.proceduralOutput.gain.setTargetAtTime(0, now, .13);
-    this.playing = { track, source, gain };
+    this.playing = { track, source, gain, origin: now - offset };
   }
 
   private useProcedural(): void {
@@ -143,6 +191,7 @@ export class RecordedAudio {
     const playing = this.playing;
     if (!playing) return;
     const now = this.context.currentTime;
+    this.positions.set(playing.track, now - playing.origin);
     playing.gain.gain.setTargetAtTime(0, now, fade / 4);
     playing.source.stop(now + fade);
     this.playing = null;
@@ -150,6 +199,8 @@ export class RecordedAudio {
 
   dispose(): void {
     this.disposed = true;
+    this.foleyRequest.abort();
+    this.foley = undefined;
     this.pending?.abort();
     this.pending = null;
     this.ready = null;

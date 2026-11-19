@@ -63,7 +63,7 @@ function fixture() {
     beginResultAudio: vi.fn<(kind: 'gig' | 'party') => number | null>(() => null),
     endResultAudio: vi.fn(),
     setMenuAudio: vi.fn(),
-    clearVoices: vi.fn(),
+    clearVoices: vi.fn(), stopCue: vi.fn(),
     play: vi.fn(() => true),
     updateFrame: vi.fn((_frame: AudioFrame) => {}),
     setSettings: vi.fn((settings: Partial<AudioSettings>) =>
@@ -238,11 +238,11 @@ describe('core audio render bridge', () => {
         volume: .25, musicVolume: .4, effectsVolume: .75 };
       bridge.setVolumes(settings);
       expect(f.audio.setSettings).toHaveBeenCalledWith({
-        master: .25, music: .4, sfx: .75, ui: .75 * .7 / .88,
+        master: .25, music: .4, sfx: .75, ui: .75 * .7 / .88, ambience: .75 * .43 / .88,
       });
       bridge.setVolumes({ ...settings, effectsVolume: 0 });
       expect(f.audio.setSettings).toHaveBeenLastCalledWith({
-        master: .25, music: .4, sfx: 0, ui: 0,
+        master: .25, music: .4, sfx: 0, ui: 0, ambience: 0,
       });
       expect(validateSettings(JSON.parse(JSON.stringify(settings)))).toEqual(settings);
       expect(validateSettings({ volume: .55 })).toEqual({

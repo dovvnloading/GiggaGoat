@@ -275,8 +275,11 @@ describe('sprite-backed menu DOM', () => {
       buttons[0]!.pressed = false;
 
       const slider = root.querySelector<InputStub>('[id="gg-setting-effectsVolume"]')!;
+      slider.value = '0.3';
+      root.dispatch('input', slider);
       slider.value = '0.4';
       root.dispatch('input', slider);
+      expect(audio.playMenuCue).toHaveBeenCalledTimes(3);
       root.dispatch('change', slider);
       expect(audio.setVolumes).toHaveBeenLastCalledWith(expect.objectContaining({ effectsVolume: .4 }));
       expect(audio.playMenuCue).toHaveBeenCalledTimes(4);
