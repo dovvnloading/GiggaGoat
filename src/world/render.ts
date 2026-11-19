@@ -22,6 +22,7 @@ import { buildHoofingtonVisuals } from './visual-hoofington';
 import { buildDowntownVisuals } from './visual-downtown';
 import { buildMountainWayfinding } from './visual-mountain';
 import { paintPinesLogAprons } from './visual-pines-log-access';
+import { isPinesDeckStilt } from './visual-pines-deck-stilts';
 import { MOUNTAIN_SPIRAL_BRIDGE_PREFIX } from './roads';
 import { buildSkyVisuals, type LightingPreset } from './visual-sky';
 
@@ -443,7 +444,14 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const instancedProps = boardwalkRails
     ? scenery.props.filter(prop => !boardwalkRails.replacedIds.has(prop.id))
     : scenery.props;
-  const props = buildPropVisuals(instancedProps, options.propChunkSize ?? 96, scenery, replacedProps);
+  const pinesStilts = instancedProps.filter(isPinesDeckStilt);
+  const pinesGround = chunks.filter(chunk => pinesStilts.some(stilt => {
+    const at = stilt.transform.position;
+    const radius = Math.hypot(stilt.size.x, stilt.size.z) * .5;
+    return Math.hypot(at.x - chunk.mesh.position.x, at.z - chunk.mesh.position.z) <= chunk.sphere.radius + radius;
+  })).map(chunk => ({ geometry: chunk.low, x: chunk.mesh.position.x, z: chunk.mesh.position.z }));
+  const distantPinesGround = pinesGround.length ? meshSurfaceHeight(pinesGround, island.size / 600) : undefined;
+  const props = buildPropVisuals(instancedProps, options.propChunkSize ?? 96, scenery, replacedProps, distantPinesGround);
   group.add(props.group);
   const hoofington = buildHoofingtonVisuals(scenery, props.group);
   group.add(hoofington.group);
