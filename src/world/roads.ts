@@ -305,6 +305,9 @@ export function makeBridgeDecks(island: IslandData): import('./types').PropDescr
   return decks;
 }
 
+export const DAM_PINES_ROAD = 'the-dam--whispering-pines';
+export const DAM_PINES_BRIDGE_PREFIX = 'bridge-' + DAM_PINES_ROAD + '-';
+
 export const MOUNTAIN_SPIRAL_TRAIL = 'downtown-bleatsville--mt-gigga';
 export const MOUNTAIN_SPIRAL_BRIDGE_PREFIX = 'bridge-' + MOUNTAIN_SPIRAL_TRAIL + '-';
 

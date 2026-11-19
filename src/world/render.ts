@@ -23,7 +23,7 @@ import { buildDowntownVisuals } from './visual-downtown';
 import { buildMountainWayfinding } from './visual-mountain';
 import { paintPinesLogAprons } from './visual-pines-log-access';
 import { isPinesDeckStilt } from './visual-pines-deck-stilts';
-import { MOUNTAIN_SPIRAL_BRIDGE_PREFIX } from './roads';
+import { DAM_PINES_BRIDGE_PREFIX, MOUNTAIN_SPIRAL_BRIDGE_PREFIX } from './roads';
 import { buildSkyVisuals, type LightingPreset } from './visual-sky';
 
 export { isDowntownRoadOverlay, isHoofingtonTrailOverlay } from './road-ribbons';
@@ -439,7 +439,10 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   if (boardwalkRails) group.add(boardwalkRails.mesh);
   const replacedProps = new Set(waterVisuals.replacedCascadeIds);
   for (const deck of island.colliders) {
-    if (deck.shape === 'convex' && deck.id.startsWith(MOUNTAIN_SPIRAL_BRIDGE_PREFIX)) replacedProps.add(deck.id);
+    if (deck.shape === 'convex' &&
+      (deck.id.startsWith(MOUNTAIN_SPIRAL_BRIDGE_PREFIX) || deck.id.startsWith(DAM_PINES_BRIDGE_PREFIX))) {
+      replacedProps.add(deck.id);
+    }
   }
   const instancedProps = boardwalkRails
     ? scenery.props.filter(prop => !boardwalkRails.replacedIds.has(prop.id))

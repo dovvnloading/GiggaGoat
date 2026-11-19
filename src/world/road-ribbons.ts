@@ -1,8 +1,10 @@
 import * as THREE from 'three';
-import type { IslandData, RoadDescriptor, RoadPoint } from './types';
-import { makeLocalStreets, MOUNTAIN_SPIRAL_TRAIL } from './roads';
+import type { IslandData, PropColliderDescriptor, RoadDescriptor, RoadPoint } from './types';
+import { DAM_PINES_BRIDGE_PREFIX, DAM_PINES_ROAD, makeLocalStreets, MOUNTAIN_SPIRAL_TRAIL } from './roads';
 
 const SURFACE_LIFT = { road: .2, trail: .19 } as const;
+const PAVED_DECK_THICKNESS = .7;
+const PAVED_DECK_CLEARANCE = .07;
 export const SUMMIT_ASCENT_TRAIL = 'mt-gigga--hoofington';
 
 /**
@@ -137,7 +139,7 @@ export function roadRibbonRuns(island: IslandData, type: RoadDescriptor['type'])
   // The two raised causeway approaches meet at the same Dam junction.
   // A shared mitre covers the little wedge left by their separate end caps.
   const damEast = type === 'road' ? allRoads.find(road => road.id === 'downtown-bleatsville--the-dam') : undefined;
-  const damWest = type === 'road' ? allRoads.find(road => road.id === 'the-dam--whispering-pines') : undefined;
+  const damWest = type === 'road' ? allRoads.find(road => road.id === DAM_PINES_ROAD) : undefined;
   const damEntry = damEast?.points.at(-1), damExit = damWest?.points[0];
   const joinedDamRoad = damEast && damWest && damEast.width === damWest.width && damEntry && damExit &&
     damEntry.x === damExit.x && damEntry.y === damExit.y && damEntry.z === damExit.z &&
@@ -218,6 +220,31 @@ function fitSummitEarth(
   }
 }
 
+/** Solid deck under the exact asphalt surface, including its two shoulders. */
+function pavedBridgeDeck(id: string, p: RoadPoint, q: RoadPoint, width: number,
+  positions: readonly number[], corners: readonly number[], scale: number): PropColliderDescriptor {
+  const position = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, z: (p.z + q.z) / 2 };
+  const dx = q.x - p.x, dz = q.z - p.z;
+  const rise = (q.y - p.y) / (dx * dx + dz * dz);
+  const ring = corners.map(vertex => {
+    const at = vertex * 3;
+    const x = positions[at]! - position.x;
+    const z = positions[at + 2]! - position.z;
+    return { x, z, grade: (x * dx + z * dz) * rise, asphalt: positions[at + 1]! - position.y };
+  });
+  // Both rendered triangles stay above this plane, even through a skewed
+  // miter. The physical road uses the exact visible triangles over this slab.
+  const ceiling = Math.min(...ring.map(corner => corner.asphalt - corner.grade)) - PAVED_DECK_CLEARANCE * scale;
+  const thickness = PAVED_DECK_THICKNESS * scale;
+  const vertices = new Float32Array(ring.flatMap(({ x, grade, z }) =>
+    [x, grade + ceiling, z, x, grade + ceiling - thickness, z]));
+  return {
+    id, shape: 'convex', body: { type: 'static' }, transform: { position, rotationY: 0 },
+    size: { x: width, y: thickness + Math.abs(q.y - p.y), z: Math.hypot(dx, dz) },
+    vertices,
+  };
+}
+
 /**
  * Every kept polyline run gets one joined strip, but all runs of a surface
  * type share a single indexed geometry. A point has two top vertices and
@@ -226,7 +253,7 @@ function fitSummitEarth(
 export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
   summitGround?: (x: number, z: number) => number): {
   positions: number[]; indices: number[]; supportIndices: number[]; segments: RibbonSegment[];
-  crossSections: number[];
+  crossSections: number[]; pavedBridgeDecks: PropColliderDescriptor[];
 } {
   const runs = roadRibbonRuns(island, type);
   const topOffset = SURFACE_LIFT[type];
@@ -235,6 +262,18 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
   const supportIndices: number[] = [];
   const segments: RibbonSegment[] = [];
   const crossSections: number[] = [];
+  const scale = island.size / 600;
+  const pavedBridgeDecks: PropColliderDescriptor[] = [];
+  const bridgePoints = new Set<RoadPoint>();
+  const bridgeSpans = new Map<RoadPoint, { end: RoadPoint; index: number }>();
+  const bridgeRoad = type === 'road' ? island.roads.find(road => road.id === DAM_PINES_ROAD) : undefined;
+  if (bridgeRoad) for (let index = 0; index < bridgeRoad.points.length - 1; index++) {
+    const p = bridgeRoad.points[index]!, q = bridgeRoad.points[index + 1]!;
+    if (!(p.bridge || q.bridge) || Math.hypot(q.x - p.x, q.z - p.z) < .05) continue;
+    bridgePoints.add(p);
+    bridgePoints.add(q);
+    bridgeSpans.set(p, { end: q, index });
+  }
   const damTrailEnd = type === 'trail'
     ? island.roads.find(road => road.id === 'mt-gigga--the-dam')?.points.at(-1) : undefined;
   const pavement = damTrailEnd ? roadRibbonData(island, 'road') : undefined;
@@ -269,10 +308,13 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
       const perp = new THREE.Vector2(-tangent.y, tangent.x);
       const perpIn = new THREE.Vector2(-incoming.y, incoming.x);
       const mitre = squareStart ? 1 : Math.min(2, 1 / Math.max(0.5, perpIn.dot(perp)));
-      const halfWidth = (widths?.[i] ?? width) / 2;
+      // Use the existing deck's half-metre shoulders along the bridge.
+      const bridge = bridgePoints.has(point);
+      const halfWidth = (widths?.[i] ?? width) / 2 + (bridge ? .5 : 0);
       const x = perp.x * halfWidth * mitre;
       const z = perp.y * halfWidth * mitre;
-      const top = point.y + topOffset, bottom = point.y - 0.15;
+      const top = point.y + topOffset;
+      const bottom = bridge ? top - (PAVED_DECK_THICKNESS + PAVED_DECK_CLEARANCE) * scale : point.y - .15;
       let leftTop = top, rightTop = top;
       // The flat trail cross section overlaps a sloping road here. Match the
       // terminal corners that land on asphalt and keep the outer trail grade.
@@ -311,9 +353,18 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
         a + 3, b + 3, a + 5, b + 3, b + 5, a + 5,
       );
       const p = points[i]!, q = points[i + 1]!;
-      // Existing bridge decks have their own support. The visual skirts do
-      // not block lateral entry from the underlying graded terrain.
-      if (!p.bridge && !q.bridge) supportIndices.push(...top);
+      const pavedBridge = bridgeSpans.get(p);
+      if (pavedBridge?.end === q) {
+        // Close the visible underside between the two side skirts.
+        indices.push(a + 4, a + 5, b + 4, a + 5, b + 5, b + 4);
+        supportIndices.push(...top);
+        pavedBridgeDecks.push(pavedBridgeDeck(DAM_PINES_BRIDGE_PREFIX + pavedBridge.index,
+          p, q, width + 1, positions, [a, b, a + 1, b + 1], scale));
+      } else if (!p.bridge && !q.bridge) {
+        // Trail bridges retain their original deck supports. Other road
+        // skirts stay visual so they cannot block lateral entry from terrain.
+        supportIndices.push(...top);
+      }
       const tangent = tangents[i]!.clone().add(tangents[i + 1]!);
       if (tangent.lengthSq() < 1e-12) tangent.copy(directions[i]!);
       if (tangent.lengthSq() < 1e-12) tangent.set(0, 1);
@@ -326,5 +377,5 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
       });
     }
   }
-  return { positions, indices, supportIndices, segments, crossSections };
+  return { positions, indices, supportIndices, segments, crossSections, pavedBridgeDecks };
 }

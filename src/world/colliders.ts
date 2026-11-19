@@ -49,6 +49,7 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
     position: { x: 0, y: 0, z: 0 },
   }];
   const bridgeDecks = makeGradedBridgeColliders(island);
+  for (const deck of roadRibbonData(island, 'road').pavedBridgeDecks) bridgeDecks.set(deck.id, deck);
   for (const prop of island.props) {
     if (!prop.collidable) continue;
     const bridgeDeck = bridgeDecks.get(prop.id);
