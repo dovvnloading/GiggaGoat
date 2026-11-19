@@ -175,31 +175,3 @@ describe('Beacon and Dam access from their playable boards', () => {
     }
   });
 });
-
-
-it('keeps the goat grounded through a long walk down the Hoofington summit trail', async () => {
-  const game = await Game.create();
-  try {
-    const summit = game.gigs.boards.find(entry => entry.poiId === 'mt-gigga')!;
-    const trail = game.island.roads.find(road => road.id === 'mt-gigga--hoofington')!;
-    game.teleport(summit.position, 0);
-    settle(game, 45);
-
-    // Enter the trail from the board before measuring the sustained descent.
-    for (const target of trail.points.slice(17, 21)) walkTo(game, target, .62);
-    let airborneTicks = 0;
-    let longestGap = 0;
-    for (const target of trail.points.slice(21, 118)) {
-      walkTo(game, target, .62, () => {
-        airborneTicks = game.goat.locomotion.grounded ? 0 : airborneTicks + 1;
-        longestGap = Math.max(longestGap, airborneTicks);
-      });
-    }
-    expect(longestGap).toBeLessThan(24);
-    expect(game.goat.locomotion.grounded).toBe(true);
-    expect(game.goat.pose).toBe('walk');
-    expect(game.respawns).toBe(0);
-  } finally {
-    game.dispose();
-  }
-});

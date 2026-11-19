@@ -24,7 +24,6 @@ import { DAM_FOREST_RIVER_START, DAM_UPSTREAM_RIVER_END, getDamHeadwater, getDam
   isDamHeadwater } from '../world/dam-landscape';
 import { DAM_ACCESS_GUARD_ID, DAM_BACK_GUARD, DAM_FRONT_GUARD } from '../world/the-dam';
 import { LIGHTHOUSE_ACCESS_GUARD_ID } from '../world/lighthouse-access';
-import { segmentProjection } from '../world/terrain';
 import { COAST_TURNOUT_GNOME_ID } from '../world/roadside-stops';
 import { CRANE_YARD_PLAN } from '../world/crane-yard';
 import { HAY_HAUL_TAG_RADIUS } from '../gigs';
@@ -513,25 +512,17 @@ export class Game {
       const level = (a.level + b.level) / 2;
       const length = Math.hypot(b.x - a.x, b.z - a.z);
       const speed = Math.min(4, 1.2 + (a.level - b.level) / Math.max(1, length));
-      const upstream = i < DAM_UPSTREAM_RIVER_END;
-      const bankHalfWidth = Math.max(a.width, b.width) * (upstream ? .5 : .42);
-      const widthX = Math.abs(b.x - a.x) / 2 + bankHalfWidth;
-      const widthZ = Math.abs(b.z - a.z) / 2 + bankHalfWidth;
+      const widthX = Math.abs(b.x - a.x) / 2 + Math.max(a.width, b.width) * .42;
+      const widthZ = Math.abs(b.z - a.z) / 2 + Math.max(a.width, b.width) * .42;
       const touchesDam = mx + widthX > upper.left && mx - widthX < upper.right &&
         mz + widthZ > upper.rear && mz - widthZ < outflow.far;
       this.water.addVolume({
         id: 'river-' + i,
         center: V(mx, level - 1.7, mz),
         halfExtents: V(widthX, 1.7, widthZ),
-        ...(upstream || touchesDam ? { containsXZ: (x: number, z: number) => {
-          if (touchesDam && (outflow.containsXZ(x, z) ||
-              (x >= upper.left && x <= upper.right && z >= upper.rear && z < outflow.near))) return false;
-          if (!upstream) return true;
-          // A diagonal reach's bounds also cover the adjacent dry trails.
-          // Use the visible channel's interpolated bank width within them.
-          const { distance, t } = segmentProjection({ x, z }, a, b);
-          return distance <= (a.width + (b.width - a.width) * t) / 2;
-        } } : {}),
+        ...(touchesDam ? { containsXZ: (x: number, z: number) =>
+          (x < upper.left || x > upper.right || z < upper.rear || z >= outflow.near) &&
+          !outflow.containsXZ(x, z) } : {}),
         flow: V((b.x - a.x) / Math.max(1, length) * speed, -.15,
           (b.z - a.z) / Math.max(1, length) * speed),
       });

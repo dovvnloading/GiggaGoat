@@ -225,34 +225,14 @@ export function buildRapierColliders(world: RAPIER.World, island: IslandData): C
       .setTranslation(first.position.x, first.position.y, first.position.z)
       .setFriction(0.92),
   );
-  let high = -Infinity, low = Infinity;
-  for (const height of first.heights) {
-    high = Math.max(high, height);
-    low = Math.min(low, height);
-  }
-  const ray = new RAPIER.Ray({ x: 0, y: first.position.y + high * first.scale.y + 1, z: 0 },
-    { x: 0, y: -1, z: 0 });
-  const rayLength = (high - low) * first.scale.y + 2;
-  function ground(x: number, z: number): number {
-    // The shape itself is queryable before the world's broad phase is populated.
-    ray.origin.x = x;
-    ray.origin.z = z;
-    const distance = terrain.castRay(ray, rayLength, false);
-    return distance >= 0 ? ray.origin.y - distance : -Infinity;
-  }
-
   const paths: RAPIER.Collider[] = [];
-  function addPath(positions: number[], indices: number[]): void {
-    if (indices.length === 0) return;
+  for (const type of ['road', 'trail'] as const) {
+    const { positions, supportIndices } = roadRibbonData(island, type);
+    if (supportIndices.length === 0) continue;
     paths.push(world.createCollider(RAPIER.ColliderDesc.trimesh(
-      new Float32Array(positions), new Uint32Array(indices),
+      new Float32Array(positions), new Uint32Array(supportIndices),
       RAPIER.TriMeshFlags.FIX_INTERNAL_EDGES | RAPIER.TriMeshFlags.DELETE_DEGENERATE_TRIANGLES,
     ).setFriction(0.92)));
-  }
-  for (const type of ['road', 'trail'] as const) {
-    const { positions, supportIndices, earthWalls } = roadRibbonData(island, type, { collision: ground });
-    addPath(positions, supportIndices);
-    if (earthWalls) addPath(earthWalls.positions, earthWalls.indices);
   }
   const props = new Map<string, RAPIER.Collider>();
   const bodies = new Map<string, RAPIER.RigidBody>();

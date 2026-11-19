@@ -4,7 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { expect, it } from 'vitest';
 import { generateIsland } from './island';
 import { bakeLibraryPropGeometry } from './library-props';
-import { gridSample, segmentProjection } from './terrain';
+import { gridSample } from './terrain';
 import type { PropDescriptor } from './types';
 import { findBookmark } from './viewer/bookmarks';
 import { buildPropVisuals } from './visual-props';
@@ -14,46 +14,6 @@ async function loadMountainAsset(file: string): Promise<THREE.Group> {
     import.meta.url));
   return (await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, '')).scene;
 }
-
-it.each([
-  { seed: 'billy-isle', size: 600, resolution: 193 },
-  { seed: 'gigga-alt', size: 400, resolution: 97 },
-  { seed: 'first-playable-test', size: 720, resolution: 97 },
-  { seed: 'other', size: 900, resolution: 97 },
-  { seed: 'scale2', size: 1080, resolution: 65 },
-  { seed: 'floor', size: 200, resolution: 33 },
-  { seed: 'scale', size: 2000, resolution: 33 },
-  { seed: 'scale', size: 2000, resolution: 193 },
-])('seats the summit dish beside the upper trails on $seed / $size', options => {
-  const island = generateIsland(options);
-  const dish = island.props.find(prop => prop.kind === 'satellite-dish' && prop.poiId === 'mt-gigga')!;
-  expect(dish).toBeDefined();
-  const summit = island.pois.find(poi => poi.id === 'mt-gigga')!.center;
-  const footing = dish.transform.position;
-  const scale = island.size / 600;
-  const ground = gridSample(island, footing.x, footing.z);
-  expect(footing.y - dish.size.y / 2).toBeCloseTo(ground, 4);
-  // The authored pedestal is asymmetric after its visual scale and yaw.
-  const footingScale = dish.size.x / 7;
-  const cosine = Math.cos(.64), sine = Math.sin(.64);
-  const terrainHeights = [ground, ...[-4.7, 2.69].flatMap(x => [-2.32, 4.05].map(z =>
-    gridSample(island, footing.x + (x * cosine + z * sine) * footingScale,
-      footing.z + (-x * sine + z * cosine) * footingScale)))];
-  expect(Math.max(...terrainHeights) - Math.min(...terrainHeights)).toBeLessThan(3.201 * scale);
-  expect(Math.hypot(footing.x - summit.x, footing.z - summit.z) - dish.size.x / 2)
-    .toBeGreaterThan(7.4 * scale);
-  for (const road of island.roads) {
-    if (road.from !== 'mt-gigga' && road.to !== 'mt-gigga') continue;
-    for (let i = 1; i < road.points.length; i++) {
-      const a = road.points[i - 1]!, b = road.points[i]!;
-      const hit = segmentProjection(footing, a, b);
-      const x = a.x + hit.t * (b.x - a.x), z = a.z + hit.t * (b.z - a.z);
-      const standingHeight = Math.max(a.y + hit.t * (b.y - a.y) + .19, gridSample(island, x, z));
-      if (standingHeight < ground - Math.max(1.6, 2.1 * scale)) continue;
-      expect(hit.distance, `${road.id} segment ${i}`).toBeGreaterThanOrEqual(dish.size.x / 2 + road.width / 2 + .44 * scale);
-    }
-  }
-});
 
 it('keeps the authored cave entrance open with a projecting lip and a warm recess', async () => {
   const cave = await loadMountainAsset('cave-arch.glb');

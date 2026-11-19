@@ -68,17 +68,3 @@ it('keeps the air above the visible plunge pool dry and scores at its waterline'
     game.dispose();
   }
 });
-
-
-it('keeps the dry Hoofington trail outside the diagonal highland river', async () => {
-  const game = await Game.create();
-  try {
-    const bank = game.physics.createBox(V(-42.44, 28.91, -81.82), V(.26, .20, .26), 12, 'prop');
-    const channel = game.physics.createBox(V(-34.43, 28.91, -81.82), V(.26, .20, .26), 12, 'prop');
-    expect(game.water.sample(bank).fraction).toBe(0);
-    expect(game.water.sample(channel).volumeId).toBe('river-1');
-    expect(game.water.sample(channel).fraction).toBeGreaterThan(.1);
-  } finally {
-    game.dispose();
-  }
-});

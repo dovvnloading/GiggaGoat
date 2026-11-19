@@ -8,20 +8,6 @@ const PAVED_DECK_THICKNESS = .7;
 const PAVED_DECK_CLEARANCE = .07;
 export const SUMMIT_ASCENT_TRAIL = 'mt-gigga--hoofington';
 
-const EARTH_SAMPLE_LENGTH = .30;
-const EARTH_TOE_DEPTH = .12;
-const MIN_EARTH_WALL_EXPOSURE = .48;
-
-type GroundHeight = (x: number, z: number) => number;
-interface SummitGround {
-  visual?: GroundHeight;
-  collision?: GroundHeight;
-}
-interface TriangleMesh {
-  positions: number[];
-  indices: number[];
-}
-
 /**
  * The POI road network and the authored Downtown high street both terminate
  * at the same city centre. Rendering every inter-POI endpoint over the local
@@ -211,77 +197,29 @@ function pavementAt(positions: readonly number[], faces: readonly number[], x: n
   return height;
 }
 
-/** Bridge openings stay clear, including their adjoining abutment panels. */
-function hasBridgeAtEdge(points: readonly RoadPoint[], start: number): boolean {
-  return points.slice(Math.max(0, start - 1), start + 3).some(point => point.bridge);
-}
-
 /** Extend only existing side panels; their top edge and road support stay put. */
 function fitSummitEarth(
   points: readonly RoadPoint[], positions: number[], first: number, scale: number,
   ground: (x: number, z: number) => number,
 ): void {
   for (let i = 1; i < points.length; i++) {
-    if (hasBridgeAtEdge(points, i - 1)) continue;
+    // Leave the whole bridge opening and its adjoining abutment panels alone.
+    if (points[i - 2]?.bridge || points[i - 1]!.bridge || points[i]!.bridge || points[i + 1]?.bridge) continue;
     for (const side of [4, 5]) {
       const a = (first + (i - 1) * 6 + side) * 3, b = a + 18;
       const x = positions[a]!, z = positions[a + 2]!;
       const dx = positions[b]! - x, dz = positions[b + 2]! - z;
-      const steps = Math.max(2, Math.ceil(Math.hypot(dx, dz) / (EARTH_SAMPLE_LENGTH * scale)));
+      const steps = Math.max(2, Math.ceil(Math.hypot(dx, dz) / (.30 * scale)));
       let toe = Infinity;
       for (let step = 0; step <= steps; step++) {
         const t = step / steps;
         const floor = ground(x + dx * t, z + dz * t);
-        if (Number.isFinite(floor)) toe = Math.min(toe, floor - EARTH_TOE_DEPTH * scale);
+        if (Number.isFinite(floor)) toe = Math.min(toe, floor - .12 * scale);
       }
       positions[a + 1] = Math.min(positions[a + 1]!, toe);
       positions[b + 1] = Math.min(positions[b + 1]!, toe);
     }
   }
-}
-
-/**
- * Add faces only where both ends of the sample span have an exposed dry bank.
- * The edge line is identical to the drawn side panel, but the toe only needs
- * to overlap the native terrain. Separate triangles keep the crest mesh intact.
- */
-function summitEarthWalls(
-  points: readonly RoadPoint[], ribbon: readonly number[], first: number,
-  ground: GroundHeight, seaLevel: number, scale: number,
-): TriangleMesh {
-  const positions: number[] = [], indices: number[] = [];
-  const minExposure = MIN_EARTH_WALL_EXPOSURE * scale;
-  const toeDepth = EARTH_TOE_DEPTH * scale;
-  const { lerp } = THREE.MathUtils;
-  for (let i = 0; i < points.length - 1; i++) {
-    if (hasBridgeAtEdge(points, i)) continue;
-    for (const side of [0, 1]) {
-      const a = (first + i * 6 + side) * 3, b = a + 18;
-      const length = Math.hypot(ribbon[b]! - ribbon[a]!, ribbon[b + 2]! - ribbon[a + 2]!);
-      const steps = Math.max(2, Math.ceil(length / (EARTH_SAMPLE_LENGTH * scale)));
-      const sample = (t: number) => {
-        const x = lerp(ribbon[a]!, ribbon[b]!, t);
-        const y = lerp(ribbon[a + 1]!, ribbon[b + 1]!, t);
-        const z = lerp(ribbon[a + 2]!, ribbon[b + 2]!, t);
-        const floor = ground(x, z);
-        return { x, y, z, floor, exposed: floor > seaLevel && y - floor >= minExposure };
-      };
-      let last = sample(0);
-      for (let step = 1; step <= steps; step++) {
-        const next = sample(step / steps);
-        if (last.exposed && next.exposed) {
-          const v = positions.length / 3;
-          positions.push(last.x, last.y, last.z, last.x, last.floor - toeDepth, last.z,
-            next.x, next.y, next.z, next.x, next.floor - toeDepth, next.z);
-          // Same outward winding as the side faces in the rendered ribbon.
-          if (side === 0) indices.push(v, v + 1, v + 2, v + 2, v + 1, v + 3);
-          else indices.push(v, v + 2, v + 1, v + 2, v + 3, v + 1);
-        }
-        last = next;
-      }
-    }
-  }
-  return { positions, indices };
 }
 
 /** Solid deck under the exact asphalt surface, including its two shoulders. */
@@ -315,9 +253,9 @@ function pavedBridgeDeck(id: string, p: RoadPoint, q: RoadPoint, width: number,
  * separate skirt vertices so side normals cannot tilt the asphalt normals.
  */
 export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
-  summitGround: SummitGround = {}): {
+  summitGround?: (x: number, z: number) => number): {
   positions: number[]; indices: number[]; supportIndices: number[]; segments: RibbonSegment[];
-  crossSections: number[]; pavedBridgeDecks: PropColliderDescriptor[]; earthWalls?: TriangleMesh;
+  crossSections: number[]; pavedBridgeDecks: PropColliderDescriptor[];
 } {
   const runs = roadRibbonRuns(island, type);
   const topOffset = SURFACE_LIFT[type];
@@ -341,9 +279,8 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
   const damTrail = type === 'trail' ? island.roads.find(road => road.id === DAM_MOUNTAIN_TRAIL) : undefined;
   const damTrailEnd = damTrail ? damMountainTrailDirt(island, damTrail).at(-1) : undefined;
   const pavement = damTrailEnd ? roadRibbonData(island, 'road') : undefined;
-  const summitStart = type === 'trail' && (summitGround.visual || summitGround.collision)
+  const summitStart = summitGround && type === 'trail'
     ? island.roads.find(road => road.id === SUMMIT_ASCENT_TRAIL)?.points[0] : undefined;
-  let earthWalls: TriangleMesh | undefined;
 
   for (const { points, width, widths, squareNorthStart } of runs) {
     const firstVertex = positions.length / 3;
@@ -404,12 +341,8 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
       if (type === 'road') crossSections.push(-1, halfWidth, 1, halfWidth,
         -1, halfWidth, 1, halfWidth, -1, halfWidth, 1, halfWidth);
     }
-    if (points[0] === summitStart) {
-      if (summitGround.visual)
-        fitSummitEarth(points, positions, firstVertex, scale, summitGround.visual);
-      if (summitGround.collision)
-        earthWalls = summitEarthWalls(points, positions, firstVertex, summitGround.collision,
-          island.seaLevel, scale);
+    if (summitGround && points[0] === summitStart) {
+      fitSummitEarth(points, positions, firstVertex, island.size / 600, summitGround);
     }
 
     for (let i = 0; i < points.length - 1; i++) {
@@ -447,5 +380,5 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
       });
     }
   }
-  return { positions, indices, supportIndices, segments, crossSections, pavedBridgeDecks, earthWalls };
+  return { positions, indices, supportIndices, segments, crossSections, pavedBridgeDecks };
 }

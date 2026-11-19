@@ -187,9 +187,18 @@ const CSS = `
 .gg-shell .gg-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;
   clip-path:inset(50%);white-space:nowrap}
 @media(max-height:660px) and (min-width:511px){
- .gg-shell .gg-title-actions .gg-art-button{min-height:54px;padding:2px 9px;border-width:14px;border-image-width:14px}
+ .gg-shell :is(.gg-title-actions,.gg-pause-panel) .gg-art-button{min-height:54px;
+   padding:2px 9px;border-width:14px;border-image-width:14px}
+ .gg-shell .gg-pause-panel h2{margin:3px 0 5px}
+ .gg-shell .gg-pause-panel p{margin:4px 0 10px}
+ .gg-shell .gg-pause-panel footer{margin-top:8px}
 }
 @media(max-height:460px) and (min-width:511px){
+ .gg-shell .gg-pause-panel{padding:8px 12px;border-width:20px;border-image-width:20px}
+ .gg-shell .gg-pause-panel .gg-options{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .gg-shell .gg-pause-panel .gg-primary{grid-column:1/-1}
+ .gg-shell .gg-pause-panel .gg-art-button{min-height:48px;padding:2px 9px;
+   border-width:12px;border-image-width:12px}
  .gg-shell .gg-party-grid{gap:7px 10px;margin:7px 0 9px}
  .gg-shell .gg-party-brief{padding:5px 7px}
  .gg-shell .gg-party-actions{grid-template-columns:1fr 1fr}
@@ -1056,6 +1065,7 @@ export class GameMenu {
       this.screen === 'gig-results' ? this.gigResultsBody() : this.partyResultsBody();
     const partyResults = this.screen === 'party-results';
     const panel = this.screen === 'title' ? 'gg-shell-panel gg-title-panel' :
+      this.screen === 'pause' ? 'gg-shell-panel gg-pause-panel' :
       partyResults ? 'gg-shell-panel gg-party-results-panel' : 'gg-shell-panel';
     const dialogLabel = partyResults ? ' aria-labelledby="gg-party-result-title"' :
       this.screen === 'party-confirm' ?
