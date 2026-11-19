@@ -110,6 +110,8 @@ function propId(plan: StopPlan, name: string): string {
   return 'roadside-' + plan.id + '-' + name;
 }
 
+export const COAST_TURNOUT_GNOME_ID = propId(COAST_TURNOUT, 'gnome');
+
 function makeProp(island: IslandData, site: RoadsideStop<StopPlan>, prop: StopProp): PropDescriptor {
   const { scale } = site;
   const point = pointAt(site, prop.along, prop.across);

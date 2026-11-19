@@ -7,7 +7,7 @@ import { terrainRockAtlas } from './terrain-paint';
 import { paintDowntownGround } from './downtown-public-space';
 import { buildRoadsideSigns, paintRoadsideGravel } from './visual-roadside-stops';
 import { makeVillageGroundPaint, paintAsphalt } from './surface-paint';
-import { roadRibbonData } from './road-ribbons';
+import { roadRibbonData, SUMMIT_ASCENT_TRAIL } from './road-ribbons';
 import { buildPropVisuals, TOON_RAMP } from './visual-props';
 import { buildBoardwalkRailVisuals } from './visual-boardwalk-rails';
 import { createEnvironmentLod } from './environment-lod';
@@ -15,7 +15,7 @@ import { buildGroundDetails } from './visual-ground';
 import { buildStreetDetails } from './visual-streets';
 import { buildMeadowScatter } from './visual-meadow';
 import { buildWaterVisuals } from './visual-water';
-import { buildTideRouteCues } from './visual-tide-routes';
+import { buildTideRouteCues, meshSurfaceHeight } from './visual-tide-routes';
 import { buildDamVisuals } from './visual-dam';
 import { buildLighthouseVisuals, makeCapeLighting } from './visual-lighthouse';
 import { buildHoofingtonVisuals } from './visual-hoofington';
@@ -351,15 +351,23 @@ function isHoofingtonCrossingDash(
     Math.abs(z - (farm.z - 18 * scale)) < 3.25 * scale + 1.3;
 }
 
-function buildRoads(island: IslandData): THREE.Group {
+function buildRoads(island: IslandData, terrain: readonly Chunk[]): THREE.Group {
   const group = new THREE.Group();
   group.name = 'graded-ring-road-and-trails';
   const forward = new THREE.Vector3(0, 0, 1);
   const midpoint = new THREE.Vector3(), rotation = new THREE.Quaternion();
   const matrix = new THREE.Matrix4();
+  const route = island.roads.find(road => road.id === SUMMIT_ASCENT_TRAIL);
+  const nearby = route ? terrain.filter(({ sphere }) => route.points.some(point =>
+    Math.hypot(point.x - sphere.center.x, point.z - sphere.center.z) <= sphere.radius + route.width)) : [];
+  const surface = (lod: 'high' | 'low') => meshSurfaceHeight(nearby.map(chunk => ({
+    geometry: chunk[lod], x: chunk.mesh.position.x, z: chunk.mesh.position.z,
+  })), island.size / 600);
+  const near = surface('high'), far = surface('low');
+  const summitGround = (x: number, z: number) => Math.min(near(x, z), far(x, z));
 
   for (const type of ['road', 'trail'] as const) {
-    const { positions, indices, segments, crossSections } = roadRibbonData(island, type);
+    const { positions, indices, segments, crossSections } = roadRibbonData(island, type, summitGround);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setIndex(indices);
@@ -406,7 +414,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const capeLighting = makeCapeLighting(island);
   const chunks = buildTerrain(island, segments, capeLighting);
   for (const chunk of chunks) group.add(chunk.mesh);
-  const roads = buildRoads(island);
+  const roads = buildRoads(island, chunks);
   group.add(roads);
   const roadsideSigns = buildRoadsideSigns(island);
   if (roadsideSigns) group.add(roadsideSigns);

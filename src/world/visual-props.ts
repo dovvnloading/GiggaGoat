@@ -7,7 +7,7 @@ import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import { appendPinesLogEntries } from './visual-pines-log-access';
 import type { PropDescriptor, PropKind } from './types';
 import { buildArchitecture, isArchitecturalKind } from './visual-architecture';
-import { CRANE_SWITCHBACK_PREFIX } from './crane-yard';
+import { CRANE_RAMP_GUARD_PREFIX, CRANE_SWITCHBACK_PREFIX } from './crane-yard';
 import type { IslandData } from './types';
 import { WORLD_LOD, completelyOccluded, isSmallWorldModel,
   simplifiedWorldGeometry } from './lod';
@@ -760,6 +760,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
   // material pass. The remaining waterfall foam is already one draw.
   let cascadeBatch: { mesh: THREE.BatchedMesh; ids: Map<Job, number[]> } | undefined;
   const dummy = new THREE.Object3D();
+  const rampGuardYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
   for (const [kind, entries] of buckets) {
     const architecture = isArchitecturalKind(kind) ? buildArchitecture(kind) : null;
     let geometry = geometries.get(kind);
@@ -817,8 +818,12 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       dummy.position.set(p.x, p.y, p.z);
       dummy.rotation.set(prop.transform.rotationX ?? 0, prop.transform.rotationY, 0, 'YXZ');
       const switchMember = prop.id.startsWith(CRANE_SWITCHBACK_PREFIX);
+      const rampGuard = prop.id.startsWith(CRANE_RAMP_GUARD_PREFIX);
+      // The rail model runs along its local X. The ramp runs along local Z.
+      if (rampGuard) dummy.quaternion.multiply(rampGuardYaw);
       // Preserve the stable instance slot when connected scenery draws this prop.
       if (replacedPropIds?.has(prop.id)) dummy.scale.setScalar(0);
+      else if (rampGuard) dummy.scale.set(prop.size.z, prop.size.y, prop.size.x);
       else dummy.scale.set(prop.size.x, prop.size.y, prop.size.z);
       // The access slabs meet end to end, so fit their art to the collider edges.
       if (switchMember && switchbackSpan) dummy.scale.divide(switchbackSpan);

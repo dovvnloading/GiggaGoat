@@ -8,7 +8,7 @@ import { segmentProjection } from './terrain';
 import { findBookmark } from './viewer/bookmarks';
 import { PINES_GLADE_CASCADE } from './visual-water';
 import { PINES_LOG_ENTRY_LENGTH } from './pines-log-access';
-import { CRANE_SWITCHBACK_PREFIX } from './crane-yard';
+import { CRANE_RAMP_GUARD_PREFIX, CRANE_SWITCHBACK_PREFIX } from './crane-yard';
 
 describe('World visuals pass 2: geometry, streets and draw budget', () => {
   let island: IslandData;
@@ -83,6 +83,7 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
           } else {
             expect(movement, prop.id).toBeLessThan(0.006);
             if (prop.id.startsWith(CRANE_SWITCHBACK_PREFIX)) scale.multiply(span);
+            if (prop.id.startsWith(CRANE_RAMP_GUARD_PREFIX)) scale.set(scale.z, scale.y, scale.x);
             expect(Math.abs(scale.x - prop.size.x), prop.id).toBeLessThan(0.006);
             expect(Math.abs(scale.y - prop.size.y), prop.id).toBeLessThan(0.006);
             expect(Math.abs(scale.z - prop.size.z), prop.id).toBeLessThan(0.006);

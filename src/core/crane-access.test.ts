@@ -87,7 +87,7 @@ describe('Crane Yard public access', () => {
     }
   });
 
-  it('walks from the entry markers to the roof using all four ramps', async () => {
+  it('walks from the entry markers to the roof and back using all four ramps', async () => {
     const game = await Game.create({ seed: 'billy-isle', resolution: 193 });
     try {
       const center = game.island.pois.find(poi => poi.id === 'crane-yard')!.center;
@@ -98,7 +98,7 @@ describe('Crane Yard public access', () => {
         [.15, -13.2], [4.55, -13.2], [4.55, 5.30], [-5.19, 5.30],
       ] as const;
       const respawns = game.respawns;
-      for (const [dx, dz] of roof) {
+      const walkTo = ([dx, dz]: readonly [number, number]) => {
         let distance = Infinity;
         for (let tick = 0; tick < 420 && distance > .19; tick++) {
           const goat = game.goat.torso.translation();
@@ -108,11 +108,87 @@ describe('Crane Yard public access', () => {
         }
         expect(distance, JSON.stringify({ target: [dx, dz], actual: game.goat.torso.translation() }))
           .toBeLessThanOrEqual(.19);
-      }
+      };
+      for (const waypoint of roof) walkTo(waypoint);
       const roofGround = heightAt(game.island, center.x, center.z) + 24.25;
-      expect(game.goat.torso.translation().y).toBeGreaterThan(roofGround + .3);
-      expect(game.goat.locomotion.grounded).toBe(true);
+      walkTo([-11.07, 2.96]);
+      let clings = 0;
+      const unsubscribe = game.goat.events.on(event => {
+        if (event.type === 'wallClingStart') clings++;
+      });
+      walkTo([-5.36, 4.95]);
+      expect(game.goat.torso.translation().y).toBeCloseTo(roofGround + .59, 1);
+      expect(clings).toBe(0);
+      unsubscribe();
+      for (const waypoint of [...roof].reverse()) walkTo(waypoint);
+      walkTo([.15, 10]);
+      expect(game.goat.torso.translation().y).toBeLessThan(roofGround - 20);
       expect(game.respawns).toBe(respawns);
+    } finally {
+      game.dispose();
+    }
+  });
+
+  it('keeps the goat on the third flight when walking diagonally toward the opposite lane', async () => {
+    const game = await Game.create({ seed: 'billy-isle', resolution: 193 });
+    try {
+      const center = game.island.pois.find(poi => poi.id === 'crane-yard')!.center;
+      const deck = heightAt(game.island, center.x, center.z) + 11.85 - .02;
+      const x = center.x + .14, z = center.z + 4.6;
+      const yaw = Math.atan2(center.x + 4.55 - x, z - (center.z - 3.8));
+      game.teleport({ x, y: deck, z }, yaw);
+      for (let tick = 0; tick < 25; tick++) game.step();
+      let longestFlight = 0;
+      const unsubscribe = game.goat.events.on(event => {
+        if (event.type === 'airtimeEnd') longestFlight = Math.max(longestFlight, event.duration);
+      });
+      let lowest = Infinity;
+      for (let tick = 0; tick < 180; tick++) {
+        game.step({ moveZ: 1, cameraYaw: yaw });
+        lowest = Math.min(lowest, game.goat.torso.translation().y);
+        expect(game.goat.isRagdoll).toBe(false);
+      }
+      unsubscribe();
+      const at = game.goat.torso.translation();
+      expect(at.z).toBeLessThan(center.z + 2);
+      expect(at.x).toBeLessThan(center.x + 1.85);
+      expect(lowest).toBeGreaterThan(deck + .35);
+      expect(longestFlight).toBeLessThan(.12);
+      expect(game.goat.locomotion.grounded).toBe(true);
+      expect(game.respawns).toBe(0);
+    } finally {
+      game.dispose();
+    }
+  });
+
+  it('blocks walking into the open gaps between the ramp mouths', async () => {
+    const game = await Game.create({ seed: 'billy-isle', resolution: 193 });
+    try {
+      const center = game.island.pois.find(poi => poi.id === 'crane-yard')!.center;
+      const pad = heightAt(game.island, center.x, center.z);
+      for (const [dx, dz, height, yaw] of [
+        [2.35, 5, 11.85, 0], [-2.5, 5, 11.85, 0],
+        [2.35, -12.85, 18.05, Math.PI], [.15, 5, 24.25, 0],
+      ] as const) {
+        const deck = pad + height - .02;
+        game.teleport({ x: center.x + dx, y: deck, z: center.z + dz }, -yaw);
+        for (let tick = 0; tick < 25; tick++) game.step();
+        let lowest = Infinity;
+        let ungrounded = 0;
+        for (let tick = 0; tick < 100; tick++) {
+          game.step({ moveZ: 1, cameraYaw: yaw });
+          lowest = Math.min(lowest, game.goat.torso.translation().y);
+          if (!game.goat.locomotion.grounded) ungrounded++;
+        }
+        expect(lowest, JSON.stringify({ dx, dz })).toBeGreaterThan(deck + .4);
+        expect(ungrounded).toBeLessThanOrEqual(12);
+        for (let tick = 0; tick < 12; tick++) game.step();
+        expect(game.goat.torso.translation().y).toBeLessThan(deck + .76);
+        expect(game.goat.locomotion.grounded).toBe(true);
+        expect(game.goat.locomotion.isClinging).toBe(false);
+        expect(game.goat.isRagdoll).toBe(false);
+      }
+      expect(game.respawns).toBe(0);
     } finally {
       game.dispose();
     }

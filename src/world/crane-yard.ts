@@ -14,6 +14,7 @@ export const CRANE_YARD_PLAN = {
 } as const;
 
 export const CRANE_SWITCHBACK_PREFIX = 'crane-yard-ramp-';
+export const CRANE_RAMP_GUARD_PREFIX = CRANE_SWITCHBACK_PREFIX + 'guard-';
 
 interface YardOptions {
   idKind?: string;
@@ -81,11 +82,14 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
   // Four genuine concrete floors with open bays; their horizontal colliders
   // let goats land on each level rather than a fake solid tower-sized box.
   const { tower, crane } = CRANE_YARD_PLAN;
+  const floorBottoms = [4.5, 10.7, 16.9, 23.1];
+  const roofDeck = floorBottoms[3]! + 1.15;
   for (const x of [-32, -19, -6]) for (const z of [-18, -7, 4]) {
-    put('concrete-column', x, z, 1.65, 27.5, 1.65,
+    // Cap the column beside the rooftop gate at deck height to clear the route.
+    const height = x === -6 && z === 4 ? roofDeck : 27.5;
+    put('concrete-column', x, z, 1.65, height, 1.65,
       { fixedToPad: true, color: 0xd3d6d7 });
   }
-  const floorBottoms = [4.5, 10.7, 16.9, 23.1];
   for (const [index, bottom] of floorBottoms.entries()) {
     put('concrete-slab', tower.x, tower.z, tower.width, 1.15, tower.depth,
       { bottom, fixedToPad: true, color: 0xcdd0d1 });
@@ -247,6 +251,7 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
   // lower mouth faces the public gate and each wide landing opens to a floor.
   const front = 3.6, rear = -11.4, run = front - rear;
   const treadWidth = 3.4, treadDepth = .26, accessTint = 0x8ac9d5;
+  const landingCenterX = 1.05, landingWidth = 11.2;
   const flights = floorBottoms.map((bottom, i) => ({
     fromFront: i % 2 === 0, x: i % 2 === 0 ? .15 : 4.55,
     base: i === 0 ? -.18 : floorBottoms[i - 1]! + 1.15,
@@ -265,7 +270,7 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
         color: accessTint,
       });
     const landingZ = fromFront ? rear - 1.8 : front + 1.8;
-    put('concrete-slab', 1.05, landingZ, 11.2, .38, 3.6,
+    put('concrete-slab', landingCenterX, landingZ, landingWidth, .38, 3.6,
       { bottom: floor - .40, fixedToPad: true, color: 0x8ba2a5 });
     put('safety-rail', 1.05, landingZ + (fromFront ? -1.7 : 1.7), 10.9, 1.15, .18,
       { bottom: floor, fixedToPad: true });
@@ -307,6 +312,38 @@ export function buildCraneYard(island: IslandData): PropDescriptor[] {
     for (const side of [-1, 1]) {
       put('concrete-column', x + side * postOffset, (lowZ + highZ) / 2, .19, length, .19,
         { ...frame, bottom: (lowY + highY - length) / 2, pitch });
+    }
+  }
+  const railHeight = 1.15, railWidth = .18, landingClearance = .25;
+  for (const [index, { fromFront, x, base, floor }] of flights.entries()) {
+    const slope = floor - base;
+    const pitch = -Math.atan2(slope, run);
+    const direction = fromFront ? -1 : 1;
+    // Embed the rail feet slightly into each tread, leaving room at the turns.
+    const normalOffset = railHeight / 2 - .04;
+    const railZ = (front + rear) / 2 + direction * Math.sin(pitch) * normalOffset;
+    const railBottom = (base + floor) / 2 + Math.cos(pitch) * normalOffset - railHeight / 2;
+    const railLength = (run - 2 * landingClearance) / Math.cos(pitch);
+    for (const side of [-1, 1]) {
+      put('safety-rail', x + side * (treadWidth + railWidth) / 2, railZ,
+        railWidth, railHeight, railLength, {
+          idKind: 'ramp-guard', bottom: railBottom, fixedToPad: true,
+          yaw: fromFront ? Math.PI : 0, pitch, climbable: false,
+        });
+    }
+    // At each turn, guard the exposed lip up to the two usable ramp mouths.
+    // Only the east flight reaches the roof.
+    const westEdge = landingCenterX - landingWidth / 2;
+    const flightHalfWidth = treadWidth / 2;
+    const eastLaneStart = flights[1]!.x - flightHalfWidth;
+    const gaps: [number, number][] = index === flights.length - 1
+      ? [[westEdge, eastLaneStart]]
+      : [[westEdge, flights[0]!.x - flightHalfWidth], [flights[0]!.x + flightHalfWidth, eastLaneStart]];
+    const landingLip = fromFront ? rear - railWidth / 2 : front + railWidth / 2;
+    for (const [start, end] of gaps) {
+      put('safety-rail', (start + end) / 2, landingLip, end - start, railHeight, railWidth, {
+        idKind: 'ramp-landing-guard', bottom: floor - .02, fixedToPad: true, climbable: false,
+      });
     }
   }
   return props;
