@@ -76,8 +76,10 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
         else expect(top).toBeCloseTo(point.y + lift, 4);
         expect(positions.getY(vertex + side + 2)).toBe(top);
         const toe = positions.getY(vertex + side + 4);
-        if (run.points[0] === summitStart) expect(toe).toBeLessThanOrEqual(top - lift - .15 + .0001);
-        else expect(toe).toBeCloseTo(top - (bridge ? .77 * island.size / 600 : lift + .15), 4);
+        if (run.points[0] === summitStart) {
+          // The two splayed toes are checked against the terrain at their new locations.
+          if (pointIndex > 1 || side === 0) expect(toe).toBeLessThanOrEqual(top - lift - .15 + .0001);
+        } else expect(toe).toBeCloseTo(top - (bridge ? .77 * island.size / 600 : lift + .15), 4);
       }
       // Skirt top coordinates coincide with the asphalt edge, but have
       // independent normals so no side-facing normal leaks into the top.
@@ -374,9 +376,10 @@ describe('IS-6 joined road/trail visual ribbons', () => {
       const moved = [];
       for (let component = 0; component < previous.length; component++) {
         if (position.array[component] === previous[component]) continue;
-        const vertex = (component - 1) / 3 - first;
+        const vertex = Math.floor(component / 3) - first;
         const point = Math.floor(vertex / 6);
-        expect(component % 3).toBe(1);
+        // Only the two right toes at the summit entrance splay outwards.
+        if (component % 3 !== 1) expect([5, 11]).toContain(vertex);
         expect(point).toBeGreaterThanOrEqual(0);
         expect(point).toBeLessThan(points.length);
         expect(vertex % 6).toBeGreaterThanOrEqual(4);
@@ -417,12 +420,14 @@ describe('IS-6 joined road/trail visual ribbons', () => {
     }
   });
 
-  it('merges kept runs per type with shared mitred joints and a closed bridge underside', () => {
+  it('merges kept runs per type with shared mitred joints and a closed bridge underside', async () => {
+    await RAPIER.init();
     for (const [seed, size] of [
       ['billy-isle', 600], ['ribbon-curves', 400], ['ribbon-alt', 900],
     ] as const) {
       const island = generateIsland({ seed, size, resolution: 65 });
       const scene = createWorldScene(island, { chunkSegments: 16 });
+      const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
       try {
         const group = scene.group.getObjectByName('graded-ring-road-and-trails');
         expect(group).toBeInstanceOf(THREE.Group);
@@ -433,8 +438,45 @@ describe('IS-6 joined road/trail visual ribbons', () => {
         expect(roads.children.map(child => child.name).sort()).toEqual([
           'paths-road', 'paths-trail', 'road-centre-dashes',
         ].sort());
+
+        const summit = island.roads.find(road => road.id === SUMMIT_ASCENT_TRAIL)!.points[0];
+        const runs = roadRibbonRuns(island, 'trail');
+        const runIndex = runs.findIndex(run => run.points[0] === summit);
+        const a = runs.slice(0, runIndex).reduce((count, run) => count + run.points.length * 6, 0) + 5;
+        const b = a + 6;
+        const ribbon = roads.getObjectByName('paths-trail') as THREE.Mesh;
+        const positions = ribbon.geometry.getAttribute('position');
+        const { terrain } = buildRapierColliders(world, island);
+        const down = new THREE.Vector3(0, -1, 0);
+        const ray = new THREE.Raycaster(new THREE.Vector3(), down);
+        const camera = new THREE.PerspectiveCamera(113, 1.6, .05, 2 * size);
+        camera.position.set(0, size, 0);
+        camera.up.set(0, 0, -1);
+        camera.lookAt(0, 0, 0);
+        scene.group.updateMatrixWorld(true);
+        const nearGeometry = scene.chunks.map(chunk => chunk.geometry);
+        const scale = size / 600;
+        for (const far of [false, true]) {
+          if (far) {
+            scene.updateCulling(camera);
+            expect(scene.chunks.some((chunk, i) => chunk.geometry !== nearGeometry[i])).toBe(true);
+          }
+          for (const t of [0, .15, .5, .85, 1]) {
+            const { lerp } = THREE.MathUtils;
+            const x = lerp(positions.getX(a), positions.getX(b), t);
+            const z = lerp(positions.getZ(a), positions.getZ(b), t);
+            const toe = lerp(positions.getY(a), positions.getY(b), t);
+            ray.ray.origin.set(x, size, z);
+            const drawn = ray.intersectObjects(scene.chunks, false)[0]!.point.y;
+            const nativeRay = new RAPIER.Ray(ray.ray.origin, down);
+            const native = size - terrain.castRay(nativeRay, size, false);
+            expect(native - toe).toBeGreaterThan(.02 * scale);
+            expect(drawn).toBeCloseTo(native, 3);
+          }
+        }
       } finally {
         scene.dispose();
+        world.free();
       }
     }
   });

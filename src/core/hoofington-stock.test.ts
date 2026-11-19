@@ -4,16 +4,30 @@ import { HOOFINGTON_HAUL_BALE_PREFIX } from '../world/hoofington-entrances';
 import { Game } from './Game';
 import { isLegacyStockBale } from './HoofingtonStock';
 
+const legacyBaleIds = [
+  ...Array.from({ length: 19 }, (_, i) => 'hoofington-hay-bale-' + (20 + i)),
+  ...Array.from({ length: 16 }, (_, i) => 'detail-hoofington-hay-bale-' + (47 + i)),
+];
+const fieldArtBaleIds = Array.from({ length: 5 }, (_, i) => 'hoofington-field-art-bale-' + (i + 1));
+
 it.each(['billy-isle', 'hoofington-geometry', 'full-loop-core-test'])(
-  'seats the legacy field stock without destroying it or changing descriptors on %s', async seed => {
+  'seats legacy stock and the physical field bales without changing descriptors on %s', async seed => {
     const options = { seed, resolution: 193 };
     const game = await Game.create(options);
     try {
       expect(game.physics.stepCount).toBe(0);
       expect(hashIsland(game.island)).toBe(hashIsland(generateIsland(options)));
       const bales = game.island.props.filter(isLegacyStockBale);
-      expect(bales).toHaveLength(35);
+      expect(bales.filter(bale => bale.body.type === 'dynamic').map(bale => bale.id)).toEqual(legacyBaleIds);
+      // Authored static breakables receive movable bodies in Game but stay out of the legacy offer supply.
+      const fieldArt = bales.filter(bale => bale.body.type === 'static');
+      expect(fieldArt.map(bale => bale.id)).toEqual(fieldArtBaleIds);
+      for (const bale of fieldArt) {
+        expect(bale.breakable, bale.id).toBe(true);
+        expect(game.colliders.props.get(bale.id)?.isSensor(), bale.id).toBe(false);
+      }
       const bodies = bales.map(bale => game.colliders.bodies.get(bale.id)!);
+      expect(bodies.every(body => body.isDynamic())).toBe(true);
       const field = bales.map(bale => game.colliders.props.get(bale.id)!);
       const solidProps = game.island.props.filter(prop => prop.poiId === 'hoofington' &&
         prop.collidable && !isLegacyStockBale(prop));

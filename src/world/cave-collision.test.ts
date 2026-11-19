@@ -107,14 +107,19 @@ it('walks into the Mt. Gigga cave and stops against either visible jamb from out
   const game = await Game.create();
   try {
     const cave = game.island.props.find(p => p.kind === 'cave-mouth' && p.poiId === 'mt-gigga')!;
-    const entrance = walk(game, cave, 0, 4.4, 0, 100);
-    expect(Math.min(...entrance.map(point => point.z))).toBeLessThan(-1.2);
-    for (const side of [-1, 1]) {
-      const exterior = walk(game, cave, side * 3.5, 4.4, 0, 105);
-      const nearest = Math.min(...exterior.map(point => point.z));
-      expect(nearest).toBeGreaterThan(1.45);
-      expect(nearest).toBeLessThan(2.45);
+    const entrance = walk(game, cave, 0, 9.25, 0, 175);
+    expect(Math.min(...entrance.map(point => point.z))).toBeLessThan(-.5);
+    const left = walk(game, cave, -3.5, 4.4, 0, 105);
+    const nearLeft = Math.min(...left.map(point => point.z));
+    expect(nearLeft).toBeGreaterThan(1.45);
+    expect(nearLeft).toBeLessThan(2.45);
 
+    const right = walk(game, cave, 6.1, .2, -Math.PI / 2, 86);
+    const nearRight = Math.min(...right.map(point => point.x));
+    expect(nearRight).toBeGreaterThan(4.95);
+    expect(nearRight).toBeLessThan(5.65);
+
+    for (const side of [-1, 1]) {
       const interior = walk(game, cave, 0, .2, side * Math.PI / 2, 120);
       const furthest = Math.max(...interior.map(point => point.x * side));
       expect(furthest).toBeGreaterThan(1.9);
@@ -132,15 +137,33 @@ it('enters the lighthouse sea cave and keeps walking out of the exposed solid ma
     const cave = game.island.props.find(p => p.kind === 'cave-mouth' && p.poiId === 'old-lighthouse')!;
     const entrance = walk(game, cave, 0, 2.1, 0, 100);
     expect(Math.min(...entrance.map(point => point.z))).toBeLessThan(.85);
-    const exterior = walk(game, cave, -3.25, 3.6, 0, 75);
+    const jamb = game.colliders.props.get(cave.id + '-left-jamb')!;
+    let metJamb = false;
+    const offContact = game.physics.onContact(contact => {
+      if (contact.colliderA === jamb.handle || contact.colliderB === jamb.handle) metJamb = true;
+    });
+    const exterior = walk(game, cave, -3.4, 3.3, 0, 65);
+    offContact();
     const nearest = Math.min(...exterior.map(point => point.z));
     expect(nearest).toBeGreaterThan(2.675);
     expect(nearest).toBeLessThan(3.5);
+    expect(metJamb).toBe(true);
 
-    const interior = walk(game, cave, 0, -1.45, Math.PI / 2, 125);
-    const furthest = Math.max(...interior.map(point => point.x));
+    const liner = game.colliders.props.get(cave.id + '-right-liner')!;
+    let metLiner = false;
+    const offLiner = game.physics.onContact(contact => {
+      if (contact.colliderA === liner.handle || contact.colliderB === liner.handle) metLiner = true;
+    });
+    const interior = walk(game, cave, 1.2, -1.5, Math.PI / 2, 55);
+    offLiner();
+    // The seaward ground can drop beneath the stone. Measure the position
+    // only while the torso is at the height of the actual liner.
+    const withinLiner = interior.filter(point =>
+      point.y > -.47 * cave.size.y + .15 && point.y < .15 * cave.size.y - .15);
+    const furthest = Math.max(...withinLiner.map(point => point.x));
     expect(furthest).toBeGreaterThan(1.75);
     expect(furthest).toBeLessThan(2.385);
+    expect(metLiner).toBe(true);
     expect(game.respawns).toBe(0);
   } finally {
     game.dispose();

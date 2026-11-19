@@ -1,4 +1,4 @@
-import type { Biome, IslandData, PlotDescriptor, ReservoirDescriptor, RiverPoint, RoadDescriptor, Vec2 } from './types';
+import type { Biome, IslandData, PlotDescriptor, ReservoirDescriptor, RiverPoint, RoadDescriptor, RoadPoint, Vec2 } from './types';
 import { BIOMES } from './types';
 import { clamp, GradientNoise, hashString, lerp, smoothstep } from './random';
 
@@ -120,20 +120,24 @@ export function sculptLighthouseSeaCave(
   });
 }
 
-export const MOUNTAIN_CAVE_ANCHOR = { x: 57, z: 2 } as const;
+export const MOUNTAIN_CAVE_ANCHOR = { x: 54, z: .25, yaw: Math.PI / 2 } as const;
 
-/** A continuous landing below the Mt. Gigga rock arch and through its mouth. */
+/** Seat the mouth on the east terrace, uphill of the Spiral trail. */
 export function sculptMountainCaveLanding(
   island: Pick<IslandData, 'heights' | 'resolution' | 'size'>,
 ): void {
   const scale = island.size / 600;
-  const caveX = MOUNTAIN_CAVE_ANCHOR.x * scale, caveZ = MOUNTAIN_CAVE_ANCHOR.z * scale;
-  const floor = gridSample(island, caveX, caveZ);
-  visitDisc(island, caveX, caveZ, 12 * scale, (height, x, z) => {
-    const dx = Math.abs(x - caveX) / scale;
-    const dz = (z - caveZ) / scale;
-    const across = 1 - smoothstep(5.4, 9.8, dx);
-    const along = (1 - smoothstep(5.4, 11.5, dz)) * smoothstep(-8, -4.1, dz);
+  const { x: anchorX, z: anchorZ, yaw } = MOUNTAIN_CAVE_ANCHOR;
+  const caveX = anchorX * scale, caveZ = anchorZ * scale;
+  // Seat the shifted chamber at the level of the lower side of the terrace.
+  // Its shortened apron meets the nearby grade without lifting the trail.
+  const floor = gridSample(island, 58.5 * scale, 2.5 * scale);
+  const cos = Math.cos(yaw), sin = Math.sin(yaw);
+  visitDisc(island, caveX, caveZ, 10 * scale, (height, x, z) => {
+    const dx = (x - caveX) / scale, dz = (z - caveZ) / scale;
+    const across = 1 - smoothstep(6.25, 9.15, Math.abs(cos * dx - sin * dz));
+    const depth = sin * dx + cos * dz;
+    const along = (1 - smoothstep(2.45, 4.85, depth)) * smoothstep(-7.25, -3.6, depth);
     return lerp(height, floor, across * along);
   });
 }
@@ -297,6 +301,65 @@ export function clearTerrainUnderBridge(
       carved = lerp(carved, landingGrade, overlap * across);
     }
     return carved;
+  });
+}
+
+/**
+ * Keep terrain triangles out of the first dry uphill part of the graded
+ * trail. Lower only hill cells that would protrude above the existing grade,
+ * and leave the real bridge and its end planks to the bridge terrain pass.
+ */
+export function clearTerrainUnderTrailLanding(
+  island: Pick<IslandData, 'heights' | 'resolution' | 'size'>,
+  road: RoadDescriptor,
+  firstDry: number,
+): void {
+  const cell = island.size / (island.resolution - 1);
+  const capLength = 4 * road.width + 2 * cell;
+  const feather = Math.max(road.width, 1.5 * cell);
+  const sideFeather = .25 * cell;
+  const spans: { a: RoadPoint; b: RoadPoint; length: number; along: number; halfWidth: number }[] = [];
+  let travelled = 0;
+  for (let index = firstDry; index + 1 < road.points.length && travelled < capLength + feather; index++) {
+    const a = road.points[index]!, b = road.points[index + 1]!;
+    if (a.bridge || b.bridge) break;
+    const dx = b.x - a.x, dz = b.z - a.z;
+    const length = Math.hypot(dx, dz);
+    if (length < .05) continue;
+    // A cell vertex can support a triangle inside the trail even when the
+    // vertex is outside its painted edge. Pad by one cell across the grade.
+    const halfWidth = road.width / 2 + cell * (Math.abs(dx) + Math.abs(dz)) / length;
+    spans.push({ a, b, length, along: travelled, halfWidth });
+    travelled += length;
+  }
+  if (!spans.length) return;
+
+  const end = Math.min(travelled, capLength + feather);
+  const start = spans[0]!.a, finish = spans.at(-1)!.b;
+  const cx = (start.x + finish.x) / 2, cz = (start.z + finish.z) / 2;
+  const radius = Math.max(...spans.map(({ a, b, halfWidth }) =>
+    Math.max(Math.hypot(a.x - cx, a.z - cz), Math.hypot(b.x - cx, b.z - cz)) +
+      halfWidth + sideFeather));
+  // Leave the high hillside beyond the narrow grade instead of carving
+  // it down to the trail wherever the cell-coverage band meets it.
+  const maxCut = .85 * island.size / 600;
+  const clearance = .04 * island.size / 600;
+
+  visitDisc(island, cx, cz, radius, (height, x, z) => {
+    const point = { x, z };
+    let nearest = Infinity, grade = height, along = 0, width = 0;
+    for (const span of spans) {
+      const { t, distance } = segmentProjection(point, span.a, span.b);
+      if (distance >= nearest) continue;
+      nearest = distance;
+      grade = lerp(span.a.y, span.b.y, t) - clearance;
+      along = span.along + t * span.length;
+      width = span.halfWidth;
+    }
+    const across = 1 - smoothstep(width, width + sideFeather, nearest);
+    const entry = smoothstep(0, cell, along);
+    const exit = 1 - smoothstep(Math.max(cell, end - feather), end, along);
+    return lerp(height, clamp(grade, height - maxCut, height), entry * exit * across);
   });
 }
 

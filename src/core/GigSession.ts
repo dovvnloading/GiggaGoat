@@ -569,9 +569,19 @@ export class GigSession {
     const { goat, colliders, respawns } = this.game;
     const { previous, trail, radius } = ascent;
     ascent.previous = { ...position };
-    const travel = previous ? Math.hypot(position.x - previous.x, position.z - previous.z) : 0;
-    const onTrail = trail.some((point, index) => index > 0 &&
-      segmentProjection(position, trail[index - 1]!, point).distance <= radius);
+    const dx = previous ? position.x - previous.x : 0;
+    const dz = previous ? position.z - previous.z : 0;
+    const travel = Math.hypot(dx, dz);
+    let nearest = Infinity, towardSummit = false;
+    for (let index = 1; index < trail.length; index++) {
+      const a = trail[index - 1]!, b = trail[index]!;
+      const { distance } = segmentProjection(position, a, b);
+      if (distance >= nearest) continue;
+      nearest = distance;
+      // The authored road runs outward from the summit to the first flag.
+      towardSummit = dx * (b.x - a.x) + dz * (b.z - a.z) < 0;
+    }
+    const onTrail = nearest <= radius;
     const scale = Math.max(1, goat.size);
     ascent.interrupted ||= ascent.respawns !== respawns || !onTrail || goat.isRagdoll || !previous ||
       travel >= .45 * scale || Math.abs(position.y - previous.y) >= .35 * scale;
@@ -588,8 +598,9 @@ export class GigSession {
       ascent.interrupted = false;
     }
 
-    // Measure the supported trail height so an airborne torso cannot consume ascent.
-    if (travel > .005) ascent.peak = Math.max(ascent.peak, support.point.y);
+    // Credit supported progress toward the summit. Reconnecting to a higher
+    // edge while walking down to the earned route must not grant ascent.
+    if (towardSummit && travel > .005) ascent.peak = Math.max(ascent.peak, support.point.y);
     const climbed = Math.round((ascent.peak - ascent.startY) * 1000) / 1000;
     return climbed - run.metrics.climbed;
   }

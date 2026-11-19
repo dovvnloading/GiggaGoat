@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { Game } from '../core/Game';
-import { HOOFINGTON_HAUL_CONNECTOR } from './hoofington-entrances';
+import { RAPIER, V } from '../physics';
+import { HOOFINGTON_FIELD_ENTRANCES, HOOFINGTON_HAUL_CONNECTOR } from './hoofington-entrances';
 import type { PropDescriptor, Vec3 } from './types';
 import { generateIsland } from './island';
 import { makeLocalStreets } from './roads';
@@ -260,3 +261,69 @@ it.each(['billy-isle', 'hoofington-geometry', 'full-loop-core-test'])(
     }
   },
 );
+
+it('gives the farm shade oaks and field bales live collision without blocking the towing gate', async () => {
+  const game = await Game.create();
+  try {
+    const farm = game.island.pois.find(poi => poi.id === 'hoofington')!.center;
+    const oaks = game.island.props.filter(prop => prop.id.startsWith('hoofington-shade-oak-'));
+    const bales = game.island.props.filter(prop => prop.id.startsWith('hoofington-field-art-bale-'));
+    const art = makeHoofingtonPlacements(game.island);
+    expect(oaks).toHaveLength(3);
+    expect(bales).toHaveLength(5);
+    expect(art.some(placement => placement.model === 'hay' && !placement.source)).toBe(false);
+    for (const tree of oaks) {
+      expect(art.filter(placement => placement.source === tree)).toHaveLength(1);
+      const trunk = game.colliders.props.get(tree.id)!;
+      expect(trunk.shapeType()).toBe(RAPIER.ShapeType.Cylinder);
+      expect(trunk.radius()).toBeCloseTo(.9);
+      expect(trunk.translation().x).toBeCloseTo(tree.transform.position.x, 4);
+      expect(trunk.translation().y).toBeCloseTo(tree.transform.position.y, 4);
+      expect(trunk.translation().z).toBeCloseTo(tree.transform.position.z, 4);
+    }
+
+    const gate = HOOFINGTON_FIELD_ENTRANCES.find(entrance => entrance.towing)!;
+    const lane: Placed = {
+      id: 'west-towing-gate', kind: 'gate',
+      position: V(farm.x + gate.x, farm.y, farm.z + gate.z),
+      size: V(gate.length + 2.3, 1, gate.width), yaw: 0,
+    };
+    for (const bale of bales) {
+      expect(overlaps(asPlaced(bale), lane), bale.id).toBe(false);
+      expect(game.colliders.bodies.get(bale.id)?.isDynamic(), bale.id).toBe(true);
+      expect(game.colliders.props.get(bale.id)?.isSensor(), bale.id).toBe(false);
+    }
+
+    const oak = oaks.find(prop => prop.id === 'hoofington-shade-oak-south-east')!;
+    const trunk = game.colliders.props.get(oak.id)!;
+    const tree = oak.transform.position;
+    const start = { x: tree.x, z: tree.z + 3.8 };
+    game.teleport(V(start.x, gridSample(game.island, start.x, start.z), start.z), 0);
+    let trunkContact = false;
+    const stop = game.physics.onContact(event => {
+      if ((event.colliderA === trunk.handle && game.goat.ownsBody(event.bodyB)) ||
+        (event.colliderB === trunk.handle && game.goat.ownsBody(event.bodyA))) trunkContact = true;
+    });
+    try {
+      for (let tick = 0; tick < 30; tick++) game.step();
+      for (let tick = 0; tick < 100; tick++) game.step({ moveZ: 1, cameraYaw: 0 });
+    } finally { stop(); }
+    expect(trunkContact).toBe(true);
+
+    const bale = game.colliders.bodies.get('hoofington-field-art-bale-4')!;
+    const spot = bale.translation();
+    const x = spot.x - 2.2;
+    const yaw = Math.PI / 2;
+    game.teleport(V(x, gridSample(game.island, x, spot.z), spot.z), -yaw);
+    for (let tick = 0; tick < 30; tick++) game.step({ cameraYaw: yaw });
+    for (let tick = 0; tick < 8; tick++) game.step({ cameraYaw: yaw, tongue: true });
+    expect(game.goat.interactions.tongueBody?.handle).toBe(bale.handle);
+    const before = bale.translation();
+    for (let tick = 0; tick < 40; tick++) game.step({ cameraYaw: yaw, moveZ: -1, tongue: true, reelTongue: true });
+    const after = bale.translation();
+    expect(Math.hypot(after.x - before.x, after.z - before.z)).toBeGreaterThan(.2);
+    expect(game.respawns).toBe(0);
+  } finally {
+    game.dispose();
+  }
+});
