@@ -8,6 +8,7 @@ import { GigCatalog, GigDirector } from '../gigs';
 import { createWorldScene, generateIsland, heightAt } from '../world';
 import { boardwalkFarEnd, boardwalkPierDecks, SPLASH_DIVE_BOARD_ID } from '../world/boardwalk';
 import { DAM_DECK_HEIGHT, getDamPlacement } from '../world/the-dam';
+import { DAM_PINES_ROAD } from '../world/roads';
 
 const create = (): Promise<Game> => Game.create({ seed: 'first-playable-test', resolution: 97 });
 const ticks = (game: Game, count: number, input: Parameters<Game['step']>[0] = {}): void => {
@@ -431,6 +432,30 @@ describe('Walkable roads and coastal routes', () => {
 
       walkTo(game, finish);
       expect(game.respawns).toBe(0);
+    } finally { game.dispose(); }
+  });
+
+  it('keeps normal walking grounded both ways over the Dam–Pines asphalt bridge', async () => {
+    const game = await Game.create();
+    try {
+      const road = game.island.roads.find(item => item.id === DAM_PINES_ROAD)!;
+      const first = road.points.findIndex(point => point.bridge);
+      const last = road.points.reduce((index, point, i) => point.bridge ? i : index, -1);
+      expect(first).toBeGreaterThan(1);
+      expect(last).toBeGreaterThan(first);
+      const route = road.points.slice(first - 2, last + 3);
+      standAt(game, route[0]!.x, route[0]!.z);
+      const events: string[] = [];
+      game.goat.events.on(event => {
+        if (event.type === 'airtimeStart' || event.type === 'ragdollStart') events.push(event.type);
+      });
+      const roundTrip = [...route.slice(1), ...route.slice(0, -1).reverse()];
+      for (const point of roundTrip) {
+        walkTo(game, point);
+        expect(game.goat.locomotion.grounded, `crossing at ${point.x}, ${point.z}`).toBe(true);
+      }
+      expect(game.respawns).toBe(0);
+      expect(events).toEqual([]);
     } finally { game.dispose(); }
   });
 

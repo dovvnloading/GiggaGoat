@@ -1,12 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { createWorldScene, generateIsland } from './index';
+import RAPIER from '@dimforge/rapier3d-compat';
+import { buildRapierColliders, createWorldScene, generateIsland } from './index';
+import { DAM_PINES_BRIDGE_PREFIX, DAM_PINES_ROAD } from './roads';
 import { roadRibbonData, roadRibbonRuns, SUMMIT_ASCENT_TRAIL } from './road-ribbons';
 import { getDamPlacement } from './the-dam';
 import type { IslandData, RoadPoint } from './types';
 import { TOON_RAMP } from './visual-props';
 
 type Surface = 'road' | 'trail';
+
+function pavedBridgeSpans(island: IslandData) {
+  const road = island.roads.find(item => item.id === DAM_PINES_ROAD);
+  if (!road) return [];
+  return road.points.slice(0, -1).flatMap((p, i) => {
+    const q = road.points[i + 1]!;
+    return (p.bridge || q.bridge) && Math.hypot(q.x - p.x, q.z - p.z) >= .05 ? [{ p, q, i }] : [];
+  });
+}
 
 function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): void {
   const found = group.children.filter(child => child.name === 'paths-' + type);
@@ -25,13 +36,16 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
 
   const runs = roadRibbonRuns(island, type);
   const segments = runs.reduce((sum, run) => sum + run.points.length - 1, 0);
+  const pavedSpans = type === 'road' ? pavedBridgeSpans(island) : [];
+  const bridgePoints = new Set(pavedSpans.flatMap(({ p, q }) => [p, q]));
+  const bridgeEnds = new Map(pavedSpans.map(({ p, q }) => [p, q]));
   const positions = surface.geometry.getAttribute('position');
   const crossSections = surface.geometry.getAttribute('roadCrossSection');
   if (type === 'road') expect(crossSections.count).toBe(positions.count);
   else expect(crossSections).toBeUndefined();
   const normals = surface.geometry.getAttribute('normal');
   const indices = surface.geometry.getIndex()!;
-  expect(indices.count / 3).toBe(6 * segments);
+  expect(indices.count / 3).toBe(6 * segments + 2 * pavedSpans.length);
   expect(positions.count).toBe(6 * runs.reduce((sum, run) => sum + run.points.length, 0));
   const lift = type === 'road' ? 0.2 : 0.19;
   const damTrailEnd = island.roads.find(road => road.id === 'mt-gigga--the-dam')?.points.at(-1);
@@ -46,7 +60,9 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
       // Each segment connects to the identical left/right edge at a joint.
       expect((lx + rx) / 2).toBeCloseTo(point.x, 3);
       expect((lz + rz) / 2).toBeCloseTo(point.z, 3);
-      const mitre = Math.hypot(lx - point.x, lz - point.z) / ((run.widths?.[pointIndex] ?? run.width) / 2);
+      const bridge = bridgePoints.has(point);
+      const halfWidth = (run.widths?.[pointIndex] ?? run.width) / 2 + (bridge ? .5 : 0);
+      const mitre = Math.hypot(lx - point.x, lz - point.z) / halfWidth;
       expect(mitre).toBeGreaterThanOrEqual(0.999);
       expect(mitre).toBeLessThanOrEqual(2.001);
       const damTerminal = type === 'trail' && run.points.at(-1) === damTrailEnd &&
@@ -58,7 +74,7 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
         expect(positions.getY(vertex + side + 2)).toBe(top);
         const toe = positions.getY(vertex + side + 4);
         if (run.points[0] === summitStart) expect(toe).toBeLessThanOrEqual(top - lift - .15 + .0001);
-        else expect(toe).toBeCloseTo(top - lift - .15, 4);
+        else expect(toe).toBeCloseTo(top - (bridge ? .77 * island.size / 600 : lift + .15), 4);
       }
       // Skirt top coordinates coincide with the asphalt edge, but have
       // independent normals so no side-facing normal leaks into the top.
@@ -70,8 +86,7 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
       expect(normals.getY(vertex + 1)).toBeGreaterThan(0);
       if (crossSections) for (let side = 0; side < 6; side++) {
         expect(crossSections.getX(vertex + side)).toBe(side % 2 ? 1 : -1);
-        expect(crossSections.getY(vertex + side)).toBeCloseTo(
-          (run.widths?.[pointIndex] ?? run.width) / 2, 5);
+        expect(crossSections.getY(vertex + side)).toBeCloseTo(halfWidth, 5);
       }
       vertex += 6;
     }
@@ -91,7 +106,8 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
       }
       priorLeft = endLeft;
       priorRight = endRight;
-      index += 18; // 2 top + 2 left skirt + 2 right skirt triangles
+      const bridge = bridgeEnds.get(run.points[i]!) === run.points[i + 1];
+      index += bridge ? 24 : 18; // Top, skirts, and the underside on the paved bridge.
     }
   }
   expect(vertex).toBe(positions.count);
@@ -107,6 +123,66 @@ function isCrossingDash(island: IslandData, a: RoadPoint, b: RoadPoint): boolean
 }
 
 describe('IS-6 joined road/trail visual ribbons', () => {
+  it.each([
+    { seed: 'billy-isle', size: 600, resolution: 193 },
+    { seed: 'cy-12-west-approach', size: 450, resolution: 97 },
+    { seed: 9137, size: 900, resolution: 97 },
+  ])('matches visible and physical Dam–Pines bridge surfaces ($size m)', async options => {
+    await RAPIER.init();
+    const island = generateIsland(options);
+    const road = island.roads.find(item => item.id === DAM_PINES_ROAD)!;
+    const view = createWorldScene(island);
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    try {
+      const { paths, props, terrain } = buildRapierColliders(world, island);
+      const roadMesh = view.group.getObjectByName('paths-road')!;
+      const down = new THREE.Vector3(0, -1, 0);
+      const up = new THREE.Vector3(0, 1, 0);
+      const scale = island.size / 600;
+      function verify(x: number, z: number, deck: RAPIER.Collider, label: string) {
+        const origin = new THREE.Vector3(x, 45, z);
+        const rendered = new THREE.Raycaster(origin, down).intersectObject(roadMesh)[0]!.distance;
+        const ray = new RAPIER.Ray(origin, down);
+        const paved = paths[0]!.castRay(ray, 45, false);
+        expect(paved, label).toBeGreaterThan(0);
+        expect(paved, label).toBeCloseTo(rendered, 4);
+        const slab = deck.castRay(ray, 45, false);
+        expect(slab - paved, label).toBeGreaterThan(.05 * scale);
+        expect(slab - paved, label).toBeLessThan(.10 * scale);
+        const ground = terrain.castRay(ray, 45, false);
+        if (ground >= 0) expect(paved - ground, label).toBeLessThan(.06 * scale);
+      }
+
+      const spans = pavedBridgeSpans(island);
+      expect(spans).toHaveLength(6);
+      for (const { p, q, i } of spans) {
+        const id = DAM_PINES_BRIDGE_PREFIX + i;
+        const deck = props.get(id)!;
+        expect(deck.shape.type, id).toBe(RAPIER.ShapeType.ConvexPolyhedron);
+        expect(deck.parent(), id).toBeNull();
+        const dx = q.x - p.x, dz = q.z - p.z, length = Math.hypot(dx, dz);
+        for (const progress of [.02, .2, .5, .8, .98]) {
+          for (const across of [-.95, -.5, 0, .5, .95]) {
+            const side = (road.width + 1) / 2 * across;
+            verify(p.x + dx * progress - dz * side / length,
+              p.z + dz * progress + dx * side / length, deck, id + '/' + progress + '/' + across);
+          }
+        }
+        const origin = new THREE.Vector3((p.x + q.x) / 2, (p.y + q.y) / 2 - 1.5 * scale, (p.z + q.z) / 2);
+        const underside = deck.castRay(new RAPIER.Ray(origin, up), 2 * scale, false);
+        const drawnUnderside = new THREE.Raycaster(origin, up).intersectObject(roadMesh)[0]!.distance;
+        expect(underside, id).toBeGreaterThan(0);
+        expect(Math.abs(underside - drawnUnderside), id).toBeLessThan(.01 * scale);
+      }
+      if (options.seed === 'billy-isle') {
+        verify(-120.9846, -176.6251, props.get(DAM_PINES_BRIDGE_PREFIX + '27')!, 'reported hoof overlap');
+      }
+    } finally {
+      view.dispose();
+      world.free();
+    }
+  });
+
   it('shows world-space asphalt wear and a narrow shoulder on the original strip', () => {
     const island = generateIsland();
     const view = createWorldScene(island);
@@ -274,7 +350,7 @@ describe('IS-6 joined road/trail visual ribbons', () => {
     }
   });
 
-  it('merges kept runs per type with six triangles per segment and shared mitred joints', () => {
+  it('merges kept runs per type with shared mitred joints and a closed bridge underside', () => {
     for (const [seed, size] of [
       ['billy-isle', 600], ['ribbon-curves', 400], ['ribbon-alt', 900],
     ] as const) {
