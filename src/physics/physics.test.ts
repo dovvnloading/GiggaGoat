@@ -233,6 +233,26 @@ describe('real Rapier physics simulation', () => {
     expect(maxHeight).toBeGreaterThan(2);
   });
 
+  it('releases immediately when the last foothold disappears while movement is held', async () => {
+    const w = await scene(), g = goat(w);
+    const wall = w.raw.createCollider(RAPIER.ColliderDesc.cuboid(3, 8, .2)
+      .setTranslation(0, 7.9, -2).setCollisionGroups(collisionGroups('terrain')));
+    simulate(w, 1);
+    g.locomotion.setInput({ z: 1 });
+    for (let i = 0; i < 180; i++) {
+      w.step(1 / 60);
+      if (g.locomotion.isClinging && g.torso.translation().y > 2.4) break;
+    }
+    expect(g.locomotion.climbSurface?.collider.handle).toBe(wall.handle);
+    const rising = g.torso.linvel().y;
+    w.raw.removeCollider(wall, true);
+    w.step(1 / 60);
+    expect(g.locomotion.isClinging).toBe(false);
+    expect(g.locomotion.climbSurface).toBeNull();
+    simulate(w, .2);
+    expect(g.torso.linvel().y).toBeLessThan(rising - 1);
+  });
+
   it.each([[58, .55], [58, 1], [65, .55], [65, 1]])(
     'climbs a %i degree face when the leading head reaches it at input %f', async (angle, input) => {
       const w = await scene(), g = goat(w, .6);

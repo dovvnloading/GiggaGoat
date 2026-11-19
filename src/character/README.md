@@ -88,7 +88,10 @@ to those authored speeds (with a safety clamp), and speed is compensated by the
 physics controller's size^.16 speed scale. `Headbutt`, `Bleat` and
 `Jump` run as short `LoopOnce`, clamped one-shots. A physical takeoff triggers
 Jump automatically; explicit `play` calls can change one-shot duration.
-Legacy actions such as `flop`, `tongue-grab`, `wall-climb`, and `glide`
+Wall climbing turns the animated goat belly-to-wall using the Rapier contact
+plane. Diagonal hoof pairs plant, push and reach as the torso travels up the
+face. The same distance-driven stride loads the physical leg joints.
+Legacy actions such as `flop`, `tongue-grab`, and `glide`
 remain accepted, with their closest available rig expression. The legacy
 implementation retains all the old procedural expression detail and tests.
 
