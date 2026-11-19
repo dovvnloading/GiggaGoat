@@ -2,9 +2,9 @@ import * as THREE from 'three';
 import type { Biome, IslandData, PropKind, Vec2, Vec3 } from './types';
 import { BIOMES } from './types';
 import { clamp, smoothstep } from './random';
-import { gridCoordinate, gridIndex } from './terrain';
+import { gridCoordinate, gridIndex, segmentProjection } from './terrain';
 import { groundGrain, groundGrainTexture } from './ground-kit-grain';
-import { terrainRockAtlas } from './terrain-paint';
+import { terrainCliffMaps, terrainRockAtlas } from './terrain-paint';
 import { paintDowntownGround } from './downtown-public-space';
 import { buildRoadsideSigns, paintRoadsideGravel } from './visual-roadside-stops';
 import { makeVillageGroundPaint, paintAsphalt } from './surface-paint';
@@ -161,6 +161,12 @@ function terrainGeometry(
     paved: ['downtown-bleatsville', 'crane-yard', 'the-dam'].includes(set.district),
   }))).filter(p => Math.abs(p.centre.x - cx) <= countX * metres / 2 + p.radius &&
     Math.abs(p.centre.z - cz) <= countZ * metres / 2 + p.radius);
+  const approachWidth = 3.4 * scale;
+  const approaches = (island.districtSets ?? []).filter(({ approach: { from, to } }) =>
+    Math.min(from.x, to.x) <= cx + countX * metres / 2 + approachWidth &&
+    Math.max(from.x, to.x) >= cx - countX * metres / 2 - approachWidth &&
+    Math.min(from.z, to.z) <= cz + countZ * metres / 2 + approachWidth &&
+    Math.max(from.z, to.z) >= cz - countZ * metres / 2 - approachWidth);
   const sample = (x: number, z: number): number =>
     island.heights[gridIndex(n, Math.max(0, Math.min(n - 1, x)),
       Math.max(0, Math.min(n - 1, z)))]!;
@@ -236,6 +242,15 @@ function terrainGeometry(
       const weight = 1 - smoothstep(.09, 1, ratio);
       if (weight > wear) { wear = weight; soil = patch.paint; paved = patch.paved; }
     }
+    // Paint the surveyed route from the public path to the pad, including the verge.
+    for (const site of approaches) {
+      const distance = segmentProjection({ x, z }, site.approach.from, site.approach.to).distance;
+      const weight = .87 * (1 - smoothstep(.75 * scale, approachWidth, distance));
+      if (weight <= wear) continue;
+      wear = weight;
+      soil = DISTRICT_GROUND[site.district];
+      paved = site.district === 'the-dam' || site.district === 'downtown-bleatsville' || site.district === 'crane-yard';
+    }
     if (soil) color.lerp(soil, wear * (.80 + fine * .09));
     const concrete = (1 - cliff) * Math.max(paved ? wear : 0, biome === 'industrial' ? .82 : 0);
     const softGround = Math.max(0, 1 - cliff - concrete);
@@ -290,7 +305,10 @@ function buildTerrain(island: IslandData, segments: number,
     vertexColors: true, gradientMap: TERRAIN_RAMP, side: THREE.FrontSide,
   });
   // One filtered sample carries the continuous grass/stone edge and foot shadow at both LODs.
-  const rockMask = new THREE.DataTexture(terrainRockAtlas(island), n, n, THREE.RGFormat);
+  const cliffData = terrainRockAtlas(island);
+  terrainCliffMaps.set(material, { data: cliffData, size: island.size, samples: n,
+    stone: COLORS.rock, mountainStone: MT_GIGGA_STONE });
+  const rockMask = new THREE.DataTexture(cliffData, n, n, THREE.RGFormat);
   rockMask.magFilter = THREE.LinearFilter;
   rockMask.minFilter = THREE.LinearMipmapLinearFilter;
   rockMask.generateMipmaps = true;

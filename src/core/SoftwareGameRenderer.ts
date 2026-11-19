@@ -4,6 +4,7 @@ import { SoftwareAtmosphere } from './SoftwareAtmosphere';
 import { SoftwareFrame, pixel, type ClipVertex, type SoftwareTexture } from './SoftwareFrame';
 import { softwareGeometry } from './software-geometry';
 import { softwareDamWater, softwareSea } from './software-sea';
+import { paintCliffVertex, terrainCliffMaps } from '../world/terrain-paint';
 import { surfacePaintMaps } from '../world/surface-paint';
 import type { SoftwareGeometry } from './software-geometry';
 import type { SoftwareRaster } from './SoftwareRaster';
@@ -222,6 +223,7 @@ export class SoftwareGameRenderer {
     const tint = new Uint32Array(data.sources.length);
     const colour = mesh.geometry.getAttribute('color'), normal = mesh.geometry.getAttribute('normal');
     const base = material.color ?? this.white;
+    const cliffs = terrainCliffMaps.get(material);
     for (let i = 0; i < tint.length; i++) {
       const source = data.sources[i]!;
       const x = data.positions[3 * i]! + mesh.matrixWorld.elements[12];
@@ -230,6 +232,11 @@ export class SoftwareGameRenderer {
       let r = base.r * (colour ? colour.getX(source) : 1);
       let g = base.g * (colour ? colour.getY(source) : 1);
       let b = base.b * (colour ? colour.getZ(source) : 1);
+      if (cliffs) {
+        this.diffuse.setRGB(r, g, b);
+        paintCliffVertex(this.diffuse, cliffs, x, data.positions[3 * i + 1]! + mesh.matrixWorld.elements[13], z);
+        ({ r, g, b } = this.diffuse);
+      }
       if (u >= 0 && u < 1 && v >= 0 && v < 1) {
         const at = Math.floor(v * map.samples) * map.samples + Math.floor(u * map.samples);
         if (map.kind === 'road') {

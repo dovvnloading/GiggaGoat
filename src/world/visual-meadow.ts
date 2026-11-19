@@ -8,7 +8,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { IslandData } from './types';
 import { BIOMES } from './types';
 import { hashString, SeededRandom } from './random';
-import { gridIndex, gridSample } from './terrain';
+import { gridIndex, gridSample, segmentProjection } from './terrain';
 import { makeLocalStreets } from './roads';
 import { CRANE_YARD_PLAN } from './crane-yard';
 import { loadGroundedKitGeometry } from './library-props';
@@ -53,9 +53,11 @@ export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof s
   const yardClearings = (island.districtSets ?? []).flatMap(set => set.pieces.map(piece => ({
     x: piece.bottom.x, z: piece.bottom.z, radius: (piece.length * .72 + .5 * scale) ** 2,
   })));
+  const approaches = (island.districtSets ?? []).map(set => set.approach);
   const roadside = roadsideStops(island);
   function outsideObstacles(x: number, z: number): boolean {
     if (roadsideGravelAt(roadside, x, z)) return false;
+    if (approaches.some(path => segmentProjection({ x, z }, path.from, path.to).distance < 1.25 * scale)) return false;
     if (yardClearings.some(yard => (x - yard.x) ** 2 + (z - yard.z) ** 2 < yard.radius)) return false;
     for (const road of roadSamples) {
       const dx = x - road.x, dz = z - road.z;

@@ -3,11 +3,25 @@ import { describe, expect, it } from 'vitest';
 import { createWorldScene, generateIsland } from './index';
 import { gridIndex, gridSample, segmentProjection } from './terrain';
 import { groundGrain } from './ground-kit-grain';
+import { paintCliffVertex } from './terrain-paint';
 import { mountainCuts } from './visual-mountain';
 import { MOUNTAIN_SPIRAL_BRIDGE_PREFIX } from './roads';
 import { Game } from '../core/Game';
 
 describe('Mt. Gigga grassy tiers and fragment stone (MG-7 / IS-15)', () => {
+  it('keeps level turf green and exposes stratified cliff paint without a shader', () => {
+    const rock = new THREE.Color(0xa39a96);
+    const cliffs = { data: Uint8Array.of(0, 0, 255, 60, 0, 0, 255, 60), samples: 2, size: 600,
+      stone: new THREE.Color(0x8c919e), mountainStone: rock };
+    const grass = new THREE.Color(0x86ad56), rim = grass.clone(), lower = grass.clone(), upper = grass.clone();
+    paintCliffVertex(rim, cliffs, -2, 50, 0);
+    paintCliffVertex(lower, cliffs, 2, 50, 0);
+    paintCliffVertex(upper, cliffs, 2, 57, 0);
+    expect(rim.equals(grass)).toBe(true);
+    expect(lower.r).toBeGreaterThan(lower.g);
+    expect(Math.abs(upper.r - lower.r)).toBeGreaterThan(.02);
+  });
+
   it('keeps flat tiers and steep risers grassy in the vertex buffer', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
     // Test the mountain palette independently of the unchanged trail paint.
