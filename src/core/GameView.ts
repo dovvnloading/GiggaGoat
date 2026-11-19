@@ -446,17 +446,24 @@ export class GameView {
               marker.type === 'destination', sampleGround));
             continue;
           }
+          const demolitionApproach = config.kind === 'demolition-contract' && marker.type === 'start';
           const group = new THREE.Group();
           group.position.copy(vec(marker.position));
           const ring = new THREE.Mesh(new THREE.RingGeometry(
             Math.max(1.15, marker.radius * .65), Math.max(1.5, marker.radius * .65 + .38), 32),
             new THREE.MeshBasicMaterial({ color: marker.type === 'destination' ? 0x88ffcb : 0xffd833,
-              side: THREE.DoubleSide, transparent: true, opacity: .78, depthWrite: false }));
+              side: THREE.DoubleSide, transparent: !demolitionApproach,
+              opacity: demolitionApproach ? 1 : .78, depthWrite: demolitionApproach }));
           ring.rotation.x = -Math.PI / 2; ring.position.y = .15; group.add(ring);
-          const arrow = new THREE.Mesh(new THREE.ConeGeometry(.7, 1.2, 5),
-            new THREE.MeshToonMaterial({ color: 0xffd833, emissive: 0x7a4cff, emissiveIntensity: .5 }));
-          arrow.position.y = 3; group.add(arrow);
-          group.add(this.textSprite(marker.label, 4.6, 1.15, 4.2));
+          // The painted approach stays below the tower silhouette as the player lines up a strike.
+          if (demolitionApproach) {
+            ring.name = 'demolition-approach-ring';
+          } else {
+            const arrow = new THREE.Mesh(new THREE.ConeGeometry(.7, 1.2, 5),
+              new THREE.MeshToonMaterial({ color: 0xffd833, emissive: 0x7a4cff, emissiveIntensity: .5 }));
+            arrow.position.y = 3; group.add(arrow);
+            group.add(this.textSprite(marker.label, 4.6, 1.15, 4.2));
+          }
           this.gigMarkers.add(group);
         }
         for (const spawn of run.setup.spawns) {

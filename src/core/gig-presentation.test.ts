@@ -29,6 +29,51 @@ describe('Summit Sprint wayfinding', () => {
   });
 });
 
+describe('Demolition Contract wayfinding', () => {
+  it('keeps the board-side mark steady and below the tower while preserving the legacy beacon', async () => {
+    const game = await Game.create({ resolution: 97 });
+    const markers = new THREE.Group();
+    const setup = game.gigs.director.startPractice('demolition-contract', 'easy');
+    const run = game.gigs.active!;
+    const renderedGigs = { active: { ...run, setup: { ...setup, spawns: [] } } };
+    const view = Object.assign(Object.create(GameView.prototype) as {
+      updateGigVisuals(alpha: number): void;
+    }, {
+      game: { gigs: renderedGigs, physics: { time: 0 } },
+      displayedGig: -1, gigMarkers: markers, gigProps: new Map(), textTextures: new Set(),
+      input: { device: 'keyboard-mouse' },
+      textSprite: () => new THREE.Sprite(),
+    });
+    try {
+      view.updateGigVisuals(0);
+      const mark = markers.children[0]!;
+      const paint = mark.getObjectByName('demolition-approach-ring') as
+        THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
+      const { x, y, z } = setup.markers[0]!.position;
+      expect(mark.position.toArray()).toEqual([x, y, z]);
+      expect(mark.children).toEqual([paint]);
+      expect(paint.geometry).toBeInstanceOf(THREE.RingGeometry);
+      expect(paint.position.y).toBeCloseTo(.15);
+      expect(paint.material).toMatchObject({ transparent: false, opacity: 1, depthWrite: true });
+      view.game.physics.time = Math.PI / 6;
+      view.updateGigVisuals(0);
+      expect(paint.material.opacity).toBe(1);
+
+      const legacy = game.gigs.catalog['buildVariant'](setup.offer, true);
+      renderedGigs.active = { ...run, attemptId: run.attemptId + 1, setup: { ...legacy, spawns: [] } };
+      view.updateGigVisuals(0);
+      const beacon = markers.children[0]!;
+      expect(beacon.children).toHaveLength(3);
+      expect((beacon.children[1] as THREE.Mesh).geometry).toBeInstanceOf(THREE.ConeGeometry);
+      expect(beacon.children[2]).toBeInstanceOf(THREE.Sprite);
+    } finally {
+      renderedGigs.active.status = 'failed';
+      view.updateGigVisuals(0);
+      game.dispose();
+    }
+  });
+});
+
 describe('Splash contract wayfinding', () => {
   it.each(['splash-dive', 'dam-bomb'] as const)(
     'switches %s from the approach label to the water target and resets on a retry', async id => {
