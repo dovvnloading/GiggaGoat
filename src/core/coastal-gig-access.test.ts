@@ -10,12 +10,13 @@ function settle(game: Game, ticks: number, intent: Parameters<Game['step']>[0] =
   for (let i = 0; i < ticks; i++) game.step(intent);
 }
 
-function walkTo(game: Game, target: Vec3, radius = .62): void {
+function walkTo(game: Game, target: Vec3, radius = .62, afterStep?: () => void): void {
   for (let i = 0; i < 850; i++) {
     const p = game.goat.torso.translation();
     const x = target.x - p.x, z = target.z - p.z;
     if (Math.hypot(x, z) < radius) return;
     game.step({ moveZ: 1, cameraYaw: Math.atan2(x, -z) });
+    afterStep?.();
   }
   const actual = game.goat.torso.translation();
   throw new Error('Walk stopped at ' + JSON.stringify(actual) + ' toward ' + JSON.stringify(target));
@@ -97,6 +98,45 @@ describe('Beacon and Dam access from their playable boards', () => {
       const retreated = game.goat.torso.translation();
       expect(retreated.z).toBeLessThan(contact.z - 1.7);
       expect(game.respawns).toBe(0);
+    } finally {
+      game.dispose();
+    }
+  });
+
+  it('walks the mountain trail from the Dam board and back without entering water', async () => {
+    const game = await Game.create({ seed: 'billy-isle' });
+    try {
+      const board = game.gigs.boards.find(entry => entry.poiId === 'the-dam')!;
+      const trail = game.island.roads.find(road => road.id === 'mt-gigga--the-dam')!;
+      const { position, scale } = getDamPlacement(game.island);
+      // Start beyond the former waterlogged approach, at the original foothills.
+      const fromBoard = [...trail.points].reverse();
+      const foothill = fromBoard.findIndex(point => point.z > position.z + 71 * scale);
+      expect(foothill).toBeGreaterThan(0);
+      const waypoints = fromBoard.slice(0, foothill + 1);
+      game.teleport(board.position, 0);
+      settle(game, 35);
+      expect(game.gigs.nearBoard()).toBe('the-dam');
+
+      let steps = 0;
+      let greatestGroundDistance = 0;
+      const check = () => {
+        steps++;
+        const point = game.goat.torso.translation();
+        const immersion = game.water.sample(game.goat.torso);
+        if (immersion.fraction > 0)
+          throw new Error('Goat entered ' + immersion.volumeId + ' at ' + JSON.stringify(point));
+        if (game.goat.isRagdoll || game.goat.locomotion.isClinging || game.respawns)
+          throw new Error('Goat lost control on the trail at ' + JSON.stringify(point));
+        greatestGroundDistance = Math.max(greatestGroundDistance,
+          game.goat.locomotion.groundHit?.distance ?? Infinity);
+      };
+      for (const point of waypoints.slice(1)) walkTo(game, point, .60, check);
+      for (const point of waypoints.slice(0, -1).reverse()) walkTo(game, point, .60, check);
+
+      expect(steps).toBeGreaterThan(1000);
+      expect(greatestGroundDistance).toBeLessThan(1.15);
+      expect(game.gigs.nearBoard()).toBe('the-dam');
     } finally {
       game.dispose();
     }

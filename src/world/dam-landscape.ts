@@ -2,6 +2,7 @@ import type { IslandData, RoadPoint } from './types';
 import { gridCoordinate, gridIndex, gridSample, segmentProjection } from './terrain';
 import { lerp, smoothstep } from './random';
 import { getDamPlacement } from './the-dam';
+import { DAM_MOUNTAIN_TRAIL, damMountainTrailDirt, fitDamMountainTrail } from './roads';
 
 /** Metres in the Dam model's +Z (downstream) coordinates, at island size 600. */
 export interface DamChannelSection {
@@ -107,6 +108,7 @@ function headwaterBankDistance(x: number, z: number): number {
 
 /** Regrade the rear service road above the new lake on its existing centerline. */
 export function sculptDamHeadwater(island: IslandData): void {
+  fitDamMountainTrail(island);
   const basin = getDamHeadwater(island);
   const { position, scale, level } = basin;
   const { heights, size, resolution: n } = island;
@@ -117,31 +119,36 @@ export function sculptDamHeadwater(island: IslandData): void {
   const local = (p: Pick<RoadPoint, 'x' | 'z'>) => ({
     x: (p.x - position.x) / scale, z: (p.z - position.z) / scale,
   });
-  const routes = island.roads.filter(road => road.from === 'the-dam' || road.to === 'the-dam');
-  const grade = (road: typeof routes[number]) => {
+  const routes = island.roads.filter(road => road.from === 'the-dam' || road.to === 'the-dam').map(road => ({
+    road, points: road.id === DAM_MOUNTAIN_TRAIL ? damMountainTrailDirt(island, road) : road.points,
+  }));
+  const grade = ({ road, points }: typeof routes[number]) => {
     const limit = road.type === 'road' ? .17 : .24;
+    const pavedJunction = points.length < road.points.length ? points.at(-1) : undefined;
     const lift = (a: RoadPoint, b: RoadPoint) => {
+      if (b === pavedJunction) return;
       const { x, z } = local(b);
       if (Math.abs(x) > 70 || z > 7 || z < -81) return;
       b.y = Math.max(b.y, a.y - limit * Math.hypot(b.x - a.x, b.z - a.z));
     };
-    for (let i = 1; i < road.points.length; i++) lift(road.points[i - 1]!, road.points[i]!);
-    for (let i = road.points.length - 2; i >= 0; i--) lift(road.points[i + 1]!, road.points[i]!);
+    for (let i = 1; i < points.length; i++) lift(points[i - 1]!, points[i]!);
+    for (let i = points.length - 2; i >= 0; i--) lift(points[i + 1]!, points[i]!);
   };
-  for (const road of routes) {
-    junctions.push(road.from === 'the-dam' ? road.points[0]! : road.points[road.points.length - 1]!);
+  for (const route of routes) {
+    const { road, points } = route;
+    junctions.push(road.from === 'the-dam' ? road.points[0]! : road.points.at(-1)!);
     if (road.type === 'road') {
-      for (const p of road.points) {
+      for (const p of points) {
         const { x, z } = local(p);
         const besideBasin = 1 - smoothstep(5, 15, headwaterBankDistance(x, z));
         const rearApproach = 1 - smoothstep(-7, -1, z);
         const weight = besideBasin * rearApproach;
         p.y = Math.max(p.y, p.y + (crest - p.y) * weight);
       }
-      grade(road);
+      grade(route);
     }
-    for (let i = 1; i < road.points.length; i++) {
-      const a = road.points[i - 1]!, b = road.points[i]!;
+    for (let i = 1; i < points.length; i++) {
+      const a = points[i - 1]!, b = points[i]!;
       const m = local({ x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 });
       if (Math.abs(m.x) <= 68 && m.z >= -79 && m.z <= 8) segments.push({ a, b, width: road.width });
     }
@@ -193,17 +200,38 @@ export function sculptDamHeadwater(island: IslandData): void {
   const board = island.pois.find(poi => poi.id === 'the-dam')!.center;
   board.y = gridSample(island, board.x, board.z);
 
-  // The rest of island generation has already run its seeded dressing.
-  // Re-seat the back-bank scenery and cull detached plants in the new water.
+  const mountain = routes.find(route => route.road.id === DAM_MOUNTAIN_TRAIL);
+  const lowerDirt = mountain?.points.slice(1).flatMap((b, i) => {
+    const a = mountain.points[i]!;
+    return Math.max(a.z, b.z) <= position.z + 80 * scale && !a.bridge && !b.bridge
+      ? [{ a, b }] : [];
+  }) ?? [];
+
+  // The seeded dressing is already in place. Keep the lower trail open and
+  // re-seat the back-bank scenery while culling plants in the upper reservoir.
   island.props = island.props.filter(prop => {
     const { x, z } = prop.transform.position;
     // The authored wall spans X −30..30 and Z −3.5..3.5 locally.
     // Trees rooted inside it otherwise put their crowns through the rear face.
     if ((prop.kind === 'tree-oak' || prop.kind === 'tree-pine') &&
         Math.abs(x - position.x) < 30 * scale && Math.abs(z - position.z) < 3.5 * scale) return false;
+    if (!['rock', 'bush', 'tree-pine', 'tree-oak', 'grass-tuft', 'flower', 'lamp'].includes(prop.kind)) return true;
+    if (mountain && prop.kind !== 'lamp' && prop.collidable && prop.body.type === 'static' &&
+        (prop.id.startsWith('detail-the-dam-') || prop.id.startsWith('detail-island-'))) {
+      const { x: width, z: depth } = prop.size;
+      const radius = (prop.kind === 'tree-oak' || prop.kind === 'tree-pine'
+        ? Math.min(1.8, width * .4)
+        : prop.shape === 'cylinder' ? Math.max(width, depth) : Math.hypot(width, depth)) / 2;
+      if (lowerDirt.some(({ a, b }) => {
+        const { t, distance } = segmentProjection({ x, z }, a, b);
+        const y = lerp(a.y, b.y, t);
+        return distance < mountain.road.width / 2 + radius &&
+          prop.transform.position.y + prop.size.y / 2 > y &&
+          prop.transform.position.y - prop.size.y / 2 < y + 2 * scale;
+      })) return false;
+    }
     if (z < basin.rear || z > position.z + 3 * scale ||
         x < position.x - 64 * scale || x > position.x + 60 * scale) return true;
-    if (!['rock', 'bush', 'tree-pine', 'tree-oak', 'grass-tuft', 'flower', 'lamp'].includes(prop.kind)) return true;
     const ground = gridSample(island, x, z);
     if (isDamHeadwater(island, x, z)) return false;
     prop.transform.position.y = ground + prop.size.y / 2;
