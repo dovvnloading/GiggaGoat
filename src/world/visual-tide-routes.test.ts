@@ -62,6 +62,53 @@ describe('Rising Tide escape-route cues', () => {
     }
   });
 
+  it('tracks the next dry cue from the Hoofington flood across rises and scene settings', () => {
+    const island = generateIsland();
+    const view = createWorldScene(island, { chunkSegments: 24, cullingDistance: 340 });
+    const position = { x: -132.93, z: 123.14 };
+    const distance = (point: { x: number; z: number }): number =>
+      Math.hypot(point.x - position.x, point.z - position.z);
+    try {
+      expect(view.tideRouteTarget(position)).toBeUndefined();
+      view.setTideLevel(island.seaLevel, true);
+      const start = view.tideRouteTarget(position)!;
+      expect(distance(start)).toBeLessThan(17);
+
+      view.setTideLevel(7, true);
+      const firstRise = view.tideRouteTarget(position)!;
+      expect(firstRise).not.toEqual(start);
+      expect(distance(firstRise)).toBeGreaterThan(47);
+      expect(distance(firstRise)).toBeLessThan(49);
+      expect(firstRise.x).toBeCloseTo(-112.5, 0);
+      expect(firstRise.z).toBeCloseTo(79.8, 0);
+      expect(firstRise.y).toBeGreaterThan(7.68);
+
+      const camera = new THREE.PerspectiveCamera(67, 1.6, .07, 2200);
+      camera.position.set(position.x, 9, position.z);
+      camera.lookAt(-76, 7, 80);
+      for (const lighting of ['night', 'golden-hour', 'day'] as const) {
+        view.setLightingPreset(lighting);
+        view.updateCulling(camera);
+        expect(view.tideRouteTarget(position)).toEqual(firstRise);
+      }
+
+      view.setTideLevel(12, true);
+      const secondRise = view.tideRouteTarget(position)!;
+      expect(secondRise).not.toEqual(firstRise);
+      expect(secondRise.y).toBeGreaterThan(12.68);
+      expect(distance(secondRise)).toBeGreaterThan(distance(firstRise));
+      view.setTideLevel(130, true);
+      expect(view.tideRouteTarget(position)).toBeUndefined();
+
+      view.setTideLevel(7, false);
+      expect(view.tideRouteTarget(position)).toBeUndefined();
+      view.setTideLevel(island.seaLevel, true);
+      expect(view.tideRouteTarget(position)).toEqual(start);
+    } finally {
+      view.dispose();
+    }
+  });
+
   it('keeps painted markers above the real terrain and road surfaces at both LODs', () => {
     const view = createWorldScene(generateIsland());
     try {

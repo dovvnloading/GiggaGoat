@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GameHud } from './GameHud';
+import type { Game } from './Game';
+import type { Vec3 } from '../world';
 import { fitGigCardText } from './GigCardLayout';
 
 /**
@@ -67,6 +69,46 @@ describe('live free-roam HUD DOM', () => {
     expect(removeProperty).toHaveBeenCalledTimes(4);
     expect(removeProperty).toHaveBeenCalledWith('font-size');
     expect(computedStyle).toHaveBeenCalledExactlyOnceWith(paper);
+  });
+
+  it('reuses one climb flag for active Rising Tide and preserves the Free Roam contract target', () => {
+    const flag = { setAttribute: vi.fn() };
+    const origin = { x: 0, z: 0 };
+    const hud = Object.assign(Object.create(GameHud.prototype) as {
+      updateMap(game: Game, location: string, hayHaul: null, tideTarget?: Vec3): void;
+    }, {
+      mapOrigin: origin, mapZone: 'open-island',
+      mapObjectives: { querySelector: vi.fn(() => flag) },
+      updateHayHaulMap: vi.fn(),
+    });
+    const match = { mode: 'rising-tide', phase: 'playing' };
+    const party = { match: match as typeof match | null };
+    const game = {
+      island: { pois: [] },
+      goat: { torso: { translation: () => origin }, locomotion: { heading: 0 } },
+      gigs: { active: { status: 'running', objective: { kind: 'summit', next: { x: 0, y: 1, z: 10 } } } },
+      party,
+    } as unknown as Game;
+    const tideTarget = { x: 10, y: 8, z: 0 };
+    const update = (): void => hud.updateMap(game, 'BILLY ISLE', null, tideTarget);
+
+    update();
+    expect(flag.setAttribute).toHaveBeenNthCalledWith(1, 'visibility', 'visible');
+    expect(flag.setAttribute).toHaveBeenNthCalledWith(2, 'transform', 'translate(150.5 140.0)');
+
+    match.phase = 'results';
+    update();
+    expect(flag.setAttribute).toHaveBeenLastCalledWith('visibility', 'hidden');
+
+    match.mode = 'hay-heist';
+    match.phase = 'playing';
+    update();
+    expect(flag.setAttribute).toHaveBeenLastCalledWith('visibility', 'hidden');
+
+    party.match = null;
+    update();
+    expect(flag.setAttribute).toHaveBeenNthCalledWith(5, 'visibility', 'visible');
+    expect(flag.setAttribute).toHaveBeenNthCalledWith(6, 'transform', 'translate(140.0 150.5)');
   });
 
   it('reserves the numbered shortcuts for build pieces and separates the Supplies totals', () => {

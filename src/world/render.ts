@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Biome, IslandData, PropKind } from './types';
+import type { Biome, IslandData, PropKind, Vec2, Vec3 } from './types';
 import { BIOMES } from './types';
 import { clamp, smoothstep } from './random';
 import { gridCoordinate, gridIndex } from './terrain';
@@ -49,6 +49,8 @@ export interface WorldScene {
   setLightingPreset(preset: LightingPreset): void;
   /** Set the sea level. The Lab shows escape cues above baseline unless the host opts out. */
   setTideLevel(level: number, showRoutes?: boolean): void;
+  /** Nearest painted cue still connected to the summit above this tide. */
+  tideRouteTarget(position: Vec2): Vec3 | undefined;
   /** Call with elapsed seconds to animate sea, waterfalls and foliage. */
   update(time: number): void;
   /** Frustum/terrain LOD; true when camera culling changed shadow-caster visibility. */
@@ -564,6 +566,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   waterVisuals.update(elapsed, tide);
   return {
     group, chunks: chunks.map(c => c.mesh), water: waterVisuals.sea,
-    sun, fogColor, setDayNight, setLightingPreset, setTideLevel, update, updateCulling, dispose,
+    sun, fogColor, setDayNight, setLightingPreset, setTideLevel,
+    tideRouteTarget: tideRoutes.nearestDryCue, update, updateCulling, dispose,
   };
 }

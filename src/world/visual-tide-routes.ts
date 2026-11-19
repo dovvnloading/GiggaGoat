@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { gridIndex } from './terrain';
-import type { IslandData, Vec3 } from './types';
+import type { IslandData, Vec2, Vec3 } from './types';
 
 const STRIDE = 19;
 const CLEARANCE = .68;
@@ -130,6 +130,7 @@ export function buildTideRouteCues(island: IslandData, roads: THREE.Group,
   lowTerrain: readonly Surface[]): {
   mesh: THREE.Mesh;
   update(level: number, enabled: boolean): void;
+  nearestDryCue(position: Vec2): Vec3 | undefined;
 } {
   const scale = island.size / 600;
   const geometry = new THREE.BufferGeometry();
@@ -138,7 +139,8 @@ export function buildTideRouteCues(island: IslandData, roads: THREE.Group,
   mesh.name = 'rising-tide-escape-route-cues';
   mesh.visible = false;
   const indicesPerMarker = TRIANGLES.length * 2;
-  const markers: Array<{ safeBelow: number; vertex: number }> = [];
+  const markers: Array<{ floor: Vec3; safeBelow: number; vertex: number }> = [];
+  const dryCues: Vec3[] = [];
   let index: THREE.BufferAttribute | undefined;
 
   function prepare(): void {
@@ -171,7 +173,7 @@ export function buildTideRouteCues(island: IslandData, roads: THREE.Group,
       }
       // Keep painted shapes intact in the World Lab's high, distant view.
       if (coveredAtDistance) continue;
-      markers.push({ safeBelow, vertex: positions.length / 3 });
+      markers.push({ floor, safeBelow, vertex: positions.length / 3 });
       positions.push(...points);
       colors.push(...colorsPerArrow);
     }
@@ -186,12 +188,14 @@ export function buildTideRouteCues(island: IslandData, roads: THREE.Group,
   return {
     mesh,
     update(level, enabled): void {
+      dryCues.length = 0;
       if (!enabled) { mesh.visible = false; return; }
       if (!index) prepare();
       const active = index!;
       let write = 0;
       for (const marker of markers) {
         if (level > marker.safeBelow) continue;
+        dryCues.push(marker.floor);
         for (const layer of [0, 1]) for (const vertex of TRIANGLES) {
           active.setX(write++, marker.vertex + ARROW.length * layer + vertex);
         }
@@ -199,6 +203,17 @@ export function buildTideRouteCues(island: IslandData, roads: THREE.Group,
       active.needsUpdate = true;
       geometry.setDrawRange(0, write);
       mesh.visible = write > 0;
+    },
+    nearestDryCue(position): Vec3 | undefined {
+      let nearest: Vec3 | undefined;
+      let nearestDistance = Infinity;
+      for (const cue of dryCues) {
+        const distance = (cue.x - position.x) ** 2 + (cue.z - position.z) ** 2;
+        if (distance >= nearestDistance) continue;
+        nearest = cue;
+        nearestDistance = distance;
+      }
+      return nearest && { ...nearest };
     },
   };
 }
