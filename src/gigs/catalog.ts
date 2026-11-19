@@ -4,6 +4,8 @@ import type { IslandData, PoiDescriptor, PropDescriptor, PoiId } from '../world'
 import { rooftopDecks } from '../world/rooftop-course';
 import { lighthouseAccess, lighthouseFlagPositions } from '../world/lighthouse-access';
 import { sectionCenter } from '../world/access-path';
+import { damOutflowWaterY } from '../world/dam-landscape';
+import { getDamPlacement, type DamPlacement } from '../world/the-dam';
 import {
   DIFFICULTIES, GIG_IDS,
 } from './types';
@@ -193,6 +195,7 @@ export class GigCatalog {
   private readonly props: PropDescriptor[];
   private readonly seaLevel: number;
   private readonly reservoirLevel: number;
+  private readonly damPlacement: DamPlacement;
   private readonly terrain: Float32Array;
   private readonly resolution: number;
   private readonly islandSize: number;
@@ -205,6 +208,7 @@ export class GigCatalog {
     this.seed = hash(String(island.seed) + ':' + String(seed));
     this.seaLevel = island.seaLevel;
     this.reservoirLevel = island.reservoir.level;
+    this.damPlacement = getDamPlacement(island);
     this.terrain = island.heights.slice();
     this.resolution = island.resolution;
     this.islandSize = island.size;
@@ -420,7 +424,10 @@ export class GigCatalog {
         saved.offer.gigId === 'beacon-bleat') &&
         JSON.stringify(this.buildVariant(saved.offer, true)) === serialized) return current;
     if (saved.offer.gigId === 'dam-bomb' &&
-        JSON.stringify(this.buildVariant(saved.offer, true)) === serialized) return saved;
+        [false, true].some(legacyInstruction =>
+          JSON.stringify(this.buildVariant(saved.offer, legacyInstruction, false, true)) === serialized)) {
+      return current;
+    }
     if (['splash-dive', 'summit-sprint', 'escort-the-gnome'].includes(saved.offer.gigId) &&
         JSON.stringify(this.buildVariant(saved.offer, true)) === serialized) return current;
     if ((current.config.kind === 'demolition-contract' || current.config.kind === 'stack-up') &&
@@ -428,7 +435,8 @@ export class GigCatalog {
     return null;
   }
 
-  private buildVariant(offer: GigOffer, legacyLayout: boolean, fieldSupply = false): GigSetup {
+  private buildVariant(offer: GigOffer, legacyLayout: boolean, fieldSupply = false,
+    legacyDamWater = false): GigSetup {
     if (offer.poiId !== GIG_INFO[offer.gigId]?.poiId ||
       offer.variantSeed !== this.makeOffer(offer.gigId, offer.difficulty, offer.cycle,
         Number(offer.id.split(':')[2])).variantSeed) throw new RangeError('Offer does not match catalog');
@@ -644,8 +652,11 @@ export class GigCatalog {
         const jumpPoint = plus(walkway.transform.position,
           walkway.size.x / 2 - 3 + rng.int(3), walkway.size.y / 2 + 0.6,
           walkway.size.z / 2 - 1);
-        const landing = plus(jumpPoint, 0, this.reservoirLevel - jumpPoint.y, 6);
-        config = { kind: 'splash-dive', jumpPoint, landing, waterY: this.reservoirLevel,
+        const waterY = legacyDamWater ? this.reservoirLevel :
+          damOutflowWaterY(this.damPlacement, jumpPoint.z + 6);
+        const landing = legacyDamWater ? plus(jumpPoint, 0, waterY - jumpPoint.y, 6) :
+          { ...jumpPoint, y: waterY, z: jumpPoint.z + 6 };
+        config = { kind: 'splash-dive', jumpPoint, landing, waterY,
           minDrop: [3.5, 5.5, 7.5][tier]!, requiresFlop: true };
         start = copy(jumpPoint);
         markers = [marker('dam-board', 'Flop from here', jumpPoint, 3.5, 'start'),

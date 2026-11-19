@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { getDamHeadwater } from '../world/dam-landscape';
+import { getDamHeadwater, getDamOutflow } from '../world/dam-landscape';
 import { V } from '../physics';
 import { Game } from './Game';
 
@@ -31,6 +31,39 @@ it('splashes into the visible upper lake and keeps the rear road, shore and wall
     expect(splash).toBe('dam-upper-reservoir');
     expect(game.water.sample(wet).volumeId).toBe('dam-upper-reservoir');
     expect(wet.translation().y).toBeCloseTo(level, 0);
+  } finally {
+    game.dispose();
+  }
+});
+
+
+it('keeps the air above the visible plunge pool dry and scores at its waterline', async () => {
+  const game = await Game.create();
+  try {
+    const setup = game.gigs.director.startPractice('dam-bomb', 'easy');
+    if (setup.config.kind !== 'splash-dive') throw new Error('Dam Bomb must use a splash objective');
+    const { landing, waterY } = setup.config;
+    const outflow = getDamOutflow(game.island);
+    expect(outflow.containsXZ(landing.x, landing.z)).toBe(true);
+    expect(waterY).toBeCloseTo(outflow.surfaceY(landing.z), 6);
+    expect(landing.y).toBeCloseTo(waterY, 6);
+    const air = game.physics.createBox(V(landing.x, waterY + 2.7, landing.z),
+      V(.22, .22, .22), 12, 'prop');
+    const below = game.physics.createBox(V(landing.x, waterY - .25, landing.z),
+      V(.22, .22, .22), 12, 'prop');
+    expect(game.water.sample(air).fraction).toBe(0);
+    expect(game.water.sample(below).volumeId).toBe('reservoir');
+
+    let actual: { volume: string; y: number } | undefined;
+    game.water.events.on(event => {
+      if (event.bodyHandle === air.handle && event.type === 'splash') {
+        actual = { volume: event.volumeId, y: air.translation().y };
+      }
+    });
+    game.water.track(air);
+    for (let tick = 0; tick < 100 && !actual; tick++) game.step();
+    expect(actual?.volume).toBe('reservoir');
+    expect(actual?.y).toBeCloseTo(waterY, 0);
   } finally {
     game.dispose();
   }

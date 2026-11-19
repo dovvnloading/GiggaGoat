@@ -4,7 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData } from './types';
 import { SeededRandom } from './random';
 import { gridSample, segmentProjection } from './terrain';
-import { damChannelAt, DAM_CHANNEL } from './dam-landscape';
+import { damChannelAt, DAM_CHANNEL, DAM_WATER_SURFACE_LIFT } from './dam-landscape';
 import { getDamPlacement } from './the-dam';
 import { cascadePoolCentre, makeForestOutflowClearance } from './visual-water';
 import { publicAssetUrl } from './public-assets';
@@ -55,7 +55,7 @@ function channelWater(light: THREE.Vector3, tide: { value: number }, scale: numb
       const cross = j / columns * 2 - 1;
       const offset = (1 - Math.abs(cross)) * Math.sin(z * 0.28) * 0.35;
       vertices.push(section.x + cross * section.halfWidth + offset,
-        section.level + 0.20, z);
+        section.level + DAM_WATER_SURFACE_LIFT, z);
       uv.push(j / columns, (z - first) / 8);
       if (i && j) {
         const k = i * (columns + 1) + j;

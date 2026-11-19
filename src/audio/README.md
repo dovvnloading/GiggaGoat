@@ -1,6 +1,6 @@
-# Gigga-Goat • procedural audio lane
+# Gigga-Goat audio
 
-**All audio is Web Audio synthesis.** No samples, MP3s, fetched assets or added npm packages; other lanes remain unmodified. Browser audio stays silent until a genuine user gesture. Design target: punchy squishes, comic overtones, size-scaled bleats, airy island ambience, and upbeat music that rewards stylish play.
+The browser game plays three zone tracks generated with Suno Studio and 36 gameplay and menu recordings generated with ElevenLabs. The soundtrack loads by zone. Game mixes combine individual generated layers for jumps, landings, tongue actions, construction, and material impacts. Party music and ambience use Web Audio synthesis, which also supplies fallback cues when recordings are unavailable. Playback starts after a user gesture. [Suno Studio](https://suno.com/) · [ElevenLabs Sound Effects](https://elevenlabs.io/sound-effects)
 
 ## Minimal integration — one call per render frame
 
@@ -72,7 +72,7 @@ The synth constructs one shared two-second seeded noise table; no decode/fetch a
 
 Every member of SOUND_IDS has a distinct procedural patch. The catalog spans goat bleats, charge/impact, elastic tongue, all six footstep surfaces, spring jump, airy flip, thud landing, ragdoll flop, wall scrabble, mass/speed splash, crates/props/dominoes, fizzy soda, trampoline, launch blast, Hay-Build snaps/collapse, rising combo, GIGGA grow/shrink, coin, gig finish/fail, bronze/silver/gold, party countdown, tide horn, elimination/victory, UI controls, and nature accents.
 
-Free-roam starts with gentle chord plucks; combo and meter unlock rhythmic plucks, drums, bass and lead in stages. Party mode pushes tempo from ~124 to 166 BPM as tide rises and turns more tense. Night softens the tone, shifting to a minor-ish scale. Seeded four-bar melodic variants rotate without frame-rate randomness. Location timbres: Hoofington farm plucks, Baa-ardwalk and lighthouse bell-like seaside tones, downtown / Crane Yard jaunty synth, Whispering Pines watery wooden melody, Mt. Gigga long bells, The Dam grittier tones. Coast, farmland, town, forest stream, mountain wind, and dam spillway have individual filtered, gently crossfaded procedural beds; seeded birds, gulls and windy accents appear sparingly.
+The fallback free-roam arrangement starts with gentle chord plucks and adds drums, bass, and lead as combo and meter rise. Party mode pushes tempo from ~124 to 166 BPM as tide rises and turns more tense. Night softens the tone, shifting to a minor-ish scale. Seeded four-bar melodic variants rotate without frame-rate randomness. Location timbres: Hoofington farm plucks, Baa-ardwalk and lighthouse bell-like seaside tones, downtown / Crane Yard jaunty synth, Whispering Pines watery wooden melody, Mt. Gigga long bells, The Dam grittier tones. Coast, farmland, town, forest stream, mountain wind, and dam spillway have individual filtered, gently crossfaded procedural beds; seeded birds, gulls and windy accents appear sparingly.
 
 ## Typed lane event coverage and deduplication
 

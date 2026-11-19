@@ -8,6 +8,8 @@ import type {
 import { ProceduralSynth } from './synth';
 import type { SfxOptions } from './synth';
 import { AdaptiveMusic, IslandAmbience } from './music';
+import { RecordedAudio } from './recordings';
+import type { RecordedAssets, RecordedEffect } from './recordings';
 import { mapLaneEvent } from './events';
 import type {
   AudioCue, ChaosEvent, GameplayAudioEvent, LaneAudioEvent, ResultAudioKind,
@@ -37,6 +39,7 @@ export interface AudioEngineOptions {
   settings?: unknown;
   storage?: AudioSettingsStore;
   maxVoices?: number;
+  recordedAssets?: RecordedAssets;
 }
 export interface CameraAudioPose {
   position: Vec3;
@@ -63,6 +66,7 @@ export interface AudioFrame {
   goatPosition?: Vec3;
   positionForGoat?: (id: string) => Vec3 | undefined;
   positionForBody?: (handle: number) => Vec3 | undefined;
+  audioKindForBody?: (handle: number) => 'goat' | 'wood' | undefined;
   sizeForGoat?: (id: string) => number | undefined;
 }
 export interface PlayOptions extends SfxOptions {
@@ -70,6 +74,7 @@ export interface PlayOptions extends SfxOptions {
   bus?: AudioBus;
   priority?: number;
   result?: ResultAudioKind;
+  recordedEffect?: RecordedEffect;
 }
 export interface AudioStatus {
   unlocked: boolean;
@@ -94,7 +99,8 @@ export class VoiceManager {
   private nextId = 1;
   private listenerPosition: Vec3 = { x: 0, y: 0, z: 0 };
   constructor(private readonly context: AudioContext, private readonly synth: ProceduralSynth,
-    private readonly buses: Readonly<Record<AudioBus, GainNode>>, readonly maxVoices = 32) {
+    private readonly buses: Readonly<Record<AudioBus, GainNode>>, readonly maxVoices = 32,
+    private readonly recordings?: RecordedAudio) {
     if (!Number.isInteger(maxVoices) || maxVoices < 1) throw new RangeError('maxVoices must be positive');
   }
   get activeCount(): number { return this.voices.size; }
@@ -145,7 +151,8 @@ export class VoiceManager {
     }
     let render;
     try {
-      render = this.synth.play(sound, voiceGain, opts);
+      render = this.recordings?.render(sound, voiceGain, opts, opts.recordedEffect) ??
+        this.synth.play(sound, voiceGain, opts);
     } catch (error) {
       voiceGain.disconnect(); panner?.disconnect();
       throw error;
@@ -196,6 +203,12 @@ export class VoiceManager {
     return end > this.context.currentTime ? end : null;
   }
 
+  stopWorldVoices(): void {
+    for (const voice of this.voices.values()) {
+      if (!voice.ticket.sound.startsWith('ui-')) this.stopNow(voice);
+    }
+  }
+
   cancelResultVoices(): void {
     for (const voice of this.voices.values()) {
       if (voice.result) this.stopNow(voice);
@@ -219,6 +232,7 @@ export class AudioEngine {
   private context: AudioContext | null = null;
   private voiceManager: VoiceManager | null = null;
   private musicPlayer: AdaptiveMusic | null = null;
+  private recordings: RecordedAudio | null = null;
   private ambiencePlayer: IslandAmbience | null = null;
   private synth: ProceduralSynth | null = null;
   private buses: Record<AudioBus, GainNode> | null = null;
@@ -230,10 +244,12 @@ export class AudioEngine {
   private readonly seed: string | number;
   private readonly factory?: () => AudioContext;
   private readonly maxVoices: number;
+  private readonly recordedAssets?: RecordedAssets;
   private readonly rng: AudioRandom;
   private readonly unbinders = new Set<() => void>();
   private unlocking: Promise<boolean> | null = null;
   private disposed = false;
+  private menuOnly = false;
   private resultTail = false;
   private currentState: MusicState = { ...DEFAULT_MUSIC_STATE };
   private camera: Vec3 = { x: 0, y: 0, z: 0 };
@@ -248,6 +264,7 @@ export class AudioEngine {
     this.storage = options.storage;
     this.factory = options.contextFactory;
     this.maxVoices = options.maxVoices ?? 32;
+    this.recordedAssets = options.recordedAssets;
     this.settingsValue = settingsFrom(options.settings ?? this.storage?.load());
   }
 
@@ -274,10 +291,21 @@ export class AudioEngine {
     const now = this.context.currentTime, s = this.settingsValue;
     this.master.gain.setTargetAtTime(s.muted ? 0 : s.master, now, .03);
     for (const name of ['music', 'sfx', 'ui', 'ambience'] as const) {
-      const quiet = this.resultTail && (name === 'music' || name === 'ambience');
+      const quiet = ((this.menuOnly || this.resultTail) && (name === 'music' || name === 'ambience')) ||
+        (this.menuOnly && !this.resultTail && name === 'sfx');
       this.buses[name].gain.setTargetAtTime(quiet ? 0 : s[name], now, .03);
     }
   }
+
+  setMenuAudio(enabled: boolean): void {
+    if (enabled === this.menuOnly) return;
+    this.menuOnly = enabled;
+    if (enabled && !this.resultTail) this.voiceManager?.stopWorldVoices();
+    this.applySettings();
+  }
+
+  /** Disconnect active one-shots so backgrounding cannot replay them on return. */
+  clearVoices(): void { this.voiceManager?.dispose(); }
 
   /** Let admitted result cues finish without continuing the live scene mix. */
   beginResultAudio(result: ResultAudioKind): number | null {
@@ -335,31 +363,37 @@ export class AudioEngine {
     this.master = master; this.limiter = limiter; this.duck = duck;
     this.buses = buses;
     this.synth = new ProceduralSynth(ctx, new AudioRandom('timbre:' + String(this.seed)));
-    this.voiceManager = new VoiceManager(ctx, this.synth, buses, this.maxVoices);
-    this.musicPlayer = new AdaptiveMusic(ctx, this.synth, buses.music, this.seed);
+    this.recordings = this.recordedAssets ? new RecordedAudio(ctx, this.recordedAssets, buses.music) : null;
+    this.voiceManager = new VoiceManager(ctx, this.synth, buses, this.maxVoices, this.recordings ?? undefined);
+    this.musicPlayer = new AdaptiveMusic(ctx, this.synth, this.recordings?.proceduralOutput ?? buses.music, this.seed);
     this.ambiencePlayer = new IslandAmbience(ctx, this.synth, buses.ambience, this.seed);
     this.applySettings();
   }
 
   /** Attach until the first successful gesture. Returns a complete unbinder. */
-  unlockOnFirstInput(target?: EventTarget): () => void {
+  unlockOnFirstInput(target?: EventTarget, onUnlocked?: () => void): () => void {
     if (this.disposed) return () => {};
     const resolved = target ?? (typeof document === 'undefined' ? null : document);
     if (!resolved) return () => {};
     let bound = true;
-    const handler = (): void => {
-      void this.unlock().then(ok => { if (ok) unbind(); });
+    const types = ['pointerdown', 'pointerup', 'keydown', 'touchstart', 'touchend', 'click'];
+    const handler = (event: Event): void => {
+      if (!event.isTrusted || (typeof document !== 'undefined' && document.hidden)) return;
+      void this.unlock().then(ok => {
+        if (ok && bound) {
+          unbind();
+          onUnlocked?.();
+        }
+      });
     };
     const unbind = (): void => {
       if (!bound) return;
       bound = false;
-      for (const type of ['pointerdown', 'keydown', 'touchstart']) {
-        resolved.removeEventListener(type, handler);
-      }
+      for (const type of types) resolved.removeEventListener(type, handler, true);
       this.unbinders.delete(unbind);
     };
-    for (const type of ['pointerdown', 'keydown', 'touchstart']) {
-      resolved.addEventListener(type, handler, { passive: true });
+    for (const type of types) {
+      resolved.addEventListener(type, handler, { capture: true, passive: true });
     }
     this.unbinders.add(unbind);
     return unbind;
@@ -367,7 +401,8 @@ export class AudioEngine {
 
   /** Direct UI or scripted one-shot. World-space positional SFX use metres, Y up. */
   play(sound: SoundId, options: PlayOptions = {}): boolean {
-    if (this.disposed || this.resultTail || !this.voiceManager) return false;
+    if (this.disposed || !this.voiceManager) return false;
+    if ((this.menuOnly || this.resultTail) && !sound.startsWith('ui-')) return false;
     const now = this.context?.currentTime ?? 0;
     const cooldown = sound === 'climb' || sound.startsWith('footstep-') ? .085 :
       sound === 'domino' ? .028 : sound === 'ui-click' ? .035 : 0;
@@ -390,7 +425,7 @@ export class AudioEngine {
     this.elapsed += Math.min(frame.dt, .25);
     if (frame.state) this.currentState = { ...this.currentState, ...frame.state };
     if (frame.camera) this.updateListener(frame.camera);
-    if (this.resultTail || !this.context || this.context.state !== 'running') return;
+    if (this.menuOnly || this.resultTail || !this.context || this.context.state !== 'running') return;
     const audioNow = this.context.currentTime;
     const resolve = (input: AudioCue): PlayOptions => {
       // Physics/mode events carry goat IDs. Keyed gameplay events don't, so the
@@ -401,9 +436,14 @@ export class AudioEngine {
         (input.bodyHandle !== undefined ? frame.positionForBody?.(input.bodyHandle) : undefined) ??
         (owner ? frame.positionForGoat?.(owner) : undefined) ??
         observed?.position ?? frame.goatPosition;
+      const material = input.bodyHandle === undefined ? undefined : frame.audioKindForBody?.(input.bodyHandle);
+      const recordedEffect = input.recordedEffect ?? (
+        input.sound === 'splash' && material === 'goat' ? 'water-flop-splash' :
+        input.sound === 'gig-success' && input.result === 'gig' ? 'gig-reward' : undefined
+      );
       return {
         position: location, intensity: input.intensity, pitch: input.pitch,
-        combo: input.combo, result: input.result,
+        combo: input.combo, result: input.result, recordedEffect,
         when: input.delay === undefined ? undefined : audioNow + Math.max(0, input.delay),
         size: input.size ??
           (owner ? frame.sizeForGoat?.(owner) : undefined) ?? observed?.size,
@@ -428,6 +468,7 @@ export class AudioEngine {
     this.duck?.gain.setTargetAtTime(
       (awaitDuckGain(now - this.lastDuckAt)), now, .04);
     this.musicPlayer?.update(this.currentState);
+    this.recordings?.updateMusic(this.currentState);
     this.ambiencePlayer?.update(this.currentState.poi, this.currentState.night);
   }
 
@@ -478,6 +519,7 @@ export class AudioEngine {
     for (const unbind of [...this.unbinders]) unbind();
     this.voiceManager?.dispose();
     this.musicPlayer?.dispose();
+    this.recordings?.dispose();
     this.ambiencePlayer?.dispose();
     this.master?.disconnect(); this.limiter?.disconnect(); this.duck?.disconnect();
     for (const bus of Object.values(this.buses ?? {})) bus.disconnect();

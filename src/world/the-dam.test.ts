@@ -1,10 +1,12 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { generateIsland } from './island';
 import { buildRapierColliders } from './colliders';
-import { DAM_ACCESS_ID, DAM_ACCESS_SUPPORT_ID, DAM_DECK_HEIGHT, getDamPlacement } from './the-dam';
+import { DAM_ACCESS_ID, DAM_ACCESS_SUPPORT_ID, DAM_DECK_HEIGHT, DAM_FRONT_GUARD, DAM_PLATFORM_GUARD_ID,
+  getDamPlacement } from './the-dam';
 import { buildDamVisuals, prepareDamModel, scrollDamWaterfallUVs } from './visual-dam';
 import type { PropColliderDescriptor } from './types';
 
@@ -35,8 +37,6 @@ describe('The Dam hero POI', () => {
     const deck = descriptors.find(collider => collider.id === 'the-dam-deck')!;
     const deckTop = deck.transform.position.y + deck.size.y / 2;
     expect(deckTop).toBeCloseTo(origin.position.y + DAM_DECK_HEIGHT * origin.scale, 5);
-    expect(deck.size.x).toBeCloseTo(60 * origin.scale, 5);
-    expect(deck.transform.position.z).toBeCloseTo(origin.position.z, 5);
 
     const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
     try {
@@ -47,6 +47,88 @@ describe('The Dam hero POI', () => {
       world.createCollider(RAPIER.ColliderDesc.ball(0.5), ball);
       for (let i = 0; i < 220; i++) world.step();
       expect(ball.translation().y).toBeCloseTo(deckTop + 0.5, 1);
+    } finally {
+      world.free();
+    }
+  });
+
+  it.each([
+    { seed: 'billy-isle', size: 600 },
+    { seed: 'dam-rescaled', size: 450 },
+    { seed: 'dam-rescaled', size: 900 },
+  ])('aligns the shipped deck, control house, and east platform ($size m)', async options => {
+    await RAPIER.init();
+    const island = generateIsland({ ...options, resolution: 65 });
+    const { position, scale } = getDamPlacement(island);
+    const bytes = readFileSync(new URL('../../public/assets/library/custom/the-dam/the-dam.glb', import.meta.url));
+    type Point = [number, number, number];
+    const asset = JSON.parse(bytes.toString('utf8', 20, 20 + bytes.readUInt32LE(12))) as {
+      nodes: { name: string; mesh?: number; translation?: Point; scale?: Point;
+        rotation?: [number, number, number, number] }[];
+      meshes: { primitives: { attributes: { POSITION: number } }[] }[];
+      accessors: { min: Point; max: Point }[];
+    };
+    const parts = [
+      ['the-dam-deck', 'Dam_Deck'],
+      ['the-dam-control-house-platform', 'ControlHouse_Platform'],
+      ['the-dam-control-house-pillar', 'ControlHouse_Pillar'],
+      ['the-dam-control-house', 'ControlHouse_Body'],
+      ['the-dam-control-house-roof', 'ControlHouse_RoofSlab'],
+      [DAM_PLATFORM_GUARD_ID, 'PlatformRail_'],
+    ] as const;
+    for (const [id, name] of parts) {
+      const bounds = new THREE.Box3();
+      for (const node of asset.nodes) {
+        if (node.mesh === undefined ||
+            (name === 'PlatformRail_' ? !node.name.startsWith(name) : node.name !== name)) continue;
+        const transform = new THREE.Matrix4().compose(
+          new THREE.Vector3(...(node.translation ?? [0, 0, 0])),
+          new THREE.Quaternion(...(node.rotation ?? [0, 0, 0, 1])),
+          new THREE.Vector3(...(node.scale ?? [1, 1, 1])),
+        );
+        for (const primitive of asset.meshes[node.mesh]!.primitives) {
+          const { min, max } = asset.accessors[primitive.attributes.POSITION]!;
+          bounds.union(new THREE.Box3(new THREE.Vector3(...min), new THREE.Vector3(...max))
+            .applyMatrix4(transform));
+        }
+      }
+      const collider = island.colliders.find((entry): entry is PropColliderDescriptor =>
+        entry.shape !== 'heightfield' && entry.id === id)!;
+      expect(collider, id).toBeDefined();
+      expect(bounds.isEmpty(), id).toBe(false);
+      for (const axis of ['x', 'y', 'z'] as const) {
+        const centre = (collider.transform.position[axis] - position[axis]) / scale;
+        const half = collider.size[axis] / (2 * scale);
+        expect(Math.abs(centre - half - bounds.min[axis]), id).toBeLessThan(.01);
+        expect(Math.abs(centre + half - bounds.max[axis]), id).toBeLessThan(.01);
+      }
+    }
+
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    try {
+      const { props } = buildRapierColliders(world, island);
+      const at = (x: number, y: number, z: number) => ({
+        x: position.x + x * scale, y: position.y + y * scale, z: position.z + z * scale,
+      });
+      for (const [id, x, z] of [
+        ['the-dam-deck', 0, -4.05],
+        ['the-dam-deck', 14.5, 3.82],
+        ['the-dam-control-house-platform', 36, 4.12],
+        ['the-dam-control-house-platform', 36, -6.45],
+      ] as const) {
+        const ray = new RAPIER.Ray(at(x, 20, z), { x: 0, y: -1, z: 0 });
+        expect(props.get(id)!.castRay(ray, 2 * scale, false), id).toBeCloseTo(1.2 * scale, 4);
+      }
+      const east = new RAPIER.Ray(at(14.5, 19.45, 0), { x: 1, y: 0, z: 0 });
+      expect(props.get('the-dam-control-house')!.castRay(east, 20 * scale, false))
+        .toBeCloseTo(16 * scale, 4);
+      const towardsGap = new RAPIER.Ray(at(14.5, 19.45, 2.6), { x: 0, y: 0, z: 1 });
+      for (const [id, collider] of props) {
+        if (id.startsWith(DAM_FRONT_GUARD.prefix))
+          expect(collider.castRay(towardsGap, 4 * scale, false), id).toBeLessThan(0);
+      }
+      const towardsRail = new RAPIER.Ray(at(36, 19.45, 4.05), { x: 0, y: 0, z: 1 });
+      expect(props.get(DAM_PLATFORM_GUARD_ID)!.castRay(towardsRail, scale, false)).toBeCloseTo(.3 * scale, 4);
     } finally {
       world.free();
     }
