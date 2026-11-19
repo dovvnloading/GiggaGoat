@@ -3,6 +3,7 @@ import { SoftwareFrame, pixel, type ClipVertex, type SoftwareTexture } from './S
 import { softwareGeometry } from './software-geometry';
 import { surfacePaintMaps } from '../world/surface-paint';
 import type { SoftwareGeometry } from './software-geometry';
+import type { SoftwareRaster } from './SoftwareRaster';
 
 type Surface = THREE.Material & { color?: THREE.Color; map?: THREE.Texture | null };
 interface Paint {
@@ -58,7 +59,7 @@ export class SoftwareGameRenderer {
   constructor(readonly domElement: HTMLCanvasElement, private readonly ctx: {
     createImageData(width: number, height: number): ImageData;
     putImageData(image: ImageData, x: number, y: number): void;
-  }) {}
+  }, private readonly raster?: SoftwareRaster) {}
 
   setClearColor(colour: THREE.Color): void { this.clearColour.copy(colour); }
   setPixelRatio(ratio: number): void { this.ratio = Math.min(1.25, Math.max(.4, ratio)); }
@@ -77,7 +78,9 @@ export class SoftwareGameRenderer {
     if (this.frame && this.domElement.width === w && this.domElement.height === h) return;
     this.domElement.width = w;
     this.domElement.height = h;
-    this.frame = new SoftwareFrame(this.ctx.createImageData(w, h));
+    const shared = this.raster?.resize(w, h);
+    this.frame = shared ? new SoftwareFrame(new ImageData(shared.colour, w, h), shared.depth) :
+      new SoftwareFrame(this.ctx.createImageData(w, h));
   }
 
   setAnimationLoop(callback: ((time: number) => void) | null): void {
@@ -249,11 +252,17 @@ export class SoftwareGameRenderer {
     const uv = data.uvs;
     const textured = uv && paints.some(p => p?.texture);
     const mirrored = matrix.determinant() < 0;
+    const common = paints.length === 1 ? paints[0] : undefined;
+    const batch = common && !textured && this.raster?.accepts(data.sources.length, data.materials.length)
+      ? this.raster : undefined;
+    const staticBatch = skinned ? undefined : batch;
+    const halfWidth = this.frame!.image.width * .5, halfHeight = this.frame!.image.height * .5;
     const skinIndices = geometry.getAttribute('skinIndex'), weights = geometry.getAttribute('skinWeight');
     const paletteSkin = skinned && skinIndices && weights && !mesh.morphTargetInfluences?.some(Boolean);
     if (paletteSkin) this.prepareBones(mesh);
     const coords = data.positions, palette = this.bonePalette;
-    for (let i = 0; i < data.sources.length; i++) {
+    if (staticBatch) staticBatch.project(data.positions, m, this.near, ground);
+    else for (let i = 0; i < data.sources.length; i++) {
       const source = data.sources[i]!;
       const p = this.points[i] ?? (this.points[i] = { x: 0, y: 0, w: 1, u: 0, v: 0, outside: 0 });
       let x = coords[3 * i]!, y = coords[3 * i + 1]!, z = coords[3 * i + 2]!;
@@ -279,23 +288,40 @@ export class SoftwareGameRenderer {
         Number(p.y > p.w) << 3 | Number(p.w < this.near) << 4;
       if (textured) { p.u = uv[2 * i]!; p.v = uv[2 * i + 1]!; }
       p.tint = ground?.[i];
-      if (p.w >= this.near) this.frame!.prepare(p);
+      if (batch) {
+        const offset = i * 5;
+        const iz = p.w >= this.near ? 1 / p.w : 0;
+        batch.vertices[offset] = halfWidth * (1 + p.x * iz);
+        batch.vertices[offset + 1] = halfHeight * (1 - p.y * iz);
+        batch.vertices[offset + 2] = iz;
+        batch.vertexBits[offset + 3] = p.outside;
+        if (ground) batch.vertexBits[offset + 4] = ground[i]!;
+        p.screen = undefined;
+      } else if (p.w >= this.near) this.frame!.prepare(p);
       else p.screen = undefined;
     }
     this.normalMatrix.getNormalMatrix(matrix).transpose();
     this.localLight.copy(this.sun).applyMatrix3(this.normalMatrix).normalize();
     const light = this.localLight;
     const { corners, colours, normals } = data;
-    const common = paints.length === 1 ? paints[0] : undefined;
     const faceTints = !ground && common ? this.shadeFaces(mesh, slot, data, common, tint) : undefined;
     this.info.render.calls++;
     this.info.render.triangles += corners.length / 3;
-    for (let k = 0; k < corners.length; k += 3) {
-      const face = k / 3;
+    let clipped: Uint32Array | undefined;
+    if (batch && common) {
+      const side = common.material.side;
+      clipped = batch.draw(corners, faceTints, mirrored && side !== THREE.DoubleSide ? 1 - side : side,
+        common.material.polygonOffset ? 1.00005 : 1);
+    }
+    const count = clipped ? clipped.length : data.materials.length;
+    for (let i = 0; i < count; i++) {
+      const face = clipped ? clipped[i]! : i, k = face * 3;
       const paint = paints.length === 1 ? paints[0] : paints[data.materials[face]!];
       if (!paint) continue;
-      const a = this.points[corners[k]!]!, b = this.points[corners[k + 1]!]!,
-        c = this.points[corners[k + 2]!]!;
+      const ia = corners[k]!, ib = corners[k + 1]!, ic = corners[k + 2]!;
+      const a = staticBatch ? this.clippedPoint(staticBatch, ia, ground) : this.points[ia]!;
+      const b = staticBatch ? this.clippedPoint(staticBatch, ib, ground) : this.points[ib]!;
+      const c = staticBatch ? this.clippedPoint(staticBatch, ic, ground) : this.points[ic]!;
       if (a.outside & b.outside & c.outside) continue;
       const faceSide = paint.material.side;
       const side = mirrored && faceSide !== THREE.DoubleSide ? 1 - faceSide : faceSide;
@@ -318,6 +344,15 @@ export class SoftwareGameRenderer {
       this.frame!.triangle(a, b, c, this.near, colour, uv ? paint.texture : undefined,
         side, paint.material.polygonOffset ? 1.00005 : 1);
     }
+  }
+
+  private clippedPoint(batch: SoftwareRaster, i: number, ground?: Uint32Array) {
+    const p = this.points[i] ?? (this.points[i] = { x: 0, y: 0, w: 1, u: 0, v: 0, outside: 0 });
+    const v = batch.clipCoordinates;
+    p.x = v[3 * i]!; p.y = v[3 * i + 1]!; p.w = v[3 * i + 2]!;
+    p.outside = batch.vertexBits[i * 5 + 3]!;
+    p.tint = ground?.[i]; p.screen = undefined;
+    return p;
   }
 
   private shadeFaces(mesh: THREE.Mesh, slot: number, data: SoftwareGeometry,

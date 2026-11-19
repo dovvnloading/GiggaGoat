@@ -23,9 +23,9 @@ export class SoftwareFrame {
   private readonly clipped: ClipVertex[] = Array.from({ length: 4 },
     () => ({ x: 0, y: 0, w: 1, u: 0, v: 0 }));
 
-  constructor(readonly image: ImageData) {
+  constructor(readonly image: ImageData, depth?: Float32Array) {
     this.pixels = new Uint32Array(image.data.buffer, image.data.byteOffset, image.data.length / 4);
-    this.depth = new Float32Array(this.pixels.length);
+    this.depth = depth ?? new Float32Array(this.pixels.length);
   }
 
   clear(horizon: number, zenith: number): void {
