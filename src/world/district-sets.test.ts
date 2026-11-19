@@ -4,7 +4,9 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { addRapierPropCollider } from './colliders';
 import { districtSetVisuals } from './visual-district-sets';
 import { makeLocalStreets } from './roads';
-import { generateIsland } from './island';
+import { Game } from '../core/Game';
+import { V } from '../physics';
+import { zoneAt, generateIsland } from './island';
 import { POI_IDS } from './types';
 import { gridSample, segmentProjection } from './terrain';
 
@@ -61,3 +63,35 @@ it('seats kit ensembles in all eight districts and gives every object a scaled t
     expect(hit!.timeOfImpact).toBeLessThan(6.3);
   } finally { world.free(); }
 });
+
+it('can walk to every district ensemble from its landmark on the production island', async () => {
+  const game = await Game.create();
+  try {
+    const { island } = game;
+    expect(island.districtSets).toHaveLength(17);
+    for (const set of island.districtSets!) {
+      const { from, to } = set.approach;
+      const dx = to.x - from.x, dz = to.z - from.z;
+      expect(zoneAt(island, from.x, from.z), set.name).toBe(set.district);
+      for (const { bottom } of set.pieces)
+        expect(zoneAt(island, bottom.x, bottom.z), set.name).toBe(set.district);
+      game.teleport(V(from.x, gridSample(island, from.x, from.z), from.z), Math.atan2(dx, -dz));
+      for (let i = 0; i < 35; i++) game.step();
+      for (const destination of [to, from]) {
+        let distance = Infinity;
+        for (let i = 0; i < 390; i++) {
+          const pos = game.goat.torso.translation();
+          const x = destination.x - pos.x, z = destination.z - pos.z;
+          distance = Math.hypot(x, z);
+          if (distance < .65) break;
+          expect(zoneAt(island, pos.x, pos.z), set.name).toBe(set.district);
+          game.step({ moveZ: 1, cameraYaw: Math.atan2(x, -z) });
+        }
+        expect(distance, set.name + ' via ' + set.approach.landmark).toBeLessThan(.65);
+        for (let i = 0; i < 35; i++) game.step();
+        expect(game.goat.locomotion.grounded, set.name).toBe(true);
+      }
+    }
+    expect(game.respawns).toBe(0);
+  } finally { game.dispose(); }
+}, 30000);

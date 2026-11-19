@@ -1,10 +1,25 @@
 import type { Biome, IslandData, PlotDescriptor, ReservoirDescriptor, RiverPoint, RoadDescriptor, Vec2 } from './types';
-import { BIOMES } from './types';
+import { BIOMES, POI_IDS, type PoiId } from './types';
 import { clamp, GradientNoise, hashString, lerp, smoothstep } from './random';
 
 export function gridIndex(resolution: number, ix: number, iz: number): number {
   return iz * resolution + ix;
 }
+function gridLookup(island: IslandData, x: number, z: number): number {
+  const ix = Math.max(0, Math.min(island.resolution - 1,
+    Math.round((x / island.size + 0.5) * (island.resolution - 1))));
+  const iz = Math.max(0, Math.min(island.resolution - 1,
+    Math.round((z / island.size + 0.5) * (island.resolution - 1))));
+  return gridIndex(island.resolution, ix, iz);
+}
+export function biomeAt(island: IslandData, x: number, z: number): Biome {
+  return BIOMES[island.biomeMap[gridLookup(island, x, z)]!]!;
+}
+export function zoneAt(island: IslandData, x: number, z: number): PoiId | null {
+  const code = island.zoneMap[gridLookup(island, x, z)]!;
+  return code ? POI_IDS[code - 1] ?? null : null;
+}
+
 export function gridCoordinate(size: number, resolution: number, i: number): number {
   return (i / (resolution - 1) - 0.5) * size;
 }

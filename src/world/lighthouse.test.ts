@@ -245,12 +245,19 @@ describe('Old Lighthouse painting rebuild', () => {
     expect(grey.geometry.getAttribute('normal').count).toBeGreaterThan(0);
     expect((grey.material as THREE.MeshLambertMaterial).color.getHex()).not.toBe(0x000000);
 
+    const tower = island.props.find(p => p.kind === 'lighthouse')!.transform.position;
+    const camera = new THREE.PerspectiveCamera(65, 16 / 9, .1, 1200);
+    camera.position.set(tower.x + 12, tower.y + 4, tower.z + 18);
+    camera.lookAt(tower.x, tower.y, tower.z);
+    view.updateCulling(camera);
     const meshes: THREE.Mesh[] = [];
-    view.group.traverse(item => {
-      if (item instanceof THREE.Mesh) meshes.push(item);
+    view.group.traverseVisible(item => {
+      if (item instanceof THREE.Mesh && (!(item instanceof THREE.InstancedMesh) || item.count)) meshes.push(item);
     });
     const shadows = meshes.filter(item => item.castShadow).length;
-    // New decorative pieces are merged/instanced, never a shadow pass per boulder.
+    // Include every active batch, even ones outside the lens. Models culled
+    // in distant districts cannot contribute draws to the lighthouse fallback.
+    expect(meshes).toContain(grey);
     expect(shadows).toBeLessThan(20);
     expect(meshes.length + shadows).toBeLessThan(180);
     view.dispose();

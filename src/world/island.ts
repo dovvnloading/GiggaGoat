@@ -1,7 +1,7 @@
 import type {
   Biome, IslandData, IslandOptions, PlotDescriptor, PoiDescriptor, PoiId, PropDescriptor, RiverPoint, Vec2,
 } from './types';
-import { BIOMES, POI_IDS } from './types';
+export { biomeAt, zoneAt } from './terrain';
 import { hashString, SeededRandom } from './random';
 import {
   assignBiomes, carveWater, clearTerrainUnderBridge, gridCoordinate, gridIndex, gridSample, makeTerrain,
@@ -251,21 +251,6 @@ export class IslandGenerator {
 export function heightAt(island: IslandData, x: number, z: number): number {
   return gridSample(island, x, z);
 }
-function gridLookup(island: IslandData, x: number, z: number): number {
-  const ix = Math.max(0, Math.min(island.resolution - 1,
-    Math.round((x / island.size + 0.5) * (island.resolution - 1))));
-  const iz = Math.max(0, Math.min(island.resolution - 1,
-    Math.round((z / island.size + 0.5) * (island.resolution - 1))));
-  return gridIndex(island.resolution, ix, iz);
-}
-export function biomeAt(island: IslandData, x: number, z: number): Biome {
-  return BIOMES[island.biomeMap[gridLookup(island, x, z)]!]!;
-}
-export function zoneAt(island: IslandData, x: number, z: number): PoiId | null {
-  const code = island.zoneMap[gridLookup(island, x, z)]!;
-  return code ? POI_IDS[code - 1] ?? null : null;
-}
-
 /** Area in m² sampled at cell centres. Monotonically nonincreasing for all tide heights. */
 export function landAreaAtTideLevel(island: IslandData, level: number): number {
   if (!Number.isFinite(level)) throw new RangeError('Tide must be finite');

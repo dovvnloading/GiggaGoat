@@ -943,7 +943,7 @@ export class GameView {
     const throttleScene = this.paused && !this.titleCamera;
     if (throttleScene && timestamp < this.nextPausedRender) {
       // Keep menu gamepad input and audio context transitions on the browser frame loop.
-      this.audio?.frame(dt, this.audioPose, night, weather, this.atmosphere.underCover);
+      this.audio?.frame(dt, this.audioPose, night, weather, this.atmosphere.playerUnderCover);
       this.onFrame?.();
       return;
     }
@@ -956,7 +956,8 @@ export class GameView {
     this.characters.update(sceneDt, alpha, this.camera, range);
     this.vfx.frame(sceneDt, this.camera, range);
     const goat = this.game.goat;
-    this.toyEffects.update(this.game.physics.time, goat.torso.translation(), goat.size, goat.locomotion.heading, goat.locomotion.grounded);
+    const playerPosition = goat.torso.translation();
+    this.toyEffects.update(this.game.physics.time, playerPosition, goat.size, goat.locomotion.heading, goat.locomotion.grounded);
     this.updatePartyVisuals(alpha);
     this.updateBoardMarkers();
     this.updateGigVisuals(alpha);
@@ -979,7 +980,7 @@ export class GameView {
     this.renderer.setClearColor(this.world.fogColor);
     this.updateCamera(alpha, sceneDt);
     this.updateCameraFraming(sceneDt);
-    this.atmosphere.update(weather, this.camera.position, this.currentSettings.graphics === 'low');
+    this.atmosphere.update(weather, this.camera.position, playerPosition, this.currentSettings.graphics === 'low');
     if ('isSoftwareRenderer' in this.renderer) {
       this.renderer.setEnvironment(weather, this.world.sun.position, this.world.sun.target.position);
     }
@@ -999,7 +1000,7 @@ export class GameView {
       this.renderer.shadowMap.needsUpdate = true;
     }
     this.camera.getWorldDirection(this.audioForward);
-    this.audio?.frame(dt, this.audioPose, night, weather, this.atmosphere.underCover);
+    this.audio?.frame(dt, this.audioPose, night, weather, this.atmosphere.playerUnderCover);
     const renderStart = performance.now();
     this.renderer.render(this.scene, this.camera);
     const renderElapsed = performance.now() - renderStart;
