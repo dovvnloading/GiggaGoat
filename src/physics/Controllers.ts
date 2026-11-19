@@ -140,6 +140,8 @@ export interface MovementInput {
   climbContact?: RayHit | null;
   /** A known ramp may already support the front of the goat before its torso reaches it. */
   acceptForwardSupport?: (colliderHandle: number) => boolean;
+  /** Nearby protective rail with a horizontal braking normal. */
+  safetyRail?: { normal: Vec3; distance: number };
 }
 export interface LocomotionTuning {
   walkSpeed: number;
@@ -292,6 +294,20 @@ export class LocomotionController {
     return canClimb(face) && face.collider.handle === close.collider.handle ? face : null;
   }
 
+  findSafetyRail(wish: Vec3, rails: ReadonlySet<number>): MovementInput['safetyRail'] {
+    const { torso, head, world, size } = this.goat;
+    const velocity = torso.linvel();
+    const approach = Math.hypot(velocity.x, velocity.z) > 1.5
+      ? normalize(V(velocity.x, 0, velocity.z)) : normalize(wish);
+    if (length(approach) === 0) return;
+    const leading = dot(sub(head.translation(), torso.translation()), approach) > 0 ? head : torso;
+    const hit = world.shapeCast(leading.translation(), leading.rotation(), approach,
+      leading.collider(0).shape, .7 * size, { predicate: collider => rails.has(collider.handle) });
+    if (!hit || Math.abs(hit.normal.y) > .65) return;
+    const normal = normalize(V(hit.normal.x, 0, hit.normal.z));
+    if (dot(approach, normal) < -.12) return { normal, distance: hit.distance };
+  }
+
   update(dt: number): void {
     this.clock += dt;
     const g = this.goat, torso = g.torso, s = g.size;
@@ -299,8 +315,23 @@ export class LocomotionController {
     const rideHeight = g.balance.tuning.rideHeight * s;
     const groundedDistance = rideHeight + .16 * s;
     const minGroundY = this.minWalkingNormalY;
-    const movement = add(mul(forward(this.input.cameraYaw),this.input.z),
+    let movement = add(mul(forward(this.input.cameraYaw),this.input.z),
       mul(right(this.input.cameraYaw),this.input.x));
+    const rail = this.input.safetyRail;
+    if (rail && this.grounded && !g.isRagdoll) {
+      // Dissipate inward speed before the fixed solver pushes all seven
+      // linked bodies back. Outward, tangential and vertical motion are free.
+      const { normal, distance } = rail;
+      const maxInward = Math.max(0, (distance - .035) * 6.5);
+      for (const body of g.bodies) {
+        const velocity = body.linvel();
+        const excess = -dot(velocity, normal) - maxInward;
+        if (excess > 0) body.setLinvel(add(velocity, mul(normal, excess)), true);
+      }
+      const motorSpeed = this.input.sprint ? this.tuning.sprintSpeed : this.tuning.walkSpeed;
+      const excess = -dot(movement, normal) - maxInward / motorSpeed;
+      if (excess > 0) movement = add(movement, mul(normal, excess));
+    }
     const wishLength = Math.min(1,length(movement));
     const wish = wishLength > 0 ? normalize(movement) : V();
     let ground = g.world.raycast(position,V(0,-1,0),1.8*s,

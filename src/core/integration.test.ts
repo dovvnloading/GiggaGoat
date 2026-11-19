@@ -52,6 +52,35 @@ describe('Walkable roads and coastal routes', () => {
     } finally { game.dispose(); }
   });
 
+  it('keeps the seeded Downtown alley stock intact before the player arrives', async () => {
+    const game = await Game.create({ seed: 'billy-isle' });
+    try {
+      const stock = game.island.props.filter(prop => /^downtown-bleatsville-(crate|barrel)-\d+$/.test(prop.id));
+      const crate = stock.find(prop => prop.id === 'downtown-bleatsville-crate-84')!;
+      const ramp = game.island.props.find(prop => prop.id === 'downtown-bleatsville-ramp-41')!;
+      expect(stock).toHaveLength(14);
+      expect(crate.body).toEqual({ type: 'dynamic', mass: 9 });
+      // The west ramp runs along the world X axis. Keep its whole Z width clear.
+      const { position } = crate.transform;
+      expect(Math.abs(position.z - ramp.transform.position.z))
+        .toBeGreaterThan((ramp.size.x + crate.size.z) / 2);
+
+      ticks(game, 240);
+      for (const prop of stock) {
+        const body = game.colliders.bodies.get(prop.id);
+        expect(body?.isValid(), prop.id).toBe(true);
+        expect(body?.isEnabled(), prop.id).toBe(true);
+        expect(game.destroyedProps.has(prop.id), prop.id).toBe(false);
+      }
+      const p = game.colliders.bodies.get(crate.id)!.translation();
+      const floor = game.physics.raycast(V(p.x, p.y + 1, p.z), V(0, -1, 0), 4, {
+        predicate: collider => collider.handle === game.colliders.terrain.handle,
+      });
+      expect(floor).not.toBeNull();
+      expect(p.y - floor!.point.y).toBeCloseTo(crate.size.y / 2, 1);
+    } finally { game.dispose(); }
+  });
+
   it('supports the goat on the visible Hoofington road immediately and after a rescue', async () => {
     const game = await Game.create();
     const scene = createWorldScene(game.island);

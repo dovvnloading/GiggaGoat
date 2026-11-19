@@ -1,7 +1,7 @@
 import type { RigidBody, ColliderDesc } from '@dimforge/rapier3d-compat';
 import {
   PhysicsWorld, GoatRagdoll, RAPIER, V, forward, add, sub, mul, rotate, collisionGroups,
-  type Vec3, type Quat, type GoatSize, type PhysicsEvent, type RayHit,
+  type Vec3, type Quat, type GoatSize, type MovementInput, type PhysicsEvent, type RayHit,
 } from '../physics';
 import {
   generateIsland, buildRapierColliders, heightAt, zoneAt,
@@ -24,6 +24,7 @@ import { getDamHeadwater, isDamHeadwater } from '../world/dam-landscape';
 import { DAM_ACCESS_GUARD_ID, DAM_BACK_GUARD, DAM_FRONT_GUARD } from '../world/the-dam';
 import { LIGHTHOUSE_ACCESS_GUARD_ID } from '../world/lighthouse-access';
 import { COAST_TURNOUT_GNOME_ID } from '../world/roadside-stops';
+import { CRANE_YARD_PLAN } from '../world/crane-yard';
 import { HAY_HAUL_TAG_RADIUS } from '../gigs';
 import { GigSession } from './GigSession';
 import { PartySession } from './PartySession';
@@ -113,6 +114,8 @@ export class Game {
   private buildOrigin: Vec3;
   private readonly pierDecks: readonly PropDescriptor[];
   private readonly blockedClimbHandles = new Set<number>();
+  private readonly craneRailHandles = new Set<number>();
+  private readonly craneCenter: Vec3;
   private readonly spawnGround: number;
   private disposed = false;
 
@@ -135,6 +138,7 @@ export class Game {
     this.physics = physics;
     this.island = island;
     this.colliders = colliders;
+    this.craneCenter = island.pois.find(poi => poi.id === 'crane-yard')!.center;
     const noClimbGuardPrefixes = [DAM_FRONT_GUARD.prefix, DAM_BACK_GUARD.prefix,
       DAM_ACCESS_GUARD_ID, LIGHTHOUSE_ACCESS_GUARD_ID, BOARDWALK_SHORE_GUARD_ID];
     for (const [id, collider] of colliders.props) {
@@ -342,7 +346,10 @@ export class Game {
   private configureWorldProp(prop: PropDescriptor, body: RigidBody | undefined): void {
     const collider = this.colliders.props.get(prop.id)!;
     collider.setCollisionGroups(collisionGroups('prop'));
-    if (!prop.climbable) this.blockedClimbHandles.add(collider.handle);
+    const craneRail = prop.poiId === 'crane-yard' && prop.kind === 'safety-rail' &&
+      prop.restitution === 0 && !body;
+    if (craneRail) this.craneRailHandles.add(collider.handle);
+    if (craneRail || !prop.climbable) this.blockedClimbHandles.add(collider.handle);
     collider.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS);
     const material = prop.kind === 'rock' ? 'rock' :
       prop.kind === 'ramp' ? 'wood' : prop.kind === 'hay-bale' ? 'grass' :
@@ -361,7 +368,10 @@ export class Game {
       this.propByBody.delete(body.handle);
     }
     const collider = this.colliders.props.get(id);
-    if (collider) this.blockedClimbHandles.delete(collider.handle);
+    if (collider) {
+      this.blockedClimbHandles.delete(collider.handle);
+      this.craneRailHandles.delete(collider.handle);
+    }
     this.colliders.bodies.delete(id);
     this.colliders.props.delete(id);
     this.destroyedProps.add(id);
@@ -691,10 +701,13 @@ export class Game {
     const result = sim.update(dt, rulesIntent, facts);
     const commands = result.commands[0]!;
     const parcelHeld = towingParcel && commands.tongue?.action !== 'fling';
+    const safetyRail = !commands.jump && !commands.ragdoll
+      ? this.craneSafetyRail(goat, wish) : undefined;
     goat.locomotion.setInput({
       x: mx, z: mz, cameraYaw, sprint: commands.setSprint,
       canSprint: commands.setSprint, canClimb: commands.setClimb, climbContact,
       acceptForwardSupport: parcelHeld ? this.gigs.isCourierRamp : undefined,
+      safetyRail,
     });
     this.water.setPaddle(goat.torso, wish);
     this.executeCommands(commands, goat, player, assistedAim?.direction ?? courierAim);
@@ -702,6 +715,15 @@ export class Game {
         this.gigs.active?.setup.config.kind === 'mow-down') {
       this.gigs.noteAbility({ type: 'eat' });
     }
+  }
+
+  private craneSafetyRail(goat: GoatRagdoll, wish: Vec3): MovementInput['safetyRail'] {
+    if (!goat.locomotion.grounded || goat.isRagdoll) return;
+    const position = goat.torso.translation();
+    const scale = this.island.size / 600;
+    if (Math.abs(position.x - this.craneCenter.x) > CRANE_YARD_PLAN.halfWidth * scale ||
+        Math.abs(position.z - this.craneCenter.z) > CRANE_YARD_PLAN.halfDepth * scale) return;
+    return goat.locomotion.findSafetyRail(wish, this.craneRailHandles);
   }
 
   /** The courier can lick the parcel below a grown goat's normal shallow aim.
