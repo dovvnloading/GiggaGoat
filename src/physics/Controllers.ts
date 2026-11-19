@@ -255,6 +255,7 @@ export class LocomotionController {
   private flipAngle = 0;
   private flipScored = false;
   private flightStarted: number | null = null;
+  private approachSpeed = 0;
   private lastClimbPosition: Vec3 = V();
   private climbStallSeconds = 0;
   private lastGrounded = false;
@@ -528,6 +529,10 @@ export class LocomotionController {
         g.events.emit({type:'wallClingEnd',goatId:g.id,time:g.world.time});
       }
     }
+    if (this.flightStarted !== null) {
+      // The support solver can already be lifting the torso at touchdown.
+      this.approachSpeed = Math.max(0, -torso.linvel().y, this.approachSpeed * Math.exp(-dt * 9));
+    }
     if (this.grounded !== this.lastGrounded) {
       this.lastGrounded = this.grounded;
       if (this.grounded) {
@@ -535,12 +540,13 @@ export class LocomotionController {
         if (this.flightStarted !== null) {
           g.events.emit({type:'airtimeEnd',goatId:g.id,time:g.world.time,duration});
           g.events.emit({type:'landed',goatId:g.id,time:g.world.time,airtime:duration,
-            verticalSpeed:Math.abs(torso.linvel().y)});
+            verticalSpeed:Math.abs(torso.linvel().y), approachSpeed:this.approachSpeed});
         }
         this.flightStarted = null;
         this.airborneSeconds = 0;
       } else {
         this.flightStarted = this.clock;
+        this.approachSpeed = 0;
         g.events.emit({type:'airtimeStart',goatId:g.id,time:g.world.time,height:torso.translation().y});
       }
     }
@@ -560,6 +566,7 @@ export class LocomotionController {
       this.lastGrounded = false;
       const startedFromGround = this.flightStarted === null;
       this.flightStarted = this.clock;
+      this.approachSpeed = 0;
       this.airborneSeconds = 0;
       if (startedFromGround) {
         g.events.emit({type:'airtimeStart',goatId:g.id,time:g.world.time,height:torso.translation().y});

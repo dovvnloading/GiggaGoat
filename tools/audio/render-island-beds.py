@@ -17,7 +17,7 @@ CLOCK = np.arange(SAMPLES) / RATE
 SOURCES = dict(re.findall(r"""['"]([\w-]+)['"]:\s*['"]([A-Za-z0-9+/=]+)['"]""",
                           (ROOT / "src/audio/recorded-effects.ts").read_text()))
 ZONES = ["hoofington", "baa-ardwalk", "crane-yard", "downtown-bleatsville", "mt-gigga",
-         "whispering-pines", "the-dam", "old-lighthouse", "meadow-night", "pines-night"]
+         "whispering-pines", "the-dam", "old-lighthouse", "farm-paddock", "pines-understory"]
 
 
 def air(rng, low, high, n=SAMPLES):
@@ -63,7 +63,7 @@ def render(zone, seed):
     rng = np.random.default_rng(seed)
     mix = np.zeros((SAMPLES, 2))
     sea = zone in ("baa-ardwalk", "old-lighthouse")
-    woods = zone in ("hoofington", "whispering-pines", "meadow-night", "pines-night")
+    woods = zone in ("hoofington", "whispering-pines", "farm-paddock", "pines-understory")
     for ch in range(2):
         t = CLOCK
         breeze = .5+.23*np.cos(2*np.pi*t/SECONDS*3 + ch*.18)+.13*np.sin(2*np.pi*t/SECONDS*7)
@@ -92,14 +92,18 @@ def render(zone, seed):
             spot(7,foley("build-place",.79),.62,.086)
         if zone=="whispering-pines":
             spot(15.6,foley("break-wood",.76),-.78,.09)
-    if zone.endswith("night"):
-        for offset,pan,hz in [(0,-.65,3310),(2.2,.48,3930)]:
-            for at in np.arange(offset, SECONDS, 2.37):
-                for j in range(3):
-                    spot(at+j*.056,call(hz,hz+60,.035),pan,.025)
-        if zone=="pines-night":
-            for at,hz in [(6.5,445),(6.89,376),(23.1,413)]:
-                spot(at,call(hz,hz*.89,.32,4),-.49,.082)
+    if zone=="farm-paddock":
+        for at, pan, pitch in [(3.4,-.67,.86),(17.5,.48,1.18),(25.0,-.36,.94)]:
+            spot(at,foley("goat-bleat",pitch),pan,.19)
+        for at in [6.5,6.94,9.1,21.8,22.25]:
+            spot(at,foley("footstep-grass",.88),.42,.18)
+        spot(13.8,foley("headbutt-wood",.77),-.65,.11)
+    if zone=="pines-understory":
+        for at in [1.7,14.1,23.4]:
+            for j in range(5):
+                spot(at+j*.079,ring(715+j*6,.045,.008),-.62,.11-j*.008)
+        for at,pan in [(7.2,.46),(18.7,-.36),(27.5,.64)]:
+            spot(at,call(2420,1680,.26,36),pan,.084)
     if sea:
         for at in [3.7,15.4,24.8]:
             spot(at,call(880 if zone=="baa-ardwalk" else 720,510,.55,75),rng.uniform(-.75,.75),.083)

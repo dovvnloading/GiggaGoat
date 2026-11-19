@@ -42,7 +42,7 @@ function fixture() {
   const game = {
     island: {
       size: 10, resolution: 2, seaLevel: 0, tideLevels: [0, 10],
-      biomeMap: new Uint8Array(4).fill(2), zoneMap: new Uint8Array(4).fill(1), pois: [],
+      biomeMap: new Uint8Array(4).fill(2), zoneMap: new Uint8Array(4).fill(1), pois: [], props: [],
     },
     isAbovePierDeck: () => false,
     goat, rules: { events, style: { combo: { count: 3 }, meter: 67 } },

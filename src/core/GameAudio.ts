@@ -81,6 +81,8 @@ export class GameAudio {
   };
   private objectiveAttempt = -1;
   private objectiveCount = 0;
+  private readonly barns: Vec3[];
+  private readonly pines: Vec3[];
   private charging = false;
   private reeling = false;
   private hidden = false;
@@ -89,6 +91,8 @@ export class GameAudio {
   private transition: Promise<void> | null = null;
 
   constructor(private readonly game: Game, private readonly audio: AudioSink) {
+    this.barns = game.island.props.filter(p => p.poiId === 'hoofington' && p.kind === 'barn').map(p => p.transform.position);
+    this.pines = game.island.props.filter(p => p.poiId === 'whispering-pines' && p.kind === 'tree-pine').map(p => p.transform.position);
     this.off.push(game.onMaterialAudio(this.onMaterialContact));
     for (const type of GAMEPLAY_EVENT_TYPES) {
       this.off.push(game.rules.events.on(type, data => {
@@ -240,6 +244,10 @@ export class GameAudio {
     // only retains the last catch-up tick), or drain a queue again this frame.
     this.audio.updateFrame({
       dt, camera,
+      habitat: poi === 'hoofington' && this.barns.some(p =>
+        (p.x - player.position.x) ** 2 + (p.z - player.position.z) ** 2 < 17 ** 2) ? 'farm-paddock' :
+        poi === 'whispering-pines' && this.pines.some(p =>
+          (p.x - player.position.x) ** 2 + (p.z - player.position.z) ** 2 < 6 ** 2) ? 'pines-understory' : undefined,
       state: {
         mode: match ? 'party' : 'free',
         combo: this.game.rules.style.combo.count,

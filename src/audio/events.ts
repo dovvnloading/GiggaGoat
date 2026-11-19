@@ -73,10 +73,10 @@ export function mapPhysics(event: PhysicsEvent): AudioCue[] {
   const goatId = event.goatId;
   switch (event.type) {
     case 'landed': {
-      const speed = Math.abs(event.verticalSpeed);
+      const speed = event.approachSpeed ?? Math.abs(event.verticalSpeed);
       // Brief support changes during get-up and ordinary steps belong to the locomotion foley.
       if (event.airtime < .18 && speed < 2) return [];
-      return [cue('landing', { goatId, intensity: clamp(speed / 17) })];
+      return [cue('landing', { goatId, intensity: clamp(speed / 12, .16, 1) })];
     }
     case 'impact':
       return event.impulse > 5 ?
