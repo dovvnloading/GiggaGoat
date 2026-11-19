@@ -644,7 +644,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
         frustum.intersectsSphere(railBounds);
     }
     dam.updateCulling(pos);
-    lighthouse.updateCulling(pos);
+    lighthouse.updateCulling(pos, frustum);
     if (kitSets.update(pos)) shadowCastersChanged = true;
     if (props.updateCulling(pos, frustum, cullingDistance,
       mesh => hoofington.isFallbackHidden(mesh) || downtown.isFallbackHidden(mesh) ||
