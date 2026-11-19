@@ -145,6 +145,36 @@ describe('Walkable roads and coastal routes', () => {
     } finally { game.dispose(); }
   });
 
+  it('walks from the Baa-ardwalk shore onto the deck and back without climbing or jumping', async () => {
+    const game = await Game.create();
+    try {
+      const pier = game.island.props.find(prop => prop.poiId === 'baa-ardwalk' && prop.kind === 'pier')!;
+      const { x, y, z } = pier.transform.position;
+      const shore = z - pier.size.z / 2;
+      const deck = y + pier.size.y / 2;
+      for (const lane of [x, x - 2.4, x + 2.4]) {
+        standAt(game, lane, shore - 9);
+        for (const target of [shore + 3.5, shore - 9]) {
+          let airborne = 0;
+          for (let tick = 0; tick < 320; tick++) {
+            const position = game.goat.torso.translation();
+            if (Math.hypot(position.x - lane, position.z - target) < .6) break;
+            game.step({ moveZ: 1, cameraYaw: Math.atan2(lane - position.x, position.z - target), climb: false });
+            expect(game.goat.isRagdoll).toBe(false);
+            expect(game.goat.locomotion.isClinging).toBe(false);
+            if (Math.abs(position.z - shore) < 4) {
+              if (!game.goat.locomotion.grounded) airborne++;
+              expect(position.y).toBeGreaterThan(deck + .25);
+            }
+          }
+          expect(Math.abs(game.goat.torso.translation().z - target)).toBeLessThan(.75);
+          expect(airborne).toBeLessThanOrEqual(6);
+        }
+      }
+      expect(game.respawns).toBe(0);
+    } finally { game.dispose(); }
+  }, 35_000);
+
   it('walks from dry sand to the far end of the Baa-ardwalk without a rescue', async () => {
     const game = await Game.create();
     try {

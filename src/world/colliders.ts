@@ -6,6 +6,7 @@ import { makeDamColliderDescriptors } from './the-dam';
 import { makeGradedBridgeColliders } from './roads';
 import { roadRibbonData } from './road-ribbons';
 import { accessSlabs } from './access-path';
+import { BOARDWALK_SHORE_GUARD_ID, BOARDWALK_SHORE_ID, boardwalkShoreEntry } from './boardwalk';
 import { LIGHTHOUSE_ACCESS_GUARD_ID, LIGHTHOUSE_ACCESS_ID, lighthouseAccess,
   lighthouseFoundationDepth, lighthouseOuterGuard } from './lighthouse-access';
 import { gridSample } from './terrain';
@@ -98,6 +99,13 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
       ...(shape === 'convex' ? { vertices: hull(prop) } : {}),
     };
     colliders.push(collider);
+  }
+  const boardwalkEntry = boardwalkShoreEntry(island);
+  if (boardwalkEntry) {
+    const { sections, guards, thickness, piles, scale } = boardwalkEntry;
+    colliders.push(...accessSlabs(BOARDWALK_SHORE_ID + 'deck-', sections, thickness),
+      ...guards.flatMap((guard, index) => accessSlabs(BOARDWALK_SHORE_GUARD_ID + index + '-', guard, 1.22 * scale)),
+      ...piles);
   }
   colliders.push(...makeDamColliderDescriptors(island));
   return colliders;

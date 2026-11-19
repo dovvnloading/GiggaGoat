@@ -6,7 +6,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { buildRapierColliders, createWorldScene, generateIsland, heightAt } from './index';
 import type { PropDescriptor } from './types';
 import { ART_BOOKMARKS } from './viewer/bookmarks';
-import { SPLASH_DIVE_BOARD_ID } from './boardwalk';
+import { BOARDWALK_SHORE_ID, boardwalkShoreEntry, SPLASH_DIVE_BOARD_ID } from './boardwalk';
 import { paintingAssetUrl } from './viewer/reference-art';
 import { gridSample } from './terrain';
 
@@ -49,6 +49,41 @@ function footprintsOverlap(a: PropDescriptor, b: PropDescriptor): boolean {
 }
 
 describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
+  it('matches the visible shore planks to the same supported join across the entry', async () => {
+    await RAPIER.init();
+    const island = generateIsland();
+    const entry = boardwalkShoreEntry(island)!;
+    const [first, last] = entry.sections;
+    const main = island.props.find(prop => prop.poiId === 'baa-ardwalk' && prop.kind === 'pier')!;
+    const centre = main.transform.position;
+    const shore = centre.z - main.size.z / 2;
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    const visuals = createWorldScene(island);
+    try {
+      expect(first.outer.y).toBeLessThan(gridSample(island, centre.x, first.outer.z));
+      expect(last.outer.z).toBeGreaterThan(shore + .9);
+      expect(topOf(main) - last.outer.y).toBeCloseTo(.02, 5);
+      const picture = visuals.group.getObjectByName('baaardwalk-painted-rails')!;
+      expect(picture).toBeInstanceOf(THREE.InstancedMesh);
+      const { props, terrain } = buildRapierColliders(world, island);
+      const support = props.get(BOARDWALK_SHORE_ID + 'deck-0')!;
+      for (const offset of [-4, 0, 4]) {
+        for (const z of [shore - 2, shore - .08, shore + .07]) {
+          const x = centre.x + offset;
+          const at = { x, y: 9, z };
+          const down = { x: 0, y: -1, z: 0 };
+          const collision = new RAPIER.Ray(at, down);
+          const art = new THREE.Raycaster(new THREE.Vector3(x, at.y, z), new THREE.Vector3(0, -1, 0));
+          const tread = support.castRay(collision, 10, false);
+          const sand = terrain.castRay(collision, 10, false);
+          expect(tread).toBeGreaterThan(0);
+          expect(tread).toBeLessThan(sand);
+          expect(art.intersectObject(picture)[0]!.distance).toBeCloseTo(tread, 2);
+        }
+      }
+    } finally { visuals.dispose(); world.free(); }
+  });
+
   it('joins sandy land to the sea with overlapping, walkable wooden platforms', () => {
     for (const seed of ['billy-isle', 'shore-check', 'other-coast']) {
       for (const size of [400, 600, 850]) {
