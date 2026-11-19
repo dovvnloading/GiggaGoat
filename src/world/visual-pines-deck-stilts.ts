@@ -10,7 +10,7 @@ export function isPinesDeckStilt(prop: PropDescriptor): boolean {
 
 /** Set each of the four bottom rings into its own slope. The rings include
  * the short square shoes molded onto the authored timber poles. */
-export function fitPinesDeckStilt(source: THREE.BufferGeometry, island: IslandData,
+function fitPinesDeckStilt(source: THREE.BufferGeometry, island: IslandData,
   matrix: THREE.Matrix4, distantGround?: TerrainHeight): THREE.BufferGeometry {
   const geometry = source.clone();
   const vertices = geometry.getAttribute('position');
@@ -41,7 +41,34 @@ export function fitPinesDeckStilt(source: THREE.BufferGeometry, island: IslandDa
       vertices.setY(index, y - depths[foot(x, z)]!);
   }
   geometry.computeVertexNormals();
-  geometry.computeBoundingBox();
-  geometry.computeBoundingSphere();
   return geometry;
+}
+
+/** The four corner depths differ at each site. Store each fitted pose on the
+ * same instanced mesh so they share one draw with the original matrices. */
+export function setPinesStiltMorphs(batch: THREE.InstancedMesh, entries: readonly PropDescriptor[],
+  island: IslandData, distantGround?: TerrainHeight,
+  replacedIds?: ReadonlySet<string>): THREE.Mesh | undefined {
+  const sites = entries.flatMap((prop, index) =>
+    isPinesDeckStilt(prop) && !replacedIds?.has(prop.id) ? [index] : []);
+  if (!sites.length) return undefined;
+  const source = batch.geometry;
+  const matrix = new THREE.Matrix4();
+  const fits = sites.map(index => {
+    batch.getMatrixAt(index, matrix);
+    return fitPinesDeckStilt(source, island, matrix, distantGround);
+  });
+  source.morphAttributes.position = fits.map(fit => fit.getAttribute('position'));
+  source.morphAttributes.normal = fits.map(fit => fit.getAttribute('normal'));
+  for (const fit of fits) fit.dispose();
+  source.computeBoundingBox();
+  source.computeBoundingSphere();
+  const pose = new THREE.Mesh(source, batch.material);
+  const weights = pose.morphTargetInfluences!;
+  for (let index = 0; index < batch.count; index++) {
+    for (let target = 0; target < sites.length; target++) weights[target] = Number(sites[target] === index);
+    batch.setMorphAt(index, pose);
+  }
+  batch.morphTexture!.needsUpdate = true;
+  return pose;
 }

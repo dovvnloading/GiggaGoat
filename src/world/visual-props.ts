@@ -5,7 +5,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { loadLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import { appendPinesLogEntries } from './visual-pines-log-access';
-import { fitPinesDeckStilt, isPinesDeckStilt, type TerrainHeight } from './visual-pines-deck-stilts';
+import { setPinesStiltMorphs, type TerrainHeight } from './visual-pines-deck-stilts';
 import type { PropDescriptor, PropKind } from './types';
 import { buildArchitecture, isArchitecturalKind } from './visual-architecture';
 import { CRANE_RAMP_GUARD_PREFIX, CRANE_SWITCHBACK_PREFIX } from './crane-yard';
@@ -753,13 +753,11 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     farIndices: number[];
     /** Visual-only transforms, multiplied after the unchanged physics matrices. */
     adjustments?: THREE.Matrix4[];
+    stiltPose?: THREE.Mesh;
     originalVersion: number;
     occluded: boolean[];
   }
   const jobs: Job[] = [];
-  // Local terrain changes each Pine support's silhouette, so both stay on
-  // their own fitted geometry at every distance, with the same shared paint.
-  const pinesStilts: THREE.Mesh[] = [];
   // One BatchedMesh can draw the two different cascade GLBs in a single
   // material pass. The remaining waterfall foam is already one draw.
   let cascadeBatch: { mesh: THREE.BatchedMesh; ids: Map<Job, number[]> } | undefined;
@@ -833,19 +831,6 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       if (switchMember && switchbackSpan) dummy.scale.divide(switchbackSpan);
       if (summitLandmark(prop)) poseSummitLandmark(prop, dummy);
       dummy.updateMatrix();
-      if (island && isPinesDeckStilt(prop) && !replacedPropIds?.has(prop.id)) {
-        const timber = new THREE.Mesh(fitPinesDeckStilt(geometry, island, dummy.matrix, distantPinesGround), material);
-        timber.name = 'render-' + prop.id;
-        timber.matrixAutoUpdate = false;
-        timber.matrix.copy(dummy.matrix);
-        timber.castShadow = mesh.castShadow;
-        timber.receiveShadow = mesh.receiveShadow;
-        pinesStilts.push(timber);
-        group.add(timber);
-        // The fitted render replaces this static, noncollidable instance.
-        // Reserve its slot so every other stilt retains its descriptor index.
-        dummy.matrix.makeScale(0, 0, 0);
-      }
       mesh.setMatrixAt(i, dummy.matrix);
       const authoredPaint = kind === 'log-bridge' || foliage.has(kind) ||
         authoredKioskKinds.has(kind) || authoredKioskSignKinds.has(kind);
@@ -854,6 +839,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     }
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    const stiltPose = island && kind === 'deck-stilts'
+      ? setPinesStiltMorphs(mesh, entries, island, distantPinesGround, replacedPropIds) : undefined;
     mesh.computeBoundingSphere();
     group.add(mesh);
     const drawn: THREE.InstancedMesh[] = [mesh];
@@ -884,7 +871,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       nearOnly: false,
     };
     batches.push(batch);
-    jobs.push({ kind, entries, mesh, batch, nearIndices: [], farIndices: [],
+    jobs.push({ kind, entries, mesh, batch, stiltPose, nearIndices: [], farIndices: [],
       originalVersion: -1,
       occluded: entries.map(entry => Boolean(island && entry.body.type !== 'dynamic' &&
         completelyOccluded(island, entry.transform.position, entry.size, entry))),
@@ -979,11 +966,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
               ? new THREE.Matrix4().makeScale(span.x, span.y, span.z) : new THREE.Matrix4());
           }
           job.mesh.geometry = libraryGeometry;
-          if (island && job.kind === 'deck-stilts') for (const timber of pinesStilts) {
-            const fallback = timber.geometry;
-            timber.geometry = fitPinesDeckStilt(libraryGeometry, island, timber.matrix, distantPinesGround);
-            fallback.dispose();
-          }
+          if (island && job.stiltPose)
+            job.stiltPose = setPinesStiltMorphs(job.mesh, job.entries, island, distantPinesGround, replacedPropIds);
           // Keep authored paint while tinting the marked access and its supports.
           for (let i = 0; i < job.entries.length; i++) {
             const prop = job.entries[i]!;
@@ -1026,6 +1010,12 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
           const copies = near === far ? [near] : [near, far];
           for (const [index, copy] of copies.entries()) {
             copy.name = 'render-' + (index === 0 ? 'near' : 'far') + '-' + job.kind;
+            // Three sizes the morph texture on the first write. Allocate with
+            // the full batch capacity before enabling visibility compaction.
+            if (job.stiltPose) {
+              job.mesh.getMorphAt(0, job.stiltPose);
+              copy.setMorphAt(0, job.stiltPose);
+            }
             copy.count = 0;
             copy.castShadow = job.mesh.castShadow;
             copy.receiveShadow = job.mesh.receiveShadow;
@@ -1109,13 +1099,6 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       const colour = new THREE.Color();
       const same = (a: readonly number[], b: readonly number[]): boolean =>
         a.length === b.length && a.every((value, i) => value === b[i]);
-      for (const timber of pinesStilts) {
-        test.copy(timber.geometry.boundingSphere!).applyMatrix4(timber.matrix);
-        const visible = test.center.distanceTo(position) - test.radius <= maxDistance &&
-          frustum.intersectsSphere(test);
-        if (timber.castShadow && timber.visible !== visible) changes = true;
-        timber.visible = visible;
-      }
       for (const job of jobs) {
         const suppressed = hidden(job.mesh);
         const fallIds = cascadeBatch?.ids.get(job);
@@ -1162,13 +1145,12 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
           const radius = (summitLandmark(prop)
             ? Math.hypot(el[0]!, el[1]!, el[2]!, el[4]!, el[5]!, el[6]!, el[8]!, el[9]!, el[10]!)
             : Math.hypot(size.x, size.y, size.z)) * 0.52;
-          const distance = position.distanceTo(centre);
-          if (distance - radius > (isSmallWorldModel(job.kind)
-            ? WORLD_LOD.smallPropDistance : maxDistance)) continue;
-          test.center.copy(centre);
-          test.radius = radius;
+          test.set(centre, radius);
+          if (job.stiltPose) test.copy(job.mesh.geometry.boundingSphere!).applyMatrix4(matrix);
+          const distance = position.distanceTo(test.center) - test.radius;
+          if (distance > (isSmallWorldModel(job.kind) ? WORLD_LOD.smallPropDistance : maxDistance)) continue;
           if (!frustum.intersectsSphere(test)) continue;
-          (distance - radius <= WORLD_LOD.detailedDistance ?
+          (distance <= WORLD_LOD.detailedDistance ?
             nearIndices : farIndices).push(i);
         }
         const version = job.mesh.instanceMatrix.version;
@@ -1187,12 +1169,17 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
                 job.mesh.getColorAt(index, colour);
                 mesh.setColorAt(offset + at, colour);
               }
+              if (job.stiltPose) {
+                job.mesh.getMorphAt(index, job.stiltPose);
+                mesh.setMorphAt(offset + at, job.stiltPose);
+              }
             }
           };
           const finish = (mesh: THREE.InstancedMesh, count: number): void => {
             mesh.count = count;
             mesh.instanceMatrix.needsUpdate = true;
             if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+            if (mesh.morphTexture) mesh.morphTexture.needsUpdate = true;
           };
           compact(job.near, nearIndices);
           if (job.near === job.far) {
@@ -1219,6 +1206,13 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       shadowChanged = false;
       return changed;
     },
-    dispose(): void { disposed = true; },
+    dispose(): void {
+      disposed = true;
+      for (const job of jobs) if (job.stiltPose) {
+        job.mesh.dispose();
+        job.near?.dispose();
+        if (job.far !== job.near) job.far?.dispose();
+      }
+    },
   };
 }
