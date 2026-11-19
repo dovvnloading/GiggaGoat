@@ -154,6 +154,7 @@ export class GameView {
     this.scene.background = new THREE.Color(0x87c5f0);
     this.scene.fog = new THREE.FogExp2(SKY_HORIZON_COLOR, .0016);
     this.world = createWorldScene(game.island, {
+      gameplaySelectsCasters: true,
       chunkSegments: 24,
       cullingDistance: 340,
       externallyRenderedPropKinds: WORLD_LIBRARY_KINDS,

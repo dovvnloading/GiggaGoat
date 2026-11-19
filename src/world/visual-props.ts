@@ -882,8 +882,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
 
   // The procedural silhouettes are synchronous placeholders and genuine
   // failure fallbacks. Once loaded, swap their *geometry*, not the mesh:
-  // physics bindings, descriptor order, seeded transforms and draw budget
-  // remain exactly as before (one InstancedMesh per kind).
+  // the physics bindings and descriptor order stay stable. Habitat variants
+  // draw compact subsets of those same transforms in model-specific batches.
   let disposed = false, shadowChanged = false;
   group.userData['libraryLoaded'] = 0;
   group.userData['libraryFailed'] = 0;

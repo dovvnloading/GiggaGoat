@@ -21,6 +21,13 @@ it('seats kit ensembles in all eight districts and gives every object a scaled t
     expect(mesh.geometry.getAttribute('color').count).toBe(mesh.geometry.getAttribute('position').count);
     expect(mesh.userData.kitDetail).toBe('distant');
   }
+  const near = new THREE.Vector3().copy(sets.find(s => s.name === 'Tractor yard')!.pieces[0]!.bottom);
+  expect(visuals.update(near)).toBe(true);
+  expect(visuals.group.getObjectByName('kit-set-hoofington-Tractor yard')!.castShadow).toBe(true);
+  expect(visuals.group.getObjectByName('kit-set-hoofington-Roadside pumpkin cart')!.castShadow).toBe(false);
+  expect(visuals.update(near)).toBe(false);
+  expect(visuals.update(near.clone().addScalar(1000))).toBe(true);
+  expect(visuals.group.children.some(mesh => mesh.castShadow)).toBe(false);
   visuals.dispose();
   for (const set of sets) for (const [i, p] of set.pieces.entries()) {
     const shape = island.colliders.find(c => c.shape !== 'heightfield' && c.id === 'kit-' + set.district + '-' + set.name + '-' + i);

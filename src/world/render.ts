@@ -40,6 +40,8 @@ export interface WorldSceneOptions {
   cullingDistance?: number;
   /** Spatial extent of one prop instancing batch, default 96 metres. */
   propChunkSize?: number;
+  /** The active game selects nearby shadow casters within its quality budget. */
+  gameplaySelectsCasters?: boolean;
   /** Playable views may render these props through their physics-bound roots. */
   externallyRenderedPropKinds?: ReadonlySet<PropKind>;
 }
@@ -432,7 +434,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   for (const chunk of chunks) group.add(chunk.mesh);
   const roads = buildRoads(island, chunks, sky.atmosphere);
   group.add(roads);
-  const kitSets = districtSetVisuals(island.districtSets ?? []);
+  const kitSets = districtSetVisuals(island.districtSets ?? [], options.gameplaySelectsCasters);
   group.add(kitSets.group);
   const roadsideSigns = buildRoadsideSigns(island);
   if (roadsideSigns) group.add(roadsideSigns);
@@ -497,6 +499,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   sun.shadow.camera.bottom = -310;
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 1100;
+  sun.shadow.camera.updateProjectionMatrix();
   // 1536 texels over 620 m = 0.40 m per texel. A normal offset of ~1.5
   // texels and a single-texel filter remove the diagonal acne on large flat
   // walls; radius 3 spread three's rotated PCF taps into a cross-hatch.
@@ -578,7 +581,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
       boardwalkRails.mesh.visible = railBounds.center.distanceTo(pos) <= cullingDistance + railBounds.radius &&
         frustum.intersectsSphere(railBounds);
     }
-    kitSets.update(pos);
+    if (kitSets.update(pos)) shadowCastersChanged = true;
     if (props.updateCulling(pos, frustum, cullingDistance,
       mesh => hoofington.isFallbackHidden(mesh) || downtown.isFallbackHidden(mesh) ||
         lighthouse.isFallbackHidden(mesh)))

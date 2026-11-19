@@ -29,7 +29,7 @@ function fitPiece(geometry: THREE.BufferGeometry, piece: SetPiece, anchor: THREE
 }
 
 /** One draw per workshop, market or landing, including on the software renderer. */
-export function districtSetVisuals(sets: DistrictSet[]) {
+export function districtSetVisuals(sets: DistrictSet[], gameplaySelectsCasters = false) {
   const group = new THREE.Group();
   group.name = 'island-kit-districts';
   const loader = new GLTFLoader(), material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
@@ -50,11 +50,15 @@ export function districtSetVisuals(sets: DistrictSet[]) {
     const mesh = new THREE.Mesh(low, material);
     mesh.name = 'kit-set-' + set.district + '-' + set.name;
     mesh.position.copy(anchor);
-    mesh.castShadow = mesh.receiveShadow = true;
+    // A yard with a tractor or a tent merits a silhouette. Low display tables and
+    // roadside produce receive the sun shadow without costing a depth pass.
+    const casts = set.pieces.some(piece => piece.length * hulls[piece.model].span[1]! >= 1.8);
+    mesh.castShadow = gameplaySelectsCasters && casts;
+    mesh.receiveShadow = true;
     mesh.userData.district = set.district;
     mesh.userData.kitDetail = 'distant';
     group.add(mesh);
-    return { set, mesh, low, high: null as THREE.BufferGeometry | null, pending: false, failed: false };
+    return { set, mesh, casts, low, high: null as THREE.BufferGeometry | null, pending: false, failed: false };
   });
   for (const preview of previews.values()) preview.dispose();
   let active = 0, disposed = false;
@@ -79,6 +83,7 @@ export function districtSetVisuals(sets: DistrictSet[]) {
       }
       entry.high = mergeGeometries(parts);
       if (!entry.high) throw Error('Could not batch ' + entry.set.name);
+      entry.high.userData.preserveSilhouette = true;
     } catch (error) {
       entry.failed = true;
       // The lower LOD uses the same kit geometry, colours and physical footprint.
@@ -93,13 +98,19 @@ export function districtSetVisuals(sets: DistrictSet[]) {
   return {
     group,
     update(camera: THREE.Vector3) {
-      if (disposed) return;
+      if (disposed) return false;
+      let shadowChanged = false;
       let nearest: typeof entries[number] | undefined, nearestDistance = Infinity;
       for (const entry of entries) {
         const distance = entry.mesh.position.distanceToSquared(camera);
+        const previouslyCasting = entry.mesh.visible && entry.mesh.castShadow;
+        const previousGeometry = entry.mesh.geometry;
+        if (!gameplaySelectsCasters) entry.mesh.castShadow = entry.casts && distance < 32 * 32;
         entry.mesh.visible = distance < 210 * 210;
         const high = entry.high && distance < 115 * 115;
         entry.mesh.geometry = high ? entry.high! : entry.low;
+        const casting = entry.mesh.visible && entry.mesh.castShadow;
+        if (previouslyCasting !== casting || (casting && previousGeometry !== entry.mesh.geometry)) shadowChanged = true;
         entry.mesh.userData.kitDetail = high ? 'full' : 'distant';
         if (!entry.high && !entry.pending && !entry.failed && distance < 140 * 140 && distance < nearestDistance) {
           nearest = entry;
@@ -107,6 +118,7 @@ export function districtSetVisuals(sets: DistrictSet[]) {
         }
       }
       if (nearest && active < 2 && typeof document !== 'undefined') void load(nearest);
+      return shadowChanged;
     },
     dispose() {
       disposed = true;

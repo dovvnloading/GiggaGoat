@@ -1,6 +1,6 @@
 """Rebuild the small district scenery collision meshes from the shipped glTF kits.
 
-Run from the repo root with Python, trimesh, numpy and fast-simplification.
+Run from the repo root with Python, trimesh, numpy, scipy and fast-simplification.
 The output uses the same bottom-centre origin and uniform scale as the renderer.
 """
 import json

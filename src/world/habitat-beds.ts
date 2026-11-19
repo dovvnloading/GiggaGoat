@@ -14,6 +14,8 @@ type Beds = Map<BedModel, Planting[]>;
 function outsideProp(x: number, z: number, radius: number, prop: PropDescriptor): boolean {
   const p = prop.transform.position, yaw = prop.transform.rotationY;
   const dx = x - p.x, dz = z - p.z;
+  const reach = (prop.size.x + prop.size.z) * .5 + radius;
+  if (Math.abs(dx) > reach || Math.abs(dz) > reach) return true;
   const c = Math.cos(yaw), s = Math.sin(yaw);
   const tree = prop.kind === 'tree-pine' || prop.kind === 'tree-oak';
   const width = tree ? Math.min(1.8, prop.size.x * .4) : prop.size.x;
@@ -32,15 +34,22 @@ export function planHabitatBeds(island: IslandData): Beds {
     beds.set(model, batch);
   };
   const kit = (island.districtSets ?? []).flatMap(set => set.pieces);
-  const lines = [...island.roads, ...makeLocalStreets(island)].flatMap(r => r.points.slice(1)
-    .map((end, i) => ({ start: r.points[i]!, end, margin: r.width * .5 + (r.type === 'road' ? 2.1 : .7) * scale })));
+  const lines = [...island.roads, ...makeLocalStreets(island)].flatMap(road => {
+    const margin = road.width * .5 + (road.type === 'road' ? 2.1 : .7) * scale;
+    return road.points.slice(1).map((end, i) => {
+      const start = road.points[i]!;
+      return { start, end, margin, left: Math.min(start.x, end.x) - margin, right: Math.max(start.x, end.x) + margin,
+        back: Math.min(start.z, end.z) - margin, front: Math.max(start.z, end.z) + margin };
+    });
+  });
   const solid = island.props.filter(p => p.collidable && !['grass-tuft', 'flower'].includes(p.kind));
   const safe = (x: number, z: number, r: number): boolean => {
     const y = gridSample(island, x, z);
     if (y < island.seaLevel + .32 * scale) return false;
     const river = riverAt({ x, z }, island.river);
     if (river.distance < river.width * .52 + r && y < river.level + .5 * scale) return false;
-    return !lines.some(l => segmentProjection({ x, z }, l.start, l.end).distance < l.margin + r) &&
+    return !lines.some(l => x >= l.left - r && x <= l.right + r && z >= l.back - r && z <= l.front + r &&
+      segmentProjection({ x, z }, l.start, l.end).distance < l.margin + r) &&
       solid.every(p => outsideProp(x, z, r, p)) &&
       kit.every(p => Math.hypot(p.bottom.x - x, p.bottom.z - z) > p.length * .72 + r) &&
       island.spawns.every(p => Math.hypot(x - p.position.x, z - p.position.z) > 2.5 * scale + r);
