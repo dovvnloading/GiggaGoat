@@ -83,6 +83,20 @@ describe('painting bookmark recompositions (default billy-isle)', () => {
     projectBookmark('18', { pierEnd: end });
   });
 
+  it('18 keeps the terrain chunks visible at map altitude', () => {
+    const bookmark = findBookmark('18')!;
+    const camera = new THREE.PerspectiveCamera(bookmark.fov, 4 / 3, 0.25, 4000);
+    camera.position.set(bookmark.camera.x, bookmark.camera.y, bookmark.camera.z);
+    camera.lookAt(bookmark.target.x, bookmark.target.y, bookmark.target.z);
+    const world = createWorldScene(island, { chunkSegments: 32 });
+    try {
+      world.updateCulling(camera);
+      expect(world.chunks.filter(chunk => !chunk.visible)).toHaveLength(0);
+    } finally {
+      world.dispose();
+    }
+  });
+
   it('07 frames windmill and Mt Gigga summit from clear ground-level farm approach', () => {
     const bookmark = findBookmark('07')!;
     // Walk from the original barn-wall camera toward the island centre in
