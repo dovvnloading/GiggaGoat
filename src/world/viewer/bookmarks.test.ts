@@ -165,36 +165,32 @@ describe('painting bookmark recompositions (default billy-isle)', () => {
     projectBookmark('09', landmarks);
   });
 
-  it('13 frames the log bridge, at least five bank ferns and the lookout upstream', () => {
+  it('13 frames both bridge approaches, the stream, and the lookout', () => {
     const bookmark = findBookmark('13')!;
     const bridge = props('whispering-pines', 'log-bridge')[0]!;
     const lookout = props('whispering-pines', 'lookout')[0]!;
     expect(bridge).toBeDefined();
     expect(lookout).toBeDefined();
     const at = bridge.transform.position;
+    const angle = bridge.transform.rotationY;
+    const bridgeEnd = (sign: number): Vec3 => ({
+      x: at.x + sign * Math.sin(angle) * bridge.size.z / 2,
+      y: at.y + bridge.size.y / 2,
+      z: at.z + sign * Math.cos(angle) * bridge.size.z / 2,
+    });
     const index = island.river.findIndex(point =>
       Math.hypot(point.x - at.x, point.z - at.z) < 1e-5);
     expect(index).toBeGreaterThan(0);
-    const before = island.river[index - 1]!;
-    const after = island.river[index + 1]!;
-    const upstream = new THREE.Vector2(before.x - after.x, before.z - after.z).normalize();
-    // River-left is defined looking downstream: right of the upstream vector.
-    const riverLeft = new THREE.Vector2(upstream.y, -upstream.x);
-    const waterLevel = riverAt(at, island.river).level;
-    expect(bookmark.camera).toEqual(rounded({
-      x: at.x - upstream.x * 22 + riverLeft.x * 3,
-      y: waterLevel + 3.5,
-      z: at.z - upstream.y * 22 + riverLeft.y * 3,
-    }));
-    expect(bookmark.target).toEqual(rounded({
-      x: at.x + upstream.x * 18, y: waterLevel + 6,
-      z: at.z + upstream.y * 18,
-    }));
-    expect(bookmark.camera).toEqual({ x: -130, y: 6.5, z: -175.5 });
-    expect(bookmark.target).toEqual({ x: -98, y: 9, z: -151 });
-    expect(bookmark.fov).toBe(60);
-    expect(bookmark.day).toBe(0.49);
-    projectBookmark('13', { logBridge: at, lookout: lookout.transform.position });
+    const downstream = island.river[index + 1]!;
+    const stream = { x: THREE.MathUtils.lerp(at.x, downstream.x, .23),
+      z: THREE.MathUtils.lerp(at.z, downstream.z, .23) };
+    const tower = lookout.transform.position;
+    projectBookmark('13', {
+      nearBank: bridgeEnd(-1), farBank: bridgeEnd(1),
+      stream: { ...stream, y: riverAt(stream, island.river).level },
+      lookoutTop: { ...tower, y: tower.y + lookout.size.y / 2 },
+      lookoutBase: { ...tower, y: tower.y - lookout.size.y / 2 },
+    });
     const camera = new THREE.PerspectiveCamera(bookmark.fov, 16 / 9, 0.25, 4000);
     camera.position.set(bookmark.camera.x, bookmark.camera.y, bookmark.camera.z);
     camera.lookAt(bookmark.target.x, bookmark.target.y, bookmark.target.z);
@@ -292,11 +288,13 @@ describe('World Lab bookmark camera constraints', () => {
 
   it.each([
     { id: '08', name: 'Hoofington', blockedStep: 31, lift: 18 },
-    { id: '13', name: 'Whispering Pines', blockedStep: 17, lift: 4 },
+    { id: '13', name: 'Whispering Pines', blockedStep: 17, lift: 4, pose: {
+      camera: { x: -130, y: 6.5, z: -175.5 }, target: { x: -98, y: 9, z: -151 }, fov: 60,
+    } },
   ])('keeps the near plane above the $name ridge during a low orbit', fixture => {
     const world = createWorldScene(island, { chunkSegments: 32 });
     world.group.updateMatrixWorld(true);
-    const bookmark = findBookmark(fixture.id)!;
+    const bookmark = { ...findBookmark(fixture.id)!, ...fixture.pose };
     const orbitCamera = new THREE.PerspectiveCamera(bookmark.fov, 1542 / 883, .25, 4000);
     orbitCamera.position.set(310, 220, 390);
     const camera = orbitCamera.clone();

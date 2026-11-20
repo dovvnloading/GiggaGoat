@@ -4,7 +4,7 @@ import { FlyControls } from 'three/addons/controls/FlyControls.js';
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 import {
   createWorldScene, generateIsland, hashIsland, heightAt, landAreaAtTideLevel,
-  type ColliderDescriptor, type IslandData, type WorldScene,
+  type ColliderDescriptor, type IslandData, type PoiId, type WorldScene,
 } from '../index';
 import { applyBookmarkCamera, ART_BOOKMARKS, findBookmark } from './bookmarks';
 import { updateOrbitCamera } from './orbit-terrain';
@@ -136,6 +136,7 @@ scene.add(streetGoat);
 
 let island: IslandData;
 let worldView: WorldScene;
+let bookmarkDistrict: PoiId | undefined;
 function updateCameraControls(delta: number): void {
   if (orbit.enabled) updateOrbitCamera(camera, orbit, island);
   else fly.update(delta);
@@ -274,6 +275,7 @@ function regenerate(): void {
 function applyBookmark(id: string): void {
   const mark = findBookmark(id);
   if (!mark || !worldView) return;
+  bookmarkDistrict = mark.district;
   // Bookmark 08 is explicitly a third-person village composition; 11 uses
   // the same foreground scale reference among the downtown shop fronts.
   streetGoat.visible = id === '08' || id === '11';
@@ -623,8 +625,13 @@ renderer.setAnimationLoop(() => {
   worldView.update(elapsed);
   updateCameraControls(delta);
   if (poiToggle.checked) {
+    const district = orbit.enabled ? bookmarkDistrict : undefined;
     for (const poi of island.pois) {
       const node = labelById.get(poi.id)!;
+      if (district && poi.id !== district) {
+        node.style.display = 'none';
+        continue;
+      }
       projected.set(poi.center.x, poi.center.y + (poi.id === 'mt-gigga' ? 13 : 10), poi.center.z)
         .project(camera);
       const visible = projected.z >= -1 && projected.z <= 1 &&
