@@ -3,8 +3,9 @@ import type {
   ColliderBuild, ColliderDescriptor, IslandData, PropColliderDescriptor, PropDescriptor,
 } from './types';
 import { makeDamColliderDescriptors } from './the-dam';
-import { makeGradedBridgeColliders } from './roads';
+import { makeGradedBridgeColliders, makeLocalStreets } from './roads';
 import { roadRibbonData } from './road-ribbons';
+import { hoofingtonVergeData } from './hoofington-verge';
 import { accessSlabs } from './access-path';
 import { BOARDWALK_SHORE_GUARD_ID, BOARDWALK_SHORE_ID, boardwalkShoreEntry,
   boardwalkWheelSupports } from './boardwalk';
@@ -245,14 +246,19 @@ export function buildRapierColliders(world: RAPIER.World, island: IslandData): C
       .setFriction(0.92),
   );
   const paths: RAPIER.Collider[] = [];
-  for (const type of ['road', 'trail'] as const) {
-    const { positions, supportIndices } = roadRibbonData(island, type);
-    if (supportIndices.length === 0) continue;
+  const addPath = (positions: number[], supportIndices: number[]): void => {
     paths.push(world.createCollider(RAPIER.ColliderDesc.trimesh(
       new Float32Array(positions), new Uint32Array(supportIndices),
       RAPIER.TriMeshFlags.FIX_INTERNAL_EDGES | RAPIER.TriMeshFlags.DELETE_DEGENERATE_TRIANGLES,
     ).setFriction(0.92)));
+  };
+  for (const type of ['road', 'trail'] as const) {
+    const { positions, supportIndices } = roadRibbonData(island, type);
+    if (supportIndices.length > 0) addPath(positions, supportIndices);
   }
+  const street = makeLocalStreets(island).find(road => road.from === 'hoofington')!;
+  const verge = hoofingtonVergeData(island, street);
+  addPath(verge.positions, verge.supportIndices);
   const props = new Map<string, RAPIER.Collider>();
   const bodies = new Map<string, RAPIER.RigidBody>();
   for (const collider of island.colliders) {

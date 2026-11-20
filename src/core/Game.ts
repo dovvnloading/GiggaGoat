@@ -572,7 +572,7 @@ export class Game {
     };
     place('trampoline', farm.center.x + 11, farm.center.z + 2);
     // The lawn beyond the east sidewalk has a clear landing to the north.
-    place('launch', farm.center.x + 9.5, farm.center.z - 4, { direction: V(0, .93, -.3) });
+    place('launch', farm.center.x + 9.5, farm.center.z - 4, { direction: V(0, .93, -.34) });
     const boardwalk = this.island.pois.find(p => p.id === 'baa-ardwalk')!;
     place('launch', boardwalk.center.x + 6, boardwalk.center.z + 12);
     for (const prop of this.island.props) {
