@@ -162,7 +162,7 @@ describe('island sea, shoreline and horizon', () => {
       expect(path).not.toBeNull();
       expect(decay).not.toBeNull();
       expect(shader).toContain('abs(eye.y) / max(length(eye), 0.0001)');
-      expect(shader).toContain('mix(36.0, 11.0 * scale, flood)');
+      expect(shader).toContain('mix(17.0, 11.0, flood) * scale');
       expect(shader).toContain('ripples * flood * atlasInterior');
       const transmission = (depth: number, cosine: number): number => {
         const distance = Math.max(0, depth - Number(path![1])) / Math.max(Number(path![2]), cosine);

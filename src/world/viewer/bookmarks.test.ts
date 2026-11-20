@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { describe, expect, it } from 'vitest';
 import { createWorldScene, generateIsland, heightAt } from '../index';
+import { boardwalkPierDecks } from '../boardwalk';
 import { gridSample, riverAt } from '../terrain';
 import type { PropDescriptor, Vec3 } from '../types';
 import { applyBookmarkCamera, ART_BOOKMARKS, findBookmark } from './bookmarks';
@@ -74,6 +75,14 @@ function isClear07(camera: Vec3, target: Vec3): boolean {
 }
 
 describe('painting bookmark recompositions (default billy-isle)', () => {
+  it('18 leaves a margin around the outer end of Baa-ardwalk', () => {
+    const end = boardwalkPierDecks(island).map(deck => ({
+      ...deck.transform.position,
+      z: deck.transform.position.z + deck.size.z / 2,
+    })).sort((a, b) => b.z - a.z)[0]!;
+    projectBookmark('18', { pierEnd: end });
+  });
+
   it('07 frames windmill and Mt Gigga summit from clear ground-level farm approach', () => {
     const bookmark = findBookmark('07')!;
     // Walk from the original barn-wall camera toward the island centre in

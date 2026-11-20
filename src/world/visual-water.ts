@@ -75,6 +75,8 @@ export const SHALLOW_FLOOD_REVEAL = {
   opacityReduction: .48,
 } as const;
 
+export const SEA_COLOR_DEPTH = { shore: 17, flood: 11, offshoreSlope: 0.17 } as const;
+
 /** Float height atlas lets the sea shade by actual terrain depth, including rising tide. */
 function seaMaterial(island: IslandData, uLight: LightUniform,
   atmosphere: ReturnType<typeof skyUniforms>): { material: THREE.ShaderMaterial;
@@ -143,10 +145,12 @@ function seaMaterial(island: IslandData, uLight: LightUniform,
       '  float scale = uSize / 600.0;',
       '  float rise = (uLevel - uSeaDatum) / scale;',
       '  float flood = smoothstep(8.0, 30.0, rise);',
-      '  // Taper to deep water outside the height atlas to avoid extending its edge.',
+      '  // Use a continuous depth beyond the terrain samples for the sea colour.',
+      '  float offGrid = length(max(abs(mapXZ) - 0.5, 0.0)) * uSize;',
+      `  float colorDepth = depth + offGrid * ${SEA_COLOR_DEPTH.offshoreSlope.toFixed(2)};`,
       '  float atlasInterior = 1.0 - smoothstep(0.48, 0.5, max(abs(mapXZ.x), abs(mapXZ.y)));',
-      '  float shelf = mix(36.0, 11.0 * scale, flood);',
-      '  float deepMix = mix(1.0, smoothstep(0.0, shelf, depth), atlasInterior);',
+      `  float shelf = mix(${SEA_COLOR_DEPTH.shore.toFixed(1)}, ${SEA_COLOR_DEPTH.flood.toFixed(1)}, flood) * scale;`,
+      '  float deepMix = smoothstep(0.0, shelf, colorDepth);',
       '  vec3 shallows = mix(uShallow, uDeep, flood * 0.58);',
       '  vec3 color = mix(shallows, uDeep, deepMix);',
       '  // Crossed, gently warped ripples keep their footprint filtered at grazing angles.',
