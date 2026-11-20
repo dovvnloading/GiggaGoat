@@ -11,6 +11,7 @@ import { updateOrbitCamera } from './orbit-terrain';
 import { paintingAssetUrl } from './reference-art';
 import { createStaticShadowCache } from './shadow-cache';
 import { createAdaptiveViewerResolution } from './adaptive-resolution';
+import { groundLayers } from '../district-materials';
 import { SKY_HORIZON_COLOR } from '../visual-sky';
 
 function element<T extends HTMLElement>(id: string): T {
@@ -523,6 +524,15 @@ if (new URLSearchParams(window.location.search).has('profile')) {
           camera: camera.position.toArray(),
           target: orbit.target.toArray(),
         };
+      },
+      groundFinishState(zone: string) {
+        const mesh = worldView.group.getObjectByName('ground-finish-' + zone);
+        const layers = mesh instanceof THREE.Mesh && mesh.material.map ? groundLayers.get(mesh.material.map) : undefined;
+        const programs = (renderer.info.programs ?? []).filter(p => p.cacheKey.includes('-district-ground-v1'));
+        const linked = programs.filter(p => gl.getProgramParameter(p.program as WebGLProgram, gl.LINK_STATUS));
+        const edgeSampler = linked.some(p => gl.getUniformLocation(p.program as WebGLProgram, 'groundEdge') !== null);
+        return { maps: layers?.maps?.length ?? 0, mix: layers?.mix.value ?? 0, edgeSampler,
+          programs: programs.length, linked: linked.length };
       },
       /** Source-model QA at the painting's bookmark-11 camera. */
       downtownState(): { loaded: boolean; models: number; triangles: number;

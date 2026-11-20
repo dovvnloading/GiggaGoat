@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import { publicAssetUrl } from './public-assets';
+import { districtMaterials } from './district-materials';
+export type { ApplyGroundMap } from './district-materials';
+import { SUMMIT_ASCENT_TRAIL } from './road-ribbons';
 import { gridCoordinate, gridIndex } from './terrain';
 import type { IslandData, PoiId } from './types';
 
@@ -17,7 +19,7 @@ const finishes: Record<PoiId, Finish> = {
       [-17, -6, 42, 20, 79], [3, -17, 47, 14, -5], [17, -1, 31, 15, 65], [-12, 8, 32, 13, -24]]
   },
   'crane-yard': {
-    tile: 6, strength: .83, swaths: [
+    tile: 5.8, strength: .83, swaths: [
       [-19, -9, 40, 14, 91], [5, -18, 41, 16, 2], [19, 9, 47, 12, 83]]
   },
   'downtown-bleatsville': {
@@ -44,9 +46,6 @@ const finishes: Record<PoiId, Finish> = {
 
 const smoothstep = THREE.MathUtils.smoothstep;
 
-type FinishMaterial = THREE.MeshLambertMaterial | THREE.MeshToonMaterial | THREE.MeshBasicMaterial;
-export type ApplyGroundMap = (material: FinishMaterial, zone: PoiId, texturedTint?: number) => void;
-
 /** Use world metres for the texel scale on raised walkways and road ribbons too. */
 export function groundUV(geometry: THREE.BufferGeometry, tile: number): void {
   const position = geometry.getAttribute('position');
@@ -61,45 +60,27 @@ export function groundUV(geometry: THREE.BufferGeometry, tile: number): void {
 export function buildDistrictGround(island: IslandData) {
   const group = new THREE.Group();
   group.name = 'district-ground-finishes';
-  const maps = new Map<PoiId, THREE.Texture>();
+  const materials = districtMaterials();
+  const { applyMap } = materials;
   const scale = island.size / 600, n = island.resolution, step = island.size / (n - 1);
-  const waiting = new Map<PoiId, ((texture: THREE.Texture) => void)[]>();
   const pavedCells = new Set<number>();
-  let disposed = false;
-
-  function applyMap(material: FinishMaterial, zone: PoiId, texturedTint?: number) {
-    if (typeof document === 'undefined' || typeof document.createElementNS !== 'function') return;
-    const bind = (texture: THREE.Texture) => {
-      material.map = texture;
-      if (texturedTint !== undefined) material.color.setHex(texturedTint);
-      material.needsUpdate = true;
-    };
-    let map = maps.get(zone);
-    if (!map) {
-      map = new THREE.TextureLoader().load(publicAssetUrl('assets/terrain/' + zone + '.webp'), loaded => {
-        if (disposed) return;
-        for (const bindSurface of waiting.get(zone) ?? []) bindSurface(loaded);
-        waiting.delete(zone);
-      });
-      map.userData.groundFinish = true;
-      map.colorSpace = THREE.SRGBColorSpace;
-      map.wrapS = map.wrapT = THREE.RepeatWrapping;
-      map.anisotropy = 4;
-      maps.set(zone, map);
-    }
-    if (map.image) bind(map);
-    else {
-      const queued = waiting.get(zone) ?? [];
-      queued.push(bind);
-      waiting.set(zone, queued);
-    }
-  }
-
   for (const poi of island.pois) {
     const finish = finishes[poi.id];
     const patches = finish.swaths.map(([x, z, length, width, degrees]) => ({
       x, z, a: length / 2, b: width / 2, cos: Math.cos(degrees * Math.PI / 180), sin: Math.sin(degrees * Math.PI / 180)
     }));
+    if (poi.id === 'mt-gigga') {
+      const route = island.roads.find(road => road.id === SUMMIT_ASCENT_TRAIL);
+      for (let i = 1; route && i < route.points.length; i++) {
+        const a = route.points[i-1]!, b = route.points[i]!;
+        const x = ((a.x + b.x) / 2 - poi.center.x) / scale, z = ((a.z + b.z) / 2 - poi.center.z) / scale;
+        if (Math.hypot(x, z) > 63) continue;
+        const dx = b.x - a.x, dz = b.z - a.z, length = Math.hypot(dx, dz);
+        if (length < .01) continue;
+        patches.push({ x, z, a: length / (2 * scale) + 7, b: route.width / (2 * scale) + 4.8,
+          cos: dx / length, sin: dz / length });
+      }
+    }
     // The working side of a kit follows its accepted site on alternate island seeds.
     for (const set of island.districtSets ?? []) {
       if (set.district !== poi.id) continue;
@@ -130,6 +111,11 @@ export function buildDistrictGround(island: IslandData) {
         const along = (dx * patch.cos + dz * patch.sin) / patch.a, across = (dz * patch.cos - dx * patch.sin) / patch.b;
         w = Math.max(w, 1 - smoothstep(Math.hypot(along, across) + edge, .47, 1.16));
       }
+      if (poi.id === 'crane-yard') {
+        const perimeter = Math.max(Math.abs(x) - 40, Math.abs(z) - 36);
+        // A weathered strip outside the apron exposes the same grit as the slab.
+        w = Math.max(w, (1 - smoothstep(perimeter, .3, 4.8 + edge * 5)) * smoothstep(perimeter, -6, -2));
+      }
       const h = island.heights[index]!;
       const span = (ax: number, az: number) => island.heights[gridIndex(n,
         THREE.MathUtils.clamp(ix + ax, 0, n - 1), THREE.MathUtils.clamp(iz + az, 0, n - 1))]!;
@@ -148,12 +134,13 @@ export function buildDistrictGround(island: IslandData) {
       const vi = positions.length / 3;
       positions.push(x, island.heights[index]!, z);
       colours.push(1, 1, 1, weight(ix, iz));
-      uvs.push(x / (scale * finish.tile), -z / (scale * finish.tile));
+      uvs.push((x + poi.center.x) / (scale * finish.tile), -(z + poi.center.z) / (scale * finish.tile));
       vertices.set(index, vi);
       return vi;
     };
     const extent = (axis: 'x' | 'z', sign: number) => {
-      const edge = Math.max(...patches.map(p => sign * p[axis] + 1.3 * Math.max(p.a, p.b)));
+      const apron = poi.id === 'crane-yard' ? (axis === 'x' ? 46 : 42) : 0;
+      const edge = Math.max(apron, ...patches.map(p => sign * p[axis] + 1.3 * Math.max(p.a, p.b)));
       return THREE.MathUtils.clamp(Math.round((poi.center[axis] + sign * edge * scale + island.size / 2) / step) + sign, 0, n - 1);
     };
     const left = extent('x', -1), right = extent('x', 1), back = extent('z', -1), front = extent('z', 1);
@@ -173,6 +160,7 @@ export function buildDistrictGround(island: IslandData) {
     });
     applyMap(material, poi.id);
     const mesh = new THREE.Mesh(geometry, material);
+    mesh.userData.district = poi.id;
     mesh.name = 'ground-finish-' + poi.id; mesh.position.set(poi.center.x, 0, poi.center.z);
     mesh.visible = false; mesh.receiveShadow = true; mesh.renderOrder = -1;
     group.add(mesh);
@@ -186,10 +174,12 @@ export function buildDistrictGround(island: IslandData) {
     update(camera: THREE.Vector3) {
       for (const mesh of group.children as THREE.Mesh<THREE.BufferGeometry, THREE.MeshLambertMaterial>[]) {
         const distance = Math.hypot(camera.x - mesh.position.x, camera.z - mesh.position.z) / scale;
+        materials.distance(mesh.userData.district, distance);
         mesh.visible = !!mesh.material.map?.image && distance < 156;
         mesh.material.opacity = 1 - smoothstep(distance, 120, 156);
       }
+      materials.update();
     },
-    dispose() { disposed = true; for (const map of maps.values()) map.dispose(); }
+    dispose() { materials.dispose(); }
   };
 }

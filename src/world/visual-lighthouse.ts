@@ -310,29 +310,34 @@ function makeWindingFootpath(island: IslandData, center: { x: number; z: number 
   const scale = island.size / 600;
   const curve = new THREE.CatmullRomCurve3(LIGHTHOUSE_FOOTPATH.map(([dx, dz]) =>
     new THREE.Vector3(center.x + dx! * scale, 0, center.z + dz! * scale)), false, 'centripetal');
-  const vertices: number[] = [], indices: number[] = [];
+  const vertices: number[] = [], indices: number[] = [], colours: number[] = [];
+  const across = [-1.23, -.70, .70, 1.23];
   for (let i = 0; i <= 72; i++) {
     const t = i / 72;
     const point = curve.getPoint(t);
     const tangent = curve.getTangent(t).normalize();
     const nx = tangent.z, nz = -tangent.x;
     const width = (1.7 + Math.sin(t * Math.PI) * 0.35) * scale;
-    for (const side of [-1, 1]) {
+    for (const side of across) {
       const x = point.x + side * nx * width;
       const z = point.z + side * nz * width;
+      colours.push(1, 1, 1, Math.abs(side) > 1 ? 0 : 1);
       vertices.push(x, gridSample(island, x, z) + 0.16 * scale, z);
     }
     if (i > 0) {
-      const k = i * 2;
-      indices.push(k - 2, k - 1, k, k - 1, k + 1, k);
+      for (let j = 0; j < across.length - 1; j++) {
+        const k = i * across.length + j, prev = k - across.length;
+        indices.push(prev, prev + 1, k, prev + 1, k + 1, k);
+      }
     }
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colours, 4));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   const material = new THREE.MeshBasicMaterial({
-    color: 0xbe9864, side: THREE.DoubleSide,
+    color: 0xbe9864, vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide,
     polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
   });
   const mesh = new THREE.Mesh(geometry, material);

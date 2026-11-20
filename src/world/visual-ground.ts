@@ -38,6 +38,7 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96,
   const buckets = new Map<string, ChunkBuffer>();
   const apron: ChunkBuffer = { positions: [], colors: [], indices: [] };
   const storefronts: ChunkBuffer = { positions: [], colors: [], indices: [] };
+  const beds: ChunkBuffer = { positions: [], colors: [], indices: [] };
   const stripes: ChunkBuffer = { positions: [], colors: [], indices: [] };
   const water: ChunkBuffer = { positions: [], colors: [], indices: [] };
   const scale = island.size / 600;
@@ -61,8 +62,30 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96,
     const index = bucket.positions.length / 3;
     bucket.positions.push(x, gridSample(island, x, z) + (0.075 + lift) * scale, z);
     bucket.colors.push(...colour(color, shade));
+    if (bucket === beds) bucket.colors.push(1);
     return index;
   }
+  function flowerBed(x: number, z: number, width: number, length: number, color: THREE.Color, yaw = 0) {
+    const first = beds.positions.length / 3, c = Math.cos(yaw), s = Math.sin(yaw), sides = 12;
+    const soil = color.clone().lerp(new THREE.Color(0xe5d4ab), .58);
+    // The small dug beds have a planted core and broken turf around the spade line.
+    const add = (px: number, pz: number, opacity: number) => {
+      beds.positions.push(px, gridSample(island, px, pz) + .075 * scale, pz);
+      beds.colors.push(soil.r, soil.g, soil.b, opacity);
+    };
+    add(x, z, .72);
+    for (let i = 0; i < sides; i++) {
+      const angle = -2 * Math.PI * i / sides;
+      const radius = .49 + .045 * Math.cos(3 * angle + x) + .026 * Math.sin(5 * angle + z);
+      const dx = Math.cos(angle) * width * radius, dz = Math.sin(angle) * length * radius;
+      const vx = c * dx + s * dz, vz = c * dz - s * dx;
+      add(x + vx * .62, z + vz * .62, .59);
+      add(x + vx, z + vz, 0);
+      const inner = first + 1 + 2 * i, next = first + 1 + 2 * ((i + 1) % sides);
+      beds.indices.push(first, inner, next, inner, inner + 1, next, next, inner + 1, next + 1);
+    }
+  }
+
   function quad(x: number, z: number, width: number, length: number,
     color: THREE.Color, yaw = 0, shade?: number, lift = 0,
     bucket = verticesAt(x, z)): void {
@@ -166,7 +189,7 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96,
   for (const side of [-1, 1]) {
     for (let i = 0; i < 13; i += 3) {
       const z = farm.z + (-34 + i * 5.5) * scale;
-      quad(farm.x + side * 15.2 * scale, z,
+      flowerBed(farm.x + side * 15.2 * scale, z,
         3.2 * scale, 2.0 * scale, SOIL);
     }
     for (const dz of [-19, -9, 11, 12, 29]) {
@@ -175,7 +198,7 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96,
     }
     const patchX = farm.x + side * 27 * scale;
     const patchZ = farm.z + 30 * scale;
-    quad(patchX, patchZ, 11 * scale, 8 * scale, SOIL);
+    quad(patchX, patchZ, 11 * scale, 8 * scale, SOIL, 0, undefined, 0, beds);
     // Five rows along the 11 m axis, lifted 2 cm above the soil decal.
     for (const dz of [-3, -1.5, 0, 1.5, 3]) {
       quad(patchX, patchZ + dz * scale,
@@ -225,7 +248,7 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96,
   // Bare-earth patches behind the shops and at the village farmyard keep
   // distant lawns from reading as empty single-colour carpet.
   for (const z of [-32, -18, 4, 22, 34]) {
-    quad(farm.x - 37 * scale, farm.z + z * scale,
+    flowerBed(farm.x - 37 * scale, farm.z + z * scale,
       7 * scale, 6 * scale, DIRT, 0.15);
     quad(city.x + 37 * scale, city.z + z * scale,
       6 * scale, 5 * scale, GRAVEL, -0.09);
@@ -239,7 +262,8 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96,
   function draw(bucket: ChunkBuffer, name: string, coat: THREE.Material): void {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(bucket.positions, 3));
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(bucket.colors, 3));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(bucket.colors, bucket === beds ? 4 : 3));
+    if (bucket === beds) groundUV(geometry, 5.1 * scale);
     if (bucket === apron) groundUV(geometry, 5.8 * scale);
     if (bucket === storefronts) groundUV(geometry, 3.7 * scale);
     geometry.setIndex(bucket.indices);
@@ -252,6 +276,10 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96,
     group.add(mesh);
   }
   for (const [key, bucket] of buckets) draw(bucket, 'ground-detail-chunk-' + key, material);
+  const bedMaterial = material.clone();
+  bedMaterial.transparent = true; bedMaterial.depthWrite = false; bedMaterial.side = THREE.FrontSide;
+  applyMap?.(bedMaterial, 'hoofington');
+  draw(beds, 'ground-detail-orchard-beds', bedMaterial);
   const plazaMaterial = material.clone();
   applyMap?.(plazaMaterial, 'downtown-bleatsville');
   draw(storefronts, 'ground-detail-city-frontages', plazaMaterial);

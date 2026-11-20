@@ -459,7 +459,7 @@ function buildRoads(island: IslandData, terrain: readonly Chunk[], atmosphere: R
         weatherSurface(shader, atmosphere, true);
       };
     } else {
-      const tile = 3.5 * island.size / 600;
+      const tile = 5.4 * island.size / 600;
       groundUV(geometry, tile);
       // The two skirt edges have identical XZ at top and bottom. Unwrap their
       // height separately so sloping trail embankments retain stone detail.
@@ -468,7 +468,7 @@ function buildRoads(island: IslandData, terrain: readonly Chunk[], atmosphere: R
         if (i % 6 < 2) continue;
         uv.setXY(i, (positions[i * 3]! + positions[i * 3 + 2]!) / tile, positions[i * 3 + 1]! / tile);
       }
-      applyMap(material, 'mt-gigga', 0xdfcaa4);
+      applyMap(material, 'mt-gigga', 0xf5f1e8);
     }
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'paths-' + type;

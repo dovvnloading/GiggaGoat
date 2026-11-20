@@ -1,3 +1,5 @@
+import { blendFieldIndex, groundBlendField } from '../world/ground-blend';
+
 /** Projected positions remain homogeneous until the triangle has been clipped. */
 export interface ClipVertex {
   x: number; y: number; w: number; u: number; v: number;
@@ -6,6 +8,8 @@ export interface ClipVertex {
 export interface SoftwareTexture {
   pixels: Uint8ClampedArray; width: number; height: number;
   mipmaps?: SoftwareTexture[];
+  finish?: { a: Uint8ClampedArray; b: Uint8ClampedArray; c: Uint8ClampedArray;
+    edge: Uint8ClampedArray; mix: { value: number } };
   flipY: boolean; repeatU: boolean; repeatV: boolean;
 }
 
@@ -132,6 +136,7 @@ export class SoftwareFrame {
       const level = Math.min(texture.mipmaps.length, Math.floor(Math.log2(Math.max(1, footprint))));
       if (level > 0) texture = texture.mipmaps[level - 1]!;
     }
+    const finish = texture?.finish;
     const coverage = a.opacity !== undefined;
     const da = coverage ? ((middle.opacity - top.opacity) * acy - (bottom.opacity - top.opacity) * aby) / det : 0;
     const smooth = a.tint !== undefined && b.tint !== undefined && c.tint !== undefined;
@@ -181,6 +186,7 @@ export class SoftwareFrame {
         const depth = iz * bias;
         if (depth <= this.depth[i]!) continue;
         let u = uz / iz, v = vz / iz;
+        const field = finish ? blendFieldIndex(u, v) : 0;
         u = texture.repeatU ? u - Math.floor(u) : Math.min(1, Math.max(0, u));
         v = texture.repeatV ? v - Math.floor(v) : Math.min(1, Math.max(0, v));
         const tx = Math.min(texture.width - 1, Math.floor(u * texture.width));
@@ -188,17 +194,36 @@ export class SoftwareFrame {
         const k = 4 * (ty * texture.width + tx);
         const texels = texture.pixels;
         if (texels[k + 3]! < 96) continue;
+        let alpha = coverage ? Math.min(1, Math.max(0, alphaZ / iz)) : 1;
+        let r = texels[k]!, g = texels[k + 1]!, b = texels[k + 2]!;
+        if (finish) {
+          const s = groundBlendField[field]! / 255, t = groundBlendField[field + 1]! / 255;
+          let interior = 1;
+          if (coverage) {
+            const edge = alpha + (groundBlendField[field + 2]! / 255 - .5) * .22;
+            const x = Math.min(1, Math.max(0, (edge - .22) / .51));
+            interior = x * x * (3 - 2 * x);
+            const edgeSum = finish.edge[k]! + finish.edge[k+1]! + finish.edge[k+2]!;
+            const stone = Math.min(.55, Math.max(-.55, (.35 - finish.edge[k+1]! / Math.max(1, edgeSum)) * 10));
+            alpha *= 1 + finish.mix.value * (1 - alpha) * (1 - interior) * stone * 1.35;
+          }
+          const amount = finish.mix.value, core = amount * interior;
+          const w0 = 1 - amount + core * (1 - s) * (1 - t);
+          const wa = core * s * (1 - t), wb = core * (1 - s) * t;
+          const wc = core * s * t, we = amount * (1 - interior);
+          r = r * w0 + finish.a[k]! * wa + finish.b[k]! * wb + finish.c[k]! * wc + finish.edge[k]! * we;
+          g = g * w0 + finish.a[k+1]! * wa + finish.b[k+1]! * wb + finish.c[k+1]! * wc + finish.edge[k+1]! * we;
+          b = b * w0 + finish.a[k+2]! * wa + finish.b[k+2]! * wb + finish.c[k+2]! * wc + finish.edge[k+2]! * we;
+        }
         if (coverage) {
-          const alpha = Math.min(1, Math.max(0, alphaZ / iz));
           const bg = this.pixels[i]!, keep = 1 - alpha, gain = alpha / 255;
-          this.pixels[i] = pixel((bg & 255) * keep + red * texels[k]! * gain,
-            (bg >>> 8 & 255) * keep + green * texels[k+1]! * gain,
-            (bg >>> 16 & 255) * keep + blue * texels[k+2]! * gain);
+          this.pixels[i] = pixel((bg & 255) * keep + red * r * gain,
+            (bg >>> 8 & 255) * keep + green * g * gain,
+            (bg >>> 16 & 255) * keep + blue * b * gain);
           continue;
         }
         this.depth[i] = depth;
-        this.pixels[i] = pixel(red * texels[k]! / 255, green * texels[k + 1]! / 255,
-          blue * texels[k + 2]! / 255);
+        this.pixels[i] = pixel(red * r / 255, green * g / 255, blue * b / 255);
       }
     }
   }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { groundLayers, type GroundLayers } from '../world/district-materials';
 import type { IslandWeather } from '../world/island-weather';
 import { SoftwareAtmosphere } from './SoftwareAtmosphere';
 import { SoftwareFrame, pixel, type ClipVertex, type SoftwareTexture } from './SoftwareFrame';
@@ -51,6 +52,11 @@ export class SoftwareGameRenderer {
   private readonly boneMatrix = new THREE.Matrix4();
   private bonePalette = new Float32Array(0);
   private readonly textures = new WeakMap<THREE.Texture, { version: number; image: SoftwareTexture }>();
+  private readonly groundTextures = new WeakMap<GroundLayers, {
+    image: SoftwareTexture; mix: { value: number }; readyAt: number;
+  }>();
+  private canDecodeGround = true;
+  private frameTime = 0;
   private groundTints = new WeakMap<SoftwareGeometry, Uint32Array>();
   private readonly faceTints = new WeakMap<THREE.Mesh, ShadedFaces[]>();
   private readonly diffuse = new THREE.Color();
@@ -117,6 +123,8 @@ export class SoftwareGameRenderer {
   render(scene: THREE.Scene, camera: THREE.Camera): void {
     if (!this.frame) this.setSize(this.domElement.width, this.domElement.height, false);
     const frame = this.frame!;
+    this.canDecodeGround = true;
+    this.frameTime = performance.now();
     this.info.render.calls = this.info.render.triangles = 0;
     scene.updateMatrixWorld();
     camera.updateMatrixWorld();
@@ -175,6 +183,36 @@ export class SoftwareGameRenderer {
     return image;
   }
 
+  private surfaceTexture(map: THREE.Texture) {
+    const base = this.texture(map), layers = groundLayers.get(map);
+    if (!base || !layers?.maps || layers.mix.value <= 0) return base;
+    const cached = this.groundTextures.get(layers.maps);
+    if (cached) {
+      cached.mix.value = Math.min(layers.mix.value, THREE.MathUtils.smoothstep(this.frameTime - cached.readyAt, 0, 420));
+      return cached.image;
+    }
+    // Canvas readback and mip generation are synchronous. Spread these across frames.
+    const siblings: (SoftwareTexture | undefined)[] = [];
+    for (const map of layers.maps) {
+      if (this.textures.get(map)?.version !== map.version) {
+        if (!this.canDecodeGround) return base;
+        this.canDecodeGround = false;
+      }
+      siblings.push(this.texture(map));
+    }
+    const mix = { value: 0 };
+    if (!siblings.every((child): child is SoftwareTexture =>
+      !!child && child.width === base.width && child.height === base.height)) return base;
+    const withLayers = (image: SoftwareTexture, level: number): SoftwareTexture => {
+      const [a, b, c, edge] = siblings.map(child => (level < 0 ? child : child.mipmaps![level]!).pixels);
+      return { ...image, finish: { a: a!, b: b!, c: c!, edge: edge!, mix } };
+    };
+    const composed = withLayers(base, -1);
+    composed.mipmaps = base.mipmaps?.map(withLayers);
+    this.groundTextures.set(layers.maps, { image: composed, mix, readyAt: this.frameTime });
+    return composed;
+  }
+
   private paint(mesh: THREE.Mesh, material: Surface): Paint | undefined {
     if (!material.visible || material.opacity < .12) return;
     let colour = material.color ?? this.white;
@@ -182,7 +220,7 @@ export class SoftwareGameRenderer {
       if (!/sea|river|reservoir|plunge-pool|terrace-water/.test(mesh.name)) return;
       colour = this.water;
     }
-    return { material, colour, texture: material.map ? this.texture(material.map) : undefined,
+    return { material, colour, texture: material.map ? this.surfaceTexture(material.map) : undefined,
       unlit: material instanceof THREE.MeshBasicMaterial };
   }
 
