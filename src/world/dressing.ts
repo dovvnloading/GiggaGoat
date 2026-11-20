@@ -3,9 +3,10 @@ import { SeededRandom } from './random';
 import { downtownPublicSpaceAt, downtownPublicSpaces } from './downtown-public-space';
 import { gridSample, MOUNTAIN_CAVE_ANCHOR, riverAt, segmentProjection, stampPlot } from './terrain';
 import { getDamPlacement } from './the-dam';
-import { HOOFINGTON_FIELD_ENTRANCES, HOOFINGTON_FIELD_RAILS,
+import { HOOFINGTON_FIELD_ENTRANCES, HOOFINGTON_FIELD_RAILS, HOOFINGTON_FRONT_WALKS,
   HOOFINGTON_HAUL_CONNECTOR, HOOFINGTON_HAUL_DROP_APRON, HOOFINGTON_HAUL_LANE,
-  HOOFINGTON_YARD_ENTRANCES } from './hoofington-entrances';
+  HOOFINGTON_WALK_WIDTH, HOOFINGTON_YARD_ENTRANCES } from './hoofington-entrances';
+import { HOOFINGTON_VERGE_WIDTH } from './hoofington-verge';
 import { roadSideOffset } from './roads';
 import { damChannelAt } from './dam-landscape';
 import { overlapsPinesLogEntry } from './pines-log-access';
@@ -84,20 +85,17 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     { yaw: -Math.PI / 2, color: 0xc0d8ef });
   // Leave an aisle between the east pasture rails and the outdoor play pad.
   at(farm, 'trampoline', 41, 30, 8, 1.1, 7, { color: 0x7960d9 });
-  // Street-level lamps frame the narrow roadway but do not encroach on it.
-  // Their integral pennants also give Hoofington the orange farm banners.
-  for (const side of [-1, 1]) for (const z of [-30, 0, 30]) {
-    // In the middle east row, use the grass strip between the sidewalk and
-    // the yard trampoline so its south corner stays open.
-    const x = side > 0 && z === 0 ? 7.2 : side * 9.8;
+  // Lamps mark junctions and the two verge stops, with a clear walking lane.
+  for (const [x, z] of [[-9.8, -30], [9.1, -23], [-8.1, -2.5],
+    [7.2, 5.2], [-9.8, 28], [8.25, 34.25]] as const) {
     at(farm, 'lamp', x, z, 0.72, 7.8, 0.72,
-      { shape: 'cylinder', yaw: side < 0 ? 0 : Math.PI });
+      { shape: 'cylinder', yaw: x < 0 ? 0 : Math.PI });
   }
-  for (let i = 0; i < 8; i++) {
-    const side = i % 2 === 0 ? -1 : 1;
-    const z = -26 + Math.floor(i / 2) * 17.5;
-    at(farm, 'mailbox', side * 8.1, z, 1.3, 2.2, 1,
-      { yaw: -side * Math.PI / 2, color: i % 3 ? 0xd84f3d : 0x79add7 });
+  const mailboxSites = HOOFINGTON_FRONT_WALKS.map(({ side, entryZ, mailbox: [distance, offset] }) =>
+    [side * distance, entryZ + offset] as const);
+  for (const [x, z] of [...mailboxSites, [-9.2, -25.7], [10.6, -29.2]] as const) {
+    at(farm, 'mailbox', x, z, 1.3, 2.2, 1,
+      { yaw: -Math.sign(x) * (Math.PI / 2 + (Math.abs(x) - 8) * .13) });
   }
   for (let i = 0; i < 13; i++) {
     const side = i % 2 === 0 ? -1 : 1;
@@ -175,6 +173,18 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   const farmEntrances = [...HOOFINGTON_FIELD_ENTRANCES, ...HOOFINGTON_YARD_ENTRANCES, HOOFINGTON_HAUL_LANE]
     .map(farmPassage);
   farmEntrances.push(haulConnector);
+  for (const { side, entryZ, points } of HOOFINGTON_FRONT_WALKS) {
+    const route = [[3.4 + HOOFINGTON_VERGE_WIDTH, entryZ], ...points] as const;
+    for (let i = 1; i < route.length; i++) {
+      const [aX, aZ] = route[i - 1]!, [bX, bZ] = route[i]!;
+      farmEntrances.push({
+        x: farmCenter.x + side * (aX + bX) / 2 * scale,
+        z: farmCenter.z + (aZ + bZ) / 2 * scale,
+        sx: (bX - aX) * scale, sz: (Math.abs(bZ - aZ) + HOOFINGTON_WALK_WIDTH) * scale,
+        yaw: 0,
+      });
+    }
+  }
   const inFarmEntrance = (x: number, z: number, width: number, yaw: number): boolean =>
     farmEntrances.some(gate => Math.abs(x - gate.x) < gate.sx / 2 + width &&
       Math.abs(z - gate.z) < gate.sz / 2 + width &&

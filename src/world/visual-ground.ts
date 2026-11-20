@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import type { IslandData, PoiId } from './types';
 import { groundUV, type ApplyGroundMap } from './district-ground';
 import { makeLocalStreets } from './roads';
+import { HOOFINGTON_FRONT_WALKS, HOOFINGTON_WALK_WIDTH } from './hoofington-entrances';
+import { HOOFINGTON_SIDEWALK_LIFT, HOOFINGTON_VERGE_WIDTH } from './hoofington-verge';
 import { capeSurface } from './lighthouse-access';
 import { gridCoordinate, gridSample } from './terrain';
 import { TOON_RAMP } from './visual-props';
@@ -39,9 +41,11 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96,
   const apron: ChunkBuffer = { positions: [], colors: [], indices: [] };
   const storefronts: ChunkBuffer = { positions: [], colors: [], indices: [] };
   const beds: ChunkBuffer = { positions: [], colors: [], indices: [] };
+  const gardenWalks: ChunkBuffer = { positions: [], colors: [], indices: [] };
   const stripes: ChunkBuffer = { positions: [], colors: [], indices: [] };
   const water: ChunkBuffer = { positions: [], colors: [], indices: [] };
   const scale = island.size / 600;
+  const streets = makeLocalStreets(island);
   const site = (id: PoiId): { x: number; z: number } =>
     island.pois.find(p => p.id === id)!.center;
   const colour = (color: THREE.Color, factor: number): [number, number, number] =>
@@ -186,15 +190,50 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96,
   // dark-soil flower beds along the fence and pale stone paths to the doors.
   // The old alternating dirt strips read as brown stripes from the street.
   const farm = site('hoofington');
+  const village = streets.find(road => road.from === 'hoofington')!;
+  const vergeOffset = village.width / 2 + HOOFINGTON_VERGE_WIDTH * scale;
+  for (const { side, entryZ, points } of HOOFINGTON_FRONT_WALKS) {
+    const vergeX = farm.x + side * vergeOffset;
+    const route = [[vergeOffset / scale, entryZ], ...points] as const;
+    const row = (distance: number, centreZ: number, shade: number, edge: boolean) => {
+      const x = farm.x + side * distance * scale;
+      for (const sign of [-1, 1]) {
+        const z = farm.z + (centreZ + sign * HOOFINGTON_WALK_WIDTH / 2) * scale;
+        let y = gridSample(island, x, z) + .075 * scale;
+        if (edge) {
+          const next = village.points.findIndex(point => point.z >= z);
+          const a = village.points[next - 1]!, b = village.points[next]!;
+          y = THREE.MathUtils.lerp(gridSample(island, vergeX, a.z),
+            gridSample(island, vergeX, b.z), (z - a.z) / (b.z - a.z)) +
+            HOOFINGTON_SIDEWALK_LIFT * scale;
+        }
+        gardenWalks.positions.push(x, y, z);
+        gardenWalks.colors.push(...colour(STONE_PATH, shade));
+      }
+    };
+    for (let i = 1; i < route.length; i++) {
+      const [fromX, fromZ] = route[i - 1]!, [toX, toZ] = route[i]!;
+      const slabs = Math.ceil((toX - fromX) / 1.15);
+      const segment = (start: number, end: number, shade: number, edge = false) => {
+        const a = gardenWalks.positions.length / 3;
+        row(THREE.MathUtils.lerp(fromX, toX, start), THREE.MathUtils.lerp(fromZ, toZ, start), shade, edge);
+        row(THREE.MathUtils.lerp(fromX, toX, end), THREE.MathUtils.lerp(fromZ, toZ, end), shade, false);
+        if (side > 0) gardenWalks.indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+        else gardenWalks.indices.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+      };
+      for (let j = 0; j < slabs; j++) {
+        const end = (j + 1) / slabs;
+        const seam = end - .035 / (toX - fromX);
+        segment(j / slabs, seam, .93 + ((i + j * 3) % 5) * .022, i === 1 && j === 0);
+        segment(seam, end, .75);
+      }
+    }
+  }
   for (const side of [-1, 1]) {
     for (let i = 0; i < 13; i += 3) {
       const z = farm.z + (-34 + i * 5.5) * scale;
       flowerBed(farm.x + side * 15.2 * scale, z,
         3.2 * scale, 2.0 * scale, SOIL);
-    }
-    for (const dz of [-19, -9, 11, 12, 29]) {
-      quad(farm.x + side * 12.5 * scale, farm.z + dz * scale,
-        5.8 * scale, 1.6 * scale, STONE_PATH, Math.PI / 2);
     }
     const patchX = farm.x + side * 27 * scale;
     const patchZ = farm.z + 30 * scale;
@@ -207,7 +246,7 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96,
   }
   // Storefront slabs meet the exact sidewalk edge without overlapping it.
   const city = site('downtown-bleatsville');
-  const street = makeLocalStreets(island).find(road => road.from === 'downtown-bleatsville')!;
+  const street = streets.find(road => road.from === 'downtown-bleatsville')!;
   for (const side of [-1, 1] as const) {
     const edge = downtownSidewalkEdge(island, street, side);
     const shopX = city.x + side * 10.45 * scale;
@@ -280,6 +319,7 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96,
   bedMaterial.transparent = true; bedMaterial.depthWrite = false; bedMaterial.side = THREE.FrontSide;
   applyMap?.(bedMaterial, 'hoofington');
   draw(beds, 'ground-detail-orchard-beds', bedMaterial);
+  draw(gardenWalks, 'ground-detail-village-walks', material);
   const plazaMaterial = material.clone();
   applyMap?.(plazaMaterial, 'downtown-bleatsville');
   draw(storefronts, 'ground-detail-city-frontages', plazaMaterial);

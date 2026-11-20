@@ -14,6 +14,18 @@ export const HOOFINGTON_YARD_ENTRANCES = [
   { x: -12, z: 23.5 }, { x: 12, z: 24 },
 ].map(p => ({ ...p, length: 8, width: 2.4 }));
 
+export const HOOFINGTON_WALK_WIDTH = 1.4;
+
+/** Sidewalk entrance, garden bends and doorstep, in village-local metres. */
+export const HOOFINGTON_FRONT_WALKS = [
+  { side: -1, entryZ: -9, mailbox: [8.2, 1.55], points: [[16.02, -9]] },
+  { side: -1, entryZ: 10.7, mailbox: [6.8, -1.45], points: [[16.22, 10.7]] },
+  { side: 1, entryZ: -16.85, mailbox: [7.3, 1.55], points: [[13.5, -16.85], [17.04, -19]] },
+  { side: 1, entryZ: 1.2, mailbox: [9.5, -1.45], points: [[15.5, 1.2], [23, -3.2], [25.83, -3.2]] },
+  { side: 1, entryZ: 12, mailbox: [6.9, 1.55], points: [[18.18, 12]] },
+  { side: 1, entryZ: 26.45, mailbox: [9.45, -1.45], points: [[12.8, 26.45], [17.75, 29]] },
+] as const;
+
 export const HOOFINGTON_FIELD_ENTRANCES = HOOFINGTON_FIELD_RAILS.flatMap(rails =>
   rails.slice(1).flatMap((after, index) => {
     const before = rails[index]!;

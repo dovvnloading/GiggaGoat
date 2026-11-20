@@ -3,6 +3,9 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import { buildRapierColliders, createWorldScene, generateIsland } from './index';
 import { makeLocalStreets } from './roads';
+import { HOOFINGTON_FRONT_WALKS } from './hoofington-entrances';
+import { HOOFINGTON_VERGE_WIDTH } from './hoofington-verge';
+import { gridSample } from './terrain';
 
 interface Footprint { minX: number; maxX: number; minZ: number; maxZ: number }
 
@@ -114,6 +117,33 @@ describe('Hoofington E1: road surface and painted crossing', () => {
         expect(details).toBeInstanceOf(THREE.Group);
         for (const item of details.children) {
           if (item instanceof THREE.Mesh) inspectTriangles(item);
+        }
+
+        const walks = details.getObjectByName('ground-detail-village-walks')!;
+        const sidewalks = view.group.getObjectByName('hoofington-street-verge')!;
+        const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
+        const heightAt = (mesh: THREE.Object3D, x: number, z: number) => {
+          ray.ray.origin.set(x, 50, z);
+          const hit = ray.intersectObject(mesh)[0];
+          expect(hit, `${mesh.name} at ${x}, ${z} in ${seed}`).toBeDefined();
+          return hit!.point.y;
+        };
+        const verge = road.width / (2 * scale) + HOOFINGTON_VERGE_WIDTH;
+        for (const { side, entryZ, points } of HOOFINGTON_FRONT_WALKS) {
+          const entry = centre.z + entryZ * scale;
+          const outer = centre.x + (verge + .012) * scale * side;
+          const inner = centre.x + (verge - .012) * scale * side;
+          expect(Math.abs(heightAt(walks, outer, entry) - heightAt(sidewalks, inner, entry)))
+            .toBeLessThan(.025 * scale);
+          const route = [[verge, entryZ], ...points] as const;
+          for (let i = 1; i < route.length; i++) {
+            const [aX, aZ] = route[i - 1]!, [bX, bZ] = route[i]!;
+            for (const t of [.18, .49, .82, .998]) {
+              const x = centre.x + THREE.MathUtils.lerp(aX, bX, t) * scale * side;
+              const z = centre.z + THREE.MathUtils.lerp(aZ, bZ, t) * scale;
+              expect(heightAt(walks, x, z)).toBeGreaterThan(gridSample(island, x, z) + .01 * scale);
+            }
+          }
         }
 
         // The authored flat/large props must stay on the neighbouring lawns.
