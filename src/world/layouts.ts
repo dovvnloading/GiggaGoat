@@ -364,8 +364,8 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
     });
     chosen.push({ ...placement, kind });
   }
-  // Low trail overlooks belong beside the route, away from the log crossing.
-  for (const [dx, dz, width, depth, lift] of [[22, -3, 6, 4.5, 1.2], [-15, 19, 5, 4, 2.1]] as const) {
+  // Keep both overlooks on the dry bank north of the gnome course and its staging area.
+  for (const [dx, dz, width, depth, lift] of [[22, -3, 6, 4.5, 1.2], [18, -8, 5, 4, 2.1]] as const) {
     const radius = Math.hypot(width, depth) * scale / 2;
     for (const offset of [0, 4, -4, 8, -8, 12, -12, 16, -16]) {
       const point = at(forest, dx + offset, dz);
