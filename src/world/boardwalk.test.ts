@@ -292,7 +292,7 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
     const wheel = props.find(prop => prop.kind === 'ferris-wheel')!;
     const bunting = props.filter(prop => prop.kind === 'bunting');
     const deckTop = topOf(pier);
-    const [atLamps] = bunting.filter(prop => floorOf(prop) > deckTop + 5);
+    const atLamps = bunting.find(prop => topOf(prop) > deckTop + 3.5);
     const atRails = bunting.filter(prop => topOf(prop) < deckTop + 2.65);
     expect(atLamps).toBeDefined();
     expect(atRails).toHaveLength(2);
@@ -300,14 +300,14 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
       const { x, z } = atLamps!.transform.position;
       expect(props.some(prop => prop.kind === 'lamp' &&
         Math.abs(prop.transform.position.x - x) < 0.01 &&
-        Math.abs(prop.transform.position.z - z - endpoint * atLamps!.size.x / 2) < 0.01 &&
-        topOf(prop) > topOf(atLamps!))).toBe(true);
+        Math.abs(prop.transform.position.z - z - endpoint * .98 * atLamps!.size.x / 2) < 0.01 &&
+        Math.abs(floorOf(prop) + 4.05 - topOf(atLamps!)) < .08)).toBe(true);
     }
     for (const span of atRails) {
       expect(props.some(prop => prop.kind === 'pier-rail' &&
         Math.abs(prop.transform.position.x - span.transform.position.x) < 0.2 &&
         Math.abs(prop.transform.position.z - span.transform.position.z) < 0.01 &&
-        prop.size.x >= span.size.x && topOf(prop) > topOf(span))).toBe(true);
+        prop.size.x >= span.size.x && Math.abs(floorOf(prop) + 1.25 - topOf(span)) < .08)).toBe(true);
     }
 
     const mark = ART_BOOKMARKS.find(bookmark => bookmark.id === '09')!;
