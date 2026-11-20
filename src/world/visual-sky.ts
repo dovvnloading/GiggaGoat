@@ -6,11 +6,11 @@ import { CLOUD_LIBRARY_MODELS, loadLibraryCloudGeometry } from './library-props'
 /** Display RGB from the original painted sky. */
 export const SKY_HORIZON_COLOR = new THREE.Color(0.76, 0.88, 0.98);
 
-/** Golden-hour palette in Three.js linear colour space; daytime stays separate. */
+/** The sky shader interpolates display RGB before converting its output to linear. */
 export const GOLDEN_HOUR_SKY = {
-  horizon: new THREE.Color(0xffb27a),
-  mid: new THREE.Color(0xd98bc4),
-  zenith: new THREE.Color(0x6b5fd1),
+  horizon: new THREE.Color().setHex(0xffb27a, THREE.LinearSRGBColorSpace),
+  mid: new THREE.Color().setHex(0xd98bc4, THREE.LinearSRGBColorSpace),
+  zenith: new THREE.Color().setHex(0x6b5fd1, THREE.LinearSRGBColorSpace),
 } as const;
 // Clouds need a brighter, gentler shade than the shared prop toon ramp.
 const CLOUD_RAMP = new THREE.DataTexture(

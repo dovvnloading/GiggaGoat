@@ -211,11 +211,11 @@ describe('storybook sky clouds (Hoofington E2)', () => {
 
     sky.update(0.29);
     expect(uniforms['uGolden']!.value).toBe(1);
-    expect((uniforms['uSunsetHorizon']!.value as THREE.Color).getHex())
+    expect((uniforms['uSunsetHorizon']!.value as THREE.Color).getHex(THREE.LinearSRGBColorSpace))
       .toBe(0xffb27a);
-    expect((uniforms['uSunsetMid']!.value as THREE.Color).getHex())
+    expect((uniforms['uSunsetMid']!.value as THREE.Color).getHex(THREE.LinearSRGBColorSpace))
       .toBe(0xd98bc4);
-    expect((uniforms['uSunsetZenith']!.value as THREE.Color).getHex())
+    expect((uniforms['uSunsetZenith']!.value as THREE.Color).getHex(THREE.LinearSRGBColorSpace))
       .toBe(0x6b5fd1);
     expect((uniforms['uSunsetHorizon']!.value as THREE.Color))
       .toBe(GOLDEN_HOUR_SKY.horizon);
