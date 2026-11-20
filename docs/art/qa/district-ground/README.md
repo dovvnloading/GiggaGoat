@@ -34,6 +34,21 @@ Downtownâ€™s paving uses a shared three-stone repeat and six courses across the 
 
 The existing Kenney, Quaternius and custom model kits supply the scenery. District collision and route tests cover the public approach to each placement.
 
+## Software rendering check
+
+Two production-compiled versions rendered the same ten camera positions per district at 720 × 405. Both used all five images. The earlier version mixed each visible pixel directly. The release version fills solid depth first and reuses small blocks of mixed texels. Median frame times below are local CPU measurements with the scenery already loaded.
+
+| District | Direct mixing (ms) | Release (ms) |
+| --- | ---: | ---: |
+| Hoofington | 28.0 | 29.3 |
+| Baa-ardwalk | 31.3 | 26.1 |
+| Crane Yard | 47.8 | 31.9 |
+| Downtown Bleatsville | 36.3 | 29.7 |
+| Mt. Gigga | 49.6 | 48.1 |
+| Whispering Pines | 30.4 | 28.6 |
+| The Dam | 32.1 | 22.3 |
+| Old Lighthouse | 47.4 | 40.0 |
+
 <details>
 <summary>Texture files and generation prompts</summary>
 

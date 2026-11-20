@@ -67,6 +67,7 @@ export class SoftwareGameRenderer {
   private readonly air = new SoftwareAtmosphere();
   private lightStep = -1;
   private rain?: THREE.LineSegments;
+  private readonly groundOverlays: THREE.Mesh[] = [];
   private near = .1;
 
   setEnvironment(weather: IslandWeather, key: THREE.Vector3, target: THREE.Vector3): void {
@@ -138,12 +139,21 @@ export class SoftwareGameRenderer {
     frame.clear(horizon.getHex(), scene.background instanceof THREE.Color
       ? scene.background.getHex() : horizon.getHex());
     this.rain = undefined;
+    this.groundOverlays.length = 0;
     if (this.weather) this.air.sky(frame, camera, this.weather, horizon.getHex());
     scene.traverseVisible(object => {
       if (object instanceof THREE.LineSegments && object.name === 'island-rain') this.rain = object;
-      if (object instanceof THREE.Mesh) this.drawMesh(object);
+      if (object instanceof THREE.Mesh) {
+        if (object.material.transparent && object.geometry.getAttribute('color')?.itemSize === 4) {
+          this.groundOverlays.push(object);
+        } else this.drawMesh(object);
+      }
       else if (object instanceof THREE.Sprite) this.drawSprite(object);
     });
+    // Shade transparent ground only after the solid kits, pavement and machinery
+    // have filled the depth buffer, in the same layer order as the WebGL scene.
+    this.groundOverlays.sort((a, b) => a.renderOrder - b.renderOrder);
+    for (const mesh of this.groundOverlays) this.drawMesh(mesh);
     if (this.weather) this.air.grade(frame, this.weather, horizon.getHex(),
       scene.fog instanceof THREE.FogExp2 ? scene.fog.density : .002);
     if (this.rain) this.air.drops(frame, this.rain, camera);

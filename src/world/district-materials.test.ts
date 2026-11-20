@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import * as THREE from 'three';
 import { districtMaterials, groundLayers } from './district-materials';
 import { blendFieldIndex, blendPeriod, blendSize, groundBlendField } from './ground-blend';
+import { groundBlock, mipCache, type SoftwareGroundLayers } from '../core/software-ground';
 import { SoftwareFrame, pixel, type SoftwareTexture } from '../core/SoftwareFrame';
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -66,5 +67,25 @@ it('selects all four interiors and tapers into the fifth material at the shoulde
     expect(i).toBeGreaterThanOrEqual(0);
     expect(draw(i, 1)).toBe(intensity);
     expect(draw(i, .1)).toBe(27);
+  }
+});
+
+it('keeps cached colours and verge weights aligned across material repeats and mip levels', () => {
+  for (const width of [1, 48, 192]) for (const flip of [true, false]) {
+    const fill = (n: number) => new Uint8ClampedArray(width * width * 4).fill(n);
+    const base = fill(20);
+    const layers: SoftwareGroundLayers = { a: fill(68), b: fill(121), c: fill(165), edge: fill(225), mix: { value: 1 } };
+    const cache = mipCache(layers, width);
+    for (const tile of [0, 13, 41, 63, 0]) for (let y = 0; y < cache.side; y += 7) {
+      const x = (3 * y + 1) % cache.side, v = (y + .5) / cache.side;
+      const field = blendFieldIndex((tile & 7) + (x + .5) / cache.side, (tile >>> 3) + (flip ? 1 - v : v));
+      const s = groundBlendField[field]! / 255, t = groundBlendField[field+1]! / 255;
+      const value = Math.round((20 * (1 - s) + 68 * s) * (1 - t) + (121 * (1 - s) + 165 * s) * t);
+      const key = (tile * cache.blocksAcross + (y >> 4)) * cache.blocksAcross + (x >> 4);
+      const block = groundBlock(cache, key, layers, base, width, flip, tile, x, y);
+      const rgba = block[((y & 15) << 4) | (x & 15)]!;
+      expect(rgba & 0xffffff).toBe(value * 0x010101);
+      expect(rgba >>> 24).toBe(groundBlendField[field + 2]);
+    }
   }
 });
