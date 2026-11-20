@@ -34,4 +34,3 @@ Create ONE square seamless tileable terrain albedo texture for a stylized 3D adv
 - [old-lighthouse.webp](../../../../public/assets/terrain/old-lighthouse.webp) — Maritime headland flint shingle and pale chalk crumbs scattered in tan-grey salt soil. Low weathered dune grass stubble in loose patches between flat flints, a few whitened shell fragments.
 
 </details>
-

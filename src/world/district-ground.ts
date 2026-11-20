@@ -45,7 +45,7 @@ const finishes: Record<PoiId, Finish> = {
 const smoothstep = THREE.MathUtils.smoothstep;
 
 type FinishMaterial = THREE.MeshLambertMaterial | THREE.MeshToonMaterial | THREE.MeshBasicMaterial;
-export type ApplyGroundMap = (material: FinishMaterial, zone: PoiId) => void;
+export type ApplyGroundMap = (material: FinishMaterial, zone: PoiId, texturedTint?: number) => void;
 
 /** Use world metres for the texel scale on raised walkways and road ribbons too. */
 export function groundUV(geometry: THREE.BufferGeometry, tile: number): void {
@@ -63,20 +63,22 @@ export function buildDistrictGround(island: IslandData) {
   group.name = 'district-ground-finishes';
   const maps = new Map<PoiId, THREE.Texture>();
   const scale = island.size / 600, n = island.resolution, step = island.size / (n - 1);
-  const waiting = new Map<PoiId, FinishMaterial[]>();
+  const waiting = new Map<PoiId, ((texture: THREE.Texture) => void)[]>();
   const pavedCells = new Set<number>();
   let disposed = false;
 
-  function applyMap(material: FinishMaterial, zone: PoiId) {
+  function applyMap(material: FinishMaterial, zone: PoiId, texturedTint?: number) {
     if (typeof document === 'undefined' || typeof document.createElementNS !== 'function') return;
+    const bind = (texture: THREE.Texture) => {
+      material.map = texture;
+      if (texturedTint !== undefined) material.color.setHex(texturedTint);
+      material.needsUpdate = true;
+    };
     let map = maps.get(zone);
     if (!map) {
       map = new THREE.TextureLoader().load(publicAssetUrl('assets/terrain/' + zone + '.webp'), loaded => {
         if (disposed) return;
-        for (const surface of waiting.get(zone) ?? []) {
-          surface.map = loaded;
-          surface.needsUpdate = true;
-        }
+        for (const bindSurface of waiting.get(zone) ?? []) bindSurface(loaded);
         waiting.delete(zone);
       });
       map.userData.groundFinish = true;
@@ -85,10 +87,10 @@ export function buildDistrictGround(island: IslandData) {
       map.anisotropy = 4;
       maps.set(zone, map);
     }
-    if (map.image) material.map = map;
+    if (map.image) bind(map);
     else {
       const queued = waiting.get(zone) ?? [];
-      queued.push(material);
+      queued.push(bind);
       waiting.set(zone, queued);
     }
   }

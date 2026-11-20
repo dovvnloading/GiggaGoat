@@ -468,8 +468,7 @@ function buildRoads(island: IslandData, terrain: readonly Chunk[], atmosphere: R
         if (i % 6 < 2) continue;
         uv.setXY(i, (positions[i * 3]! + positions[i * 3 + 2]!) / tile, positions[i * 3 + 1]! / tile);
       }
-      material.color.setHex(0xdfcaa4);
-      applyMap(material, 'mt-gigga');
+      applyMap(material, 'mt-gigga', 0xdfcaa4);
     }
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'paths-' + type;
