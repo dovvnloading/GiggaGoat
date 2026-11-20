@@ -165,7 +165,7 @@ describe('painting bookmark recompositions (default billy-isle)', () => {
     projectBookmark('09', landmarks);
   });
 
-  it('13 frames both bridge approaches, the stream, and the lookout', () => {
+  it('13 frames both bridge approaches, the stream and the lookout decks', () => {
     const bookmark = findBookmark('13')!;
     const bridge = props('whispering-pines', 'log-bridge')[0]!;
     const lookout = props('whispering-pines', 'lookout')[0]!;
@@ -185,11 +185,18 @@ describe('painting bookmark recompositions (default billy-isle)', () => {
     const stream = { x: THREE.MathUtils.lerp(at.x, downstream.x, .23),
       z: THREE.MathUtils.lerp(at.z, downstream.z, .23) };
     const tower = lookout.transform.position;
+    const deckCorners = props('whispering-pines', 'platform').flatMap(platform =>
+      [-1, 1].flatMap(x => [-1, 1].map(z => [platform.id + x + z, {
+        x: platform.transform.position.x + x * platform.size.x / 2,
+        y: platform.transform.position.y + platform.size.y / 2,
+        z: platform.transform.position.z + z * platform.size.z / 2,
+      }] as const)));
     projectBookmark('13', {
       nearBank: bridgeEnd(-1), farBank: bridgeEnd(1),
       stream: { ...stream, y: riverAt(stream, island.river).level },
       lookoutTop: { ...tower, y: tower.y + lookout.size.y / 2 },
       lookoutBase: { ...tower, y: tower.y - lookout.size.y / 2 },
+      ...Object.fromEntries(deckCorners),
     });
     const camera = new THREE.PerspectiveCamera(bookmark.fov, 16 / 9, 0.25, 4000);
     camera.position.set(bookmark.camera.x, bookmark.camera.y, bookmark.camera.z);
