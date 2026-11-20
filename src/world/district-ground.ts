@@ -64,6 +64,7 @@ export function buildDistrictGround(island: IslandData) {
   const maps = new Map<PoiId, THREE.Texture>();
   const scale = island.size / 600, n = island.resolution, step = island.size / (n - 1);
   const waiting = new Map<PoiId, FinishMaterial[]>();
+  const pavedCells = new Set<number>();
   let disposed = false;
 
   function applyMap(material: FinishMaterial, zone: PoiId) {
@@ -132,6 +133,9 @@ export function buildDistrictGround(island: IslandData) {
         THREE.MathUtils.clamp(ix + ax, 0, n - 1), THREE.MathUtils.clamp(iz + az, 0, n - 1))]!;
       const slope = Math.hypot(span(1, 0) - span(-1, 0), span(0, 1) - span(0, -1)) / (2 * step);
       w *= finish.strength * (1 - smoothstep(slope, .46, 1.05)) * smoothstep((h - island.seaLevel) / scale, .1, .85);
+      if (w > .42 && (poi.id === 'downtown-bleatsville' || poi.id === 'the-dam' || poi.id === 'crane-yard')) {
+        pavedCells.add(index);
+      }
       weights.set(index, w);
       return w;
     };
@@ -174,6 +178,9 @@ export function buildDistrictGround(island: IslandData) {
 
   return {
     group, applyMap,
+    pavedAt(x: number, z: number) {
+      return pavedCells.has(gridIndex(n, Math.round((x + island.size / 2) / step), Math.round((z + island.size / 2) / step)));
+    },
     update(camera: THREE.Vector3) {
       for (const mesh of group.children as THREE.Mesh<THREE.BufferGeometry, THREE.MeshLambertMaterial>[]) {
         const distance = Math.hypot(camera.x - mesh.position.x, camera.z - mesh.position.z) / scale;

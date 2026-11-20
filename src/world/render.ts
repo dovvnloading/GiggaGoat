@@ -522,7 +522,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(buildStreetDetails(island, finish.applyMap));
   // Coalesce unchanged ground decals to keep the extra zebra mesh within the draw budget.
   group.add(buildGroundDetails(island, 192, finish.applyMap));
-  group.add(buildMeadowScatter(island, sky.atmosphere));
+  group.add(buildMeadowScatter(island, sky.atmosphere, finish.pavedAt));
   const beds = buildHabitatBeds(island);
   group.add(beds.group);
   const fireflies = pinesFireflies(island);
@@ -541,9 +541,11 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
       replacedProps.add(deck.id);
     }
   }
-  const instancedProps = boardwalkRails
-    ? scenery.props.filter(prop => !boardwalkRails.replacedIds.has(prop.id))
-    : scenery.props;
+  const instancedProps = scenery.props.filter(prop => {
+    if (boardwalkRails?.replacedIds.has(prop.id)) return false;
+    const { x, z } = prop.transform.position;
+    return prop.collidable || (prop.kind !== 'flower' && prop.kind !== 'grass-tuft') || !finish.pavedAt(x, z);
+  });
   const pinesStilts = instancedProps.filter(isPinesDeckStilt);
   const pinesGround = chunks.filter(chunk => pinesStilts.some(stilt => {
     const at = stilt.transform.position;

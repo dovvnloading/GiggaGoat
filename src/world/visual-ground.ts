@@ -37,6 +37,7 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96,
   group.name = 'merged-ground-details';
   const buckets = new Map<string, ChunkBuffer>();
   const apron: ChunkBuffer = { positions: [], colors: [], indices: [] };
+  const storefronts: ChunkBuffer = { positions: [], colors: [], indices: [] };
   const stripes: ChunkBuffer = { positions: [], colors: [], indices: [] };
   const water: ChunkBuffer = { positions: [], colors: [], indices: [] };
   const scale = island.size / 600;
@@ -193,7 +194,7 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96,
       const near = centreZ - 2.775 * scale, far = centreZ + 2.775 * scale;
       const stations = [near, ...edge.points.filter(point => point.z > near && point.z < far)
         .map(point => point.z), far];
-      const bucket = verticesAt(city.x + side * 8.4 * scale, centreZ);
+      const bucket = storefronts;
       const color = z % 2 ? STONE : TILE;
       const first = bucket.positions.length / 3;
       for (const station of stations) {
@@ -240,6 +241,7 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96,
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(bucket.positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(bucket.colors, 3));
     if (bucket === apron) groundUV(geometry, 5.8 * scale);
+    if (bucket === storefronts) groundUV(geometry, 3.7 * scale);
     geometry.setIndex(bucket.indices);
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
@@ -250,6 +252,9 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96,
     group.add(mesh);
   }
   for (const [key, bucket] of buckets) draw(bucket, 'ground-detail-chunk-' + key, material);
+  const plazaMaterial = material.clone();
+  applyMap?.(plazaMaterial, 'downtown-bleatsville');
+  draw(storefronts, 'ground-detail-city-frontages', plazaMaterial);
   const slabMaterial = material.clone();
   applyMap?.(slabMaterial, 'crane-yard');
   draw(apron, 'ground-detail-crane-apron', slabMaterial);
