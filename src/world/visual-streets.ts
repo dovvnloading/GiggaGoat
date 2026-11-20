@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { IslandData, RoadDescriptor } from './types';
+import { groundUV, type ApplyGroundMap } from './district-ground';
 import { gridIndex, gridSample } from './terrain';
 import { makeLocalStreets } from './roads';
 import { TOON_RAMP } from './visual-props';
@@ -193,7 +194,8 @@ export function downtownSidewalkEdge(island: IslandData, road: RoadDescriptor, s
 }
 
 /** Extend each grade through the adjoining curb, sidewalk, and pavement paint. */
-function buildDowntownVerge(island: IslandData, road: RoadDescriptor, group: THREE.Group, scale: number): void {
+function buildDowntownVerge(island: IslandData, road: RoadDescriptor, group: THREE.Group, scale: number,
+  applyMap?: ApplyGroundMap): void {
   const kerb: StreetSurface = { positions: [], indices: [] };
   const walk: StreetSurface = { positions: [], indices: [] };
   const lines: StreetSurface = { positions: [], indices: [] };
@@ -249,14 +251,19 @@ function buildDowntownVerge(island: IslandData, road: RoadDescriptor, group: THR
     geometry.setIndex(surface.indices);
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
-    const mesh = new THREE.Mesh(geometry, downtownMaterial(color));
+    const material = downtownMaterial(color);
+    if (surface === walk) {
+      groundUV(geometry, 3.7 * scale);
+      applyMap?.(material, 'downtown-bleatsville');
+    }
+    const mesh = new THREE.Mesh(geometry, material);
     mesh.name = name;
     mesh.receiveShadow = true;
     group.add(mesh);
   }
 }
 
-export function buildStreetDetails(island: IslandData): THREE.Group {
+export function buildStreetDetails(island: IslandData, applyMap?: ApplyGroundMap): THREE.Group {
   const group = new THREE.Group();
   group.name = 'two-lane-streets-and-sidewalks';
   const scale = island.size / 600;
@@ -267,7 +274,7 @@ export function buildStreetDetails(island: IslandData): THREE.Group {
       group.add(buildHoofingtonZebraCrossing(road, centre, scale));
       continue;
     }
-    buildDowntownVerge(island, road, group, scale);
+    buildDowntownVerge(island, road, group, scale, applyMap);
     const crossings = new THREE.InstancedMesh(new THREE.BoxGeometry(), downtownMaterial(0xfaf3dc), 21);
     crossings.name = 'hoofington-and-city-crosswalks';
     crossings.receiveShadow = true;

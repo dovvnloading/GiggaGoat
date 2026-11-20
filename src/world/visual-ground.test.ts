@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { buildRapierColliders } from './colliders';
 import { generateIsland } from './island';
+import { capeSurface } from './lighthouse-access';
 import { gridSample } from './terrain';
 import type { IslandData } from './types';
 import { buildGroundDetails } from './visual-ground';
@@ -19,8 +20,6 @@ interface GroundDetails {
 }
 
 const CONCRETE = new THREE.Color('#A7A3A0');
-const WARM = new THREE.Color('#999493');
-const JOINT = new THREE.Color('#858789');
 const MARKING = new THREE.Color('#EDC350');
 const PUDDLE = new THREE.Color(0x53686e);
 const WET_EDGE = new THREE.Color(0x656663);
@@ -99,36 +98,26 @@ describe('Crane Yard CY-11 ground apron', () => {
     scale = island.size / 600;
   });
 
-  it('tiles the entire 80 x 72 m apron with flush joints between slabs', () => {
-    const slabs = details.quads.filter(quad =>
-      Math.abs(Math.hypot(quad[1].x - quad[0].x, quad[1].z - quad[0].z)
-        - 8 * scale) < 0.001 &&
-      Math.abs(Math.hypot(quad[2].x - quad[0].x, quad[2].z - quad[0].z)
-        - 8 * scale) < 0.001);
-    expect(slabs).toHaveLength((80 / 8) * (72 / 8));
-
-    for (let ix = -40; ix < 40; ix += 8) {
-      for (let iz = -36; iz < 36; iz += 8) {
-        const matches = slabs.filter(quad => footprint(quad,
-          yard.x + (ix + 4) * scale, yard.z + (iz + 4) * scale,
-          8 * scale, 8 * scale));
-        expect(matches, 'slab at ' + ix + ',' + iz).toHaveLength(1);
-
-        const slabX = (ix + 40) / 8, slabZ = (iz + 36) / 8;
-        const shade = .988 + .012 * ((slabX * 7 + slabZ * 3) % 3) / 2;
-        for (const v of matches[0]!) {
-          // Check every vertex, not just the slab's average tint.
-          for (const channel of ['r', 'g', 'b'] as const) {
-            const ratio = v[channel] / CONCRETE[channel];
-            expect(ratio).toBeGreaterThanOrEqual(0.9699);
-            expect(ratio).toBeLessThanOrEqual(1.0301);
-          }
-          expect(shadeOf(v, CONCRETE, shade)).toBe(true);
-          expect(shadeOf(v, WARM, 1)).toBe(false);
-          expect(shadeOf(v, JOINT, 1)).toBe(false);
-        }
-      }
+  it('covers each eight-metre slab without gaps and seats its triangles on the terrain', () => {
+    const group = buildGroundDetails(island);
+    const mesh = group.getObjectByName('ground-detail-crane-apron') as THREE.Mesh;
+    const pos = mesh.geometry.getAttribute('position'), color = mesh.geometry.getAttribute('color');
+    const indices = mesh.geometry.index!;
+    const areas = new Float64Array(90);
+    for (let i = 0; i < indices.count; i += 3) {
+      const [a, b, c] = [0, 1, 2].map(j => new THREE.Vector3().fromBufferAttribute(pos, indices.getX(i+j))) as
+        [THREE.Vector3, THREE.Vector3, THREE.Vector3];
+      const centre = a.clone().add(b).add(c).multiplyScalar(1 / 3);
+      expect(centre.y).toBeCloseTo(capeSurface(island, centre.x, centre.z) + .075 * scale, 4);
+      const ix = Math.floor(((centre.x - yard.x) / scale + 40) / 8);
+      const iz = Math.floor(((centre.z - yard.z) / scale + 36) / 8);
+      expect(ix).toBeGreaterThanOrEqual(0); expect(ix).toBeLessThan(10);
+      expect(iz).toBeGreaterThanOrEqual(0); expect(iz).toBeLessThan(9);
+      const shade = .988 + .012 * ((ix * 7 + iz * 3) % 3) / 2;
+      expect(color.getX(indices.getX(i))).toBeCloseTo(CONCRETE.r * shade, 5);
+      areas[ix * 9 + iz]! += Math.abs((b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x)) / 2;
     }
+    for (const area of areas) expect(area).toBeCloseTo(64 * scale * scale, 3);
   });
 
   it('draws grounded irregular puddles with a separate wet rim and glossy finish', () => {

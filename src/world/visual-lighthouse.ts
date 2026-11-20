@@ -7,6 +7,7 @@ import { gridSample } from './terrain';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import { TOON_RAMP, BUILDING_RAMP } from './visual-props';
 import type { AccessSection } from './access-path';
+import { groundUV, type ApplyGroundMap } from './district-ground';
 import { LIGHTHOUSE_FOOTPATH, capeSurface, keeperCottagePiers, lighthouseAccess,
   lighthouseOuterGuard } from './lighthouse-access';
 import { accessArrows, accessPathVisual } from './visual-access-path';
@@ -305,7 +306,7 @@ function batchHeroMeshes(root: THREE.Group, name: string,
 }
 
 /** A strip conforming to the heightfield: decorative, not a false flat collider. */
-function makeWindingFootpath(island: IslandData, center: { x: number; z: number }): THREE.Mesh {
+function makeWindingFootpath(island: IslandData, center: { x: number; z: number }, applyMap?: ApplyGroundMap): THREE.Mesh {
   const scale = island.size / 600;
   const curve = new THREE.CatmullRomCurve3(LIGHTHOUSE_FOOTPATH.map(([dx, dz]) =>
     new THREE.Vector3(center.x + dx! * scale, 0, center.z + dz! * scale)), false, 'centripetal');
@@ -335,6 +336,8 @@ function makeWindingFootpath(island: IslandData, center: { x: number; z: number 
     polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
   });
   const mesh = new THREE.Mesh(geometry, material);
+  groundUV(geometry, 3.8 * scale);
+  applyMap?.(material, 'old-lighthouse');
   mesh.name = 'lighthouse-winding-dirt-path';
   return mesh;
 }
@@ -756,7 +759,7 @@ function makeKeeperStairBraces(tower: PropDescriptor, sections: readonly AccessS
 }
 
 export function buildLighthouseVisuals(island: IslandData,
-  oldProps: THREE.Group, lighting: ReturnType<typeof makeCapeLighting>): LighthouseVisuals {
+  oldProps: THREE.Group, lighting: ReturnType<typeof makeCapeLighting>, applyMap?: ApplyGroundMap): LighthouseVisuals {
   const group = new THREE.Group();
   group.name = 'old-lighthouse-hero';
   const fullyHidden = new Set<PropKind>();
@@ -767,7 +770,8 @@ export function buildLighthouseVisuals(island: IslandData,
   const get = (kind: string): PropDescriptor | undefined =>
     island.props.find(prop => prop.poiId === 'old-lighthouse' && prop.kind === kind);
 
-  group.add(makeWindingFootpath(island, center));
+  const footpath = makeWindingFootpath(island, center, applyMap);
+  group.add(footpath);
   const lookout = get('platform');
   if (lookout) group.add(makeLookoutBraces(island, lookout));
   const cottage = get('cottage');
@@ -929,7 +933,7 @@ export function buildLighthouseVisuals(island: IslandData,
   kitPlacements('wreckMast', 'lighthouse-broken-ship-mast', mastPlacement);
   kitPlacements('pierLantern', 'lighthouse-library-lanterns', lanterns);
   kitPlacements('life-ring', 'lighthouse-red-white-life-ring', ringPlacement);
-  const harbour = batchHeroMeshes(group, 'lighthouse-static-painted-landmarks', mesh => mesh !== cliffRocks);
+  const harbour = batchHeroMeshes(group, 'lighthouse-static-painted-landmarks', mesh => mesh !== cliffRocks && mesh !== footpath);
   const fullHarbour = harbour.geometry;
   let farHarbour = fullHarbour, disposed = false;
   void simplifiedWorldGeometry(fullHarbour).then(low => {

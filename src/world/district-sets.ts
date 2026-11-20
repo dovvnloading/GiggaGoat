@@ -1,6 +1,7 @@
 import models from './district-kit-models.json';
 import collision from './district-kit-collision.json';
 import { DAM_UPSTREAM_RIVER_END, DAM_FOREST_RIVER_START, isDamHeadwater, getDamOutflow } from './dam-landscape';
+import { CRANE_YARD_PLAN } from './crane-yard';
 import { downtownPublicSpaceAt, downtownPublicSpaces } from './downtown-public-space';
 import { HOOFINGTON_FIELD_ENTRANCES, HOOFINGTON_YARD_ENTRANCES } from './hoofington-entrances';
 import { LIGHTHOUSE_FOOTPATH } from './lighthouse-access';
@@ -124,6 +125,39 @@ const layouts: Layout[] = [
       ['valve', 0, 0, 3.45], ['controls', 2.94, .16, 1.93, -12], ['fieldBox', 2.7, 2.14, 1.4, 5]]
   },
 
+  {
+    district: 'hoofington', name: 'Orchard picking row', x: -17.693, z: 43.5085, degrees: -14, items: [
+      ['harvestCart', 0, 0, 2.8, 12], ['orchardCrate', 3.4, -.4, 1.25, 14], ['orchardCrate', 5.15, -.1, 1.15, -8],
+      ['seedSack', -.8, 1.8, .95]]
+  },
+  {
+    district: 'baa-ardwalk', name: 'Beach hire hut', x: -20, z: -15, degrees: 18, items: [
+      ['shoreOffice', 0, 0, 4.8, 180], ['canoe', 4.3, .6, 4.5, 12], ['picnicBench', -3.9, 1.4, 2.3, 80]]
+  },
+  {
+    district: 'crane-yard', name: 'Cable laydown bay', x: 13.0308, z: -25.4371, degrees: 87, items: [
+      ['cableDrum', 0, 0, 2.05], ['cableDrum', 2.25, .2, 1.5]]
+  },
+  {
+    district: 'downtown-bleatsville', name: 'Pocket garden', x: -11.4709, z: 57.7605, degrees: 88, items: [
+      ['planter', 0, 0, 1.85], ['picnicBench', 2.25, -.1, 1.9, 85], ['planter', 4.3, -.1, 1.5]]
+  },
+  {
+    district: 'mt-gigga', name: 'Switchback trailhead', x: 8.3447, z: 6.7588, degrees: -30, items: [
+      ['summitPost', 0, 0, 1.95, 75], ['pack', 1.3, .38, .87]]
+  },
+  {
+    district: 'whispering-pines', name: 'Timber landing', x: -5.892, z: 33.4977, degrees: 53, items: [
+      ['splitStump', 0, 0, 2.3], ['logs', 3.7, .4, 3.8, -8], ['logs', 4.1, 2.3, 2.7, 7]]
+  },
+  {
+    district: 'the-dam', name: 'Penstock stores', x: 14.2712, z: -22.6047, degrees: 82, items: [
+      ['pipeStock', 0, 0, 3.4], ['pipeStock', 2.15, 0, 3.4], ['valve', 4.4, .4, 1.9, 30]]
+  },
+  {
+    district: 'old-lighthouse', name: 'Buoy servicing rack', x: -6.1898, z: 7.8458, degrees: 40, items: [
+      ['netFloat', 0, 0, 1.65], ['fishBasket', .93, .08, .72]]
+  },
 ];
 
 type Footprint = { x: number; z: number; halfX: number; halfZ: number; yaw: number };
@@ -237,6 +271,11 @@ export function districtSets(island: IslandData): DistrictSet[] {
     function trySite(x: number, z: number): SetPiece[] | undefined {
       if (site.district === 'mt-gigga' && result.some(set => set.district === site.district &&
         Math.hypot(set.pieces[0]!.bottom.x - x, set.pieces[0]!.bottom.z - z) < 18 * scale)) return;
+      // Cable reels occupy an open laydown bay outside the multistorey frame.
+      const tower = CRANE_YARD_PLAN.tower;
+      if (site.name === 'Cable laydown bay' &&
+        Math.abs((x - centre.x) / scale - tower.x) < tower.width / 2 + 3 &&
+        Math.abs((z - centre.z) / scale - tower.z) < tower.depth / 2 + 3) return;
       const pieces: SetPiece[] = [];
       for (const [model, dx, dz, span, yaw = 0] of site.items) {
         const px = x + (dx * c + dz * s) * scale, pz = z + (dz * c - dx * s) * scale;
@@ -301,6 +340,8 @@ export function districtSets(island: IslandData): DistrictSet[] {
 }
 
 const surfaces = {
+  orchardCrate: 'wood', shoreOffice: 'wood', cableDrum: 'wood', planter: 'stone',
+  summitPost: 'wood', splitStump: 'wood', pipeStock: 'metal', netFloat: 'metal',
   tractor: 'metal', harvestCart: 'wood', produceStall: 'wood', pumpkin: 'soft', chickenCoop: 'wood',
   drinks: 'wood', iceTable: 'wood', cafeChair: 'wood', picnicBench: 'wood', snack: 'wood',
   loader: 'metal', truck: 'metal', timber: 'wood', pallet: 'wood', delivery: 'metal', market: 'wood',

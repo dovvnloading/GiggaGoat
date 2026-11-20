@@ -155,9 +155,21 @@ export class SoftwareGameRenderer {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
     ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
-    const image = { pixels: ctx.getImageData(0, 0, canvas.width, canvas.height).data,
+    const image: SoftwareTexture = { pixels: ctx.getImageData(0, 0, canvas.width, canvas.height).data,
       width: canvas.width, height: canvas.height, flipY: map.flipY,
       repeatU: map.wrapS !== THREE.ClampToEdgeWrapping, repeatV: map.wrapT !== THREE.ClampToEdgeWrapping };
+    if (map.userData.groundFinish) {
+      image.mipmaps = [];
+      ctx.imageSmoothingQuality = 'high';
+      let w = image.width, h = image.height;
+      while (w > 1 || h > 1) {
+        w = Math.max(1, w >> 1);
+        h = Math.max(1, h >> 1);
+        ctx.drawImage(source, 0, 0, w, h);
+        image.mipmaps.push({ pixels: ctx.getImageData(0, 0, w, h).data, width: w, height: h,
+          repeatU: image.repeatU, repeatV: image.repeatV, flipY: image.flipY });
+      }
+    }
     this.textures.set(map, { version: map.version, image });
     if (!saved) this.info.memory.textures++;
     return image;
@@ -270,13 +282,15 @@ export class SoftwareGameRenderer {
     const position = geometry.getAttribute('position');
     const skinned = mesh instanceof THREE.SkinnedMesh;
     // Keep roads and terrain on their authored heights; their thin layers need exact depth.
-    const fixed = mesh.userData.terrainChunk || mesh.name.startsWith('paths-');
+    const fixed = mesh.userData.terrainChunk || mesh.name === 'ground-detail-crane-apron' || mesh.name.startsWith('paths-');
     // The district's nearby architecture includes playable details such as ladder treads.
     const preserveSilhouette = geometry.userData.preserveSilhouette && distance - this.sphere.radius < 16;
     const detailRadius = radius * Math.min(1, 480 / this.frame!.image.height);
     const damWater = mesh.material instanceof THREE.ShaderMaterial &&
       (mesh.name === 'dam-plunge-pool-and-downstream-river' || mesh.name === 'dam-reservoir') ? mesh.material : undefined;
-    const detail = damWater || fixed || preserveSilhouette || position.count < 250 ? 'full' :
+    const rgba = geometry.getAttribute('color');
+    const coverage = rgba?.itemSize === 4 && paints[0]?.material.transparent ? rgba : undefined;
+    const detail = coverage || damWater || fixed || preserveSilhouette || position.count < 250 ? 'full' :
       detailRadius < 32 || mesh.name === 'rising-sea' ? 'far' : position.count > 1500 ? 'near' : 'full';
     const sea = mesh.name === 'rising-sea' && mesh.material instanceof THREE.ShaderMaterial
       ? softwareSea(mesh.material) : undefined;
@@ -324,6 +338,7 @@ export class SoftwareGameRenderer {
         Number(p.y > p.w) << 3 | Number(p.w < this.near) << 4;
       if (textured) { p.u = uv[2 * i]!; p.v = uv[2 * i + 1]!; }
       p.tint = ground?.[i];
+      p.opacity = coverage ? coverage.getW(source) * paints[0]!.material.opacity : undefined;
       if (batch) {
         const offset = i * 5;
         const iz = p.w >= this.near ? 1 / p.w : 0;
@@ -387,7 +402,7 @@ export class SoftwareGameRenderer {
     const v = batch.clipCoordinates;
     p.x = v[3 * i]!; p.y = v[3 * i + 1]!; p.w = v[3 * i + 2]!;
     p.outside = batch.vertexBits[i * 5 + 3]!;
-    p.tint = ground?.[i]; p.screen = undefined;
+    p.tint = ground?.[i]; p.opacity = undefined; p.screen = undefined;
     return p;
   }
 

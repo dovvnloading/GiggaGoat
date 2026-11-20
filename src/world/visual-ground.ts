@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import type { IslandData, PoiId } from './types';
+import { groundUV, type ApplyGroundMap } from './district-ground';
 import { makeLocalStreets } from './roads';
-import { gridSample } from './terrain';
+import { capeSurface } from './lighthouse-access';
+import { gridCoordinate, gridSample } from './terrain';
 import { TOON_RAMP } from './visual-props';
 import { downtownSidewalkEdge } from './visual-streets';
 
@@ -29,11 +31,13 @@ const YARD_MARKING = new THREE.Color('#EDC350');
  * by spatial chunk. One draw per visible chunk, rather than one mesh per
  * flower bed, sidewalk slab or individual fountain-square stone.
  */
-export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Group {
+export function buildGroundDetails(island: IslandData, chunkSize = 96,
+  applyMap?: ApplyGroundMap): THREE.Group {
   const group = new THREE.Group();
   group.name = 'merged-ground-details';
   const buckets = new Map<string, ChunkBuffer>();
   const apron: ChunkBuffer = { positions: [], colors: [], indices: [] };
+  const stripes: ChunkBuffer = { positions: [], colors: [], indices: [] };
   const water: ChunkBuffer = { positions: [], colors: [], indices: [] };
   const scale = island.size / 600;
   const site = (id: PoiId): { x: number; z: number } =>
@@ -97,13 +101,39 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Gr
   const yardQuad = (x: number, z: number, width: number, length: number,
     color: THREE.Color, yaw = 0, shade?: number, lift = .009): void => quad(
     yard.x + x * scale, yard.z + z * scale, width * scale, length * scale,
-    color, yaw, shade, lift, apron);
-  for (let ix = -40; ix < 40; ix += 8) {
-    for (let iz = -36; iz < 36; iz += 8) {
-      const slabX = (ix + 40) / 8;
-      const slabZ = (iz + 36) / 8;
-      const shade = .988 + .012 * ((slabX * 7 + slabZ * 3) % 3) / 2;
-      yardQuad(ix + 4, iz + 4, 8, 8, YARD_CONCRETE, 0, shade, 0);
+    color, yaw, shade, lift, color === YARD_MARKING ? stripes : apron);
+  const n = island.resolution, cell = island.size / (n - 1);
+  // Clip each slab to the two actual terrain faces in every cell it covers.
+  // Large corner-fitted quads used to sink through the gravel near the gates.
+  const toCell = (m: number) => Math.max(0, Math.min(n - 2, Math.floor((m + island.size / 2) / cell)));
+  for (let sx = 0; sx < 10; sx++) for (let sz = 0; sz < 9; sz++) {
+    const x0 = yard.x + (8 * sx - 40) * scale, z0 = yard.z + (8 * sz - 36) * scale;
+    const x1 = x0 + 8 * scale, z1 = z0 + 8 * scale;
+    const shade = .988 + .012 * ((sx * 7 + sz * 3) % 3) / 2;
+    for (let ix = toCell(x0); ix <= toCell(x1); ix++) for (let iz = toCell(z0); iz <= toCell(z1); iz++) {
+      const gx = gridCoordinate(island.size, n, ix), gz = gridCoordinate(island.size, n, iz);
+      const left = Math.max(gx, x0), right = Math.min(gx + cell, x1);
+      const back = Math.max(gz, z0), front = Math.min(gz + cell, z1);
+      if (right - left < .00001 || front - back < .00001) continue;
+      const corners = [[left, back], [left, front], [right, front], [right, back]] as const;
+      for (const sign of [1, -1]) {
+        const face: number[] = [];
+        for (let k = 0; k < 4; k++) {
+          const [x, z] = corners[k]!, [nx, nz] = corners[(k + 1) % 4]!;
+          const a = sign * (x - gx + z - gz - cell), b = sign * (nx - gx + nz - gz - cell);
+          const add = (px: number, pz: number) => {
+            face.push(apron.positions.length / 3);
+            apron.positions.push(px, capeSurface(island, px, pz) + .075 * scale, pz);
+            apron.colors.push(...colour(YARD_CONCRETE, shade));
+          };
+          if (a >= 0) add(x, z);
+          if (a * b < 0) {
+            const t = a / (a - b);
+            add(x + t * (nx - x), z + t * (nz - z));
+          }
+        }
+        for (let k = 2; k < face.length; k++) apron.indices.push(face[0]!, face[k - 1]!, face[k]!);
+      }
     }
   }
   for (const [dx, dz, radius, aspect, phase] of [
@@ -209,6 +239,7 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Gr
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(bucket.positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(bucket.colors, 3));
+    if (bucket === apron) groundUV(geometry, 5.8 * scale);
     geometry.setIndex(bucket.indices);
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
@@ -219,7 +250,10 @@ export function buildGroundDetails(island: IslandData, chunkSize = 96): THREE.Gr
     group.add(mesh);
   }
   for (const [key, bucket] of buckets) draw(bucket, 'ground-detail-chunk-' + key, material);
-  draw(apron, 'ground-detail-crane-apron', material);
+  const slabMaterial = material.clone();
+  applyMap?.(slabMaterial, 'crane-yard');
+  draw(apron, 'ground-detail-crane-apron', slabMaterial);
+  draw(stripes, 'crane-yard-bay-markings', material);
   draw(water, 'ground-detail-crane-puddles', new THREE.MeshPhongMaterial({
     vertexColors: true, side: THREE.DoubleSide, shininess: 48, specular: 0x666860,
     transparent: true, opacity: .89, depthWrite: false,

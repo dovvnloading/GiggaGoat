@@ -41,5 +41,13 @@
   "valve": "kenney/factory-kit/pipe-large-valve.glb",
   "controls": "kenney/factory-kit/screen-panel-wide.glb",
   "fishBasket": "kenney/survival-kit/barrel-open.glb",
-  "serviceBin": "kenney/city-kit-roads/dumpster.glb"
+  "serviceBin": "kenney/city-kit-roads/dumpster.glb",
+  "orchardCrate": "kenney/pirate-kit/crate.glb",
+  "shoreOffice": "kenney/coaster-kit/stall-information.glb",
+  "cableDrum": "custom/props/cable-spool.glb",
+  "planter": "custom/town/planter.glb",
+  "summitPost": "kenney/survival-kit/signpost-single.glb",
+  "splitStump": "kenney/nature-kit/stump_squareDetailedWide.glb",
+  "pipeStock": "kenney/factory-kit/pipe-large-long.glb",
+  "netFloat": "kenney/watercraft-kit/buoy-flag.glb"
 }

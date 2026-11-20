@@ -12,6 +12,7 @@ import { roadRibbonData, SUMMIT_ASCENT_TRAIL } from './road-ribbons';
 import { buildPropVisuals, TOON_RAMP } from './visual-props';
 import { buildBoardwalkRailVisuals } from './visual-boardwalk-rails';
 import { createEnvironmentLod } from './environment-lod';
+import { buildDistrictGround, groundUV, type ApplyGroundMap } from './district-ground';
 import { buildGroundDetails } from './visual-ground';
 import { buildStreetDetails } from './visual-streets';
 import { buildHabitatBeds } from './habitat-beds';
@@ -423,7 +424,8 @@ function isHoofingtonCrossingDash(
     Math.abs(z - (farm.z - 18 * scale)) < 3.25 * scale + 1.3;
 }
 
-function buildRoads(island: IslandData, terrain: readonly Chunk[], atmosphere: ReturnType<typeof skyUniforms>): THREE.Group {
+function buildRoads(island: IslandData, terrain: readonly Chunk[], atmosphere: ReturnType<typeof skyUniforms>,
+  applyMap: ApplyGroundMap): THREE.Group {
   const group = new THREE.Group();
   group.name = 'graded-ring-road-and-trails';
   const forward = new THREE.Vector3(0, 0, 1);
@@ -456,6 +458,18 @@ function buildRoads(island: IslandData, terrain: readonly Chunk[], atmosphere: R
         paint.call(material, shader, renderer);
         weatherSurface(shader, atmosphere, true);
       };
+    } else {
+      const tile = 3.5 * island.size / 600;
+      groundUV(geometry, tile);
+      // The two skirt edges have identical XZ at top and bottom. Unwrap their
+      // height separately so sloping trail embankments retain stone detail.
+      const uv = geometry.getAttribute('uv');
+      for (let i = 0; i < positions.length / 3; i++) {
+        if (i % 6 < 2) continue;
+        uv.setXY(i, (positions[i * 3]! + positions[i * 3 + 2]!) / tile, positions[i * 3 + 1]! / tile);
+      }
+      material.color.setHex(0xdfcaa4);
+      applyMap(material, 'mt-gigga');
     }
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'paths-' + type;
@@ -493,7 +507,9 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const sky = buildSkyVisuals();
   const chunks = buildTerrain(island, segments, capeLighting, sky.atmosphere);
   for (const chunk of chunks) group.add(chunk.mesh);
-  const roads = buildRoads(island, chunks, sky.atmosphere);
+  const finish = buildDistrictGround(island);
+  group.add(finish.group);
+  const roads = buildRoads(island, chunks, sky.atmosphere, finish.applyMap);
   group.add(roads);
   const kitSets = districtSetVisuals(island.districtSets ?? [], options.gameplaySelectsCasters, island);
   group.add(kitSets.group);
@@ -503,9 +519,9 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     geometry: chunk.low, x: chunk.mesh.position.x, z: chunk.mesh.position.z,
   })));
   group.add(tideRoutes.mesh);
-  group.add(buildStreetDetails(island));
+  group.add(buildStreetDetails(island, finish.applyMap));
   // Coalesce unchanged ground decals to keep the extra zebra mesh within the draw budget.
-  group.add(buildGroundDetails(island, 192));
+  group.add(buildGroundDetails(island, 192, finish.applyMap));
   group.add(buildMeadowScatter(island, sky.atmosphere));
   const beds = buildHabitatBeds(island);
   group.add(beds.group);
@@ -544,7 +560,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(waterVisuals.inland, waterVisuals.sea, waterVisuals.mountain);
   const dam = buildDamVisuals(island, waterVisuals.light);
   group.add(dam.group);
-  const lighthouse = buildLighthouseVisuals(scenery, props.group, capeLighting);
+  const lighthouse = buildLighthouseVisuals(scenery, props.group, capeLighting, finish.applyMap);
   group.add(lighthouse.group);
   group.add(buildMountainWayfinding(island));
   const fogColor = new THREE.Color();
@@ -643,6 +659,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
       boardwalkRails.mesh.visible = railBounds.center.distanceTo(pos) <= cullingDistance + railBounds.radius &&
         frustum.intersectsSphere(railBounds);
     }
+    finish.update(pos);
     dam.updateCulling(pos);
     lighthouse.updateCulling(pos);
     if (kitSets.update(pos)) shadowCastersChanged = true;
@@ -660,6 +677,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     return shadowCastersChanged;
   }
   function dispose(): void {
+    finish.dispose();
     kitSets.dispose();
     beds.dispose();
     environmentLod.dispose();

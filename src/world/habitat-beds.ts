@@ -9,7 +9,7 @@ import type { IslandData, PropDescriptor } from './types';
 
 interface Planting { x: number; y: number; z: number; height: number; yaw: number }
 type BedModel = 'crops_dirtSingle' | 'crops_cornStageD' | 'crops_wheatStageB' |
-  'crop_turnip' | 'mushroom_tanGroup' | 'mushroom_redGroup' | 'grass_leafsLarge';
+  'crop_turnip' | 'mushroom_tanGroup' | 'mushroom_redGroup' | 'grass_leafsLarge' | 'rock_smallFlatC' | 'flower_yellowA';
 type Beds = Map<BedModel, Planting[]>;
 
 function outsideProp(x: number, z: number, radius: number, prop: PropDescriptor): boolean {
@@ -105,6 +105,32 @@ export function planHabitatBeds(island: IslandData): Beds {
       }
     }
   }
+  // Low kit plants and loose stone follow specific shoulders, leaving the travel side open.
+  const verges: [string, number, number, number, number, BedModel, number][] = [
+    ['hoofington', -17, 40, 14, -.32, 'flower_yellowA', .34],
+    ['hoofington', -24, 12, 19, 1.29, 'grass_leafsLarge', .39],
+    ['baa-ardwalk', -17, -16, 21, .12, 'grass_leafsLarge', .49],
+    ['baa-ardwalk', 6, -20, 24, -.26, 'grass_leafsLarge', .42],
+    ['baa-ardwalk', 17, 7, 15, .56, 'rock_smallFlatC', .23],
+    ['mt-gigga', 6, 6, 21, -.38, 'rock_smallFlatC', .27],
+    ['mt-gigga', -57, 34, 25, -1.15, 'rock_smallFlatC', .33],
+    ['whispering-pines', -9, 25, 20, 1.22, 'grass_leafsLarge', .41],
+    ['whispering-pines', -14, -3, 24, -.88, 'mushroom_tanGroup', .28],
+    ['the-dam', 23, -20, 16, 1.32, 'rock_smallFlatC', .24],
+    ['old-lighthouse', -9, 8, 12, -.92, 'grass_leafsLarge', .39],
+    ['old-lighthouse', 7, 11, 14, .3, 'rock_smallFlatC', .2],
+  ];
+  for (const [zone, dx, dz, length, angle, model, height] of verges) {
+    const center = island.pois.find(p => p.id === zone)!.center;
+    for (let j = -length / 2; j <= length / 2; j += 1.35) {
+      const t = j + rng.range(-.5, .5), side = rng.range(-1.65, 1.65);
+      const x = center.x + (dx + t * Math.cos(angle) - side * Math.sin(angle)) * scale;
+      const z = center.z + (dz + t * Math.sin(angle) + side * Math.cos(angle)) * scale;
+      if (safe(x, z, .68 * scale)) {
+        plant(model, x, z, height * rng.range(.66, 1.15), rng.range(0, Math.PI * 2), -.035);
+      }
+    }
+  }
   return beds;
 }
 
@@ -122,7 +148,14 @@ export function buildHabitatBeds(island: IslandData) {
       try {
         const geometry = await loadGroundedKitGeometry('assets/library/kenney/nature-kit/' + model + '.glb', loader);
         if (disposed) { geometry.dispose(); return; }
-        paintNatureKit(geometry);
+        if (model === 'rock_smallFlatC') {
+          const colours = geometry.getAttribute('color');
+          const slate = new THREE.Color(0x858780), lichen = new THREE.Color(0xa5a88c);
+          for (let i = 0; i < colours.count; i++) {
+            const tint = colours.getY(i) > colours.getX(i) ? lichen : slate;
+            colours.setXYZ(i, tint.r, tint.g, tint.b);
+          }
+        } else paintNatureKit(geometry);
         const span = geometry.boundingBox!.getSize(new THREE.Vector3());
         const mesh = new THREE.InstancedMesh(geometry, material, sites.length);
         const transform = new THREE.Object3D();
