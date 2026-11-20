@@ -111,6 +111,12 @@ export function buildDistrictGround(island: IslandData) {
         const along = (dx * patch.cos + dz * patch.sin) / patch.a, across = (dz * patch.cos - dx * patch.sin) / patch.b;
         w = Math.max(w, 1 - smoothstep(Math.hypot(along, across) + edge, .47, 1.16));
       }
+      if (poi.id === 'downtown-bleatsville') {
+        // A continuous mineral bed sits below the separate storefront slabs.
+        // Their construction joints open onto the same setts as the sidewalk.
+        const frontage = Math.max(Math.abs(Math.abs(x) - 8.4) - 2.05, Math.abs(z - 3.4) - 43.4);
+        w = Math.max(w, 1 - smoothstep(frontage, .75, 2.9));
+      }
       if (poi.id === 'crane-yard') {
         const perimeter = Math.max(Math.abs(x) - 40, Math.abs(z) - 36);
         // A weathered strip outside the apron exposes the same grit as the slab.

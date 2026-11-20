@@ -2,6 +2,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import * as THREE from 'three';
+import { generateIsland } from './island';
+import { buildDistrictGround } from './district-ground';
 import { districtMaterials, groundLayers } from './district-materials';
 import { blendFieldIndex, blendPeriod, blendSize, groundBlendField } from './ground-blend';
 import { groundBlock, mipCache, type SoftwareGroundLayers } from '../core/software-ground';
@@ -88,4 +90,24 @@ it('keeps cached colours and verge weights aligned across material repeats and m
       expect(rgba >>> 24).toBe(groundBlendField[field + 2]);
     }
   }
+});
+
+it('continues the stone setting bed through the joints on both downtown frontages', () => {
+  const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+  const surface = buildDistrictGround(island);
+  try {
+    const mesh = surface.group.getObjectByName('ground-finish-downtown-bleatsville') as THREE.Mesh;
+    surface.group.updateMatrixWorld(true);
+    const position = mesh.geometry.getAttribute('position'), colour = mesh.geometry.getAttribute('color');
+    const ray = new THREE.Raycaster(), normal = new THREE.Vector3(0, -1, 0), weights = new THREE.Vector3();
+    for (const side of [-1, 1]) for (let slab = 0; slab < 14; slab++) {
+      ray.set(new THREE.Vector3(mesh.position.x + side * 8.4, 200, mesh.position.z - 34.3 + slab * 5.8), normal);
+      const hit = ray.intersectObject(mesh)[0]!;
+      const { a, b, c } = hit.face!;
+      const triangle = new THREE.Triangle().setFromAttributeAndIndices(position, a, b, c);
+      triangle.getBarycoord(mesh.worldToLocal(hit.point), weights);
+      const coverage = weights.x * colour.getW(a) + weights.y * colour.getW(b) + weights.z * colour.getW(c);
+      expect(coverage).toBeGreaterThan(.72);
+    }
+  } finally { surface.dispose(); }
 });
