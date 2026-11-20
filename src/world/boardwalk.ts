@@ -260,10 +260,6 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
     'kiosk-icecream', 'kiosk-popcorn', 'kiosk-games',
     'kiosk-prizes', 'kiosk-candy',
   ] as const satisfies readonly PropKind[];
-  const kioskSigns = [
-    'kiosk-sign-icecream', 'kiosk-sign-popcorn', 'kiosk-sign-games',
-    'kiosk-sign-prizes', 'kiosk-sign-candy',
-  ] as const satisfies readonly PropKind[];
   for (let i = 0; i < 5; i++) {
     const z = -27 + i * 11;
     const side = i % 2 === 0 ? 1 : -1;
@@ -272,10 +268,7 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
     place(kioskKinds[i]!, side * 8.55, z, 5.0, 4.8, 4.5, {
       floor: deckY, yaw,
     });
-    place(kioskSigns[i]!, side * 6.0, z, 4.6, 1.4, 0.3, {
-      centreY: deckY + 4.2 * scale, yaw,
-      color: 0xffe3a7, collidable: false,
-    });
+    serial++; // Retired roof sign slot. Keep the original stock and fixture IDs.
   }
 
   // The centred fit leaves the actual pads above the box floor. Set
@@ -294,20 +287,32 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
       { floor: headY, shape: 'cylinder', color: 0xffedc2 });
   }
   const pennants = { yaw: Math.PI / 2, collidable: false, lickable: false, climbable: false };
-  // Keep the strings attached to the west-side lamps and rail posts so
-  // the approach opens onto the wheel and the full width of the promenade.
-  place('bunting', -11.3, -20, 18.0, 1.5, 0.22, {
-    ...pennants, centreY: deckY + 6.2 * scale,
+  // Seat the long cable in the iron lantern caps. The model's tall export
+  // bounds include invisible anchors, so use the visible height of the cap.
+  place('bunting', -11.3, -20, 18.37, 1.5, 0.22, {
+    ...pennants, centreY: deckY + 3.25 * scale,
   });
+  // The short strands tie into the visible 1.25 m balustrade posts.
   for (const z of [-25, -9]) {
-    place('bunting', -13.08, z, 7.6, 1.0, 0.16, {
-      ...pennants, centreY: deckY + 1.9 * scale,
+    place('bunting', -13.08, z, 7.6, .7, 0.16, {
+      ...pennants, centreY: deckY + .94 * scale,
     });
   }
 
   for (const z of [-21, -2, 17]) {
     place('bench', -8.2, z, 2.0, 0.95, 0.75,
       { floor: deckY, yaw: -Math.PI / 2, color: 0xa77853 });
+  }
+  // Seating bays sit between the kiosks. Keep the dive board and trampoline
+  // approaches open, and turn the benches in toward the walking lane.
+  for (const [side, z] of [[-1, -32], [1, -18], [1, 1], [-1, 30], [1, 40]] as const) {
+    place('bench', 9.9 * side, z, 2, .95, .75,
+      { id: 'baa-ardwalk-promenade-bench-' + z, floor: deckY, yaw: -side * Math.PI / 2 });
+    for (const end of [-1, 1]) {
+      place('planter', 10.1 * side, z + end * 1.92, 1.42, .98, 1.42, {
+        id: 'baa-ardwalk-promenade-planter-' + z + '-' + end, floor: deckY,
+      });
+    }
   }
   // Cargo occupies the gaps between stops, with two stacks on the west
   // and one between the games and the candy stall.

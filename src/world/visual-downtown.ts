@@ -64,25 +64,6 @@ const SCENERY_MODELS = new Set<DowntownModel>([
   ...FLOWER_VARIANTS, ...BUSH_VARIANTS, ...OAK_VARIANTS, 'planter', 'bench',
 ]);
 
-/** Fractions of each Blender model's fitted height, measured from its base. */
-export const DOWNTOWN_SIGN_ANCHORS = {
-  bakery: { centre: 0.318, halfHeight: 0.029 }, // shop-h-pink
-  arcade: { centre: 0.280, halfHeight: 0.026 }, // shop-k-lavender
-  cinema: { centre: 0.318, halfHeight: 0.029 }, // shop-d-mint
-  cafe: { centre: 0.335, halfHeight: 0.030 }, // shop-e-peach
-  market: { centre: 0.243, halfHeight: 0.022 }, // shop-g-yellow
-  boutique: { centre: 0.243, halfHeight: 0.022 }, // shop-j-cream
-  cornerShop: { centre: 0.318, halfHeight: 0.029 }, // shop-b-pink
-  kayShop: { centre: 0.335, halfHeight: 0.030 }, // shop-c-yellow
-  kayHouse: { centre: 0.243, halfHeight: 0.022 }, // shop-f-lavender
-  townhouse: { centre: 0.182, halfHeight: 0.017 }, // shop-l-peach
-  brickHouse: { centre: 0.131, halfHeight: 0.012 }, // shop-m-pink
-  highrise: { centre: 0.182, halfHeight: 0.017 }, // tower has no storefront label
-} as const satisfies Partial<Record<DowntownModel, {
-  centre: number; halfHeight: number;
-}>>;
-type DowntownBuildingModel = keyof typeof DOWNTOWN_SIGN_ANCHORS;
-
 /** DT-4: native Blender dimensions × one shared 8 m per model unit.
  * Highrise uses its separately authored 8 × 27 × 8 m tower box.
  */
@@ -98,11 +79,13 @@ export const DOWNTOWN_BUILDING_SIZES = {
   townhouse: { x: 11.36, y: 18.25, z: 12.71 }, // shop-l-peach
   brickHouse: { x: 9.92, y: 25.29, z: 11.51 }, // shop-m-pink
   kayHouse: { x: 6.72, y: 13.63, z: 9.50 }, // shop-f-lavender
-} as const satisfies Record<Exclude<DowntownBuildingModel, 'highrise'>, Vec3>;
+} as const satisfies Partial<Record<DowntownModel, Vec3>>;
 
 export function downtownRearHouseModel(dz: number): 'townhouse' | 'kayHouse' | 'brickHouse' {
   return dz > 0 ? 'townhouse' : dz < 0 ? 'kayHouse' : 'brickHouse';
 }
+
+type DowntownBuildingModel = keyof typeof DOWNTOWN_BUILDING_SIZES | 'highrise';
 
 /** Contact points on the fitted GLB roof surfaces, in building-local metres. */
 export const DOWNTOWN_ROOF_MOUNTS: Record<Exclude<DowntownBuildingModel, 'highrise'>, {
@@ -121,14 +104,6 @@ export const DOWNTOWN_ROOF_MOUNTS: Record<Exclude<DowntownBuildingModel, 'highri
   brickHouse: { ac: { x: 0, y: 9.957, z: -.73 } },
   kayHouse: { ac: { x: 0, y: 5.950, z: 1.5 }, tank: { x: 0, y: 5.950, z: -1.5 } },
 };
-
-export interface DowntownSign {
-  source: PropDescriptor;
-  model: DowntownBuildingModel;
-  title: string;
-  background: number;
-  ink: number;
-}
 
 export interface DowntownVisuals {
   group: THREE.Group;
@@ -311,90 +286,6 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
   return plan;
 }
 
-export function makeDowntownSigns(island: IslandData): DowntownSign[] {
-  const centre = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
-  const scale = island.size / 600;
-  return island.props.filter(p => p.kind === 'shop' &&
-    p.poiId === 'downtown-bleatsville').map(source => {
-    const side = source.transform.position.x < centre.x ? 0 : 1;
-    const row = Math.max(0, Math.min(4,
-      Math.round((source.transform.position.z - centre.z) / scale / 19 + 2)));
-    const facade = SHOP_FRONTS[side]![row]!;
-    return { source, model: facade.model, title: facade.title,
-      background: 0xf6ead2, ink: 0x543b3d };
-  });
-}
-
-/** Sign quads lie just off the GLB's +Z cream boards, never above awnings. */
-export function downtownSignGeometry(signs: readonly DowntownSign[]): THREE.BufferGeometry {
-  const columns = 2, rows = Math.ceil(signs.length / columns);
-  const positions: number[] = [], uv: number[] = [], indices: number[] = [];
-  for (let i = 0; i < signs.length; i++) {
-    const sign = signs[i]!;
-    const p = sign.source;
-    const yaw = p.transform.rotationY;
-    const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
-    const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
-    const anchor = DOWNTOWN_SIGN_ANCHORS[sign.model];
-    const center = new THREE.Vector3(
-      p.transform.position.x,
-      p.transform.position.y - p.size.y / 2 + anchor.centre * p.size.y,
-      p.transform.position.z,
-    ).addScaledVector(forward, p.size.z / 2 + 0.04);
-    const halfW = p.size.x * 0.40, halfH = p.size.y * anchor.halfHeight;
-    for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
-      positions.push(center.x + right.x * u * halfW,
-        center.y + v * halfH, center.z + right.z * u * halfW);
-    }
-    const col = i % columns, row = Math.floor(i / columns);
-    const left = col / columns, rightUv = (col + 1) / columns;
-    const top = 1 - row / rows, bottom = 1 - (row + 1) / rows;
-    uv.push(left, bottom, rightUv, bottom, rightUv, top, left, top);
-    const index = i * 4;
-    indices.push(index, index + 1, index + 2, index, index + 2, index + 3);
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
-function signAtlas(signs: readonly DowntownSign[]): THREE.Mesh | null {
-  if (!signs.length || typeof document === 'undefined') return null;
-  const columns = 2, rows = Math.ceil(signs.length / columns);
-  const cellWidth = 512, cellHeight = 116;
-  const canvas = document.createElement('canvas');
-  canvas.width = columns * cellWidth; canvas.height = rows * cellHeight;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-  for (let i = 0; i < signs.length; i++) {
-    const sign = signs[i]!;
-    const col = i % columns, row = Math.floor(i / columns);
-    const x = col * cellWidth, y = row * cellHeight;
-    const background = new THREE.Color(sign.background);
-    ctx.fillStyle = '#' + background.getHexString();
-    ctx.fillRect(x + 3, y + 3, cellWidth - 6, cellHeight - 6);
-    ctx.strokeStyle = '#fff5de'; ctx.lineWidth = 9;
-    ctx.strokeRect(x + 10, y + 10, cellWidth - 20, cellHeight - 20);
-    ctx.fillStyle = '#' + new THREE.Color(sign.ink).getHexString();
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    let fontSize = 64;
-    do { ctx.font = 'bold ' + fontSize + 'px sans-serif'; fontSize -= 2; }
-    while (ctx.measureText(sign.title).width > cellWidth - 46 && fontSize > 24);
-    ctx.fillText(sign.title, x + cellWidth / 2, y + cellHeight / 2 + 3);
-  }
-  const geometry = downtownSignGeometry(signs);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
-  const mesh = new THREE.Mesh(geometry,
-    new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide }));
-  mesh.name = 'downtown-shop-signs';
-  return mesh;
-}
-
 function disposeModels(models: ReadonlyMap<DowntownModel, THREE.Group>): void {
   const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>();
   const textures = new Set<THREE.Texture>();
@@ -415,7 +306,7 @@ function disposeModels(models: ReadonlyMap<DowntownModel, THREE.Group>): void {
 /** Suppress only loaded replacements; other POIs and failed loads keep fallbacks. */
 function suppressOldArt(island: IslandData, oldProps: THREE.Group,
   replacements: readonly DowntownPlacement[], loaded: ReadonlySet<DowntownModel>,
-  signedShops: ReadonlySet<string>, fullyHidden: Set<PropKind>): void {
+  fullyHidden: Set<PropKind>): void {
   const byKind = new Map<PropKind, Set<string>>();
   function hide(p: PropDescriptor): void {
     const ids = byKind.get(p.kind) ?? new Set<string>();
@@ -425,18 +316,12 @@ function suppressOldArt(island: IslandData, oldProps: THREE.Group,
   const loadedFacades = new Set(replacements.flatMap(p =>
     p.source && (p.source.kind === 'shop' || p.source.kind === 'house') &&
       loaded.has(p.model) ? [p.source.id] : []));
-  for (const overlay of island.props.filter(p =>
-    p.poiId === 'downtown-bleatsville' &&
-    (p.kind === 'awning' || p.kind === 'signboard'))) {
-    // Preserve the legacy overlay only when its corresponding GLB failed.
-    // Shops and houses both have authored awnings; only shops use sign atlases.
-    const building = island.props.find(p =>
-      p.poiId === 'downtown-bleatsville' &&
-      (p.kind === 'shop' || (overlay.kind === 'awning' && p.kind === 'house')) &&
+  for (const overlay of island.props.filter(p => p.poiId === 'downtown-bleatsville' && p.kind === 'awning')) {
+    const building = island.props.find(p => p.poiId === 'downtown-bleatsville' &&
+      (p.kind === 'shop' || p.kind === 'house') &&
       Math.hypot(overlay.transform.position.x - p.transform.position.x,
         overlay.transform.position.z - p.transform.position.z) < 8 * island.size / 600);
-    if (building && (overlay.kind === 'awning'
-      ? loadedFacades.has(building.id) : signedShops.has(building.id))) hide(overlay);
+    if (building && loadedFacades.has(building.id)) hide(overlay);
   }
   const zero = new THREE.Matrix4().makeScale(0, 0, 0);
   for (const [kind, ids] of byKind) {
@@ -463,20 +348,18 @@ function suppressOldArt(island: IslandData, oldProps: THREE.Group,
   }
 }
 
-/** Browser-only GLTF loading with one static toon batch and two lightweight overlays. */
+/** Browser-only GLTF loading for the painted storefronts, street props and lanterns. */
 export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group): DowntownVisuals {
   const group = new THREE.Group();
   group.name = 'downtown-library-models';
   group.userData['ready'] = typeof document === 'undefined';
   group.userData['loadedModels'] = 0;
-  group.userData['signCount'] = 0;
   const fullyHidden = new Set<PropKind>();
   let disposed = false, shadowChanged = false;
   let districtLod: DistrictLod | undefined;
   let lanterns: LanternLampBatch | null = null;
   if (typeof document !== 'undefined') {
     const plan = makeDowntownPlacements(island);
-    const signs = makeDowntownSigns(island);
     const required = new Set(plan.map(p => p.model));
     const loader = new GLTFLoader();
     const load = (id: DowntownModel): Promise<[DowntownModel, THREE.Group]> =>
@@ -510,16 +393,7 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
           if (disposed) { lod.dispose(); return; }
           districtLod = lod;
         }
-        const loadedShops = signs.filter(sign => {
-          const planned = plan.find(p => p.source?.id === sign.source.id);
-          return planned && models.has(planned.model);
-        });
-        const labels = signAtlas(loadedShops);
-        if (labels) group.add(labels);
-        group.userData['signCount'] = loadedShops.length;
-        suppressOldArt(island, oldProps, lanterns ? visible : staticPlan,
-          new Set(models.keys()),
-          new Set(loadedShops.map(s => s.source.id)), fullyHidden);
+        suppressOldArt(island, oldProps, lanterns ? visible : staticPlan, new Set(models.keys()), fullyHidden);
         shadowChanged = true;
       } catch (error) {
         if (!disposed) console.error('Could not assemble Downtown library art:', error);

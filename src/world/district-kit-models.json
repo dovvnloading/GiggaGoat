@@ -49,5 +49,14 @@
   "summitPost": "kenney/survival-kit/signpost-single.glb",
   "splitStump": "kenney/nature-kit/stump_squareDetailedWide.glb",
   "pipeStock": "kenney/factory-kit/pipe-large-long.glb",
-  "netFloat": "kenney/watercraft-kit/buoy-flag.glb"
+  "netFloat": "kenney/watercraft-kit/buoy-flag.glb",
+  "farmWagon": "kenney/fantasy-town-kit/cart-high.glb",
+  "sandShelter": "kenney/survival-kit/tent-canvas.glb",
+  "oar": "kenney/nature-kit/canoe_paddle.glb",
+  "siteFence": "kenney/city-kit-roads/construction-fence.glb",
+  "trafficStand": "kenney/factory-kit/warning-traffic.glb",
+  "parkBench": "kenney/retro-urban-kit/detail-bench.glb",
+  "openTent": "kenney/nature-kit/tent_detailedOpen.glb",
+  "fieldRepair": "kenney/survival-kit/workbench-anvil.glb",
+  "headGate": "kenney/factory-kit/machine-connection-pipe.glb"
 }

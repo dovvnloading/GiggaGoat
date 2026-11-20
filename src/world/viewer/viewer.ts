@@ -536,7 +536,7 @@ if (new URLSearchParams(window.location.search).has('profile')) {
       },
       /** Source-model QA at the painting's bookmark-11 camera. */
       downtownState(): { loaded: boolean; models: number; triangles: number;
-        signs: number; awnings: boolean } {
+        awnings: boolean } {
         const root = worldView.group.getObjectByName('downtown-library-models');
         const batch = root?.getObjectByName('downtown-library-batched');
         return {
@@ -546,7 +546,6 @@ if (new URLSearchParams(window.location.search).has('profile')) {
             node instanceof THREE.Mesh && node.name.startsWith('downtown-library-batched')
               ? count + (node.geometry.index?.count ??
                 node.geometry.getAttribute('position').count) / 3 : count, 0) ?? 0,
-          signs: Number(root?.userData['signCount'] ?? 0),
           awnings: Boolean(root?.getObjectByName('downtown-striped-awnings')),
         };
       },

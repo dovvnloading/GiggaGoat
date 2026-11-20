@@ -17,6 +17,8 @@ import { buildGroundDetails } from './visual-ground';
 import { buildStreetDetails } from './visual-streets';
 import { buildHabitatBeds } from './habitat-beds';
 import { buildMeadowScatter } from './visual-meadow';
+import { buildVergeVisuals } from './visual-verges';
+import { buildHarborLife } from './visual-harbor-life';
 import { buildWaterVisuals } from './visual-water';
 import { buildTideRouteCues, meshSurfaceHeight } from './visual-tide-routes';
 import { buildDamVisuals } from './visual-dam';
@@ -522,6 +524,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   // Coalesce unchanged ground decals to keep the extra zebra mesh within the draw budget.
   group.add(buildGroundDetails(island, 192, finish.applyMap));
   group.add(buildMeadowScatter(island, sky.atmosphere, finish.pavedAt));
+  const verges = buildVergeVisuals(island, finish.pavedAt);
+  group.add(verges.group);
   const beds = buildHabitatBeds(island);
   group.add(beds.group);
   const fireflies = pinesFireflies(island);
@@ -559,6 +563,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const downtown = buildDowntownVisuals(scenery, props.group);
   group.add(downtown.group);
   group.add(waterVisuals.inland, waterVisuals.sea, waterVisuals.mountain);
+  const harborLife = buildHarborLife(island);
+  group.add(harborLife.group);
   const dam = buildDamVisuals(island, waterVisuals.light);
   group.add(dam.group);
   const lighthouse = buildLighthouseVisuals(scenery, props.group, capeLighting, finish.applyMap);
@@ -597,10 +603,13 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const environmentLod = createEnvironmentLod(group);
   let tide = island.seaLevel;
   let elapsed = 0;
+  let daylight = 1, rain = 0;
 
   const sunsetKey = new THREE.Color(0xffbc80), moonKey = new THREE.Color(0xaabdf9);
   function setDayNight(phase: number, weather?: IslandWeather): void {
     const state = sky.update(((phase % 1) + 1) % 1, weather);
+    daylight = state.daylight;
+    rain = weather?.rain ?? 0;
     const storm = weather ? THREE.MathUtils.smoothstep(weather.cloud, .46, .96) : 0;
     waterVisuals.setLighting(state.daylight * (1 - .33 * storm), state.golden * (1 - storm));
     fireflies.update(weather?.time ?? elapsed, state.daylight, weather?.rain ?? 0);
@@ -661,6 +670,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
         frustum.intersectsSphere(railBounds);
     }
     finish.update(pos);
+    verges.update(pos, frustum);
+    harborLife.update(elapsed, tide, daylight, rain, pos, frustum);
     dam.updateCulling(pos);
     lighthouse.updateCulling(pos);
     if (kitSets.update(pos)) shadowCastersChanged = true;
@@ -681,6 +692,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     finish.dispose();
     kitSets.dispose();
     beds.dispose();
+    harborLife.dispose();
     environmentLod.dispose();
     props.dispose();
     boardwalkRails?.mesh.dispose();

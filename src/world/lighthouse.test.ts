@@ -10,7 +10,7 @@ import { instantiateLibraryModel, keeperCottageFoundationGeometry,
 import { BUILDING_RAMP, TOON_RAMP } from './visual-props';
 import { bakeLibraryPropGeometry } from './library-props';
 import { gridSample } from './terrain';
-import { keeperCottagePiers, lighthouseAccess } from './lighthouse-access';
+import { keeperCottagePiers, lighthouseAccess, lighthouseModelY } from './lighthouse-access';
 import { buildRapierColliders } from './colliders';
 import { accessArrows, accessPathVisual } from './visual-access-path';
 
@@ -44,7 +44,14 @@ describe('Old Lighthouse painting rebuild', () => {
     const scale = island.size / 600;
     const tower = island.props.find(prop => prop.kind === 'lighthouse')!;
     const sections = lighthouseAccess(tower, (x, z) => gridSample(island, x, z));
-    const ramp = accessPathVisual('test-ramp', [sections], [], .34 * scale, scale, 0xffffff, 0xffffff);
+    const gallery = lighthouseModelY(tower, 19.95);
+    const landing = sections.at(-1)!;
+    const at = tower.transform.position;
+    expect(landing.inner.y).toBeCloseTo(gallery, 5);
+    expect(landing.outer.y).toBeCloseTo(gallery, 5);
+    expect(Math.hypot(landing.inner.x - at.x, landing.inner.z - at.z)).toBeLessThan(3.35 * .98 * scale);
+    expect(sections.every(section => section.outer.y <= gallery)).toBe(true);
+    const ramp = accessPathVisual('test-ramp', [sections], [], .27 * scale, scale, 0xffffff, 0xffffff);
     const paint = accessArrows(sections, scale, 0xffffff).geometry;
     const positions = paint.getAttribute('position');
     const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0), 0, .5 * scale);

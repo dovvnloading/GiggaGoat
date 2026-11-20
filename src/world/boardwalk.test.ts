@@ -194,24 +194,7 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
             stall.transform.position.z) + 0.3);
       }
       const scale = island.size / 600;
-      const kioskSigns = [
-        'kiosk-sign-icecream', 'kiosk-sign-popcorn', 'kiosk-sign-games',
-        'kiosk-sign-prizes', 'kiosk-sign-candy',
-      ] as const;
-      const signs = props.filter(p => p.kind.startsWith('kiosk-sign-'));
-      expect(signs.map(p => p.kind)).toEqual(kioskSigns);
-      expect(new Set(signs.map(p => p.kind)).size).toBe(5);
-      expect(props.filter(p => p.kind === 'signboard')).toHaveLength(0);
-      for (const [i, sign] of signs.entries()) {
-        expect(sign.kind).toBe(kioskSigns[i]);
-        expect(sign.transform.position.x).toBeCloseTo(centre.x + sides[i]! * 6 * scale, 6);
-        expect(sign.transform.position.z).toBeCloseTo(shops[i]!.transform.position.z, 6);
-        expect(sign.transform.position.y).toBeCloseTo(topOf(pier) + 4.2 * scale, 6);
-        expect(sign.size).toEqual({ x: 4.6 * scale, y: 1.4 * scale, z: 0.3 * scale });
-        expect(sign.transform.rotationY).toBeCloseTo(-sides[i]! * Math.PI / 2, 6);
-        expect(sign.color).toBe(0xffe3a7);
-        expect(sign.collidable).toBe(false);
-      }
+      expect(props.filter(p => p.kind.startsWith('kiosk-sign-') || p.kind === 'signboard')).toHaveLength(0);
       const promenadeLamps = props.filter(p => p.kind === 'lamp' &&
         Math.abs(p.transform.position.x -
           (centre.x - 11.3 * island.size / 600)) < 0.001);
@@ -245,12 +228,14 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
       }
       expect(wheel.transform.position.z).toBeGreaterThan(
         shops[shops.length - 1]!.transform.position.z + 15);
-      for (const kind of [...kioskKinds, 'bunting', 'lamp', 'pier-rail', ...kioskSigns]) {
+      for (const kind of [...kioskKinds, 'bunting', 'lamp', 'pier-rail']) {
         expect(props.some(p => p.kind === kind), kind).toBe(true);
       }
       expect(props.filter(p => p.kind === 'pier-rail').length).toBeGreaterThan(20);
-      expect(props.filter(p => p.kind === 'bunting')
-        .every(p => !p.collidable && floorOf(p) > topOf(pier) + scale)).toBe(true);
+      const bunting = props.filter(p => p.kind === 'bunting');
+      expect(bunting.every(p => !p.collidable && floorOf(p) > topOf(pier) + .5 * scale)).toBe(true);
+      expect(Math.max(...bunting.map(topOf))).toBeCloseTo(topOf(pier) + 4 * scale, 5);
+      expect(Math.min(...bunting.map(topOf))).toBeCloseTo(topOf(pier) + 1.29 * scale, 5);
       expect(props.filter(p => p.kind === 'scaffold')
         .some(p => floorOf(p) < 0 && topOf(p) < topOf(pier) + 8)).toBe(true);
     }
@@ -307,7 +292,7 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
     const wheel = props.find(prop => prop.kind === 'ferris-wheel')!;
     const bunting = props.filter(prop => prop.kind === 'bunting');
     const deckTop = topOf(pier);
-    const [atLamps] = bunting.filter(prop => floorOf(prop) > deckTop + 5);
+    const atLamps = bunting.find(prop => topOf(prop) > deckTop + 3.5);
     const atRails = bunting.filter(prop => topOf(prop) < deckTop + 2.65);
     expect(atLamps).toBeDefined();
     expect(atRails).toHaveLength(2);
@@ -315,14 +300,14 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
       const { x, z } = atLamps!.transform.position;
       expect(props.some(prop => prop.kind === 'lamp' &&
         Math.abs(prop.transform.position.x - x) < 0.01 &&
-        Math.abs(prop.transform.position.z - z - endpoint * atLamps!.size.x / 2) < 0.01 &&
-        topOf(prop) > topOf(atLamps!))).toBe(true);
+        Math.abs(prop.transform.position.z - z - endpoint * .98 * atLamps!.size.x / 2) < 0.01 &&
+        Math.abs(floorOf(prop) + 4.05 - topOf(atLamps!)) < .08)).toBe(true);
     }
     for (const span of atRails) {
       expect(props.some(prop => prop.kind === 'pier-rail' &&
         Math.abs(prop.transform.position.x - span.transform.position.x) < 0.2 &&
         Math.abs(prop.transform.position.z - span.transform.position.z) < 0.01 &&
-        prop.size.x >= span.size.x && topOf(prop) > topOf(span))).toBe(true);
+        prop.size.x >= span.size.x && Math.abs(floorOf(prop) + 1.25 - topOf(span)) < .08)).toBe(true);
     }
 
     const mark = ART_BOOKMARKS.find(bookmark => bookmark.id === '09')!;

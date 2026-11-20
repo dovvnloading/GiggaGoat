@@ -158,6 +158,56 @@ const layouts: Layout[] = [
     district: 'old-lighthouse', name: 'Buoy servicing rack', x: -6.1898, z: 7.8458, degrees: 40, items: [
       ['netFloat', 0, 0, 1.65], ['fishBasket', .93, .08, .72]]
   },
+  {
+    district: 'hoofington', name: 'Orchard packing yard', x: 34, z: 8, degrees: 72, items: [
+      ['farmWagon', 0, 0, 3.1, -10], ['pottingBench', 2.9, .4, 2.2],
+      ['orchardCrate', 3.8, 1.45, .96], ['orchardCrate', 2.7, 1.6, 1.12],
+      ['pumpkin', -1.4, 1.8, .66], ['seedSack', -2.1, 1.1, .8]]
+  },
+  {
+    district: 'baa-ardwalk', name: 'Paddle club', x: 25, z: 2, degrees: 28, items: [
+      ['sandShelter', 0, 0, 3.8], ['canoe', 3.15, -.25, 4.25, 80],
+      ['oar', 2.65, 2.2, 1.7, -65], ['netFloat', -2.25, .8, 1.3],
+      ['fishBasket', -2.3, -.65, .9]]
+  },
+  {
+    district: 'baa-ardwalk', name: 'Seaside picnic', x: -9, z: -24, degrees: -32, items: [
+      ['parasol', 0, 0, 3.15], ['picnicBench', 2.6, .4, 2.4, 110],
+      ['picnicBench', -2.5, .78, 2.3, 75], ['barrel', .95, 2.28, .95]]
+  },
+  {
+    district: 'crane-yard', name: 'Depot inspection lane', x: -24, z: -16, degrees: -5, items: [
+      ['siteFence', 0, 0, 3.25], ['trafficStand', 2.15, .5, 1.5, -18],
+      ['fieldRepair', -2.7, .55, 2.3, 5], ['fieldBox', -2.15, 2.2, 1.4],
+      ['cableDrum', 2.3, 2.55, 1.2]]
+  },
+  {
+    district: 'downtown-bleatsville', name: 'Town square seating', x: -19, z: 50, degrees: 83, items: [
+      ['parkBench', 0, 0, 2.1], ['planter', -1.85, -.35, 1.15], ['planter', 1.85, -.35, 1.15]]
+  },
+  {
+    district: 'downtown-bleatsville', name: 'Market service court', x: 26, z: -31, degrees: 12, items: [
+      ['delivery', 0, 0, 4.8, 85], ['pallet', 1.65, 2.75, 1.6],
+      ['orchardCrate', 3.05, 1.7, 1.06], ['bottles', 3.34, .65, .96]]
+  },
+  {
+    district: 'mt-gigga', name: 'Trail crew shelter', x: 10, z: -7, degrees: 155, items: [
+      ['openTent', 0, 0, 2.45], ['openChest', 1.52, .35, .9], ['bedroll', -1.46, -.3, .85]]
+  },
+  {
+    district: 'whispering-pines', name: 'Ranger bivouac', x: 24, z: -10, degrees: -42, items: [
+      ['openTent', 0, 0, 3.9, 165], ['logs', 2.9, -.2, 1.85],
+      ['fire', 2.05, 2.12, 1.3], ['campCot', -2.38, .95, 1.67], ['openChest', -2.32, -.78, 1.22]]
+  },
+  {
+    district: 'whispering-pines', name: 'Trail tool station', x: -21, z: 31, degrees: 47, items: [
+      ['fieldRepair', 0, 0, 2.35], ['splitStump', 1.9, -.76, 1.15],
+      ['bucket', 1.4, 1.2, .65], ['logs', -2.35, .45, 2.2, 88]]
+  },
+  {
+    district: 'the-dam', name: 'Gate maintenance post', x: 22, z: -22, degrees: 92, items: [
+      ['headGate', 0, 0, 2.35], ['trafficStand', -1.65, .3, 1.1], ['fieldBox', 1.8, .37, 1.05]]
+  },
 ];
 
 type Footprint = { x: number; z: number; halfX: number; halfZ: number; yaw: number };
@@ -269,8 +319,9 @@ export function districtSets(island: IslandData): DistrictSet[] {
       }
     }
     function trySite(x: number, z: number): SetPiece[] | undefined {
+      const mountainSpacing = site.name === 'Trail crew shelter' ? 8 : 18;
       if (site.district === 'mt-gigga' && result.some(set => set.district === site.district &&
-        Math.hypot(set.pieces[0]!.bottom.x - x, set.pieces[0]!.bottom.z - z) < 18 * scale)) return;
+        Math.hypot(set.pieces[0]!.bottom.x - x, set.pieces[0]!.bottom.z - z) < mountainSpacing * scale)) return;
       // Cable reels occupy an open laydown bay outside the multistorey frame.
       const tower = CRANE_YARD_PLAN.tower;
       if (site.name === 'Cable laydown bay' &&
@@ -285,10 +336,11 @@ export function districtSets(island: IslandData): DistrictSet[] {
         // Reserve the south mowing lawn, western hay-towing lane, stack pad
         // and demolition tower, including room to turn with a crate attached.
         const localX = (px - centre.x) / scale, localZ = (pz - centre.z) / scale, margin = radius / scale;
-        if (site.name === 'Orchard picking row' && (localZ + margin > 31 ||
+        if ((site.name === 'Orchard picking row' || site.name === 'Orchard packing yard') && (localZ + margin > 31 ||
           (localX + margin > -34 && localX - margin < 5))) return;
-        if (site.name === 'Cable laydown bay' && Math.hypot(localX - 11, localZ - 12) < 8 + margin) return;
-        if (site.name === 'Cable laydown bay' && localX + margin > 6 && localX - margin < 25 &&
+        const addedCraneDressing = site.name === 'Cable laydown bay' || site.name === 'Depot inspection lane';
+        if (addedCraneDressing && Math.hypot(localX - 11, localZ - 12) < 8 + margin) return;
+        if (addedCraneDressing && localX + margin > 6 && localX - margin < 25 &&
           localZ + margin > -33 && localZ - margin < -16) return;
         if (zoneAt(island, px, pz) !== site.district || y < island.seaLevel + .38 * scale ||
           localBlocks.some(b => y < b.top + .35 * scale && y + span * scale > b.bottom - .35 * scale && clearance(b, px, pz) < radius + .35 * scale) ||
@@ -358,7 +410,9 @@ const surfaces = {
   skiff: 'wood', fishStand: 'wood', barrel: 'wood', bucket: 'metal', seedSack: 'soft',
   pottingBench: 'wood', parasol: 'soft', conveyor: 'metal', oreBin: 'metal', serviceBin: 'metal',
   campCot: 'soft', openChest: 'wood', valve: 'metal', controls: 'metal',
-  fishBasket: 'wood',
+  fishBasket: 'wood', farmWagon: 'wood', sandShelter: 'soft', oar: 'wood', siteFence: 'metal',
+  trafficStand: 'metal', parkBench: 'wood', openTent: 'soft',
+  fieldRepair: 'wood', headGate: 'metal',
 } as const satisfies Record<DistrictModel, NonNullable<PropColliderDescriptor['surface']>>;
 
 export function districtSetColliders(sets: DistrictSet[]): PropColliderDescriptor[] {

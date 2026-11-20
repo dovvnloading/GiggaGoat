@@ -4,9 +4,9 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createWorldScene, generateIsland } from './index';
 import {
-  DOWNTOWN_MODELS, DOWNTOWN_SIGN_ANCHORS, DOWNTOWN_BUILDING_SIZES,
-  DOWNTOWN_INFILL, SHOP_FRONTS, downtownRearHouseModel, downtownSignGeometry,
-  makeDowntownPlacements, makeDowntownSigns,
+  DOWNTOWN_MODELS, DOWNTOWN_BUILDING_SIZES,
+  DOWNTOWN_INFILL, SHOP_FRONTS, downtownRearHouseModel,
+  makeDowntownPlacements,
   type DowntownModel, type DowntownPlacement,
 } from './visual-downtown';
 import { bakeLibraryGeometry } from './visual-hoofington';
@@ -235,7 +235,7 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     const details = island.props.filter(p => p.poiId === 'downtown-bleatsville' &&
       p.id.startsWith('detail-'));
     expect(buildings).toHaveLength(16);
-    expect(details.filter(p => p.kind === 'signboard')).toHaveLength(10);
+    expect(details.filter(p => p.kind === 'signboard')).toHaveLength(0);
     const findAt = (kind: string, x: number, z: number) => details.find(p =>
       p.kind === kind && Math.hypot(p.transform.position.x - x,
         p.transform.position.z - z) < 0.01);
@@ -247,19 +247,9 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       const facade = building.size.z / 2;
       const awning = findAt('awning', x + frontX * (facade + 1 * scale),
         z + frontZ * (facade + 1 * scale));
-      const sign = findAt('signboard', x + frontX * (facade + 0.35 * scale),
-        z + frontZ * (facade + 0.35 * scale));
       expect(awning, building.id + ' awning').toBeDefined();
       expect(awning!.transform.position.y, building.id + ' awning height')
         .toBeCloseTo(roof - 3 * scale, 5);
-      if (building.kind === 'shop') {
-        expect(sign, building.id + ' shop sign').toBeDefined();
-        expect(sign!.transform.position.y, building.id + ' sign height')
-          .toBeCloseTo(roof - 1.6 * scale, 5);
-      } else {
-        expect(sign, building.id + ' house must have no signboard').toBeUndefined();
-      }
-
     }
   });
 
@@ -434,11 +424,6 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 97 });
     const centre = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
     const scale = island.size / 600;
-    const signs = makeDowntownSigns(island);
-    expect(signs).toHaveLength(10);
-    for (const name of ['BAAKERY', 'CAFE', 'KID ARCADE', 'HOOF & CO', 'HAY MART'])
-      expect(signs.map(s => s.title)).toContain(name);
-
     const plan = makeDowntownPlacements(island);
     const garlands = plan.filter(p => p.model === 'lights')
       .sort((a, b) => a.position.z - b.position.z);
@@ -515,57 +500,6 @@ describe('Downtown Bleatsville sourced streetscape', () => {
       mesh.geometry.dispose();
       mesh.material.dispose();
     }
-  });
-
-  it('anchors each shop label flush to its model-specific cream sign board', () => {
-    expect(DOWNTOWN_SIGN_ANCHORS).toEqual({
-      bakery: { centre: 0.318, halfHeight: 0.029 },
-      arcade: { centre: 0.280, halfHeight: 0.026 },
-      cinema: { centre: 0.318, halfHeight: 0.029 },
-      cafe: { centre: 0.335, halfHeight: 0.030 },
-      market: { centre: 0.243, halfHeight: 0.022 },
-      boutique: { centre: 0.243, halfHeight: 0.022 },
-      cornerShop: { centre: 0.318, halfHeight: 0.029 },
-      kayShop: { centre: 0.335, halfHeight: 0.030 },
-      kayHouse: { centre: 0.243, halfHeight: 0.022 },
-      townhouse: { centre: 0.182, halfHeight: 0.017 },
-      brickHouse: { centre: 0.131, halfHeight: 0.012 },
-      highrise: { centre: 0.182, halfHeight: 0.017 },
-    });
-    const signs = makeDowntownSigns(generateIsland({
-      seed: 'billy-isle', resolution: 97,
-    }));
-    expect(signs.every(s => s.background === 0xf6ead2 && s.ink === 0x543b3d))
-      .toBe(true);
-    const geometry = downtownSignGeometry(signs);
-    const positions = geometry.getAttribute('position');
-    expect(positions.count).toBe(signs.length * 4);
-    expect(geometry.index!.count).toBe(signs.length * 6);
-    for (let i = 0; i < signs.length; i++) {
-      const sign = signs[i]!, p = sign.source;
-      const anchor = DOWNTOWN_SIGN_ANCHORS[sign.model];
-      const yaw = p.transform.rotationY;
-      const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
-      const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
-      const vertices = Array.from({ length: 4 }, (_, j) =>
-        new THREE.Vector3().fromBufferAttribute(positions, i * 4 + j));
-      const center = vertices.reduce((sum, point) => sum.add(point),
-        new THREE.Vector3()).multiplyScalar(0.25);
-      const expected = new THREE.Vector3(
-        p.transform.position.x,
-        p.transform.position.y - p.size.y / 2 + anchor.centre * p.size.y,
-        p.transform.position.z,
-      ).addScaledVector(forward, p.size.z / 2 + 0.04);
-      expect(center.distanceTo(expected), sign.model).toBeLessThan(0.0002);
-      expect(vertices[1]!.clone().sub(vertices[0]!).dot(right), sign.model)
-        .toBeCloseTo(0.80 * p.size.x, 3);
-      expect(vertices[3]!.y - vertices[0]!.y, sign.model)
-        .toBeCloseTo(2 * anchor.halfHeight * p.size.y, 3);
-      expect(center.clone().sub(new THREE.Vector3(
-        p.transform.position.x, center.y, p.transform.position.z,
-      )).dot(forward) - p.size.z / 2).toBeCloseTo(0.04, 3);
-    }
-    geometry.dispose();
   });
 
   it('bakes texture-ready multi-material assets into one roof-aligned static draw', () => {
@@ -651,7 +585,7 @@ describe('Downtown Bleatsville sourced streetscape', () => {
     const root = scene.group.getObjectByName('downtown-library-models');
     expect(root).toBeInstanceOf(THREE.Group);
     expect(root!.children).toHaveLength(0);
-    for (const kind of ['shop', 'house', 'tower', 'lamp', 'awning', 'signboard']) {
+    for (const kind of ['shop', 'house', 'tower', 'lamp', 'awning']) {
       const mesh = scene.group.getObjectByName('props-' + kind);
       expect(mesh).toBeInstanceOf(THREE.InstancedMesh);
       expect((mesh as THREE.InstancedMesh).count)

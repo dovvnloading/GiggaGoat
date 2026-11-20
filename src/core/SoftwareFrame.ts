@@ -166,6 +166,18 @@ export class SoftwareFrame {
       const endIndex = y * width + last;
       if (!texture) {
         const depths = this.depth, pixels = this.pixels, step = dz * bias;
+        if (coverage) {
+          let alphaZ = top.opacity + (bottom.opacity - top.opacity) * t + offset * da;
+          for (; i < endIndex; i++, iz += dz, alphaZ += da) {
+            if (iz * bias <= depths[i]!) continue;
+            const alpha = Math.min(1, Math.max(0, alphaZ / iz)), keep = 1 - alpha;
+            const bg = pixels[i]!;
+            pixels[i] = pixel((bg & 255) * keep + red * alpha,
+              (bg >>> 8 & 255) * keep + green * alpha,
+              (bg >>> 16 & 255) * keep + blue * alpha);
+          }
+          continue;
+        }
         if (smooth) {
           let r = top.r + (bottom.r - top.r) * t + offset * dr;
           let g = top.g + (bottom.g - top.g) * t + offset * dg;
