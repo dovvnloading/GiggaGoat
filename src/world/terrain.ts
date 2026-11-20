@@ -254,6 +254,31 @@ export function stampRoad(
   });
 }
 
+/** Trim high fill from an existing graded approach without moving its asphalt. */
+export function exposeRoadBed(
+  island: Pick<IslandData, 'heights' | 'resolution' | 'size'>,
+  points: readonly (Vec2 & { y: number })[], width: number,
+): void {
+  if (points.length < 2) return;
+  const cell = island.size / (island.resolution - 1);
+  const cutWidth = width / 2 + cell * Math.SQRT2;
+  const shoulder = cutWidth + cell;
+  const a = points[0]!, b = points.at(-1)!;
+  const cx = (a.x + b.x) / 2, cz = (a.z + b.z) / 2;
+  const range = Math.max(...points.map(point => Math.hypot(point.x - cx, point.z - cz))) + shoulder;
+  visitDisc(island, cx, cz, range, (height, x, z) => {
+    let nearest = Infinity, grade = 0;
+    for (let i = 1; i < points.length; i++) {
+      const start = points[i - 1]!, end = points[i]!;
+      const { t, distance } = segmentProjection({ x, z }, start, end);
+      if (distance >= nearest) continue;
+      nearest = distance;
+      grade = lerp(start.y, end.y, t);
+    }
+    return lerp(height, Math.min(height, grade + .025), 1 - smoothstep(cutWidth, shoulder, nearest));
+  });
+}
+
 /**
  * Keep the shared render/collision terrain below the deck across its full width.
  * The extra cell diagonal covers the heightfield vertices that can reach under
