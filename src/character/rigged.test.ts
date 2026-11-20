@@ -334,6 +334,7 @@ it.each(GOAT_SIZES)('plants alternating skinned hooves on a real wall at size %s
       expect(Math.min(...rig.held), rig.character.variant + ' stationary footholds').toBeGreaterThan(12);
       expect(Math.min(...rig.lifted), rig.character.variant + ' clear swings').toBeGreaterThan(8);
     }
+    goat.locomotion.kickOffWall();
     goat.locomotion.setInput({ z: -1 });
     for (let i = 0; i < 22; i++) {
       world.step(1 / 60);

@@ -40,6 +40,7 @@ export interface PhysicsVisualState {
   readonly ragdoll: boolean;
   readonly tongueAttached: boolean;
   readonly clinging: boolean;
+  readonly gliding?: boolean;
   readonly pose: 'stand' | 'walk' | 'gallop' | 'jumpTuck' | 'climb' | 'flop';
   readonly sprinting: boolean;
   readonly grounded: boolean;
@@ -48,6 +49,7 @@ export function actionFromPhysics(state: PhysicsVisualState): CharacterAction {
   if (state.ragdoll || state.pose === 'flop') return 'flop';
   if (state.tongueAttached) return 'tongue-grab';
   if (state.clinging || state.pose === 'climb') return 'wall-climb';
+  if (state.gliding) return 'glide';
   if (!state.grounded || state.pose === 'jumpTuck') return 'jump-flip';
   if (state.sprinting || state.pose === 'gallop') return 'sprint';
   return 'stand';

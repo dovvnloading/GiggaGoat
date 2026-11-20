@@ -104,6 +104,23 @@ describe('GoatAbilities', () => {
     expect(goat.update(STEP, { flop: true }, ground).ragdoll).toBeUndefined();
     expect(causes.at(-1)).toBe('flop');
   });
+  it('distinguishes tapping for a flip from holding to deploy after stepping off a ledge', () => {
+    const goat = new GoatAbilities(new EventBus());
+    const unlocked = { glideUnlocked: true };
+    const press = { jump: true, glide: true };
+    expect(goat.update(STEP, press, wall, unlocked)).toMatchObject({ setGlide: false });
+    expect(goat.update(STEP, {}, wall, unlocked).jump?.kind).toBe('flip');
+    goat.update(STEP, {}, ground, unlocked);
+    for (let i = 0; i < 16; i++) {
+      const command = goat.update(STEP, press, wall, unlocked);
+      expect(command.jump).toBeUndefined();
+      if (i >= 10) expect(command.setGlide).toBe(true);
+    }
+    const release = goat.update(STEP, {}, wall, unlocked);
+    expect(release.jump).toBeUndefined();
+    expect(release.setGlide).toBe(false);
+  });
+
   it('only allows one aerial flip, wall kick and glide after unlock', () => {
     const goat = new GoatAbilities(new EventBus());
     expect(goat.update(STEP, { jump: true }, ground).jump?.kind).toBe('jump');
