@@ -95,13 +95,13 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   // end panels at the established entrance to the mowing lawn.
   const pickets = [
     // x, z, length, yaw
-    [-12.2, -34.5, 5.7, Math.PI / 2], [-14, -27.5, 3.2, 0],
-    [-12.2, -12.9, 4.4, Math.PI / 2], [-14, -3.4, 3, 0],
+    [-12.2, -34.5, 5.7, Math.PI / 2], [-13.7, -31.75, 3.2, 0],
+    [-12.2, -12.9, 4.4, Math.PI / 2], [-13.6, -14.98, 3, 0],
     [-11.6, 6.2, 4, Math.PI / 2], [-12.25, 17.25, 4.2, Math.PI / 2],
     [-11.6, 33, 9.2, Math.PI / 2],
     [11.6, -34, 4, Math.PI / 2], [11.45, -21.7, 6.1, Math.PI / 2],
-    [14, -10.6, 3.3, 0], [12.6, -3, 2.8, Math.PI / 2],
-    [11.45, 8.6, 3.6, Math.PI / 2], [13.4, 18, 3.2, 0],
+    [13, -24.63, 3.3, 0], [12.6, -3, 2.8, Math.PI / 2],
+    [11.45, 8.6, 3.6, Math.PI / 2], [12.95, 6.92, 3.2, 0],
     [11.6, 33, 9.2, Math.PI / 2],
   ] as const;
   for (const [x, z, length, yaw] of pickets) {

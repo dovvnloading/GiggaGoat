@@ -473,7 +473,7 @@ describe('Hoofington sourced village model integration', () => {
       expect(placement.position).toBe(placement.source!.transform.position);
       expect(placement.size).toBe(placement.source!.size);
       expect(placement.yaw).toBe(placement.source!.transform.rotationY +
-        (placement.source!.kind === 'bench' ? Math.PI : 0));
+        (placement.model === 'bench' || placement.model === 'cottage' ? Math.PI : 0));
     }
     const repeat = makeHoofingtonPlacements(island);
     expect(plan.map(p => [p.model, p.position, p.yaw, p.wall, p.roof]))

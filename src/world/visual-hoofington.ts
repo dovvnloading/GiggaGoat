@@ -133,7 +133,8 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
       model, source: prop, position: prop.transform.position,
       treeCenterY: treeCenterY(model, prop.transform.position, prop.size.y),
       size: prop.size,
-      yaw: prop.transform.rotationY + (prop.kind === 'bench' ? Math.PI : 0),
+      // The blue cottage's low door is on the model's -Z side.
+      yaw: prop.transform.rotationY + (prop.kind === 'bench' || model === 'cottage' ? Math.PI : 0),
     });
   }
 
@@ -158,13 +159,13 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
   scatter(BUSH_VARIANTS[bushIndex++ % BUSH_VARIANTS.length]!, -16, 30, 3, 2, 3);
   scatter(BUSH_VARIANTS[bushIndex++ % BUSH_VARIANTS.length]!, 15.45, 30, 3, 2, 3);
   for (const side of [-1, 1]) {
-    for (const dz of [10, 28]) {
-      scatter('planter', side * 16 + (side < 0 && dz === 10 ? 1.1 : 0),
+    for (const dz of [7.9, 23.8]) {
+      scatter('planter', side * 16 + (side < 0 && dz === 7.9 ? 1.4 : 0),
         dz, 1.5, 0.85, 1.05, Math.PI / 2);
       for (const colorOffset of [-0.48, 0.48]) {
         // The west garden borders, not the pink house's collider, own this bed.
         const flowerX = side * 15.3 + colorOffset +
-          (side < 0 && dz === 10 && colorOffset < 0 ? 0.7 : 0);
+          (side < 0 && dz === 7.9 ? 0.85 : 0);
         scatter(FLOWER_VARIANTS[flowerIndex++ % FLOWER_VARIANTS.length]!,
           flowerX, dz, 0.65, 0.72, 0.65);
       }
