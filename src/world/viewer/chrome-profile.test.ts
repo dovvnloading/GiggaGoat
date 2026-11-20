@@ -215,6 +215,18 @@ describe.skipIf(!process.env['CI'])('world viewer real-Chrome frame profiling', 
           'menu.value = "11"; menu.dispatchEvent(new Event("change", ' +
           '{ bubbles: true })); window.__worldProfile.measure(2); })()',
       });
+      const ground = await until(async () => {
+        const result = await send('Runtime.evaluate', {
+          expression: 'window.__worldProfile.groundFinishState("downtown-bleatsville")',
+          returnByValue: true,
+        });
+        const state = result.result?.value;
+        return state?.maps === 4 && state.mix > .95 ? state : null;
+      }, 30000);
+      expect(ground.programs).toBeGreaterThan(0);
+      expect(ground.linked).toBe(ground.programs);
+      expect(ground.edgeSampler).toBe(true);
+      console.log('WORLD_GROUND_FINISH ' + JSON.stringify(ground));
       // A compact real-WebGL reference for comparing the painting by eye.
       // The JPEG is emitted only on CI; no image is committed to another lane.
       const screenshot = await send('Page.captureScreenshot', {

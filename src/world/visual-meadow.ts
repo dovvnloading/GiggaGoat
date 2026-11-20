@@ -29,7 +29,8 @@ interface Sprig {
  * Already collidable grass, flowers, crates and hay remain in island.props.
  * No extra rigid bodies are created for tiny cosmetic details.
  */
-export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof skyUniforms>): THREE.Group {
+export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof skyUniforms>,
+  pavedAt?: (x: number, z: number) => boolean): THREE.Group {
   const group = new THREE.Group();
   group.name = 'island-meadow-and-wildflowers';
   const rng = new SeededRandom(String(island.seed) + ':storybook-meadow');
@@ -56,7 +57,7 @@ export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof s
   const approaches = (island.districtSets ?? []).map(set => set.approach);
   const roadside = roadsideStops(island);
   function outsideObstacles(x: number, z: number): boolean {
-    if (roadsideGravelAt(roadside, x, z)) return false;
+    if (pavedAt?.(x, z) || roadsideGravelAt(roadside, x, z)) return false;
     if (approaches.some(path => segmentProjection({ x, z }, path.from, path.to).distance < 1.25 * scale)) return false;
     if (yardClearings.some(yard => (x - yard.x) ** 2 + (z - yard.z) ** 2 < yard.radius)) return false;
     for (const road of roadSamples) {

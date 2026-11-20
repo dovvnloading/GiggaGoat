@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { groundLayers, type GroundLayers } from '../world/district-materials';
 import type { IslandWeather } from '../world/island-weather';
 import { SoftwareAtmosphere } from './SoftwareAtmosphere';
 import { SoftwareFrame, pixel, type ClipVertex, type SoftwareTexture } from './SoftwareFrame';
@@ -51,6 +52,11 @@ export class SoftwareGameRenderer {
   private readonly boneMatrix = new THREE.Matrix4();
   private bonePalette = new Float32Array(0);
   private readonly textures = new WeakMap<THREE.Texture, { version: number; image: SoftwareTexture }>();
+  private readonly groundTextures = new WeakMap<GroundLayers, {
+    image: SoftwareTexture; mix: { value: number }; readyAt: number;
+  }>();
+  private canDecodeGround = true;
+  private frameTime = 0;
   private groundTints = new WeakMap<SoftwareGeometry, Uint32Array>();
   private readonly faceTints = new WeakMap<THREE.Mesh, ShadedFaces[]>();
   private readonly diffuse = new THREE.Color();
@@ -61,6 +67,7 @@ export class SoftwareGameRenderer {
   private readonly air = new SoftwareAtmosphere();
   private lightStep = -1;
   private rain?: THREE.LineSegments;
+  private readonly groundOverlays: THREE.Mesh[] = [];
   private near = .1;
 
   setEnvironment(weather: IslandWeather, key: THREE.Vector3, target: THREE.Vector3): void {
@@ -117,6 +124,8 @@ export class SoftwareGameRenderer {
   render(scene: THREE.Scene, camera: THREE.Camera): void {
     if (!this.frame) this.setSize(this.domElement.width, this.domElement.height, false);
     const frame = this.frame!;
+    this.canDecodeGround = true;
+    this.frameTime = performance.now();
     this.info.render.calls = this.info.render.triangles = 0;
     scene.updateMatrixWorld();
     camera.updateMatrixWorld();
@@ -130,12 +139,21 @@ export class SoftwareGameRenderer {
     frame.clear(horizon.getHex(), scene.background instanceof THREE.Color
       ? scene.background.getHex() : horizon.getHex());
     this.rain = undefined;
+    this.groundOverlays.length = 0;
     if (this.weather) this.air.sky(frame, camera, this.weather, horizon.getHex());
     scene.traverseVisible(object => {
       if (object instanceof THREE.LineSegments && object.name === 'island-rain') this.rain = object;
-      if (object instanceof THREE.Mesh) this.drawMesh(object);
+      if (object instanceof THREE.Mesh) {
+        if (object.material.transparent && object.geometry.getAttribute('color')?.itemSize === 4) {
+          this.groundOverlays.push(object);
+        } else this.drawMesh(object);
+      }
       else if (object instanceof THREE.Sprite) this.drawSprite(object);
     });
+    // Shade transparent ground only after the solid kits, pavement and machinery
+    // have filled the depth buffer, in the same layer order as the WebGL scene.
+    this.groundOverlays.sort((a, b) => a.renderOrder - b.renderOrder);
+    for (const mesh of this.groundOverlays) this.drawMesh(mesh);
     if (this.weather) this.air.grade(frame, this.weather, horizon.getHex(),
       scene.fog instanceof THREE.FogExp2 ? scene.fog.density : .002);
     if (this.rain) this.air.drops(frame, this.rain, camera);
@@ -155,12 +173,54 @@ export class SoftwareGameRenderer {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
     ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
-    const image = { pixels: ctx.getImageData(0, 0, canvas.width, canvas.height).data,
+    const image: SoftwareTexture = { pixels: ctx.getImageData(0, 0, canvas.width, canvas.height).data,
       width: canvas.width, height: canvas.height, flipY: map.flipY,
       repeatU: map.wrapS !== THREE.ClampToEdgeWrapping, repeatV: map.wrapT !== THREE.ClampToEdgeWrapping };
+    if (map.userData.groundFinish) {
+      image.mipmaps = [];
+      ctx.imageSmoothingQuality = 'high';
+      let w = image.width, h = image.height;
+      while (w > 1 || h > 1) {
+        w = Math.max(1, w >> 1);
+        h = Math.max(1, h >> 1);
+        ctx.drawImage(source, 0, 0, w, h);
+        image.mipmaps.push({ pixels: ctx.getImageData(0, 0, w, h).data, width: w, height: h,
+          repeatU: image.repeatU, repeatV: image.repeatV, flipY: image.flipY });
+      }
+    }
     this.textures.set(map, { version: map.version, image });
     if (!saved) this.info.memory.textures++;
     return image;
+  }
+
+  private surfaceTexture(map: THREE.Texture) {
+    const base = this.texture(map), layers = groundLayers.get(map);
+    if (!base || !layers?.maps || layers.mix.value <= 0) return base;
+    const cached = this.groundTextures.get(layers.maps);
+    if (cached) {
+      cached.mix.value = Math.min(layers.mix.value, THREE.MathUtils.smoothstep(this.frameTime - cached.readyAt, 0, 420));
+      return cached.image;
+    }
+    // Canvas readback and mip generation are synchronous. Spread these across frames.
+    const siblings: (SoftwareTexture | undefined)[] = [];
+    for (const map of layers.maps) {
+      if (this.textures.get(map)?.version !== map.version) {
+        if (!this.canDecodeGround) return base;
+        this.canDecodeGround = false;
+      }
+      siblings.push(this.texture(map));
+    }
+    const mix = { value: 0 };
+    if (!siblings.every((child): child is SoftwareTexture =>
+      !!child && child.width === base.width && child.height === base.height)) return base;
+    const withLayers = (image: SoftwareTexture, level: number): SoftwareTexture => {
+      const [a, b, c, edge] = siblings.map(child => (level < 0 ? child : child.mipmaps![level]!).pixels);
+      return { ...image, finish: { a: a!, b: b!, c: c!, edge: edge!, mix } };
+    };
+    const composed = withLayers(base, -1);
+    composed.mipmaps = base.mipmaps?.map(withLayers);
+    this.groundTextures.set(layers.maps, { image: composed, mix, readyAt: this.frameTime });
+    return composed;
   }
 
   private paint(mesh: THREE.Mesh, material: Surface): Paint | undefined {
@@ -170,7 +230,7 @@ export class SoftwareGameRenderer {
       if (!/sea|river|reservoir|plunge-pool|terrace-water/.test(mesh.name)) return;
       colour = this.water;
     }
-    return { material, colour, texture: material.map ? this.texture(material.map) : undefined,
+    return { material, colour, texture: material.map ? this.surfaceTexture(material.map) : undefined,
       unlit: material instanceof THREE.MeshBasicMaterial };
   }
 
@@ -270,13 +330,15 @@ export class SoftwareGameRenderer {
     const position = geometry.getAttribute('position');
     const skinned = mesh instanceof THREE.SkinnedMesh;
     // Keep roads and terrain on their authored heights; their thin layers need exact depth.
-    const fixed = mesh.userData.terrainChunk || mesh.name.startsWith('paths-');
+    const fixed = mesh.userData.terrainChunk || mesh.name === 'ground-detail-crane-apron' || mesh.name.startsWith('paths-');
     // The district's nearby architecture includes playable details such as ladder treads.
     const preserveSilhouette = geometry.userData.preserveSilhouette && distance - this.sphere.radius < 16;
     const detailRadius = radius * Math.min(1, 480 / this.frame!.image.height);
     const damWater = mesh.material instanceof THREE.ShaderMaterial &&
       (mesh.name === 'dam-plunge-pool-and-downstream-river' || mesh.name === 'dam-reservoir') ? mesh.material : undefined;
-    const detail = damWater || fixed || preserveSilhouette || position.count < 250 ? 'full' :
+    const rgba = geometry.getAttribute('color');
+    const coverage = rgba?.itemSize === 4 && paints[0]?.material.transparent ? rgba : undefined;
+    const detail = coverage || damWater || fixed || preserveSilhouette || position.count < 250 ? 'full' :
       detailRadius < 32 || mesh.name === 'rising-sea' ? 'far' : position.count > 1500 ? 'near' : 'full';
     const sea = mesh.name === 'rising-sea' && mesh.material instanceof THREE.ShaderMaterial
       ? softwareSea(mesh.material) : undefined;
@@ -324,6 +386,7 @@ export class SoftwareGameRenderer {
         Number(p.y > p.w) << 3 | Number(p.w < this.near) << 4;
       if (textured) { p.u = uv[2 * i]!; p.v = uv[2 * i + 1]!; }
       p.tint = ground?.[i];
+      p.opacity = coverage ? coverage.getW(source) * paints[0]!.material.opacity : undefined;
       if (batch) {
         const offset = i * 5;
         const iz = p.w >= this.near ? 1 / p.w : 0;
@@ -387,7 +450,7 @@ export class SoftwareGameRenderer {
     const v = batch.clipCoordinates;
     p.x = v[3 * i]!; p.y = v[3 * i + 1]!; p.w = v[3 * i + 2]!;
     p.outside = batch.vertexBits[i * 5 + 3]!;
-    p.tint = ground?.[i]; p.screen = undefined;
+    p.tint = ground?.[i]; p.opacity = undefined; p.screen = undefined;
     return p;
   }
 
