@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { circularSeaGeometry } from '../world/sea-geometry';
 import { gridSample } from '../world/terrain';
+import { SEA_COLOR_DEPTH } from '../world/visual-water';
 import { pixel } from './SoftwareFrame';
 import { softwareGeometry, type SoftwareGeometry } from './software-geometry';
 
 interface SeaSurface {
   geometry: SoftwareGeometry;
   ground: Float32Array;
-  interior: Float32Array;
   colours: Uint32Array;
   lastLevel: number;
 }
@@ -28,26 +28,26 @@ export function softwareSea(material: THREE.ShaderMaterial): SeaSurface | undefi
     const geometry = softwareGeometry(grid, 'full');
     grid.dispose();
     const count = geometry.sources.length;
-    const ground = new Float32Array(count), interior = new Float32Array(count);
+    const ground = new Float32Array(count);
     const terrain = { size, heights: atlas.image.data as Float32Array, resolution: atlas.image.width };
     for (let i = 0; i < count; i++) {
       const x = geometry.positions[3 * i]!, z = -geometry.positions[3 * i + 1]!;
-      ground[i] = gridSample(terrain, x, z);
-      interior[i] = 1 - smooth(Math.max(Math.abs(x), Math.abs(z)) / size, .48, .5);
+      const offGrid = Math.hypot(Math.max(0, Math.abs(x) - size / 2), Math.max(0, Math.abs(z) - size / 2));
+      ground[i] = gridSample(terrain, x, z) - offGrid * SEA_COLOR_DEPTH.offshoreSlope;
     }
-    surface = { geometry, ground, interior, colours: new Uint32Array(count), lastLevel: -Infinity };
+    surface = { geometry, ground, colours: new Uint32Array(count), lastLevel: -Infinity };
     surfaces.set(material, surface);
   }
   if (Math.abs(level - surface.lastLevel) < .06 * size / 600) return surface;
   surface.lastLevel = level;
   const flood = smooth((level - u.uSeaDatum!.value) * 600 / size, 8, 30);
-  const shelf = THREE.MathUtils.lerp(36, 11 * size / 600, flood);
+  const shelf = THREE.MathUtils.lerp(SEA_COLOR_DEPTH.shore, SEA_COLOR_DEPTH.flood, flood) * size / 600;
   const shallow = (u.uShallow!.value as THREE.Color).getHex();
   const deep = (u.uDeep!.value as THREE.Color).getHex();
   const dr = deep >>> 16, dg = deep >>> 8 & 255, db = deep & 255;
   for (let i = 0; i < surface.colours.length; i++) {
     const depth = level - surface.ground[i]!;
-    const shoal = (1 - smooth(depth, 0, shelf)) * surface.interior[i]! * (1 - flood * .58);
+    const shoal = (1 - smooth(depth, 0, shelf)) * (1 - flood * .58);
     surface.colours[i] = pixel(dr + ((shallow >>> 16) - dr) * shoal,
       dg + ((shallow >>> 8 & 255) - dg) * shoal, db + ((shallow & 255) - db) * shoal);
   }

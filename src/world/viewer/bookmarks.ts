@@ -21,7 +21,7 @@ export const ART_BOOKMARKS: readonly ArtBookmark[] = [
     camera: { x: -167.5, y: 9, z: 97 }, target: { x: 0, y: 40, z: 0 },
     fov: 55, day: 0.49, tide: 0 },
   { id: '18', label: '18 · Billy Isle map', image: '18_billy_isle_map.png',
-    camera: { x: 0, y: 760, z: 1 }, target: { x: 0, y: 0, z: 0 },
+    camera: { x: 0, y: 870, z: 39 }, target: { x: 0, y: 0, z: 38 },
     fov: 48, day: 0.5, tide: 0 },
   { id: '08', label: '08 · Hoofington village', image: '08_poi_hoofington.png',
     camera: { x: -147, y: 11.5, z: 171 }, target: { x: -147, y: 10, z: 91 },
