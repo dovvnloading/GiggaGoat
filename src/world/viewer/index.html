@@ -15,11 +15,11 @@
       color: #fff; white-space: nowrap; font-size: 12px; font-weight: 750;
       letter-spacing: .03em; border-radius: 7px; background: #173c5fbb;
       border: 1px solid #ffffff7a; box-shadow: 0 2px 12px #0005; }
-    #panel { position: fixed; top: 20px; left: 20px; width: min(350px, calc(100vw - 40px));
+    #panel { position: fixed; top: 20px; left: 20px; width: min(284px, calc(100vw - 40px));
+      max-height: calc(100dvh - 40px); overflow: auto; overscroll-behavior: contain;
       background: #101c30e8; color: #e6f5ff; border: 1px solid #7ddfef66;
-      border-radius: 17px; padding: 18px; box-shadow: 0 15px 65px #0007; /* Avoid re-blurring live WebGL pixels behind the fixed controls each frame. */ }
+      border-radius: 15px; padding: 15px; box-shadow: 0 12px 36px #0005; }
     h1 { margin: 0 0 4px; font-size: 21px; letter-spacing: -.03em; }
-    p { color: #a8c9d5; font-size: 12px; line-height: 1.4; margin: 0 0 15px; }
     label { display: block; margin-top: 11px; font-size: 12px; font-weight: 650; color: #d9e7ee; }
     .inline { display: flex; align-items: center; gap: 9px; margin-top: 5px; }
     input[type=text], select { flex: 1; min-width: 0; padding: 9px 10px; color: #fff;
@@ -31,10 +31,13 @@
     input[type=checkbox] { accent-color: #87f3d3; }
     .checkboxes { display: flex; gap: 20px; align-items: center; }
     .checkboxes label { display: flex; align-items: center; gap: 6px; font-weight: 500; }
+    details { margin-top: 15px; border-top: 1px solid #ffffff2a; padding-top: 12px; }
+    summary { font-size: 13px; font-weight: 650; cursor: pointer; }
+    #capture-all { width: 100%; margin-top: 6px; }
     #stats { border-top: 1px solid #ffffff2a; margin-top: 13px; padding-top: 10px;
       font-size: 12px; line-height: 1.7; color: #b8e0e2; }
 
-    #reference { position: fixed; right: 16px; top: 16px; width: min(34vw, 480px);
+    #reference { position: fixed; right: 20px; top: 20px; margin: 0; width: min(31vw, 480px);
       color: #f1f9ff; padding: 9px; background: #14273edb; border: 1px solid #e4f7fa77;
       border-radius: 13px; /* Solid translucent backing avoids a second live backdrop filter pass. */ box-shadow: 0 12px 35px #0008; }
     #reference[hidden] { display: none; }
@@ -45,8 +48,8 @@
       border-radius: 7px; color: #8df3c3; background: #162b36; }
     #hint { position: fixed; right: 16px; bottom: 16px; padding: 8px 13px; border-radius: 8px;
       background: #10263dbb; color: #e0f4fc; font-size: 12px; }
-    @media (max-width: 650px) { #panel { top: 8px; left: 8px; padding: 12px; max-height: 68vh; overflow:auto; }
-      #reference { right: 8px; top: auto; bottom: 42px; width: min(48vw, 280px); }
+    @media (max-width: 650px) { #panel { top: 8px; left: 8px; padding: 12px; max-height: min(58dvh, calc(100dvh - 72px)); }
+      #reference { right: 8px; top: auto; bottom: 58px; width: min(48vw, 280px); }
       h1 { font-size: 18px; } #hint { font-size: 10px; } }
   </style>
 </head>
@@ -54,25 +57,11 @@
   <main id="app" aria-label="Three-dimensional island preview"></main>
   <div id="labels"></div>
   <section id="panel" aria-label="World lab controls">
-    <h1>🐐 Billy Isle — World Lab</h1>
-    <p>Art-directed Billy Isle · eight playable districts · visual comparison</p>
-    <form id="seed-form">
-      <label for="seed">World seed</label>
-      <div class="inline">
-        <input id="seed" type="text" spellcheck="false" value="billy-isle" aria-label="World seed" />
-        <button type="submit">Generate</button>
-      </div>
-    </form>
-    <label for="camera">Camera mode</label>
-    <div class="inline"><select id="camera"><option value="orbit">Orbit and inspect</option>
-      <option value="fly">Fly with WASD</option></select></div>
-    <label for="bookmark">Concept-art camera</label>
+    <h1>Billy Isle World Lab</h1>
+    <label for="bookmark">Scene</label>
     <div class="inline"><select id="bookmark" aria-label="Art reference camera"></select></div>
     <div class="checkboxes">
-      <label><input id="compare" type="checkbox" checked /> Side-by-side painting</label>
-    </div>
-    <div class="inline">
-      <button id="capture-all" type="button">Export all bookmarks + paintings (PNG)</button>
+      <label><input id="compare" type="checkbox" /> Show concept art</label>
     </div>
     <label for="preset">Lighting preset</label>
     <div class="inline"><select id="preset">
@@ -84,21 +73,37 @@
     <input id="tide" type="range" min="0" max="110" step="0.5" value="0" />
     <label for="day">Day / night <output id="day-label">Midday</output></label>
     <input id="day" type="range" min="0" max="1" step="0.005" value="0.5" />
-    <div class="checkboxes">
-      <label><input id="show-pois" type="checkbox" checked /> POI labels</label>
-      <label><input id="show-colliders" type="checkbox" /> Colliders</label>
-    </div>
     <label for="resolution">Render resolution</label>
     <div class="inline"><select id="resolution">
       <option value="full">Full (1×)</option>
       <option value="adaptive">Adaptive</option>
     </select></div>
-    <div id="stats" role="status"></div>
-    <div id="perf" role="status">FPS — · Draw calls — · Triangles —</div>
+    <details>
+      <summary>World controls</summary>
+      <form id="seed-form">
+        <label for="seed">World seed</label>
+        <div class="inline">
+          <input id="seed" type="text" spellcheck="false" value="billy-isle" />
+          <button type="submit">Generate</button>
+        </div>
+      </form>
+      <label for="camera">Camera mode</label>
+      <div class="inline"><select id="camera"><option value="orbit">Orbit and inspect</option>
+        <option value="fly">Fly with WASD</option></select></div>
+      <div class="checkboxes">
+        <label><input id="show-pois" type="checkbox" checked /> POI labels</label>
+        <label><input id="show-colliders" type="checkbox" /> Colliders</label>
+      </div>
+      <div class="inline">
+        <button id="capture-all" type="button">Export comparisons (PNG)</button>
+      </div>
+      <div id="stats" role="status"></div>
+      <div id="perf">FPS — · Draw calls — · Triangles —</div>
+    </details>
   </section>
   <figure id="reference" hidden>
     <img id="reference-image" alt="Original Billy Isle concept illustration" />
-    <figcaption id="reference-caption">Concept art · compared with live Three.js scene</figcaption>
+    <figcaption id="reference-caption"></figcaption>
   </figure>
   <aside id="hint">Orbit: left-drag / wheel · Fly: WASD, R/F up/down, drag to look</aside>
   <script type="module" src="./viewer.ts"></script>

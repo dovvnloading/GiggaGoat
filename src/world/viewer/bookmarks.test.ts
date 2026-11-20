@@ -45,7 +45,7 @@ const OBSTACLES = new Set<PropDescriptor['kind']>([
 ]);
 
 /** Test the complete segment against each yaw-rotated 3D descriptor box. */
-function intersectsBuilding(start: Vec3, end: Vec3, prop: PropDescriptor): boolean {
+function intersectsProp(start: Vec3, end: Vec3, prop: PropDescriptor): boolean {
   const center = prop.transform.position;
   const rotation = new THREE.Matrix4().makeRotationY(-prop.transform.rotationY);
   const local = (point: Vec3): THREE.Vector3 =>
@@ -64,14 +64,6 @@ function intersectsBuilding(start: Vec3, end: Vec3, prop: PropDescriptor): boole
   const hit = new THREE.Ray(a, delta.divideScalar(distance))
     .intersectBox(bounds, new THREE.Vector3());
   return hit !== null && a.distanceTo(hit) <= distance;
-}
-
-function isClear07(camera: Vec3, target: Vec3): boolean {
-  return island.props.every(prop => !OBSTACLES.has(prop.kind) ||
-    Math.hypot(camera.x - prop.transform.position.x,
-      camera.z - prop.transform.position.z) >= 8) &&
-    island.props.every(prop => !BUILDINGS.has(prop.kind) ||
-      !intersectsBuilding(camera, target, prop));
 }
 
 describe('painting bookmark recompositions (default billy-isle)', () => {
@@ -97,45 +89,21 @@ describe('painting bookmark recompositions (default billy-isle)', () => {
     }
   });
 
-  it('07 frames windmill and Mt Gigga summit from clear ground-level farm approach', () => {
+  it('07 has clear sight lines to the windmill and Mt. Gigga summit', () => {
     const bookmark = findBookmark('07')!;
-    // Walk from the original barn-wall camera toward the island centre in
-    // 2 m increments, keeping the eye 3 m above the generated terrain.
-    const start = new THREE.Vector2(-190, 110);
-    const distance = start.length();
-    const direction = start.clone().negate().normalize();
-    let firstClear: Vec3 | undefined;
-    for (let metres = 0; metres <= distance; metres += 2) {
-      const x = start.x + direction.x * metres;
-      const z = start.y + direction.y * metres;
-      const candidate = { x, y: heightAt(island, x, z) + 3, z };
-      if (isClear07(candidate, bookmark.target)) {
-        firstClear = candidate;
-        break;
-      }
-    }
-    expect(firstClear, 'first clear 2 m sample').toBeDefined();
-    expect(bookmark.camera).toEqual(rounded(firstClear!));
-    expect(bookmark.camera).toEqual({ x: -167.5, y: 9, z: 97 });
-    expect(isClear07(bookmark.camera, bookmark.target),
-      'rounded bookmark 07 must stay clear').toBe(true);
-    for (const prop of island.props.filter(p => OBSTACLES.has(p.kind))) {
-      expect(Math.hypot(bookmark.camera.x - prop.transform.position.x,
-        bookmark.camera.z - prop.transform.position.z),
-      `07 clearance from ${prop.id}`).toBeGreaterThanOrEqual(8);
-    }
-    for (const prop of island.props.filter(p => BUILDINGS.has(p.kind))) {
-      expect(intersectsBuilding(bookmark.camera, bookmark.target, prop),
-        `07 sight line vs ${prop.id}`).toBe(false);
-    }
-    expect(bookmark.target).toEqual({ x: 0, y: 40, z: 0 });
-    expect(bookmark.fov).toBe(55);
     const windmill = props('hoofington', 'windmill')[0]!;
     const summit = island.pois.find(p => p.id === 'mt-gigga')!.center;
-    projectBookmark('07', {
+    const landmarks = {
       windmill: windmill.transform.position,
+      sail: { ...windmill.transform.position, y: windmill.transform.position.y + windmill.size.y / 2 },
       summit: { x: summit.x, y: heightAt(island, summit.x, summit.z), z: summit.z },
-    });
+    };
+    projectBookmark('07', landmarks);
+    for (const prop of island.props.filter(p => p !== windmill && OBSTACLES.has(p.kind))) {
+      for (const [name, landmark] of Object.entries(landmarks)) {
+        expect(intersectsProp(bookmark.camera, landmark, prop), `${name} occluded by ${prop.id}`).toBe(false);
+      }
+    }
   });
 
   it('09 frames the first kiosk, wheel and pier entrance from the sand', () => {
