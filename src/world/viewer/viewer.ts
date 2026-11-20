@@ -10,7 +10,7 @@ import { applyBookmarkCamera, ART_BOOKMARKS, findBookmark } from './bookmarks';
 import { updateOrbitCamera } from './orbit-terrain';
 import { paintingAssetUrl } from './reference-art';
 import { createStaticShadowCache } from './shadow-cache';
-import { createAdaptiveViewerResolution } from './adaptive-resolution';
+import { createAdaptiveViewerResolution, MAX_VIEWER_PIXEL_RATIO } from './adaptive-resolution';
 import { groundLayers } from '../district-materials';
 import { SKY_HORIZON_COLOR } from '../visual-sky';
 
@@ -33,6 +33,7 @@ const colliderToggle = element<HTMLInputElement>('show-colliders');
 const bookmarkInput = element<HTMLSelectElement>('bookmark');
 const compareToggle = element<HTMLInputElement>('compare');
 const presetInput = element<HTMLSelectElement>('preset');
+const resolutionInput = element<HTMLSelectElement>('resolution');
 const reference = element<HTMLElement>('reference');
 const referenceImage = element<HTMLImageElement>('reference-image');
 const referenceCaption = element<HTMLElement>('reference-caption');
@@ -48,7 +49,11 @@ bookmarkInput.value = '07';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 const resolutionBudget = createAdaptiveViewerResolution(window.devicePixelRatio);
-renderer.setPixelRatio(resolutionBudget.ratio);
+function applyRenderResolution(): void {
+  resolutionBudget.reset();
+  renderer.setPixelRatio(resolutionInput.value === 'adaptive' ? resolutionBudget.ratio : MAX_VIEWER_PIXEL_RATIO);
+}
+applyRenderResolution();
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 // These static casters/light need one shadow pass per change, not one every frame.
@@ -312,6 +317,7 @@ async function captureAllBookmarks(): Promise<void> {
   if (capturing) return;
   capturing = true;
   captureButton.disabled = true;
+  resolutionInput.disabled = true;
   const originalLabel = captureButton.textContent;
   const saved = {
     id: bookmarkInput.value,
@@ -403,6 +409,7 @@ async function captureAllBookmarks(): Promise<void> {
     renderer.setSize(window.innerWidth, window.innerHeight);
     capturing = false;
     captureButton.disabled = false;
+    resolutionInput.disabled = false;
     if (captureButton.textContent?.startsWith('Capturing')) {
       captureButton.textContent = originalLabel;
     }
@@ -451,6 +458,7 @@ poiToggle.addEventListener('change', () => {
   labels.style.display = poiToggle.checked ? 'block' : 'none';
 });
 colliderToggle.addEventListener('change', showDebug);
+resolutionInput.addEventListener('change', applyRenderResolution);
 window.addEventListener('resize', () => {
   setCameraAspect(window.innerWidth / window.innerHeight);
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -605,10 +613,9 @@ renderer.setAnimationLoop(() => {
   const delta = Math.min(rawDelta, 0.08);
   // Measure real delivered-frame time, including browser composition. A tab
   // coming back from suspension must never be interpreted as a slow GPU.
-  const nextRatio = document.hidden ? null : resolutionBudget.frame(rawDelta);
-  if (nextRatio !== null) {
-    renderer.setPixelRatio(nextRatio);
-    renderer.setSize(window.innerWidth, window.innerHeight);
+  if (resolutionInput.value === 'adaptive' && !document.hidden) {
+    const nextRatio = resolutionBudget.frame(rawDelta);
+    if (nextRatio !== null) renderer.setPixelRatio(nextRatio);
   }
   elapsed += delta;
   fps = fps * 0.90 + (1 / Math.max(delta, 0.001)) * 0.10;
