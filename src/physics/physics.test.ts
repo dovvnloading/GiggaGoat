@@ -297,6 +297,9 @@ describe('real Rapier physics simulation', () => {
       expect(g.isRagdoll).toBe(false);
       g.locomotion.setInput({ z: 0 });
       w.step(1 / 60);
+      expect(g.locomotion.isClinging).toBe(true);
+      g.locomotion.setInput({ canClimb: false });
+      w.step(1 / 60);
       expect(g.locomotion.isClinging).toBe(false);
     });
 

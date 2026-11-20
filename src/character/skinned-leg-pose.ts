@@ -30,6 +30,7 @@ const GALLOP_PHASE = [0, .13, .52, .65] as const;
 /** Retarget the animated leg chains to footholds and airborne poses after the mixer. */
 export class SkinnedLegPose {
   private weight = 0;
+  private climbSwing = 1;
   private phase = 0;
   private stride = 0;
   private airWeight = 0;
@@ -110,7 +111,7 @@ export class SkinnedLegPose {
   }
 
   applyClimb(model: THREE.Group, torso: { x: number; y: number; z: number },
-    wall: Contact | null, phase: number, size: number, dt: number, world?: PhysicsWorld): void {
+    wall: Contact | null, phase: number, size: number, dt: number, world?: PhysicsWorld, stride?: { x: number; y: number; z: number }, moving = true): void {
     if (wall && this.groundedGait) {
       for (const leg of this.legs) leg.planted = false;
       this.groundedGait = false;
@@ -124,6 +125,7 @@ export class SkinnedLegPose {
       this.planePoint.copy(wall.point);
       this.phase = phase;
     }
+    this.climbSwing = entering || dt === 0 ? Number(moving) : THREE.MathUtils.damp(this.climbSwing, Number(moving), 18, dt);
     this.down.copy(UP).negate().addScaledVector(this.normal, this.normal.y).normalize();
     this.right.crossVectors(this.normal, this.down);
     this.rotation.setFromRotationMatrix(this.basis.makeBasis(this.right, this.normal, this.down)).multiply(this.bodyLean);
@@ -135,7 +137,9 @@ export class SkinnedLegPose {
     for (const [i, leg] of this.legs.entries()) {
       const step = climbStep(this.phase, i === 1 || i === 2);
       const target = leg.wallTarget.copy(this.origin).addScaledVector(this.right, leg.sole.x * size)
-        .addScaledVector(this.down, (leg.sole.z + step.down) * size);
+        .addScaledVector(this.down, leg.sole.z * size);
+      if (stride) target.addScaledVector(this.direction.copy(stride), -step.down * size);
+      else target.addScaledVector(this.down, step.down * size);
       this.wallRayOrigin.copy(target).addScaledVector(this.normal, .8 * size);
       // The torso can grip a drainpipe while the hooves straddle it and
       // bear on a separate piece of the silo. Probe the world at each foot.
@@ -156,8 +160,9 @@ export class SkinnedLegPose {
         support = wall?.collider?.handle;
         supported = true;
       } else target.addScaledVector(this.normal, depth);
-      target.addScaledVector(this.normal, (.028 + step.lift) * size);
-      const plant = !!wall && step.lift === 0 && supported;
+      const lift = this.climbSwing < .02 ? 0 : this.climbSwing * step.lift;
+      target.addScaledVector(this.normal, (.028 + lift) * size);
+      const plant = !!wall && lift === 0 && supported;
       if (plant) {
         if (!leg.planted || leg.supportHandle !== support ||
             leg.foothold.distanceToSquared(target) > (.48 * size) ** 2) leg.foothold.copy(target);
@@ -238,7 +243,8 @@ export class SkinnedLegPose {
     }
     const gathered = (1 - THREE.MathUtils.smoothstep(vy, .34, .95)) * THREE.MathUtils.smoothstep(vy, -.82, -.16);
     const tuck = glide ? .45 : loco.isFlipping ? 1 : gathered * (loco.jumpedFromSupport ? 1 : .4);
-    const reach = THREE.MathUtils.smoothstep(-vy, .08, .75);
+    const reach = glide ? (floor ? 1 - THREE.MathUtils.smoothstep(floor.distance / size, 1, 2) : 0)
+      : THREE.MathUtils.smoothstep(-vy, .08, .75);
     const gallop = goat.pose === 'gallop';
     const length = gallop ? 1.95 : 1.50;
     const stance = gallop ? .34 : .52;
@@ -249,7 +255,7 @@ export class SkinnedLegPose {
     if (flight) {
       this.target.set(0, .92 * size, 0).applyQuaternion(model.quaternion);
       model.position.add(this.target);
-      model.rotateX(this.airWeight * (.24 * THREE.MathUtils.clamp(vy, -1, 1)));
+      model.rotateX(this.airWeight * (glide ? -.075 : .24 * THREE.MathUtils.clamp(vy, -1, 1)));
       model.position.sub(this.target.set(0, .92 * size, 0).applyQuaternion(model.quaternion));
     } else if (floor) {
       const n = floor.normal, p = floor.point;
@@ -280,6 +286,7 @@ export class SkinnedLegPose {
         // The forelegs gather first while the hinds finish pushing off.
         this.target.y += fore ? .20 + .32 * tuck - .18 * reach : .04 + .48 * tuck + .05 * reach;
         this.target.z += fore ? .25 * tuck - .29 * reach : .36 * Math.max(0, vy) - .32 * tuck;
+        if (glide) this.target.z += (fore ? .14 : .32) * (1 - reach);
         model.localToWorld(this.target);
         // The leading hoof can reach uphill pavement before the torso's
         // grounded transition. Bend that leg as soon as its sole touches.

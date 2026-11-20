@@ -16,7 +16,7 @@ export interface GoatPhysicsFacts {
   /** The physics controller can still consume the ordinary jump after losing support. */
   canCoyoteJump?: boolean;
   speed: number; size: SizeTier; tongueTarget?: string | null;
-  impact?: number; climbDistance?: number;
+  impact?: number; climbDistance?: number; climbEffort?: number;
 }
 
 export const NEUTRAL_FACTS: Readonly<GoatPhysicsFacts> = Object.freeze({
@@ -48,7 +48,7 @@ export interface AbilitiesSnapshot {
   regenWait: number; flopCooldown: number; charge: number; charging: boolean;
   headbuttCooldown: number; tongueTarget: string | null; tongueCooldown: number;
   bleatCooldown: number; bleatTimes: number[];
-  clock: number; flippedThisAir: boolean;
+  clock: number; flippedThisAir: boolean; airPressAt?: number;
   previous: { jump: boolean; bleat: boolean; flop: boolean; flingTongue: boolean };
 }
 
@@ -133,7 +133,10 @@ export class GoatAbilities {
       flingTongue: pressed.flingTongue && !s.previous.flingTongue,
     };
     s.previous = pressed;
-    if (facts.grounded) s.flippedThisAir = false;
+    if (facts.grounded) {
+      s.flippedThisAir = false;
+      delete s.airPressAt;
+    }
 
     if (rising.flop && !s.knockedDown && s.flopCooldown <= 0) {
       s.balance = 0;
@@ -143,6 +146,7 @@ export class GoatAbilities {
       this.bus.emit('ability:used', { name: 'flop' });
     }
     if (s.knockedDown) {
+      delete s.airPressAt;
       s.recoverWait = Math.max(0, s.recoverWait - dt);
       if (s.recoverWait <= 0) {
         s.balance = clamp(s.balance + c.balance.recoverPerSecond * dt, 0, c.balance.max);
@@ -168,26 +172,38 @@ export class GoatAbilities {
     const sprinting = Boolean(intent.sprint) && facts.grounded && !climbing && s.stamina > 0 &&
       (canStart || s.regenWait > 0);
     let drainRate = 0;
-    if (climbing) drainRate += c.stamina.climbDrain * (options.wallChalkUnlocked ? c.progression.wallChalkDrainFactor : 1);
+    if (climbing) {
+      const effort = clamp(facts.climbEffort ?? 1, 0, 1);
+      drainRate += c.stamina.climbDrain * (.35 + .65 * effort) *
+        (options.wallChalkUnlocked ? c.progression.wallChalkDrainFactor : 1);
+    }
     if (sprinting) drainRate += c.stamina.sprintDrain;
     commands.setClimb = climbing;
     commands.setSprint = sprinting;
 
-    if (rising.jump) {
+    if (climbing || !options.glideUnlocked) delete s.airPressAt;
+    if (rising.jump && intent.glide && options.glideUnlocked && !climbing &&
+        !facts.grounded && !facts.canCoyoteJump && !s.flippedThisAir) s.airPressAt = s.clock;
+    // A second tap flips on release. Holding the same button opens the sail.
+    const tap = s.airPressAt !== undefined && !pressed.jump && s.clock - s.airPressAt < c.glide.holdSeconds;
+    if (s.airPressAt !== undefined && (!pressed.jump || s.clock - s.airPressAt >= c.glide.holdSeconds)) {
+      delete s.airPressAt;
+    }
+    if (rising.jump || tap) {
       if (climbing) {
         commands.jump = { kind: 'wall-kick' };
         commands.setClimb = false;
         this.bus.emit('ability:used', { name: 'wall-kick' });
       } else if (facts.grounded || facts.canCoyoteJump) {
         commands.jump = { kind: 'jump' };
-      } else if (facts.airborneTime >= 0.12 && !s.flippedThisAir) {
+      } else if (facts.airborneTime >= 0.12 && !s.flippedThisAir && s.airPressAt === undefined) {
         s.flippedThisAir = true;
         commands.jump = { kind: 'flip' };
         this.bus.emit('ability:used', { name: 'flip' });
       }
     }
     commands.setGlide = Boolean(intent.glide) && Boolean(options.glideUnlocked) &&
-      !facts.grounded && facts.airborneTime >= c.glide.minAirTime && !climbing;
+      !facts.grounded && facts.airborneTime >= c.glide.minAirTime && !climbing && s.airPressAt === undefined;
 
     // Headbutts are charged while held, fired once on release or exhaustion.
     const holdingCharge = Boolean(intent.chargeHeadbutt);
@@ -255,6 +271,10 @@ export class GoatAbilities {
     ];
     for (const key of numeric) (next as unknown as Record<string, unknown>)[key] = requireNumber(obj[key], `abilities.${key}`);
     for (const key of ['knockedDown', 'charging', 'flippedThisAir'] as const) next[key] = requireBoolean(obj[key], `abilities.${key}`);
+    if (obj.airPressAt !== undefined) {
+      next.airPressAt = requireNumber(obj.airPressAt, 'abilities.airPressAt');
+      if (next.airPressAt < 0 || next.airPressAt > next.clock) throw new RangeError('invalid air press time');
+    }
     if (obj.tongueTarget !== null) next.tongueTarget = requireString(obj.tongueTarget, 'abilities.tongueTarget');
     if (!Array.isArray(obj.bleatTimes) || obj.bleatTimes.length > TUNING.bleat.maxBleatsPerWindow) {
       throw new RangeError('invalid bleat history');

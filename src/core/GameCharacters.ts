@@ -72,7 +72,7 @@ export class GameCharacters {
     }
     for (const { goatId, action } of this.pendingCues) {
       const character = goatId === this.game.goat.id ? this.player : this.bots.get(goatId);
-      character?.play(action, action === 'glide' ? .18 : action === 'headbutt' ? .5 : .7);
+      character?.play(action, action === 'headbutt' ? .5 : .7);
     }
     this.pendingCues.length = 0;
     this.player.update(dt, alpha);

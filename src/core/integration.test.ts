@@ -674,6 +674,37 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
     } finally { game.dispose(); }
   });
 
+  it('kicks off the Hoofington silo, opens the purchased sail, steers clear and lands', async () => {
+    const game = await Game.create();
+    try {
+      const silo = game.island.props.find(prop => prop.kind === 'silo')!.transform.position;
+      const x = silo.x + 5.25, z = silo.z + 1.1;
+      game.rules.wallet.credit(30);
+      expect(game.rules.unlocks.purchase('glide').ok).toBe(true);
+      game.teleport(V(x, heightAt(game.island, x, z) + .02, z), .89);
+      ticks(game, 60);
+      ticks(game, 175, { moveZ: 1, cameraYaw: -Math.PI / 2 });
+      const motor = game.goat.locomotion;
+      expect(motor.isClinging).toBe(true);
+      const launch = game.goat.torso.translation();
+      const launchInput = { jump: true, glide: true, moveZ: 1, cameraYaw: Math.PI / 2 };
+      game.step(launchInput);
+      expect(motor.isClinging).toBe(false);
+      expect(game.goat.torso.linvel().y).toBeGreaterThan(2);
+      for (let f = 0; f < 65 && !motor.isGliding; f++) game.step(launchInput);
+      expect(motor.isGliding).toBe(true);
+      ticks(game, 36, launchInput);
+      expect(game.goat.torso.translation().x - launch.x).toBeGreaterThan(2);
+      ticks(game, 22, { ...launchInput, cameraYaw: 0 });
+      expect(motor.glideBank).toBeLessThan(-.10);
+      game.step({});
+      expect(motor.isGliding).toBe(false);
+      for (let f = 0; f < 240 && !motor.grounded; f++) game.step({});
+      expect(motor.grounded).toBe(true);
+      expect(game.respawns).toBe(0);
+    } finally { game.dispose(); }
+  });
+
   it('climbs the northwest Mt Gigga face with normal movement from its base', async () => {
     const game = await Game.create();
     try {
@@ -734,7 +765,9 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
       ticks(game, ticksToRun, input);
       expect(game.goat.torso.translation().y - base).toBeGreaterThan(4);
       expect(transitions).toEqual(['wallClingStart']);
-      ticks(game, 1);
+      ticks(game, 10);
+      expect(transitions).toEqual(['wallClingStart']);
+      game.step({ jump: true });
       expect(transitions).toEqual(['wallClingStart', 'wallClingEnd']);
       off();
     } finally { game.dispose(); }

@@ -13,7 +13,7 @@ export const TUNING = {
     level2: 0.48, level3: 1.05, baseImpulse: 9, speedBonusPerMps: 0.035, maxSpeedBonus: 0.4 },
   tongue: { cooldown: 0.35, flingCooldown: 0.95, reelSpeed: 6, flingImpulse: 13 },
   bleat: { cooldown: 0.8, spamWindow: 5, maxBleatsPerWindow: 3, radius: 4, impulse: 4 },
-  glide: { minAirTime: 0.25 },
+  glide: { minAirTime: 0.25, holdSeconds: 0.14 },
   style: {
     comboWindow: 3.2, meterMax: 100, pointsToMeter: 0.48,
     varietyPerNewType: 0.32, varietyMaxBonus: 1.6,

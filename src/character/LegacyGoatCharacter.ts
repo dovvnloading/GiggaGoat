@@ -5,7 +5,7 @@ import {
   tierFromPhysicsScale, TIER_PROFILES,
   type CharacterAction, type CharacterPart, type GoatTier, type MotionFrame,
 } from './motion';
-import { animateRibbon, sculptGoat, type GoatMesh } from './mesh';
+import { animateRibbon, sculptGoat, updateSail, type GoatMesh } from './mesh';
 
 const PARTS: readonly CharacterPart[] = [
   'torso', 'neck', 'head', 'frontLeft', 'frontRight', 'backLeft', 'backRight',
@@ -91,7 +91,7 @@ export class LegacyGoatCharacter {
     this.update(0);
   }
 
-  /** Short visual accents for actions without a Rapier event (bleat/headbutt/glide). */
+  /** Short visual accents for actions without a Rapier event (bleat/headbutt). */
   play(action: CharacterAction, seconds = 0.65): void {
     if (!ACTIONS.includes(action)) throw new RangeError('Unknown character action');
     if (!Number.isFinite(seconds) || seconds < 0) throw new RangeError('Invalid duration');
@@ -130,6 +130,7 @@ export class LegacyGoatCharacter {
       selected = actionFromPhysics({
         ragdoll: goat.isRagdoll,
         tongueAttached: goat.interactions.isTongueAttached,
+        gliding: goat.locomotion.isGliding,
         clinging: goat.locomotion.isClinging,
         pose: goat.pose,
         sprinting: goat.locomotion.input.sprint,
@@ -173,6 +174,7 @@ export class LegacyGoatCharacter {
     this.actionValue = selected;
     const motion = sampleMotion(selected, this.clock, this.landing);
     this.animateSecondary(motion, selected, goat);
+    updateSail(this.mesh.glider, goat ? goat.locomotion.isGliding : selected === 'glide', goat ? frameDt : 0);
     return motion;
   }
 
@@ -221,7 +223,6 @@ export class LegacyGoatCharacter {
     for (const ribbon of this.mesh.scarf) {
       animateRibbon(ribbon, this.clock, wind);
     }
-    this.mesh.glider.visible = action === 'glide';
     this.mesh.purpleLight.intensity =
       TIER_PROFILES[this.tierValue].glow * (0.75 + motion.glowPulse * .27);
     this.updateTongue(action, motion, goat);

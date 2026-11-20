@@ -481,7 +481,7 @@ export class SoftwareGameRenderer {
   }
 
   private channel(linear: number, shade: number): number {
-    return this.srgb[Math.max(0, Math.min(4096, Math.round(linear * 4096)))]! * shade;
+    return Math.min(255, this.srgb[Math.max(0, Math.min(4096, Math.round(linear * 4096)))]! * shade);
   }
 
   dispose(): void {

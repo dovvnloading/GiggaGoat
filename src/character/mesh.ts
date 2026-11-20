@@ -32,6 +32,13 @@ export interface GoatMesh {
 }
 type Point = readonly [number, number, number];
 
+export function updateSail(sail: THREE.Object3D, open: boolean, dt: number): void {
+  const previous = sail.visible ? sail.scale.x : 0;
+  const spread = dt > 0 ? THREE.MathUtils.damp(previous, Number(open), open ? 17 : 22, dt) : Number(open);
+  sail.visible = spread > .025;
+  sail.scale.set(Math.max(.02, spread), .24 + .76 * spread, .55 + .45 * spread);
+}
+
 export function sculptGoat(): GoatMesh {
   const root = new THREE.Group();
   root.name = 'Gigga-Goat | seven-body sculpt';
@@ -396,18 +403,30 @@ export function sculptGoat(): GoatMesh {
     back: group(torsoFur, 'cosmetic mount | back', [0, .31, .06]),
   } as const;
 
-  // A sample mountable wing is rendered only for the GLIDE art pose.
-  // It is scenery/cosmetic, not a collider or a flight controller.
   const glider = group(mounts.back, 'optional hang-glider cosmetic');
-  const sailMaterial = toon(0xf68d0e, { side: THREE.DoubleSide });
-  const sailShape = new THREE.BufferGeometry();
-  sailShape.setAttribute('position', new THREE.Float32BufferAttribute([
-    0, .71, -.64,  -1.55, .45, .42,  0, .53, .27,
-    0, .71, -.64,   0, .53, .27,  1.55, .45, .42,
-  ], 3));
-  sailShape.setIndex([0, 1, 2, 3, 4, 5]);
-  sailShape.computeVertexNormals();
-  attach(glider, sailShape, sailMaterial, 'orange double-delta sail');
+  const canvas = toon(0xf38224, { side: THREE.DoubleSide });
+  const linen = toon(0xffe7a8, { side: THREE.DoubleSide });
+  const trim = toon(0xb84128, { side: THREE.DoubleSide });
+  // Sections run from the keel to one wingtip. Each has a leading edge,
+  // a raised cloth rib and a trailing hem, in the harness's local frame.
+  const sections: readonly (readonly [Point, Point, Point])[] = [
+    [[0, 1.18, -.84], [0, 1.21, -.20], [0, .96, .69]],
+    [[.32, 1.14, -.65], [.32, 1.19, -.08], [.32, .93, .58]],
+    [[.95, 1.00, -.27], [.95, 1.06, .15], [.95, .80, .69]],
+    [[1.25, .93, -.08], [1.25, .96, .23], [1.25, .70, .72]],
+    [[1.67, .78, .18], [1.67, .78, .38], [1.67, .55, .77]],
+  ];
+  const cloth = [trim, canvas, linen, canvas];
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < sections.length - 1; i++) {
+      const points = [...sections[i]!, ...sections[i + 1]!].flatMap(([x, y, z]) => [side * x, y, z]);
+      const panel = new THREE.BufferGeometry();
+      panel.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+      panel.setIndex(side > 0 ? [0, 1, 3, 1, 4, 3, 1, 2, 4, 2, 5, 4] : [0, 3, 1, 1, 3, 4, 1, 4, 2, 2, 4, 5]);
+      panel.computeVertexNormals();
+      attach(glider, panel, cloth[i]!, 'cambered sail panel');
+    }
+  }
   const rod = (a: Point, b: Point, radius: number, name: string): void => {
     const start = new THREE.Vector3(...a), end = new THREE.Vector3(...b);
     const mid = start.clone().add(end).multiplyScalar(.5);
@@ -418,10 +437,12 @@ export function sculptGoat(): GoatMesh {
     mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0),
       end.sub(start).normalize());
   };
-  rod([-1.55, .45, .42], [1.55, .45, .42], .032, 'bamboo spreader');
-  rod([0, .71, -.64], [-1.55, .45, .42], .028, 'left wing spar');
-  rod([0, .71, -.64], [1.55, .45, .42], .028, 'right wing spar');
-  rod([0, .05, -.15], [0, .60, -.18], .02, 'harness rope');
+  rod([0, 1.16, -.84], [0, .94, .69], .024, 'keel');
+  for (const side of [-1, 1]) {
+    rod([0, 1.16, -.84], [1.67 * side, .76, .18], .027, 'leading edge spar');
+    rod([.16 * side, .03, -.13], [.96 * side, 1.01, .13], .021, 'forward harness stay');
+    rod([.17 * side, .04, .24], [.96 * side, 1.01, .13], .017, 'aft harness stay');
+  }
   glider.visible = false;
 
   const tongue = attach(headFur,

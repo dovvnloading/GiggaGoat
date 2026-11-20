@@ -37,7 +37,7 @@ export interface UnlockDefinition { id: UnlockId; category: 'ability' | 'gear'; 
   cost: number; prerequisites: readonly UnlockId[] }
 const definitions: Record<UnlockId, UnlockDefinition> = {
   glide: { id: 'glide', category: 'ability', cost: TUNING.progression.unlockCosts.glide,
-    description: 'Deploy a goat-chute to hold your aerial line.', prerequisites: [] },
+    description: 'Hold jump in the air to open the sail. Steer with movement and release to fold.', prerequisites: [] },
   'wall-chalk': { id: 'wall-chalk', category: 'ability', cost: TUNING.progression.unlockCosts['wall-chalk'],
     description: 'Climbing grip sidegrade for tight routes.', prerequisites: [] },
   'aerial-horns': { id: 'aerial-horns', category: 'ability', cost: TUNING.progression.unlockCosts['aerial-horns'],

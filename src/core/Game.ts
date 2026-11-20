@@ -78,7 +78,7 @@ export interface SurfaceMarker {
 export interface FallingPiece { body: RigidBody; type: PieceType; born: number }
 export interface GameOptions { seed?: string | number; resolution?: number; progress?: GameProgress }
 /** Read-only presentation cue for an ability accepted by the fixed-tick simulation. */
-export interface GoatVisualCue { goatId: string; action: 'headbutt' | 'bleat' | 'glide' }
+export interface GoatVisualCue { goatId: string; action: 'headbutt' | 'bleat' }
 /** Headless, one-shot cues for contact information removed during simulation callbacks. */
 export type GameVfxCue =
   | { type: 'headbutt-hit'; position: Vec3; direction: Vec3; power: number }
@@ -826,7 +826,8 @@ export class Game {
       grounded: goat.locomotion.grounded && climbContact === null,
       canCoyoteJump: goat.locomotion.canCoyoteJump,
       airborneTime: goat.locomotion.airborneSeconds,
-      touchingSteepWall: !blockedClimb && (climbContact !== null || goat.locomotion.isClinging),
+      climbEffort: Math.hypot(mx, mz),
+      touchingSteepWall: climbContact !== null,
       speed: Math.hypot(velocity.x, velocity.z),
       size: sim.style.tier,
       tongueTarget: lickable && hit ? 'hit-' + hit.collider.handle : null,
@@ -835,7 +836,7 @@ export class Game {
     if (player) this.climbMetres = 0;
     const rulesIntent: GoatIntent = {
       sprint: input.sprint && (carryEffects?.canSprint ?? true),
-      climb: input.climb ?? Math.hypot(mx, mz) > .1,
+      climb: input.climb ?? (goat.locomotion.isClinging || Math.hypot(mx, mz) > .1),
       chargeHeadbutt: (player ? !this.buildMode : true) && input.chargeHeadbutt,
       tongue: !hayHeist && input.tongue, reelTongue: !hayHeist && input.reelTongue,
       flingTongue: !hayHeist && input.flingTongue, bleat: input.bleat, flop: input.flop,
@@ -852,7 +853,7 @@ export class Game {
       ? this.nearbySafetyRail(goat, wish) : undefined;
     goat.locomotion.setInput({
       x: mx, z: mz, cameraYaw, sprint: commands.setSprint,
-      canSprint: commands.setSprint, canClimb: commands.setClimb, climbContact,
+      canSprint: commands.setSprint, canClimb: commands.setClimb, canGlide: commands.setGlide, climbContact,
       acceptForwardSupport: parcelHeld ? this.gigs.isCourierRamp : undefined,
       safetyRail,
     });
@@ -1014,11 +1015,9 @@ export class Game {
   private executeCommands(commands: AbilityCommands, g = this.goat, player = true,
     tongueAim?: Vec3): void {
     if (commands.jump) {
-      g.locomotion.requestJump();
-      if (commands.jump.kind === 'wall-kick') {
-        const away = forward(g.locomotion.heading);
-        g.torso.applyImpulse(V(-away.x * g.mass * 2, g.mass * 2.8, -away.z * g.mass * 2), true);
-      }
+      if (commands.jump.kind === 'wall-kick') g.locomotion.kickOffWall();
+      else if (commands.jump.kind === 'flip') g.locomotion.requestFlip();
+      else g.locomotion.requestJump();
     }
     if (commands.headbutt) {
       this.sendVisualCue(g, 'headbutt');
@@ -1151,11 +1150,6 @@ export class Game {
       g.flop();
       if (player) this.gigs.noteAbility({ type: 'flop' });
     }
-    if (commands.setGlide && g.torso.linvel().y < -3.2) {
-      this.sendVisualCue(g, 'glide');
-      const slow = Math.min(12, -3.2 - g.torso.linvel().y);
-      g.torso.applyImpulse(V(0, slow * g.mass * .5, 0), true);
-    }
   }
 
   /** The authored decking is raised above both the coastline and the offshore rescue boundary. */
@@ -1255,6 +1249,7 @@ export class Game {
 
   /** Reposition a whole linked ragdoll without destroying its joints. Also used by rescue. */
   teleport(position: Vec3, uprightHeading?: number): void {
+    this.goat.locomotion.leaveTraversal();
     this.goat.interactions.detachTongue('replaced');
     const current = this.goat.torso.translation();
     const target = V(position.x, position.y + .92 * this.goat.size, position.z);

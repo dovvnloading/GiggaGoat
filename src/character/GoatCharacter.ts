@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { updateSail } from './mesh';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import type { GoatRagdoll } from '../physics';
@@ -269,6 +270,7 @@ export class GoatCharacter {
     let selected = goat ? actionFromPhysics({
       ragdoll: goat.isRagdoll,
       tongueAttached: goat.interactions.isTongueAttached,
+      gliding: goat.locomotion.isGliding,
       clinging: goat.locomotion.isClinging,
       pose: goat.pose,
       sprinting: goat.pose === 'gallop',
@@ -295,10 +297,8 @@ export class GoatCharacter {
     if (this.override) selected = this.override.action;
     this.actionValue = selected;
     this.tickOverride(frameDt);
-    // The legacy cosmetic glider lives on the stable back mount, so the
-    // existing glide cue still has a visible result with a rigged goat.
     const glider = this.mounts.back.getObjectByName('optional hang-glider cosmetic');
-    if (glider) glider.visible = selected === 'glide';
+    if (glider) updateSail(glider, goat ? goat.locomotion.isGliding : selected === 'glide', goat ? frameDt : 0);
 
     let shotWeight = 0;
     if (rig.shot) {
@@ -367,8 +367,9 @@ export class GoatCharacter {
       if (goat.isRagdoll || rig.ragdoll?.weight) rig.legs?.reset();
       else if (rig.legs) {
         rig.legs.applyClimb(rig.model, this.torsoCentre, goat.locomotion.climbSurface,
-          goat.locomotion.climbPhaseAt(this.torsoCentre), goat.size, frameDt, goat.world);
-        rig.legs.applyLocomotion(rig.model, goat, frameDt, this.arcVelocity, selected === 'glide');
+          goat.locomotion.climbPhaseAt(this.torsoCentre), goat.size, frameDt, goat.world, goat.locomotion.climbStride,
+          Math.hypot(goat.locomotion.input.x, goat.locomotion.input.z) > .1);
+        rig.legs.applyLocomotion(rig.model, goat, frameDt, this.arcVelocity, goat.locomotion.isGliding);
       }
       rig.ragdoll?.apply(rig.model, goat, interpolation);
     } else if (selected === 'wall-climb') {
