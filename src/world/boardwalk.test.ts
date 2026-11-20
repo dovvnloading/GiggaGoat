@@ -174,12 +174,14 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
         Math.abs((p.transform.position.z - centre.z) / (island.size / 600) -
           shift - 55) < 0.001)).toHaveLength(0);
       const sides = [1, -1, 1, -1, 1] as const;
+      const heights = [4.8, 4.95, 4.3, 5.25, 4.4] as const;
+      const depths = [4.5, 4.8, 4.2, 4.65, 4.15] as const;
       for (const [index, stall] of shops.entries()) {
         const side = sides[index]!;
         expect(stall.transform.position.x).toBeCloseTo(
           centre.x + side * 8.55 * island.size / 600, 6);
         expect(stall.size).toEqual({ x: 5 * island.size / 600,
-          y: 4.8 * island.size / 600, z: 4.5 * island.size / 600 });
+          y: heights[index]! * island.size / 600, z: depths[index]! * island.size / 600 });
         expect(stall.color).toBeUndefined();
         expect(stall.body).toEqual({ type: 'static' });
         expect(stall.shape).toBe('cuboid');
@@ -201,7 +203,7 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
         const p = sign.transform.position, q = stall.transform.position;
         expect(p.x).toBeCloseTo(q.x, 6);
         expect(q.z - p.z).toBeCloseTo(2.13 * scale, 6);
-        expect(p.y - floorOf(stall)).toBeCloseTo(2.43 * scale, 6);
+        expect(p.y - floorOf(stall)).toBeCloseTo(2.43 * stall.size.y / 4.8, 6);
         expect(sign.transform.rotationY).toBe(Math.PI);
         expect(sign.collidable || sign.lickable || sign.climbable).toBe(false);
         expect(island.colliders.some(c => 'id' in c && c.id === sign.id)).toBe(false);

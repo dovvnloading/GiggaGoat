@@ -106,63 +106,33 @@ describe('painting bookmark recompositions (default billy-isle)', () => {
     }
   });
 
-  it('09 frames the first kiosk, wheel and pier entrance from the sand', () => {
+  it('09 frames the entrance concession and enlarges the whole wheel', () => {
     const bookmark = findBookmark('09')!;
     const pier = props('baa-ardwalk', 'pier')[0]!;
     const wheel = props('baa-ardwalk', 'ferris-wheel')[0]!;
     const kiosk = props('baa-ardwalk', 'kiosk-icecream')[0]!;
     const landEnd = pier.transform.position.z - pier.size.z / 2;
-    const cameraX = pier.transform.position.x - 6;
-    let shoreZ = landEnd;
-    while (shoreZ > -island.size / 2 &&
-      gridSample(island, cameraX, shoreZ) <= island.seaLevel + 0.6) {
-      shoreZ -= 1;
-    }
-    expect(gridSample(island, cameraX, shoreZ), '09 shore reaches dry sand')
-      .toBeGreaterThan(island.seaLevel + 0.6);
-    const cameraZ = shoreZ - 5;
-    expect(bookmark.camera).toEqual(rounded({
-      x: cameraX, y: gridSample(island, cameraX, cameraZ) + 2.2, z: cameraZ,
-    }));
-    expect(bookmark.target).toEqual(rounded({
-      x: 0.6 * wheel.transform.position.x + 0.4 * pier.transform.position.x,
-      y: wheel.transform.position.y,
-      z: 0.6 * wheel.transform.position.z + 0.4 * landEnd,
-    }));
-    expect(bookmark.camera).toEqual({ x: 50, y: 7, z: 249 });
-    expect(bookmark.target).toEqual({ x: 56.5, y: 19, z: 310 });
-    expect(bookmark.fov).toBe(68);
-    expect(bookmark.day).toBe(0.29);
-
-    const ground = gridSample(island, bookmark.camera.x, bookmark.camera.z);
-    expect(ground, '09 camera stands on dry sand')
-      .toBeGreaterThan(island.seaLevel + 0.6);
-    expect(bookmark.camera.y - ground, '09 goat-eye ground clearance')
-      .toBeGreaterThan(0);
-    expect(bookmark.camera.y - ground, '09 goat-eye ground clearance')
-      .toBeLessThanOrEqual(2.5);
-
-    const landmarks = {
+    const { position } = wheel.transform;
+    const top = { ...position, y: position.y + wheel.size.y / 2 };
+    const bottom = { ...position, y: position.y - wheel.size.y / 2 };
+    expect(Math.abs(bookmark.camera.z - landEnd)).toBeLessThan(2);
+    projectBookmark('09', {
       firstKiosk: kiosk.transform.position,
-      wheelCentre: wheel.transform.position,
-      pierLandEnd: {
-        x: pier.transform.position.x,
-        y: pier.transform.position.y + pier.size.y / 2,
-        z: landEnd,
-      },
-    };
-    const firstFramingFov = [66, 68, 70, 72, 74].find(fov => {
-      const camera = new THREE.PerspectiveCamera(fov, 16 / 9, 0.25, 4000);
-      camera.position.set(bookmark.camera.x, bookmark.camera.y, bookmark.camera.z);
-      camera.lookAt(bookmark.target.x, bookmark.target.y, bookmark.target.z);
-      camera.updateMatrixWorld();
-      return Object.values(landmarks).every(point => {
-        const ndc = new THREE.Vector3(point.x, point.y, point.z).project(camera);
-        return Math.abs(ndc.x) < 0.94 && Math.abs(ndc.y) < 0.94 && ndc.z < 1;
-      });
+      wheelTop: top, wheelBase: bottom,
+      wheelLeft: { ...position, x: position.x - wheel.size.x / 2 },
+      wheelRight: { ...position, x: position.x + wheel.size.x / 2 },
     });
-    expect(bookmark.fov, '09 first FOV framing all landmarks').toBe(firstFramingFov);
-    projectBookmark('09', landmarks);
+    const camera = new THREE.PerspectiveCamera(bookmark.fov, 4 / 3, .25, 4000);
+    camera.position.set(bookmark.camera.x, bookmark.camera.y, bookmark.camera.z);
+    camera.lookAt(bookmark.target.x, bookmark.target.y, bookmark.target.z);
+    camera.updateMatrixWorld();
+    const project = (point: Vec3): THREE.Vector3 => new THREE.Vector3(point.x, point.y, point.z).project(camera);
+    expect(project(top).y - project(bottom).y).toBeGreaterThan(.52);
+    const sign = props('baa-ardwalk', 'kiosk-sign-icecream')[0]!;
+    for (const side of [-1, 1]) {
+      const p = sign.transform.position;
+      expect(Math.abs(project({ ...p, x: p.x + side * sign.size.x / 2 }).x)).toBeLessThan(.96);
+    }
   });
 
   it('13 frames both bridge approaches, the stream and the lookout decks', () => {

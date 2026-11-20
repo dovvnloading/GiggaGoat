@@ -95,6 +95,28 @@ const authoredBaaardwalkPaintedKinds = new Set<PropKind>([
   ...authoredKioskKinds, ...authoredKioskSignKinds,
   'ferris-wheel', 'trampoline', 'bumper',
 ]);
+
+function paintPierBoards(shader: THREE.WebGLProgramParametersWithUniforms, scale: number): void {
+  shader.uniforms['uPierScale'] = { value: scale };
+  shader.vertexShader = shader.vertexShader.replace('#include <common>',
+    '#include <common>\nuniform float uPierScale;\nvarying vec3 vPierBoard;')
+    .replace('#include <begin_vertex>', `#include <begin_vertex>
+      vPierBoard = vec3(position.x, position.z * length(instanceMatrix[2].xyz) / uPierScale, normal.y);`);
+  // The baked deck has continuous strips. Offset the end joints per strip and
+  // filter them out as their world-space footprint drops under a pixel.
+  shader.fragmentShader = shader.fragmentShader.replace('#include <common>',
+    '#include <common>\nvarying vec3 vPierBoard;')
+    .replace('#include <color_fragment>', `#include <color_fragment>
+      float boardRow = floor(vPierBoard.x / 0.01815);
+      float boardRun = (vPierBoard.y + mod(boardRow, 4.0) * 1.1) / 4.4;
+      float jointDistance = abs(fract(boardRun + 0.5) - 0.5) * 4.4;
+      float footprint = fwidth(vPierBoard.y);
+      float detail = (1.0 - smoothstep(0.075, 0.45, footprint)) * smoothstep(0.75, 0.95, vPierBoard.z);
+      float joint = 1.0 - smoothstep(0.018, 0.050 + footprint * 0.35, jointDistance);
+      float tone = fract(boardRow * 0.317 + floor(boardRun) * 0.618) - 0.5;
+      diffuseColor.rgb *= 1.0 + detail * (tone * 0.14 - joint * 0.42);`);
+}
+
 /** Low-poly Blender town/farm models retain their native paint at every LOD. */
 const authoredTownFarmKinds = new Set<PropKind>([
   'ac-unit', 'planter', 'bench', 'gnome', 'hay-bale', 'ramp', 'buoy',
@@ -208,7 +230,9 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
         emissiveIntensity: kind === 'rock' ? 0.42 : 0,
         fog: true,
       });
-      if (sways(kind)) {
+      if (kind === 'pier' && island) {
+        material.onBeforeCompile = shader => paintPierBoards(shader, island.size / 600);
+      } else if (sways(kind)) {
         material.onBeforeCompile = shader => {
           const wind = { value: 0 };
           windUniforms.push(wind);

@@ -257,24 +257,24 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
   // Alternate the kiosks across the promenade. The glTF +Z front always
   // faces the walking lane, regardless of which rail the stall backs onto.
   const concessions = [
-    ['kiosk-icecream', 'kiosk-sign-icecream'],
-    ['kiosk-popcorn', 'kiosk-sign-popcorn'],
-    ['kiosk-games', 'kiosk-sign-games'],
-    ['kiosk-prizes', 'kiosk-sign-prizes'],
-    ['kiosk-candy', 'kiosk-sign-candy'],
-  ] as const satisfies readonly (readonly [PropKind, PropKind])[];
-  for (const [i, [kiosk, sign]] of concessions.entries()) {
+    { kiosk: 'kiosk-icecream', sign: 'kiosk-sign-icecream', height: 4.8, depth: 4.5 },
+    { kiosk: 'kiosk-popcorn', sign: 'kiosk-sign-popcorn', height: 4.95, depth: 4.8 },
+    { kiosk: 'kiosk-games', sign: 'kiosk-sign-games', height: 4.3, depth: 4.2 },
+    { kiosk: 'kiosk-prizes', sign: 'kiosk-sign-prizes', height: 5.25, depth: 4.65 },
+    { kiosk: 'kiosk-candy', sign: 'kiosk-sign-candy', height: 4.4, depth: 4.15 },
+  ] as const satisfies ReadonlyArray<{ kiosk: PropKind; sign: PropKind; height: number; depth: number }>;
+  for (const [i, { kiosk, sign, height, depth }] of concessions.entries()) {
     const z = -27 + i * 11;
     const side = i % 2 === 0 ? 1 : -1;
     const yaw = -side * Math.PI / 2;
     // Each GLB includes its own scalloped canopy, lanterns and counter goods.
-    place(kiosk, side * 8.55, z, 5.0, 4.8, 4.5, {
+    place(kiosk, side * 8.55, z, 5.0, height, depth, {
       floor: deckY, yaw,
     });
     // The sidewall sits 2.1 m from centre inside the overhanging roof.
     // Put each name on the shore-facing wall at eye level for arrivals.
     place(sign, side * 8.55, z - 2.13, 3.0, 0.87, 0.21, {
-      centreY: deckY + 2.43 * scale, yaw: Math.PI,
+      centreY: deckY + 2.43 * height / 4.8 * scale, yaw: Math.PI,
       collidable: false, lickable: false, climbable: false,
     });
   }
