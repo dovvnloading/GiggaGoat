@@ -10,7 +10,7 @@ interface Finish { tile: number; strength: number; swaths: Swath[]; }
 const finishes: Record<PoiId, Finish> = {
   hoofington: {
     tile: 5.1, strength: .76, swaths: [
-      [-20, 29, 43, 12, 81], [-29, 7, 36, 11, -27], [-26, -14, 29, 12, 76], [28, -11, 36, 15, -13], [-14, 43, 27, 12, -12]]
+      [-20, 29, 43, 12, 81], [-29, 7, 36, 11, -27], [40, 7, 38, 13, 81], [28, -11, 36, 15, -13], [-14, 43, 27, 12, -12]]
   },
   'baa-ardwalk': {
     tile: 4.7, strength: .94, swaths: [

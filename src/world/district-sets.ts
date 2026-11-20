@@ -126,7 +126,7 @@ const layouts: Layout[] = [
   },
 
   {
-    district: 'hoofington', name: 'Orchard picking row', x: -26.0186, z: -16.4314, degrees: 85, items: [
+    district: 'hoofington', name: 'Orchard picking row', x: 41.9867, z: 19.5158, degrees: 45, items: [
       ['harvestCart', 0, 0, 2.8, 12], ['orchardCrate', 3.4, -.4, 1.25, 14], ['orchardCrate', 5.15, -.1, 1.15, -8],
       ['seedSack', -.8, 1.8, .95]]
   },
@@ -135,7 +135,7 @@ const layouts: Layout[] = [
       ['shoreOffice', 0, 0, 4.8, 180], ['canoe', 4.3, .6, 4.5, 12], ['picnicBench', -3.9, 1.4, 2.3, 80]]
   },
   {
-    district: 'crane-yard', name: 'Cable laydown bay', x: 10.652, z: 13.111, degrees: 52, items: [
+    district: 'crane-yard', name: 'Cable laydown bay', x: 8.2966, z: -1.5332, degrees: 74, items: [
       ['cableDrum', 0, 0, 2.05], ['cableDrum', 2.25, .2, 1.5]]
   },
   {
@@ -282,10 +282,12 @@ export function districtSets(island: IslandData): DistrictSet[] {
         const y = gridSample(island, px, pz), bottom = { x: px, y, z: pz };
         const p = { model, bottom, length: span * scale, yaw: angle + yaw * Math.PI / 180 };
         const f = footprint(p), radius = Math.hypot(f.halfX, f.halfZ);
-        // Keep the south mowing lawn and the crane's active crate rack free,
-        // including space for the goat to circle and tow a crate onto the pad.
+        // Reserve the south mowing lawn, western hay-towing lane, stack pad
+        // and demolition tower, including room to turn with a crate attached.
         const localX = (px - centre.x) / scale, localZ = (pz - centre.z) / scale, margin = radius / scale;
-        if (site.name === 'Orchard picking row' && localZ + margin > 31) return;
+        if (site.name === 'Orchard picking row' && (localZ + margin > 31 ||
+          (localX + margin > -34 && localX - margin < 5))) return;
+        if (site.name === 'Cable laydown bay' && Math.hypot(localX - 11, localZ - 12) < 8 + margin) return;
         if (site.name === 'Cable laydown bay' && localX + margin > 6 && localX - margin < 25 &&
           localZ + margin > -33 && localZ - margin < -16) return;
         if (zoneAt(island, px, pz) !== site.district || y < island.seaLevel + .38 * scale ||
