@@ -364,9 +364,22 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
     });
     chosen.push({ ...placement, kind });
   }
-  supportElevatedDeck(site(forest, 'platform', 12, -13, 9, 1.1, 8, { lift: 4.5 }));
-  supportElevatedDeck(site(forest, 'platform', 19, -17, 8, 1.1, 7, { lift: 8.5 }));
-  site(forest, 'sign', -4, 8, 4, 3, 0.5);
+  // Low trail overlooks belong beside the route, away from the log crossing.
+  for (const [dx, dz, width, depth, lift] of [[22, -3, 6, 4.5, 1.2], [-15, 19, 5, 4, 2.1]] as const) {
+    const radius = Math.hypot(width, depth) * scale / 2;
+    for (const offset of [0, 4, -4, 8, -8, 12, -12, 16, -16]) {
+      const point = at(forest, dx + offset, dz);
+      const river = riverAt(point, island.river);
+      if (nearRoad(point.x, point.z, radius + 2 * scale) ||
+          river.distance < river.width / 2 + radius + 2 * scale ||
+          gridSample(island, point.x, point.z) < island.seaLevel + scale ||
+          props.some(prop => prop.poiId === forest && Math.hypot(
+            prop.transform.position.x - point.x, prop.transform.position.z - point.z) < radius + scale)) continue;
+      supportElevatedDeck(site(forest, 'platform', dx + offset, dz, width, .48, depth, { lift }));
+      break;
+    }
+  }
+  site(forest, 'sign', 3, 8, 4, 3, 0.5, { yaw: -Math.PI / 3 });
 
   // THE DAM: one non-rendered marker preserves the Dam Bomb gig's walkway
   // contract. Its upper surface matches the custom GLB deck; the actual

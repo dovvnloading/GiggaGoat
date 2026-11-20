@@ -72,9 +72,9 @@ const layouts: Layout[] = [
       ['fieldBox', 0, 0, 2.1, 10], ['fieldBox', 1.45, .25, 1.35, -15], ['pack', -.65, 1.65, 1.05, 28]]
   },
   {
-    district: 'whispering-pines', name: 'Canoe landing', x: 0.683, z: -16.872, degrees: 40, items: [
-      ['canoe', 0, 0, 4.8], ['canoe', 1.65, .55, 4.1, 12], ['logs', -2.25, .5, 2.1, 32],
-      ['bucket', -1.95, -1.3, .71]]
+    district: 'whispering-pines', name: 'Creekside rest stop', x: 0.5, z: -18, degrees: 55, items: [
+      ['picnicBench', 0, 0, 3.3], ['fieldBox', 1.95, .5, 1.1, 12], ['logs', -2.6, .5, 2.1, 32],
+      ['bucket', -2.35, -1.3, .71]]
   },
   {
     district: 'whispering-pines', name: 'Trail camp', x: -23.419, z: 5.121, degrees: -25, items: [

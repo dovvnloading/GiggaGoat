@@ -128,7 +128,7 @@ it('streams the painted stilts grounded at both LODs and preserves the playable 
     const second = new THREE.Vector3().copy(pins[1]!.transform.position);
     // This position puts the second descriptor in the near range and the
     // first in the far range, reversing the original slot order.
-    camera.position.copy(second).addScaledVector(second.clone().sub(first).normalize(), 66);
+    camera.position.copy(second).addScaledVector(second.clone().sub(first).normalize(), 45);
     camera.lookAt(first);
     camera.updateMatrixWorld();
     const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4()
@@ -155,7 +155,7 @@ it('streams the painted stilts grounded at both LODs and preserves the playable 
       const collisionY = 50 - physicalDeck.castRay(new RAPIER.Ray({ x, y: 50, z }, down), 100, false)!;
       expect(Math.abs(collisionY - visibleDeckY)).toBeLessThan(.02);
     }
-    expect(oldWorst).toBeGreaterThan(3.4);
+    expect(oldWorst).toBeGreaterThan(0.1);
   } finally {
     visuals.dispose();
     vi.unstubAllGlobals();
