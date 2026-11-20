@@ -33,8 +33,8 @@ Five own-colour kiosks, 5.0 x 4.8 x 4.5 m (front = glTF +Z), replacing the tinta
 tint multiplies every vertex colour, so stripes and goods are authored per variant (no descriptor tint):
 pitched canopy striped paint/white down both slopes with a scalloped valance on the front and sides, open
 counter with themed goods, stocked shelves inside, two warm hanging lanterns at the front corners, ball finials.
-The eave is at 3.05 m and the ridge at 4.55 m; a kiosk sign (4.6 x 1.4 x 0.3) centred 4.2 m up and 0.3 m in front
-of the front wall stands on the canopy front like a billboard.
+The eave is at 3.05 m and the ridge at 4.55 m. The named signs fit against the shore-facing side walls
+below the eaves, centered 2.43 m above the deck.
 
 | File | Paint | Goods |
 |---|---|---|

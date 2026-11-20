@@ -256,19 +256,27 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
 
   // Alternate the kiosks across the promenade. The glTF +Z front always
   // faces the walking lane, regardless of which rail the stall backs onto.
-  const kioskKinds = [
-    'kiosk-icecream', 'kiosk-popcorn', 'kiosk-games',
-    'kiosk-prizes', 'kiosk-candy',
-  ] as const satisfies readonly PropKind[];
-  for (let i = 0; i < 5; i++) {
+  const concessions = [
+    ['kiosk-icecream', 'kiosk-sign-icecream'],
+    ['kiosk-popcorn', 'kiosk-sign-popcorn'],
+    ['kiosk-games', 'kiosk-sign-games'],
+    ['kiosk-prizes', 'kiosk-sign-prizes'],
+    ['kiosk-candy', 'kiosk-sign-candy'],
+  ] as const satisfies readonly (readonly [PropKind, PropKind])[];
+  for (const [i, [kiosk, sign]] of concessions.entries()) {
     const z = -27 + i * 11;
     const side = i % 2 === 0 ? 1 : -1;
     const yaw = -side * Math.PI / 2;
     // Each GLB includes its own scalloped canopy, lanterns and counter goods.
-    place(kioskKinds[i]!, side * 8.55, z, 5.0, 4.8, 4.5, {
+    place(kiosk, side * 8.55, z, 5.0, 4.8, 4.5, {
       floor: deckY, yaw,
     });
-    serial++; // Retired roof sign slot. Keep the original stock and fixture IDs.
+    // The sidewall sits 2.1 m from centre inside the overhanging roof.
+    // Put each name on the shore-facing wall at eye level for arrivals.
+    place(sign, side * 8.55, z - 2.13, 3.0, 0.87, 0.21, {
+      centreY: deckY + 2.43 * scale, yaw: Math.PI,
+      collidable: false, lickable: false, climbable: false,
+    });
   }
 
   // The centred fit leaves the actual pads above the box floor. Set

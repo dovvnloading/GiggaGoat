@@ -194,7 +194,19 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
             stall.transform.position.z) + 0.3);
       }
       const scale = island.size / 600;
-      expect(props.filter(p => p.kind.startsWith('kiosk-sign-') || p.kind === 'signboard')).toHaveLength(0);
+      const signs = props.filter(p => p.kind.startsWith('kiosk-sign-'));
+      expect(signs.map(p => p.kind)).toEqual(kioskKinds.map(kind => kind.replace('kiosk-', 'kiosk-sign-')));
+      for (const [index, sign] of signs.entries()) {
+        const stall = shops[index]!;
+        const p = sign.transform.position, q = stall.transform.position;
+        expect(p.x).toBeCloseTo(q.x, 6);
+        expect(q.z - p.z).toBeCloseTo(2.13 * scale, 6);
+        expect(p.y - floorOf(stall)).toBeCloseTo(2.43 * scale, 6);
+        expect(sign.transform.rotationY).toBe(Math.PI);
+        expect(sign.collidable || sign.lickable || sign.climbable).toBe(false);
+        expect(island.colliders.some(c => 'id' in c && c.id === sign.id)).toBe(false);
+      }
+      expect(props.some(p => p.kind === 'signboard')).toBe(false);
       const promenadeLamps = props.filter(p => p.kind === 'lamp' &&
         Math.abs(p.transform.position.x -
           (centre.x - 11.3 * island.size / 600)) < 0.001);

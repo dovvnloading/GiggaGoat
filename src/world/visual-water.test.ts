@@ -161,7 +161,8 @@ describe('island sea, shoreline and horizon', () => {
       const decay = shader.match(/transmission = ([\d.]+) \* exp\(-([\d.]+) \* pathLength\)/);
       expect(path).not.toBeNull();
       expect(decay).not.toBeNull();
-      expect(shader).toContain('abs(eye.y) / max(length(eye), 0.0001)');
+      expect(shader).toContain('abs(eye.y) / eyeDistance');
+      expect(shader).toContain('marineHaze * uGolden');
       expect(shader).toContain('mix(17.0, 11.0, flood) * scale');
       expect(shader).toContain('ripples * flood * atlasInterior');
       const transmission = (depth: number, cosine: number): number => {
