@@ -659,7 +659,9 @@ export class LocomotionController {
     if (this.crest) {
       const crest = this.crest;
       if (this.clock < crest.until && !this.grounded && dot(movement, crest.direction) > .15) {
-        const target = mul(crest.direction, 3.6 * Math.sqrt(s));
+        const heightGap = (crest.height - position.y) / s;
+        const advance = clamp(1.3 - heightGap * 1.7, .14, 1);
+        const target = mul(crest.direction, 3.6 * Math.sqrt(s) * advance);
         target.y = clamp((crest.height - position.y) * 8, -.8, 3.8 * Math.sqrt(s));
         this.driveFlightVelocity(target, 19, dt);
         g.setPose('jumpTuck');
@@ -756,7 +758,7 @@ export class LocomotionController {
     if (g.world.raycast(overhead, inward, reach, query)) return false;
     const top = g.world.raycast(add(overhead, mul(inward, reach)), V(0, -1, 0), 1.1 * s, query);
     if (!top || top.body?.isDynamic() || top.normal.y < this.minWalkingNormalY ||
-        wall.point.y > top.point.y + .1 * s) return false;
+        wall.point.y > top.point.y + .1 * s || position.y < top.point.y + .27 * s) return false;
     // A raised band or ladder rung also has an upward-facing triangle.
     // Both hindquarters must fit behind the lip on a walkable landing.
     const across = V(-inward.z, 0, inward.x);
@@ -769,7 +771,7 @@ export class LocomotionController {
     const shoulder = V(position.x, height, position.z);
     if (g.world.shapeCast(shoulder, g.head.rotation(), inward, g.head.collider(0).shape, reach + .45 * s, query) ||
         g.world.raycast(add(top.point, V(0, .04 * s, 0)), V(0, 1, 0), 1.45 * s, query)) return false;
-    this.crest = { direction: inward, height, until: this.clock + .58 };
+    this.crest = { direction: inward, height, until: this.clock + .72 * Math.sqrt(s) };
     return true;
   }
 
