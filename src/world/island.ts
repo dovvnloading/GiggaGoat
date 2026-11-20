@@ -8,7 +8,7 @@ import {
   preserveLighthouseChannel, sculptLighthouseSeaCave, sculptMountainCaveLanding, stampPlot,
 } from './terrain';
 import { districtSets, districtSetColliders } from './district-sets';
-import { makeRoads, makeBridgeDecks, MOUNTAIN_SPIRAL_TRAIL, separateLighthouseFork } from './roads';
+import { fitPinesBridgeApproach, makeRoads, makeBridgeDecks, MOUNTAIN_SPIRAL_TRAIL, separateLighthouseFork } from './roads';
 import { makeRoadsideProps } from './roadside-stops';
 import { clearPavedRoadScenery } from './road-scenery';
 import { fitDowntownServiceRamps, populateProps, seatDowntownStock } from './layouts';
@@ -177,6 +177,7 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   // Keep the seeded scenery and the Lighthouse deck on their original plan.
   // Fit the shared coastal lane before the final bridge and terrain passes.
   separateLighthouseFork(island);
+  fitPinesBridgeApproach(island);
   island.props.push(...makeBridgeDecks(island));
   const spiral = island.roads.find(road => road.id === MOUNTAIN_SPIRAL_TRAIL);
   if (spiral) {

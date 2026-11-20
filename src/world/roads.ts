@@ -363,6 +363,28 @@ export const DAM_MOUNTAIN_TRAIL = 'mt-gigga--the-dam';
 export const DAM_PINES_ROAD = 'the-dam--whispering-pines';
 export const DAM_PINES_BRIDGE_PREFIX = 'bridge-' + DAM_PINES_ROAD + '-';
 
+/** Keep the asphalt visible across the earth handoff on the forest bank. */
+export function fitPinesBridgeApproach(island: IslandData): void {
+  const road = island.roads.find(item => item.id === DAM_PINES_ROAD);
+  if (!road) return;
+  const bank = road.points.lastIndexOf(road.points.filter(point => point.bridge).at(-1)!);
+  if (bank < 0) return;
+  const scale = island.size / 600;
+  const first = bank + 1, last = road.points.length - 2;
+  for (let i = first; i <= last; i++) {
+    const point = road.points[i]!;
+    const edge = roadSideOffset(road, i, road.width * .48);
+    let surface = gridSample(island, point.x, point.z);
+    for (const side of [-1, 1]) {
+      surface = Math.max(surface, gridSample(island, point.x + side * edge.x, point.z + side * edge.z));
+    }
+    const a = road.points[i - 1]!, b = road.points[i + 1]!;
+    const gradeLimit = Math.min(a.y + .17 * Math.hypot(point.x - a.x, point.z - a.z),
+      b.y + .17 * Math.hypot(point.x - b.x, point.z - b.z));
+    point.y = Math.max(point.y, Math.min(gradeLimit, surface + .17 * scale - .2));
+  }
+}
+
 
 /** Fit the dry fork after seeded dressing has used the original terrain and roads. */
 export function fitDamMountainTrail(island: IslandData): void {

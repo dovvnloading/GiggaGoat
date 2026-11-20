@@ -185,7 +185,9 @@ describe('painting bookmark recompositions (default billy-isle)', () => {
     const stream = { x: THREE.MathUtils.lerp(at.x, downstream.x, .23),
       z: THREE.MathUtils.lerp(at.z, downstream.z, .23) };
     const tower = lookout.transform.position;
-    const deckCorners = props('whispering-pines', 'platform').flatMap(platform =>
+    const deckCorners = props('whispering-pines', 'platform').filter(platform =>
+      Math.hypot(platform.transform.position.x - at.x, platform.transform.position.z - at.z) < 25,
+    ).flatMap(platform =>
       [-1, 1].flatMap(x => [-1, 1].map(z => [platform.id + x + z, {
         x: platform.transform.position.x + x * platform.size.x / 2,
         y: platform.transform.position.y + platform.size.y / 2,

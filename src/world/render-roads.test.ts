@@ -126,6 +126,32 @@ function isCrossingDash(island: IslandData, a: RoadPoint, b: RoadPoint): boolean
 }
 
 describe('IS-6 joined road/trail visual ribbons', () => {
+  it('keeps the Dam–Pines pavement above the forest-side approach', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const road = island.roads.find(item => item.id === DAM_PINES_ROAD)!;
+    const first = road.points.lastIndexOf(road.points.filter(point => point.bridge).at(-1)!);
+    expect(first).toBeGreaterThan(0);
+    const view = createWorldScene(island);
+    const asphalt = view.group.getObjectByName('paths-road')!;
+    const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
+    try {
+      view.group.updateMatrixWorld(true);
+      for (let i = first + 1; i < road.points.length; i++) {
+        const a = road.points[i - 1]!, b = road.points[i]!;
+        const dx = b.x - a.x, dz = b.z - a.z, length = Math.hypot(dx, dz);
+        expect(Math.abs(b.y - a.y) / length).toBeLessThanOrEqual(.171);
+        for (const t of [.15, .5, .85]) for (const offset of [-2.7, 0, 2.7]) {
+          ray.ray.origin.set(a.x + dx * t - offset * dz / length, 20, a.z + dz * t + offset * dx / length);
+          const pavement = ray.intersectObject(asphalt)[0]!;
+          const terrain = ray.intersectObjects(view.chunks, false)[0]!;
+          expect(pavement.point.y - terrain.point.y, `approach segment ${i}, ${t}, ${offset}`).toBeGreaterThan(.025);
+        }
+      }
+    } finally {
+      view.dispose();
+    }
+  });
+
   it.each([
     { seed: 'billy-isle', size: 600, resolution: 193 },
     { seed: 'cy-12-west-approach', size: 450, resolution: 97 },

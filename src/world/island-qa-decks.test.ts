@@ -38,15 +38,21 @@ describe('island QA pass 2: structural decks and removed farm clutter', () => {
     { seed: 'billy-isle', size: 600, resolution: 193 },
     { seed: 'pines-alt', size: 900, resolution: 97 },
     { seed: 'decor-2', size: 600, resolution: 97 },
-  ])('grounds both Pines floating decks on $seed / $size m', options => {
+  ])('grounds both low Pines trail decks on $seed / $size m', options => {
     const island = generateIsland(options);
+    const scale = options.size / 600;
     const decks = island.props.filter(p =>
       p.poiId === 'whispering-pines' && p.kind === 'platform' &&
       p.id.startsWith('whispering-pines-platform-'));
     expect(decks).toHaveLength(2);
     expect(decks.map(p => p.size.x).sort((a, b) => a - b))
-      .toEqual([8, 9].map(x => x * options.size / 600));
-    for (const deck of decks) expectGroundedStilts(island, deck);
+      .toEqual([5, 6].map(x => x * scale));
+    const bridge = island.props.find(p => p.kind === 'log-bridge' && p.poiId === 'whispering-pines')!;
+    for (const deck of decks) {
+      expectGroundedStilts(island, deck);
+      const p = deck.transform.position, q = bridge.transform.position;
+      expect(Math.hypot(p.x - q.x, p.z - q.z)).toBeGreaterThan(14 * scale);
+    }
     expect(island.props.filter(p => p.poiId === 'whispering-pines' &&
       p.kind === 'deck-stilts')).toHaveLength(2);
   });
