@@ -185,13 +185,12 @@ describe.skipIf(!process.env['CI'])('world viewer real-Chrome frame profiling', 
         });
         const state = response.result?.value as {
           loaded: boolean; models: number; triangles: number;
-          signs: number; awnings: boolean;
+          awnings: boolean;
         } | undefined;
         return state?.loaded ? state : null;
       }, 45000);
       expect(downtown.models).toBeGreaterThanOrEqual(28);
       expect(downtown.triangles).toBeGreaterThan(5000);
-      expect(downtown.signs).toBe(10);
       // Blender shop GLBs include their awnings; no procedural overlay remains.
       expect(downtown.awnings).toBe(false);
       // Wait for the *actual* prop GLBs, not only the Downtown facades.

@@ -21,6 +21,17 @@ scenery = {
     'wreckMast': 'kenney/pirate-kit/mast-ropes',
     'tender': 'kenney/watercraft-kit/boat-row-small',
     'pierLantern': 'kenney/fantasy-town-kit/lantern',
+    'vergeGrass': 'kenney/nature-kit/grass_large',
+    'vergeFlowers': 'kenney/nature-kit/flower_yellowB',
+    'vergeHeather': 'kenney/nature-kit/flower_purpleC',
+    'vergeFern': 'kenney/nature-kit/plant_flatTall',
+    'vergeShrub': 'kenney/nature-kit/plant_bushSmall',
+    'vergeMushrooms': 'kenney/nature-kit/mushroom_tanGroup',
+    'vergeSlate': 'kenney/nature-kit/rock_smallFlatB',
+    'vergeShingle': 'kenney/nature-kit/rock_smallFlatC',
+    'vergeDriftwood': 'kenney/nature-kit/log',
+    'harborSailboat': 'kenney/watercraft-kit/boat-sail-a',
+    'harborFishingBoat': 'kenney/watercraft-kit/boat-fishing-small',
 }
 assets.extend((kind, 'assets/library/' + path + '.glb') for kind, path in scenery.items())
 districts = json.loads((root / 'district-kit-models.json').read_text())

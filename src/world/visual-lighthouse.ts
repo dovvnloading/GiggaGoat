@@ -9,7 +9,7 @@ import { TOON_RAMP, BUILDING_RAMP } from './visual-props';
 import type { AccessSection } from './access-path';
 import { groundUV, type ApplyGroundMap } from './district-ground';
 import { LIGHTHOUSE_FOOTPATH, capeSurface, keeperCottagePiers, lighthouseAccess,
-  lighthouseOuterGuard } from './lighthouse-access';
+  lighthouseGuards, lighthouseShaftRadius } from './lighthouse-access';
 import { accessArrows, accessPathVisual } from './visual-access-path';
 
 export interface LighthouseVisuals {
@@ -747,20 +747,21 @@ function suppressOldArt(island: IslandData, oldProps: THREE.Group,
 
 function makeKeeperStairBraces(tower: PropDescriptor, sections: readonly AccessSection[],
   scale: number): THREE.Group {
-  const timber = makePainter();
+  const steel = makePainter();
   const { position } = tower.transform;
-  for (let i = 3; i < sections.length; i += 4) {
+  for (let i = 4; i < sections.length; i += 4) {
     const { inner, outer } = sections[i]!;
-    const dx = inner.x - position.x, dz = inner.z - position.z;
-    const inset = 2.35 * scale / Math.hypot(dx, dz);
-    const y = inner.y - .34 * scale;
-    const anchor = new THREE.Vector3(position.x + dx * inset, y, position.z + dz * inset);
-    const end = new THREE.Vector3(outer.x, y, outer.z).lerp(anchor, .09);
-    const heel = anchor.clone().add(new THREE.Vector3(0, -2.65 * scale, 0));
-    timber.beam(WOOD, anchor, end, .17 * scale);
-    timber.beam(DARK_WOOD, heel, end, .14 * scale);
+    const radial = new THREE.Vector3(inner.x - position.x, 0, inner.z - position.z).normalize();
+    const anchorAt = (y: number) => new THREE.Vector3(position.x, y, position.z)
+      .addScaledVector(radial, lighthouseShaftRadius(tower, y) - .18 * scale);
+    const y = inner.y - .27 * scale;
+    const anchor = anchorAt(y);
+    const end = new THREE.Vector3(outer.x, y, outer.z).lerp(anchor, .08);
+    const heel = anchorAt(y - 1.95 * scale);
+    steel.beam(0x3c4549, anchor, end, .26 * scale);
+    steel.beam(0x41484c, heel, end, .22 * scale);
   }
-  return timber.finish('lighthouse-keeper-stair-braces');
+  return steel.finish('lighthouse-keeper-stair-braces');
 }
 
 export function buildLighthouseVisuals(island: IslandData,
@@ -800,9 +801,8 @@ export function buildLighthouseVisuals(island: IslandData,
     foundation.receiveShadow = true;
     const stairs = lighthouseAccess(lighthouse, (x, z) => gridSample(island, x, z));
     group.add(foundation, accessPathVisual('lighthouse-keeper-stair', [stairs],
-      [lighthouseOuterGuard(stairs, scale)], .34 * scale, scale, 0xceac7f, 0x704639,
-      [accessArrows(stairs, scale, 0x77503a)]),
-    makeKeeperStairBraces(lighthouse, stairs, scale));
+      lighthouseGuards(stairs, scale), .27 * scale, scale, 0xb39876, 0x383e43,
+      [accessArrows(stairs, scale, 0x654d3f)]), makeKeeperStairBraces(lighthouse, stairs, scale));
   }
 
   const cave = get('cave-mouth');

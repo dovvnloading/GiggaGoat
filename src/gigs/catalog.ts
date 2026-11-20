@@ -2,7 +2,7 @@ import { HOOFINGTON_HAUL_BALE_PREFIX } from '../world/hoofington-entrances';
 import { SPLASH_DIVE_BOARD_ID } from '../world/boardwalk';
 import type { IslandData, PoiDescriptor, PropDescriptor, PoiId } from '../world';
 import { rooftopDecks } from '../world/rooftop-course';
-import { lighthouseAccess, lighthouseFlagPositions } from '../world/lighthouse-access';
+import { formerLighthouseAccess, lighthouseAccess, lighthouseFlagPositions } from '../world/lighthouse-access';
 import { sectionCenter } from '../world/access-path';
 import { damOutflowWaterY } from '../world/dam-landscape';
 import { getDamPlacement, type DamPlacement } from '../world/the-dam';
@@ -423,6 +423,10 @@ export class GigCatalog {
     if ((current.config.kind === 'mow-down' || current.config.kind === 'rooftop-express' ||
         saved.offer.gigId === 'beacon-bleat') &&
         JSON.stringify(this.buildVariant(saved.offer, true)) === serialized) return current;
+    if (saved.offer.gigId === 'beacon-bleat' &&
+        JSON.stringify(this.buildVariant(saved.offer, false, false, false, formerLighthouseAccess)) === serialized) {
+      return current;
+    }
     if (saved.offer.gigId === 'dam-bomb' &&
         [false, true].some(legacyInstruction =>
           JSON.stringify(this.buildVariant(saved.offer, legacyInstruction, false, true)) === serialized)) {
@@ -436,7 +440,7 @@ export class GigCatalog {
   }
 
   private buildVariant(offer: GigOffer, legacyLayout: boolean, fieldSupply = false,
-    legacyDamWater = false): GigSetup {
+    legacyDamWater = false, beaconAccess = lighthouseAccess): GigSetup {
     if (offer.poiId !== GIG_INFO[offer.gigId]?.poiId ||
       offer.variantSeed !== this.makeOffer(offer.gigId, offer.difficulty, offer.cycle,
         Number(offer.id.split(':')[2])).variantSeed) throw new RangeError('Offer does not match catalog');
@@ -666,7 +670,7 @@ export class GigCatalog {
       case 'beacon-bleat': {
         const tower = requireKind(this.props, 'old-lighthouse', 'lighthouse')[0]!;
         if (!legacyLayout) {
-          const path = lighthouseAccess(tower, (x, z) => this.terrainY(x, z));
+          const path = beaconAccess(tower, (x, z) => this.terrainY(x, z));
           const checkpoints = lighthouseFlagPositions(path, 2 + tier, rng.int(5) - 2)
             .map(point => plus(point, 0, .6, 0));
           config = { kind: 'summit-sprint', checkpoints, minimumClimb: 0, requiresBleat: true };

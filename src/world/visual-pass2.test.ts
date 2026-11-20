@@ -9,6 +9,8 @@ import { findBookmark } from './viewer/bookmarks';
 import { PINES_GLADE_CASCADE } from './visual-water';
 import { PINES_LOG_ENTRY_LENGTH, pinesLogEntries } from './pines-log-access';
 import { CRANE_RAMP_GUARD_PREFIX, CRANE_SWITCHBACK_PREFIX } from './crane-yard';
+import { planVerges } from './visual-verges';
+import { harborPassages } from './visual-harbor-life';
 
 describe('World visuals pass 2: geometry, streets and draw budget', () => {
   let island: IslandData;
@@ -19,6 +21,24 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
     view = createWorldScene(island);
   });
   afterAll(() => view.dispose());
+
+  it('keeps the new verge clusters clear of roads and work aisles', () => {
+    const verges = planVerges(island, () => false);
+    expect(verges.length).toBeGreaterThan(1000);
+    expect(new Set(verges.map(plant => plant.model)).size).toBe(9);
+    const clearances = [...island.roads, ...makeLocalStreets(island)].flatMap(road =>
+      road.points.slice(1).map((end, i) => ({
+        start: road.points[i]!, end, width: road.width / 2 + (road.type === 'road' ? 2.55 : .9),
+      })));
+    for (const { position, length } of verges) {
+      const radius = .71 * length;
+      expect(position.y).toBeGreaterThan(island.seaLevel);
+      expect(clearances.some(({ start, end, width }) =>
+        segmentProjection(position, start, end).distance < width + radius)).toBe(false);
+      expect(island.districtSets!.some(({ approach }) =>
+        segmentProjection(position, approach.from, approach.to).distance < 1.65 + radius)).toBe(false);
+    }
+  });
 
   it('keeps every prop instance finite and reserves hidden slots for replaced art', () => {
     // The striped tower (QA LH-1) is the generic 'lighthouse' prop: not hidden.
@@ -331,5 +351,25 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
           Math.abs(p.transform.rotationY - yaw) < 0.001;
       }), shop.id).toBe(true);
     }
+  });
+
+  it('animates three offshore routes and keeps their wake at the active tide', () => {
+    const routes = harborPassages(island);
+    expect(routes).toHaveLength(3);
+    const camera = new THREE.PerspectiveCamera(55, 1.8, .2, 1000);
+    camera.position.set(routes[0]!.x, 24, routes[0]!.z - 32);
+    camera.lookAt(routes[0]!.x, 7, routes[0]!.z);
+    const boat = view.group.getObjectByName('harbor-boat-0')!;
+    const wake = view.group.getObjectByName('harbor-wake-0')!;
+    view.update(2);
+    view.updateCulling(camera);
+    const before = boat.getWorldPosition(new THREE.Vector3());
+    view.setTideLevel(8, false);
+    view.update(13);
+    view.updateCulling(camera);
+    const after = boat.getWorldPosition(new THREE.Vector3());
+    expect(Math.hypot(after.x - before.x, after.z - before.z)).toBeGreaterThan(1);
+    expect(wake.getWorldPosition(new THREE.Vector3()).y).toBeCloseTo(8.065, 5);
+    view.setTideLevel(island.seaLevel, false);
   });
 });

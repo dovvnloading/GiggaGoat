@@ -10,7 +10,7 @@ import { BOARDWALK_SHORE_GUARD_ID, BOARDWALK_SHORE_ID, boardwalkShoreEntry,
   boardwalkWheelSupports } from './boardwalk';
 import { pinesLogEntryColliders } from './pines-log-access';
 import { LIGHTHOUSE_ACCESS_GUARD_ID, LIGHTHOUSE_ACCESS_ID, keeperCottagePierColliders, lighthouseAccess,
-  lighthouseFoundationDepth, lighthouseOuterGuard } from './lighthouse-access';
+  lighthouseFoundationDepth, lighthouseGuards, lighthouseModelY, lighthouseUpperColliders } from './lighthouse-access';
 import { gridSample } from './terrain';
 import siloMesh from './silo-collision.json';
 
@@ -141,16 +141,18 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
     let transform = prop.transform;
     if (prop.kind === 'lighthouse') {
       const depth = lighthouseFoundationDepth(island, prop);
-      size.y += depth;
+      const floor = transform.position.y - size.y / 2 - depth;
+      const top = lighthouseModelY(prop, 1.08);
+      size.y = top - floor;
       transform = {
         ...transform,
-        position: { ...transform.position, y: transform.position.y - depth / 2 },
+        position: { ...transform.position, y: (floor + top) / 2 },
       };
       const path = lighthouseAccess(prop, (x, z) => gridSample(island, x, z));
       const scale = island.size / 600;
-      const outerGuard = lighthouseOuterGuard(path, scale);
-      colliders.push(...accessSlabs(LIGHTHOUSE_ACCESS_ID, path, .34 * scale),
-        ...accessSlabs(LIGHTHOUSE_ACCESS_GUARD_ID, outerGuard, 1.22 * scale));
+      colliders.push(...lighthouseUpperColliders(prop), ...accessSlabs(LIGHTHOUSE_ACCESS_ID, path, .27 * scale),
+        ...lighthouseGuards(path, scale).flatMap((guard, index) =>
+          accessSlabs(LIGHTHOUSE_ACCESS_GUARD_ID + index + '-', guard, 1.22 * scale)));
     }
     if (prop.kind === 'cottage' && prop.poiId === 'old-lighthouse') {
       colliders.push(...keeperCottagePierColliders(island, prop));

@@ -11,10 +11,50 @@ export const LIGHTHOUSE_FOOTPATH = [
 
 export const LIGHTHOUSE_ACCESS_ID = 'lighthouse-access-';
 export const LIGHTHOUSE_ACCESS_GUARD_ID = LIGHTHOUSE_ACCESS_ID + 'guard-';
-const STEPS = 36;
+const WALK_WIDTH = 2.75;
+const GALLERY_RADIUS = 3.35;
 
-/** The keeper's sloped stair begins on the board side and rises outside the tower shell. */
+/** Native heights of the shipped lighthouse mesh, after the renderer's fit. */
+export function lighthouseModelY(tower: PropDescriptor, height: number): number {
+  return tower.transform.position.y + (height / 29 - .5) * tower.size.y * .98;
+}
+
+export function lighthouseShaftRadius(tower: PropDescriptor, y: number): number {
+  const level = clamp((y - lighthouseModelY(tower, 1.05)) /
+    (lighthouseModelY(tower, 19.6) - lighthouseModelY(tower, 1.05)), 0, 1);
+  return (3.75 - level * 1.10) * tower.size.x / 9 * .98;
+}
+
+/** The keeper's walk follows the shaft taper and joins the lantern gallery floor. */
 export function lighthouseAccess(tower: PropDescriptor,
+  surface: (x: number, z: number) => number): AccessSection[] {
+  const { position } = tower.transform, scale = tower.size.y / 29;
+  const steps = 48, startAngle = .42;
+  const startY = surface(position.x + 8.15 * scale * Math.cos(startAngle),
+    position.z + 8.15 * scale * Math.sin(startAngle)) - .045 * scale;
+  const gallery = lighthouseModelY(tower, 19.95);
+  return Array.from({ length: steps + 1 }, (_, step) => {
+    const progress = step / steps;
+    const angle = startAngle - progress * 2.65 * Math.PI;
+    const rise = Math.min(1, progress / .875);
+    const y = startY + (gallery - startY) * rise;
+    const entrance = Math.max(0, 1 - progress / .18) ** 2;
+    const collar = y > gallery - 1.05 * scale;
+    const shaft = lighthouseShaftRadius(tower, y) + .12 * scale;
+    const inner = Math.max(shaft, collar ? GALLERY_RADIUS * .98 * scale : 0);
+    const overlap = .25 * scale * clamp((progress - .875) / .05, 0, 1);
+    const inside = inner + (6.775 * scale - inner) * entrance;
+    const at = (radius: number): Vec3 => ({
+      x: position.x + Math.cos(angle) * radius,
+      y,
+      z: position.z + Math.sin(angle) * radius,
+    });
+    return { outer: at(inside + WALK_WIDTH * scale), inner: at(inside - overlap) };
+  });
+}
+
+/** Checkpoint coordinates used by persisted Beacon Bleat offers. */
+export function formerLighthouseAccess(tower: PropDescriptor,
   surface: (x: number, z: number) => number): AccessSection[] {
   const { position } = tower.transform;
   const scale = tower.size.y / 29;
@@ -23,8 +63,8 @@ export function lighthouseAccess(tower: PropDescriptor,
   const startY = surface(position.x + startRadius * Math.cos(startAngle),
     position.z + startRadius * Math.sin(startAngle)) - 0.06 * scale;
   const beaconY = position.y + tower.size.y / 2 - 0.45 * scale;
-  return Array.from({ length: STEPS + 1 }, (_, step) => {
-    const progress = step / STEPS;
+  return Array.from({ length: 37 }, (_, step) => {
+    const progress = step / 36;
     const angle = startAngle - progress * 2.5 * Math.PI;
     const y = startY + (beaconY - startY) * Math.min(1, progress / 0.94);
     const at = (radius: number): Vec3 => ({
@@ -36,9 +76,35 @@ export function lighthouseAccess(tower: PropDescriptor,
   });
 }
 
-/** The low ramp edge crosses the bridge approach and stays open to foot traffic. */
-export function lighthouseOuterGuard(path: readonly AccessSection[], scale: number): AccessSection[] {
-  return accessGuard(path.slice(3), 'outer', scale);
+/** Leave the low entrance open and close the exposed end of the gallery. */
+export function lighthouseGuards(path: readonly AccessSection[], scale: number): AccessSection[][] {
+  const end = path.at(-1)!, previous = path.at(-2)!;
+  return [accessGuard(path.slice(3), 'outer', scale), accessGuard([
+    { outer: end.outer, inner: previous.outer }, { outer: end.inner, inner: previous.inner },
+  ], 'outer', scale)];
+}
+
+/** Fit the solid shaft and lantern independently of the broad stone plinth. */
+export function lighthouseUpperColliders(tower: PropDescriptor): PropColliderDescriptor[] {
+  const { position } = tower.transform;
+  const scale = tower.size.y / 29;
+  const foot = lighthouseModelY(tower, 1.00), top = lighthouseModelY(tower, 19.95);
+  const shaft = [foot, top].flatMap(y => Array.from({ length: 16 }, (_, i) => {
+    const angle = i * Math.PI / 8;
+    const radius = lighthouseShaftRadius(tower, y);
+    return [radius * Math.cos(angle), y - foot, radius * Math.sin(angle)];
+  }).flat());
+  const cabinTop = lighthouseModelY(tower, 27.3);
+  return [{
+    id: tower.id + '-shaft', shape: 'convex', body: { type: 'static' }, surface: 'stone',
+    transform: { position: { ...position, y: foot }, rotationY: 0 },
+    size: { x: 7.35 * scale, y: top - foot, z: 7.35 * scale },
+    vertices: Float32Array.from(shaft),
+  }, {
+    id: tower.id + '-lantern-cabin', shape: 'cylinder', body: { type: 'static' }, surface: 'metal',
+    transform: { position: { ...position, y: (top + cabinTop) / 2 }, rotationY: 0 },
+    size: { x: 4.56 * scale, y: cabinTop - top, z: 4.56 * scale },
+  }];
 }
 
 export function lighthouseFlagPositions(sections: readonly AccessSection[],

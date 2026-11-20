@@ -194,24 +194,7 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
             stall.transform.position.z) + 0.3);
       }
       const scale = island.size / 600;
-      const kioskSigns = [
-        'kiosk-sign-icecream', 'kiosk-sign-popcorn', 'kiosk-sign-games',
-        'kiosk-sign-prizes', 'kiosk-sign-candy',
-      ] as const;
-      const signs = props.filter(p => p.kind.startsWith('kiosk-sign-'));
-      expect(signs.map(p => p.kind)).toEqual(kioskSigns);
-      expect(new Set(signs.map(p => p.kind)).size).toBe(5);
-      expect(props.filter(p => p.kind === 'signboard')).toHaveLength(0);
-      for (const [i, sign] of signs.entries()) {
-        expect(sign.kind).toBe(kioskSigns[i]);
-        expect(sign.transform.position.x).toBeCloseTo(centre.x + sides[i]! * 6 * scale, 6);
-        expect(sign.transform.position.z).toBeCloseTo(shops[i]!.transform.position.z, 6);
-        expect(sign.transform.position.y).toBeCloseTo(topOf(pier) + 4.2 * scale, 6);
-        expect(sign.size).toEqual({ x: 4.6 * scale, y: 1.4 * scale, z: 0.3 * scale });
-        expect(sign.transform.rotationY).toBeCloseTo(-sides[i]! * Math.PI / 2, 6);
-        expect(sign.color).toBe(0xffe3a7);
-        expect(sign.collidable).toBe(false);
-      }
+      expect(props.filter(p => p.kind.startsWith('kiosk-sign-') || p.kind === 'signboard')).toHaveLength(0);
       const promenadeLamps = props.filter(p => p.kind === 'lamp' &&
         Math.abs(p.transform.position.x -
           (centre.x - 11.3 * island.size / 600)) < 0.001);
@@ -245,7 +228,7 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
       }
       expect(wheel.transform.position.z).toBeGreaterThan(
         shops[shops.length - 1]!.transform.position.z + 15);
-      for (const kind of [...kioskKinds, 'bunting', 'lamp', 'pier-rail', ...kioskSigns]) {
+      for (const kind of [...kioskKinds, 'bunting', 'lamp', 'pier-rail']) {
         expect(props.some(p => p.kind === kind), kind).toBe(true);
       }
       expect(props.filter(p => p.kind === 'pier-rail').length).toBeGreaterThan(20);

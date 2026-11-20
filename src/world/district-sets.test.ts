@@ -13,12 +13,12 @@ import { gridSample, segmentProjection } from './terrain';
 it('seats kit ensembles in all eight districts and gives every object a scaled triangle collider', async () => {
   const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
   const sets = island.districtSets!;
-  expect(sets, sets.map(set => set.name).join(', ')).toHaveLength(32);
-  expect(sets.reduce((n, set) => n + set.pieces.length, 0)).toBe(109);
+  expect(sets, sets.map(set => set.name).join(', ')).toHaveLength(42);
+  expect(sets.reduce((n, set) => n + set.pieces.length, 0)).toBe(151);
   expect(new Set(sets.map(s => s.district))).toEqual(new Set(POI_IDS));
   const roads = [...island.roads, ...makeLocalStreets(island)];
   const visuals = districtSetVisuals(sets);
-  expect(visuals.group.children).toHaveLength(32);
+  expect(visuals.group.children).toHaveLength(sets.length);
   for (const mesh of visuals.group.children as THREE.Mesh[]) {
     expect(mesh.geometry.getAttribute('color').count).toBe(mesh.geometry.getAttribute('position').count);
     expect(mesh.userData.kitDetail).toBe('full');
@@ -69,7 +69,7 @@ it('can walk to every district ensemble from its landmark on the production isla
   const game = await Game.create();
   try {
     const { island } = game;
-    expect(island.districtSets).toHaveLength(32);
+    expect(island.districtSets).toHaveLength(42);
     for (const set of island.districtSets!) {
       const { from, to } = set.approach;
       const dx = to.x - from.x, dz = to.z - from.z;

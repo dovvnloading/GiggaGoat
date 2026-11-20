@@ -75,7 +75,7 @@ export function accessArrows(sections: readonly AccessSection[], scale: number, 
     const start = sectionCenter(a), end = sectionCenter(b);
     const length = Math.hypot(end.x - start.x, end.z - start.z);
     const half = .48 * scale / Math.hypot(a.inner.x - a.outer.x, a.inner.z - a.outer.z);
-    const depth = .55 * scale / length;
+    const depth = Math.min(.48, .55 * scale / length);
     for (; remaining < length; remaining += 4.6 * scale) {
       const t = Math.max(depth, Math.min(1 - depth, remaining / length));
       const vertex = ([u, v]: DeckCoordinate): void => {

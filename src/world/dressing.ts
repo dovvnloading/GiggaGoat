@@ -15,7 +15,7 @@ import { CASCADE_NATIVE_SIZE, cascadePoolCentre, cascadeWaterLine, waterfallSite
 // Extra art and physical scenery must not intersect the authored shop infills.
 const INFILL_SCENERY_KINDS = new Set<PropKind>([
   'tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft',
-  'planter', 'bench', 'sign', 'signboard',
+  'planter', 'bench', 'sign',
 ]);
 
 interface DetailOptions {
@@ -257,7 +257,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
       { y: 0.55 * scale, mass: 4, shape: 'cylinder', color: i % 2 ? 0xff891e : 0xf6f2e8 });
   }
 
-  // Downtown: storefront trim and signs follow each building's facade normal
+  // Downtown: storefront trim follows each building's facade normal
   // (local +Z), not a fixed world +Z direction. The +/- X-facing rows now
   // display their shop fronts to pedestrians in the central street.
   const city: PoiId = 'downtown-bleatsville';
@@ -297,14 +297,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
         yaw, y: top - 3.0 * scale,
         color: [0xf2777f, 0xffd866, 0x69c6d8][i % 3],
       });
-    // Rear houses have no parapet advertising; retain shop name boards only.
-    if (building.kind === 'shop') {
-      place('signboard', x + frontX * (facade + 0.35 * scale),
-        z + frontZ * (facade + 0.35 * scale),
-        7, 2.5, 0.45, city, {
-          yaw, y: top - 1.6 * scale, color: 0xffe6a2,
-        });
-    }
+    if (building.kind === 'shop') serial++; // Preserve IDs following the former roof board.
     const roofModel = downtownBuildingModel(building, cityCenter, scale);
     if (roofModel === 'highrise') continue;
     const roofMounts = DOWNTOWN_ROOF_MOUNTS[roofModel];
