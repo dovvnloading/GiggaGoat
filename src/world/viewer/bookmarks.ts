@@ -40,7 +40,7 @@ export const ART_BOOKMARKS: readonly ArtBookmark[] = [
     camera: { x: 132, y: 98, z: 148 }, target: { x: 0, y: 69, z: 0 },
     fov: 55, day: 0.5, tide: 0 },
   { id: '13', label: '13 · Whispering Pines', image: '13_poi_whispering_pines.png', district: 'whispering-pines',
-    camera: { x: -143, y: 18, z: -175 }, target: { x: -108, y: 10, z: -162 },
+    camera: { x: -154, y: 22, z: -178 }, target: { x: -111, y: 11, z: -156 },
     fov: 58, day: 0.49, tide: 0 },
   { id: '14', label: '14 · The Dam', image: '14_poi_the_dam.png', district: 'the-dam',
     camera: { x: -52, y: 26, z: -119 }, target: { x: -17, y: 16, z: -191 },
