@@ -742,6 +742,7 @@ export class LocomotionController {
     this.lastGroundAt = this.jumpBufferUntil = -Infinity;
     this.jumpConsumed = true;
     this.jumpLockUntil = this.climbLockUntil = this.clock + .32;
+    this.goat.events.emit({ type: 'jumped', goatId: this.goat.id, time: this.goat.world.time });
   }
 
   private startCrest(wall: RayHit, movement: Vec3, position: Vec3): boolean {

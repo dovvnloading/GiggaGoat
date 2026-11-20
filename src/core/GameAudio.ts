@@ -3,6 +3,7 @@ import type {
   AudioCue, AudioEngine, CameraAudioPose, ChaosEvent, GameplayAudioEvent, ResultAudioKind,
   SoundId, Surface, WalkingGoat,
 } from '../audio';
+import { dot } from '../physics/math';
 import { biomeAt, zoneAt } from '../world';
 import type { IslandWeather } from '../world/island-weather';
 import type { GoatRagdoll, PhysicsEvent, Vec3 } from '../physics';
@@ -52,7 +53,7 @@ function observeGoat(game: Game, goat: GoatRagdoll): WalkingGoat {
   const velocity = goat.torso.linvel();
   return {
     id: goat.id, position, size: goat.size,
-    speed: goat.locomotion.isClinging ? Math.abs(velocity.y) : Math.hypot(velocity.x, velocity.z),
+    speed: goat.locomotion.isClinging ? Math.abs(dot(velocity, goat.locomotion.climbStride)) : Math.hypot(velocity.x, velocity.z),
     grounded: goat.locomotion.grounded && !goat.isRagdoll && !goat.locomotion.isClinging,
     gait: goat.locomotion.isClinging ? 'climb' : goat.pose === 'gallop' ? 'gallop' : goat.pose === 'walk' ? 'walk' : 'still',
     surface: surfaceAt(game, position, goat),

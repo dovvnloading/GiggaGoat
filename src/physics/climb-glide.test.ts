@@ -69,10 +69,13 @@ describe('air and wall traversal', () => {
       step(28);
       expect(goat.torso.translation().y).toBeLessThan(across.y - .5 * size);
       expect(motor.isClinging).toBe(true);
+      let takeoffs = 0;
+      goat.events.on(event => { if (event.type === 'jumped') takeoffs++; });
       motor.kickOffWall();
       motor.setInput({ z: 1 });
       step(12);
       expect(motor.isClinging).toBe(false);
+      expect(takeoffs).toBe(1);
       expect(goat.torso.translation().z - across.z).toBeGreaterThan(.45 * size);
       expect(goat.torso.linvel().y).toBeGreaterThan(1);
     });
