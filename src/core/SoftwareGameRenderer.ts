@@ -351,7 +351,9 @@ export class SoftwareGameRenderer {
     const textured = uv && paints.some(p => p?.texture);
     const mirrored = matrix.determinant() < 0;
     const common = paints.length === 1 ? paints[0] : undefined;
-    const batch = common && !textured && this.raster?.accepts(data.sources.length, data.materials.length)
+    // The SIMD raster writes opaque pixels. Blended meshes need the scalar
+    // path to interpolate coverage and retain the water or terrain beneath.
+    const batch = common && !textured && !coverage && this.raster?.accepts(data.sources.length, data.materials.length)
       ? this.raster : undefined;
     const staticBatch = skinned ? undefined : batch;
     const halfWidth = this.frame!.image.width * .5, halfHeight = this.frame!.image.height * .5;

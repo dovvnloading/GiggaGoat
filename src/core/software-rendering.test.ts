@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
 import { softwareGeometry } from './software-geometry';
@@ -7,6 +8,7 @@ import { SoftwareAtmosphere } from './SoftwareAtmosphere';
 import { softwareSea } from './software-sea';
 import { SoftwareFrame, pixel } from './SoftwareFrame';
 import { SoftwareGameRenderer } from './SoftwareGameRenderer';
+import { SoftwareRaster } from './SoftwareRaster';
 
 function imageData(width: number, height: number): ImageData {
   return { width, height, data: new Uint8ClampedArray(width * height * 4) } as ImageData;
@@ -85,6 +87,45 @@ describe('software 3D rendering', () => {
     frame.triangle(vertex(-1, -1, pixel(30, 160, 45)), vertex(1, -1, pixel(180, 140, 70)),
       vertex(0, 1, pixel(60, 180, 90)), .1, 0, undefined, THREE.DoubleSide, 1);
     expect(new Set(frame.pixels.subarray(48 * 64 + 16, 48 * 64 + 48)).size).toBeGreaterThan(20);
+  });
+
+  it('blends untextured wake coverage when the software SIMD raster is active', async () => {
+    const bytes = await readFile(new URL('./software-raster.wasm', import.meta.url));
+    const memory = new WebAssembly.Memory({ initial: 1 });
+    const { instance } = await WebAssembly.instantiate(new Uint8Array(bytes), { env: { memory } });
+    const raster = new SoftwareRaster(memory, instance.exports.drawBatch as ConstructorParameters<typeof SoftwareRaster>[1],
+      instance.exports.projectBatch as ConstructorParameters<typeof SoftwareRaster>[2]);
+    vi.stubGlobal('ImageData', class {
+      constructor(readonly data: Uint8ClampedArray, readonly width: number, readonly height: number) {}
+    });
+    let captured!: ImageData;
+    const renderer = new SoftwareGameRenderer({} as HTMLCanvasElement, {
+      createImageData: imageData, putImageData(image) { captured = image; },
+    }, raster);
+    const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(50, 1, .1, 20);
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(Array.from(
+      { length: 4 }, () => [1, 1, 1, .5]).flat(), 4));
+    const material = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false });
+    const wake = new THREE.Mesh(geometry, material);
+    wake.position.z = -3;
+    scene.background = new THREE.Color(0x0000ff);
+    renderer.setClearColor(scene.background);
+    scene.add(wake);
+    try {
+      renderer.setSize(64, 64, false);
+      renderer.render(scene, camera);
+      const center = (25 * 64 + 30) * 4;
+      const [r, g, b] = captured.data.subarray(center, center + 3);
+      expect(r).toBeCloseTo(127, -1);
+      expect(g).toBeCloseTo(127, -1);
+      expect(b).toBe(255);
+    } finally {
+      vi.unstubAllGlobals();
+      renderer.dispose();
+      geometry.dispose();
+      material.dispose();
+    }
   });
 
   it('clips triangles at the camera and resolves crossing surfaces by pixel depth', () => {
