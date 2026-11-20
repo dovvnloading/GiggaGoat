@@ -107,7 +107,7 @@ export function planHabitatBeds(island: IslandData): Beds {
   }
   // Low kit plants and loose stone follow specific shoulders, leaving the travel side open.
   const verges: [string, number, number, number, number, BedModel, number][] = [
-    ['hoofington', -17, 40, 14, -.32, 'flower_yellowA', .34],
+    ['hoofington', -28, -12, 14, 1.28, 'flower_yellowA', .34],
     ['hoofington', -24, 12, 19, 1.29, 'grass_leafsLarge', .39],
     ['baa-ardwalk', -17, -16, 21, .12, 'grass_leafsLarge', .49],
     ['baa-ardwalk', 6, -20, 24, -.26, 'grass_leafsLarge', .42],

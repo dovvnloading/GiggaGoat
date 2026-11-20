@@ -4,9 +4,9 @@ The 64 stills below show 32 sites on the production island seed, `billy-isle`. E
 
 | District and stills | Changes checked in the scene |
 | --- | --- |
-| [Hoofington](hoofington.jpg) | Grass, clover and straw lead from the gates to the harvest stand, tractor, seed bench and picking cart. The orchard crates are timber and sit clear of the crop rows. |
+| [Hoofington](hoofington.jpg) | Grass, clover and straw lead from the gates to the harvest stand, tractor, seed bench and picking cart. The timber crates and cart stand by the silo. The southern lawn stays open for the Mow-Down course. |
 | [Baa-ardwalk](baa-ardwalk.jpg) | Rippled shell sand joins the boardwalk kiosks, parasols and canoe hire hut. Dune grass and low stones line the edges. The information window faces the approach. |
-| [Crane Yard](crane-yard.jpg) | Weathered concrete covers the 80 × 72 m apron. The cable drums occupy an open bay beside the crane. The loading marks and puddles remain distinct. Subdividing each slab along the terrain faces removed the exposed ground polygons visible in the first pass. |
+| [Crane Yard](crane-yard.jpg) | Weathered concrete covers the 80 × 72 m apron. The cable drums occupy the loader side of the yard, across the apron from the Stack-Up crate rack. The loading marks and puddles remain distinct. Subdividing each slab along the terrain faces removed the exposed ground polygons visible in the first pass. |
 | [Downtown Bleatsville](downtown-bleatsville.jpg) | Limestone setts extend from the street market through the pocket garden and across the service courts. The raised shop forecourts and sidewalks carry the same stone scale. Planters frame the seating and leave the road edge open. |
 | [Mt. Gigga](mt-gigga.jpg) | Slate and lichen follow the bivouac, survey cache, rest shelf and summit trail marker. The loose stone shoulders taper toward the steeper cliff faces. The trail embankments have their own vertical texture coordinates. |
 | [Whispering Pines](whispering-pines.jpg) | Fir needles and humus tie the canoe landing, camp, woodcutting bench and timber landing to the forest floor. Ferns, mushrooms and stacked logs mark the clearing edges. |
