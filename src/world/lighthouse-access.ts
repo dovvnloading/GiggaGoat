@@ -35,7 +35,8 @@ export function lighthouseAccess(tower: PropDescriptor,
   const gallery = lighthouseModelY(tower, 19.95);
   return Array.from({ length: steps + 1 }, (_, step) => {
     const progress = step / steps;
-    const angle = startAngle - progress * 2.65 * Math.PI;
+    // Turn away from the mainland bridge so the low flight clears its landing.
+    const angle = startAngle + progress * 2.65 * Math.PI;
     const rise = Math.min(1, progress / .875);
     const y = startY + (gallery - startY) * rise;
     const entrance = Math.max(0, 1 - progress / .18) ** 2;
