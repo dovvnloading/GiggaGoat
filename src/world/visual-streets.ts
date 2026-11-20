@@ -5,6 +5,7 @@ import { gridIndex, gridSample } from './terrain';
 import { makeLocalStreets } from './roads';
 import { TOON_RAMP } from './visual-props';
 import { paintHoofingtonVerge } from './surface-paint';
+import { hoofingtonVergeData } from './hoofington-verge';
 
 /**
  * Paint the far Hoofington zebra directly above the graded road slabs.
@@ -67,54 +68,12 @@ function buildHoofingtonZebraCrossing(
 function buildHoofingtonVerge(
   island: IslandData, road: RoadDescriptor, group: THREE.Group, scale: number,
 ): void {
-  const edge = road.width / 2;
-  const profiles = [
-    { from: edge + .36 * scale, to: edge + 2.34 * scale,
-      color: 0xdcd4ba, surface: 1, y: (x: number, z: number) => gridSample(island, x, z) + .04 * scale },
-    { from: edge + .022 * scale, to: edge + .36 * scale,
-      color: 0xf2e6ce, surface: 2, skirt: true,
-      y: (_x: number, _z: number, roadY: number) => roadY + .20 + .08 * scale },
-    { from: edge - .39 * scale, to: edge - .30 * scale,
-      color: 0xf2e9cf, surface: 0, y: (_x: number, _z: number, roadY: number) => roadY + .214 },
-  ];
-  const positions: number[] = [], indices: number[] = [], colors: number[] = [];
-  const section: number[] = [];
-  for (const profile of profiles) {
-    const startVertex = positions.length / 3;
-    const across = (offset: number): number =>
-      (Math.abs(offset) - profile.from) / (profile.to - profile.from);
-    for (const side of [-1, 1]) {
-      const first = positions.length / 3;
-      const left = side < 0 ? -profile.to : profile.from;
-      const right = side < 0 ? -profile.from : profile.to;
-      for (const point of road.points) {
-        for (const offset of [left, right]) {
-          const x = point.x + offset;
-          positions.push(x, profile.y(x, point.z, point.y), point.z);
-          section.push(across(offset), profile.surface);
-        }
-      }
-      for (let i = 1; i < road.points.length; i++) {
-        const a = first + (i - 1) * 2, b = a + 2;
-        indices.push(a, b, a + 1, a + 1, b, b + 1);
-      }
-      if (profile.skirt) for (const offset of [left, right]) {
-        const start = positions.length / 3;
-        for (const point of road.points) {
-          const x = point.x + offset;
-          positions.push(x, profile.y(x, point.z, point.y), point.z,
-            x, gridSample(island, x, point.z) - .04 * scale, point.z);
-          section.push(across(offset), profile.surface, across(offset), profile.surface);
-        }
-        for (let i = 1; i < road.points.length; i++) {
-          const a = start + (i - 1) * 2, b = a + 2;
-          if (offset === left) indices.push(a, a + 1, b, a + 1, b + 1, b);
-          else indices.push(a, b, a + 1, a + 1, b, b + 1);
-        }
-      }
-    }
-    const color = new THREE.Color(profile.color);
-    for (let i = startVertex; i < positions.length / 3; i++) colors.push(color.r, color.g, color.b);
+  const { positions, indices, section } = hoofingtonVergeData(island, road);
+  const palette = [0xf2e9cf, 0xdcd4ba, 0xf2e6ce].map(color => new THREE.Color(color));
+  const colors: number[] = [];
+  for (let i = 1; i < section.length; i += 2) {
+    const { r, g, b } = palette[section[i]!]!;
+    colors.push(r, g, b);
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));

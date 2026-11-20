@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
-import { createWorldScene, generateIsland } from './index';
+import { buildRapierColliders, createWorldScene, generateIsland } from './index';
 import { makeLocalStreets } from './roads';
 
 interface Footprint { minX: number; maxX: number; minZ: number; maxZ: number }
@@ -16,6 +17,42 @@ function intersectsRoad(
 }
 
 describe('Hoofington E1: road surface and painted crossing', () => {
+  it('supports goats at the rendered curb and sidewalk on both sides of the street', async () => {
+    await RAPIER.init();
+    const island = generateIsland();
+    const farm = island.pois.find(p => p.id === 'hoofington')!.center;
+    const street = makeLocalStreets(island).find(road => road.from === 'hoofington')!;
+    const view = createWorldScene(island);
+    const physics = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    try {
+      const { paths } = buildRapierColliders(physics, island);
+      const verge = view.group.getObjectByName('hoofington-street-verge')!;
+      const down = new THREE.Vector3(0, -1, 0);
+      const rendered = new THREE.Raycaster(new THREE.Vector3(), down);
+      view.group.updateMatrixWorld(true);
+      for (const offset of [-29.7, -12.4, 4, 16.2, 31.8]) {
+        for (const side of [-1, 1]) {
+          for (const vergeOffset of [.18, .62, 1.65]) {
+            const x = farm.x + side * (street.width / 2 + vergeOffset);
+            const z = farm.z + offset;
+            const y = 20;
+            const label = `Hoofington at ${x}, ${z}`;
+            rendered.ray.origin.set(x, y, z);
+            const renderHit = rendered.intersectObject(verge)[0];
+            expect(renderHit, label).toBeDefined();
+            const physicsRay = new RAPIER.Ray({ x, y, z }, down);
+            const pathHit = Math.min(...paths.map(path => path.castRay(physicsRay, y, false))
+              .filter(distance => distance >= 0));
+            expect(pathHit, label).toBeCloseTo(renderHit!.distance, 4);
+          }
+        }
+      }
+    } finally {
+      physics.free();
+      view.dispose();
+    }
+  });
+
   it('renders one asphalt deck through the village and joins both approach roads', () => {
     const island = generateIsland({ seed: 'billy-isle' });
     const farm = island.pois.find(p => p.id === 'hoofington')!.center;
