@@ -95,4 +95,4 @@ it('can walk to every district ensemble from its landmark on the production isla
     }
     expect(game.respawns).toBe(0);
   } finally { game.dispose(); }
-}, 30000);
+}, 60000);

@@ -287,14 +287,15 @@ export function buildBaaardwalk(island: IslandData): PropDescriptor[] {
       { floor: headY, shape: 'cylinder', color: 0xffedc2 });
   }
   const pennants = { yaw: Math.PI / 2, collidable: false, lickable: false, climbable: false };
-  // Keep the strings attached to the west-side lamps and rail posts so
-  // the approach opens onto the wheel and the full width of the promenade.
-  place('bunting', -11.3, -20, 18.0, 1.5, 0.22, {
-    ...pennants, centreY: deckY + 6.2 * scale,
+  // Seat the long cable in the iron lantern caps. The model's tall export
+  // bounds include invisible anchors, so use the visible height of the cap.
+  place('bunting', -11.3, -20, 18.37, 1.5, 0.22, {
+    ...pennants, centreY: deckY + 3.25 * scale,
   });
+  // The short strands tie into the visible 1.25 m balustrade posts.
   for (const z of [-25, -9]) {
-    place('bunting', -13.08, z, 7.6, 1.0, 0.16, {
-      ...pennants, centreY: deckY + 1.9 * scale,
+    place('bunting', -13.08, z, 7.6, .7, 0.16, {
+      ...pennants, centreY: deckY + .94 * scale,
     });
   }
 

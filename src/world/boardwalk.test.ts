@@ -232,8 +232,10 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
         expect(props.some(p => p.kind === kind), kind).toBe(true);
       }
       expect(props.filter(p => p.kind === 'pier-rail').length).toBeGreaterThan(20);
-      expect(props.filter(p => p.kind === 'bunting')
-        .every(p => !p.collidable && floorOf(p) > topOf(pier) + scale)).toBe(true);
+      const bunting = props.filter(p => p.kind === 'bunting');
+      expect(bunting.every(p => !p.collidable && floorOf(p) > topOf(pier) + .5 * scale)).toBe(true);
+      expect(Math.max(...bunting.map(topOf))).toBeCloseTo(topOf(pier) + 4 * scale, 5);
+      expect(Math.min(...bunting.map(topOf))).toBeCloseTo(topOf(pier) + 1.29 * scale, 5);
       expect(props.filter(p => p.kind === 'scaffold')
         .some(p => floorOf(p) < 0 && topOf(p) < topOf(pier) + 8)).toBe(true);
     }
