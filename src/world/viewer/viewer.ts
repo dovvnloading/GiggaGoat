@@ -304,7 +304,7 @@ function applyBookmark(id: string): void {
   worldView.setTideLevel(mark.tide);
   referenceImage.src = paintingAssetUrl(mark.image);
   referenceImage.alt = mark.label + ' environment concept art';
-  referenceCaption.textContent = mark.label + ' · live view / original painting';
+  referenceCaption.textContent = mark.label + ' · concept art';
   reference.hidden = !compareToggle.checked;
   updateStats();
 }

@@ -18,8 +18,8 @@ export interface ArtBookmark {
  */
 export const ART_BOOKMARKS: readonly ArtBookmark[] = [
   { id: '07', label: '07 · Billy Isle key art', image: '07_key_art.png',
-    camera: { x: -167.5, y: 9, z: 97 }, target: { x: 0, y: 40, z: 0 },
-    fov: 55, day: 0.49, tide: 0 },
+    camera: { x: -176, y: 12.5, z: 72 }, target: { x: -15, y: 37, z: 28 },
+    fov: 52, day: 0.49, tide: 0 },
   { id: '18', label: '18 · Billy Isle map', image: '18_billy_isle_map.png',
     camera: { x: 0, y: 740, z: 39 }, target: { x: 0, y: 0, z: 38 },
     fov: 58, day: 0.5, tide: 0 },
