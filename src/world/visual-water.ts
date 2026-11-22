@@ -286,7 +286,7 @@ float forestRipple(float phase) {
 }
 void main() {
   if (vStreamStyle.x > 0.5) {
-    float falling = vStreamStyle.z;
+    float falling = vStreamStyle.x < 1.5 ? 0.0 : vStreamStyle.z;
     float across = abs(vUv.x * 2.0 - 1.0);
     float bend = vUv.x + 0.10 * sin(vUv.y * 1.5 + 0.45 * uTime);
     float current = forestRipple(1.7 * vUv.y + 13.0 * bend - uTime * 2.05);
@@ -303,6 +303,11 @@ void main() {
       0.32 * broken * smoothstep(0.7, 1.0, vUv.y));
     vec3 col = mix(shaded, vec3(0.70, 0.87, 0.81), foam);
     float cover = 1.0 - smoothstep(vStreamStyle.x > 2.5 ? 0.77 : 0.70, 1.0, across);
+    if (vStreamStyle.x < 1.5) {
+      // Fade the estuary into the sea; rising tide also covers inland water.
+      cover *= (1.0 - vStreamStyle.z) *
+        (1.0 - smoothstep(-0.04, 0.23, uStreamTide - vWorld.y));
+    }
     if (vStreamStyle.x > 1.5 && vStreamStyle.x < 2.5) {
       // Fade the rounded head and toe into the rock and receiving water.
       cover *= smoothstep(0.0, 0.16, vUv.y) * (1.0 - smoothstep(0.78, 1.0, vUv.y));
@@ -338,9 +343,46 @@ function riverRibbonSections(points: readonly RiverPoint[], scale: number) {
   });
 }
 
+/** The rendered forest banks and their shared shoreline-clipped footprint. */
+function forestRiverSections(island: IslandData) {
+  const scale = island.size / 600;
+  const points = island.river.slice(DAM_FOREST_RIVER_START);
+  const curve = new THREE.SplineCurve(points.map(point => new THREE.Vector2(point.x, point.z)));
+  const length = curve.getLength();
+  const rows = Math.max(1, Math.ceil(length / (.85 * scale)));
+  const stations = curve.getSpacedPoints(rows);
+  let reach = 0;
+  const sections = stations.map((center, row) => {
+    const before = stations[Math.max(0, row - 1)]!, after = stations[Math.min(rows, row + 1)]!;
+    const tangent = after.clone().sub(before).normalize();
+    const run = row ? center.distanceTo(before) : 0;
+    reach += run / scale;
+    const point = curve.getUtoTmapping(row / rows, length * row / rows) * (points.length - 1);
+    const span = Math.min(points.length - 2, Math.floor(point));
+    const width = THREE.MathUtils.lerp(points[span]!.width, points[span + 1]!.width, point - span);
+    const bankWidth = (phase: number) => width * .5 *
+      (.72 + .09 * Math.sin(reach * .17 + phase) + .05 * Math.sin(reach * .065 - phase));
+    const leftWidth = bankWidth(.20), rightWidth = bankWidth(2.25);
+    return { center, before, after, tangent, run, reach, width, leftWidth, rightWidth,
+      left: { x: center.x + tangent.y * leftWidth, z: center.y - tangent.x * leftWidth },
+      right: { x: center.x - tangent.y * rightWidth, z: center.y + tangent.x * rightWidth } };
+  });
+  // Walk inland from the offshore end to the last row with an exposed bank.
+  // This does not mistake a submerged riverbed for the coast farther upstream.
+  let lastDry = sections.length - 1;
+  while (lastDry > 0) {
+    const { left, right } = sections[lastDry]!;
+    if (Math.max(terrainTriangleHeight(island, left.x, left.z),
+      terrainTriangleHeight(island, right.x, right.z)) > island.seaLevel) break;
+    lastDry--;
+  }
+  const shoreline = lastDry < sections.length - 1;
+  return { sections: sections.slice(0, shoreline ? lastDry + 2 : sections.length), shoreline };
+}
+
 /** Clearance from the XZ footprint built by the forest river mesh. */
 export function makeForestOutflowClearance(island: IslandData): (x: number, z: number, radius: number) => boolean {
-  const sections = riverRibbonSections(island.river.slice(DAM_FOREST_RIVER_START), island.size / 600);
+  const { sections } = forestRiverSections(island);
   const triangles: THREE.Triangle[] = [];
   const vertex = (point: Vec2) => new THREE.Vector3(point.x, 0, point.z);
   for (let i = 1; i < sections.length; i++) {
@@ -405,26 +447,15 @@ function riverGeometry(vertices: number[], uvs: number[], style: number[],
 }
 
 /** A curved, shallow water surface with a draped, translucent bank skirt. */
-function forestRiverMesh(points: readonly RiverPoint[], material: THREE.Material,
-  island: IslandData, damCenter?: Vec2): THREE.Mesh {
+function forestRiverMesh(material: THREE.Material, island: IslandData, damCenter?: Vec2): THREE.Mesh {
   const scale = island.size / 600;
-  const curve = new THREE.SplineCurve(points.map(point => new THREE.Vector2(point.x, point.z)));
-  const length = curve.getLength();
-  const rows = Math.ceil(length / (0.85 * scale));
+  const { sections, shoreline } = forestRiverSections(island);
   const columns = 12;
-  const stations = curve.getSpacedPoints(rows);
   const vertices: number[] = [], uv: number[] = [], indices: number[] = [], style: number[] = [];
-  let reach = 0;
+  const endReach = sections.at(-1)!.reach;
   let lastSurface = 0;
-  for (let row = 0; row <= rows; row++) {
-    const centre = stations[row]!;
-    const before = stations[Math.max(0, row - 1)]!, after = stations[Math.min(rows, row + 1)]!;
-    const tangent = after.clone().sub(before).normalize();
-    const run = row ? centre.distanceTo(before) : 0;
-    reach += run / scale;
-    const point = curve.getUtoTmapping(row / rows, length * row / rows) * (points.length - 1);
-    const span = Math.min(points.length - 2, Math.floor(point));
-    const width = THREE.MathUtils.lerp(points[span]!.width, points[span + 1]!.width, point - span);
+  for (let row = 0; row < sections.length; row++) {
+    const { center: centre, before, after, tangent, run, reach, width, leftWidth, rightWidth } = sections[row]!;
     const drop = gridSample(island, before.x, before.y) - gridSample(island, after.x, after.y);
     const rapids = THREE.MathUtils.smoothstep(drop / Math.max(0.001, after.distanceTo(before)), 0.075, 0.33);
     const bed = gridSample(island, centre.x, centre.y);
@@ -440,14 +471,11 @@ function forestRiverMesh(points: readonly RiverPoint[], material: THREE.Material
     const draw = row > 0 && drawRiverQuad(
       { x: before.x, z: before.y }, { x: centre.x, z: centre.y },
       lastSurface - surface, run, damCenter);
-    // Widen alternating banks into shallow pools and taper them gradually.
-    const bankWidth = (phase: number): number => width * 0.5 *
-      (0.72 + 0.09 * Math.sin(reach * 0.17 + phase) + 0.05 * Math.sin(reach * 0.065 - phase));
-    const left = bankWidth(0.20), right = bankWidth(2.25);
+    const fade = shoreline ? THREE.MathUtils.smoothstep(reach, endReach - 8, endReach) : 0;
     for (let column = 0; column <= columns; column++) {
       const u = column / columns;
       const across = u * 2 - 1;
-      const offset = across * (across < 0 ? left : right);
+      const offset = across * (across < 0 ? leftWidth : rightWidth);
       const x = centre.x - tangent.y * offset;
       const z = centre.y + tangent.x * offset;
       // Following the actual terrain triangles avoids cutting jagged teeth
@@ -457,7 +485,7 @@ function forestRiverMesh(points: readonly RiverPoint[], material: THREE.Material
       const y = THREE.MathUtils.lerp(Math.max(surface, ground), ground, shallows);
       vertices.push(x, y, z);
       uv.push(u, reach * scale / 10);
-      style.push(1, rapids, 0);
+      style.push(1, rapids, fade);
       if (draw && column > 0) {
         const d = row * (columns + 1) + column, c = d - 1;
         const b = d - columns - 1, a = b - 1;
@@ -1027,8 +1055,7 @@ export function buildWaterVisuals(island: IslandData,
   const upstream = riverMesh(island.river.slice(0, DAM_UPSTREAM_RIVER_END), riverPaint,
     island, damPlot?.center);
   upstream.name = 'rippling-river';
-  const forestOutflow = forestRiverMesh(island.river.slice(DAM_FOREST_RIVER_START), riverPaint,
-    island, damPlot?.center);
+  const forestOutflow = forestRiverMesh(riverPaint, island, damPlot?.center);
   forestOutflow.name = 'forest-river-after-dam';
   // Both reaches use the same animated shader. Merge their disconnected
   // index buffers into one draw so the new shoreline foam costs no extra
