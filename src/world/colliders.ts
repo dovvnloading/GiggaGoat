@@ -14,6 +14,7 @@ import { LIGHTHOUSE_ACCESS_GUARD_ID, LIGHTHOUSE_ACCESS_ID, keeperCottagePierColl
   lighthouseFoundationDepth, lighthouseGuards, lighthouseModelY, lighthouseUpperColliders } from './lighthouse-access';
 import { gridSample } from './terrain';
 import siloMesh from './silo-collision.json';
+import lookoutMesh from './lookout-collision.json';
 
 function siloCollider(prop: PropDescriptor): PropColliderDescriptor {
   // Same centred fit as the sourced district mesh. Preserve the wall facets,
@@ -23,6 +24,31 @@ function siloCollider(prop: PropDescriptor): PropColliderDescriptor {
   const vertices = Float32Array.from(siloMesh.positions, (n, i) => n / siloMesh.units * scale[i % 3]!);
   return { id: prop.id, shape: 'trimesh', transform: prop.transform, size, body: prop.body,
     vertices, indices: Uint32Array.from(siloMesh.triangles) };
+}
+
+function lookoutCollider(prop: PropDescriptor): PropColliderDescriptor {
+  // Baked from the same 98%-fitted GLB used by the renderer. The original
+  // solid box filled the tower interior and made its deck inaccessible.
+  const scale = [prop.size.x, prop.size.y, prop.size.z];
+  const vertices = Float32Array.from(lookoutMesh.positions, (n, i) => n / lookoutMesh.units * scale[i % 3]!);
+  return { id: prop.id, shape: 'trimesh', transform: prop.transform, size: prop.size, body: prop.body,
+    vertices, indices: Uint32Array.from(lookoutMesh.triangles) };
+}
+
+function lookoutLadder(prop: PropDescriptor): PropColliderDescriptor {
+  const { position, rotationY } = prop.transform;
+  // Extend below the base so uneven ground cannot leave a gap under the ladder.
+  const belowBase = prop.size.y * 4 / 24;
+  const height = prop.size.y * 17.25 / 24 + belowBase;
+  // Keep the goat clear of the projecting floor lip while it crests the deck.
+  const offset = prop.size.z * 4.6 / 9;
+  return {
+    id: prop.id + '-ladder', shape: 'cuboid', body: prop.body, climbEffortScale: .2,
+    transform: { position: { x: position.x + Math.sin(rotationY) * offset,
+      y: position.y - prop.size.y / 2 - belowBase + height / 2,
+      z: position.z + Math.cos(rotationY) * offset }, rotationY },
+    size: { x: prop.size.x * 2.2 / 9, y: height, z: prop.size.z * .15 / 9 },
+  };
 }
 
 function hull(prop: PropDescriptor): Float32Array {
@@ -123,6 +149,10 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
     if (!prop.collidable) continue;
     if (prop.kind === 'silo' && prop.poiId === 'hoofington') {
       colliders.push(siloCollider(prop));
+      continue;
+    }
+    if (prop.kind === 'lookout' && prop.poiId === 'whispering-pines') {
+      colliders.push(lookoutCollider(prop), lookoutLadder(prop));
       continue;
     }
     const bridgeDeck = bridgeDecks.get(prop.id);
