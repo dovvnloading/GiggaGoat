@@ -720,14 +720,15 @@ export class LocomotionController {
     const strideGap = striding && !this.jumpConsumed && walkable && ground &&
       ground.distance <= groundedDistance + .13 * s &&
       this.clock - this.lastGroundAt <= .22 && Math.abs(v.y) < 1.6;
-    const nearGroundStride = wishLength > .12 && !this.jumpConsumed && walkable && ground &&
-      ground.distance <= groundedDistance + .4 * s &&
-      this.clock - this.lastGroundAt <= .22 && v.y < 1.6;
+    // A jump is deliberate immediately; walking off a ledge becomes free
+    // flight after the short ground-following interval and a clear ground ray.
+    const momentumAir = !this.grounded && !this.input.inWater &&
+      (this.jumpConsumed || (!ground && this.clock - this.lastGroundAt > .25));
     const target = V(surfaceWish.x*targetSpeed,0,surfaceWish.z*targetSpeed);
     let deltaV = this.grounded
       ? clampLength(sub(target,velocity),this.tuning.groundAcceleration*dt)
-      : nearGroundStride || this.input.inWater ? clampLength(sub(target,velocity),this.tuning.airAcceleration*dt) : V();
-    if (!this.grounded && !nearGroundStride && !this.input.inWater && wishLength > 0) {
+      : momentumAir ? V() : clampLength(sub(target,velocity),this.tuning.airAcceleration*dt);
+    if (momentumAir && wishLength > 0) {
       // Air input accelerates toward the desired direction; it must not
       // brake an already faster takeoff or brake at all after release.
       const along = dot(velocity, wish), speed = length(velocity);

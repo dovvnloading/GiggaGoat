@@ -65,4 +65,27 @@ describe('sprint-jump air control', () => {
       expect(goat.torso.linvel().x).toBeGreaterThan(.5);
     } finally { goat.dispose(); world.dispose(); }
   });
+
+  it('preserves momentum after running off a ledge once fully airborne', async () => {
+    const measure = async (control: boolean) => {
+      const world = await PhysicsWorld.create();
+      world.createGround(V(10, .5, 4), V(0, -.5, 0));
+      const goat = new GoatRagdoll(world, { size: 1, position: V(0, 0, 2) });
+      try {
+        for (let tick = 0; tick < 45; tick++) world.step(1 / 60);
+        goat.locomotion.setInput({ z: 1, sprint: true, canClimb: false });
+        for (let tick = 0; tick < 240; tick++) {
+          world.step(1 / 60);
+          if (!goat.locomotion.groundHit && goat.locomotion.airborneSeconds > .35) break;
+        }
+        expect(goat.locomotion.groundHit).toBeNull();
+        expect(goat.locomotion.airborneSeconds).toBeGreaterThan(.35);
+        if (!control) goat.locomotion.tuning.airAcceleration = 0;
+        goat.locomotion.setInput({ z: 0, sprint: false });
+        for (let tick = 0; tick < 20; tick++) world.step(1 / 60);
+        return goat.torso.linvel().z;
+      } finally { goat.dispose(); world.dispose(); }
+    };
+    expect(await measure(true)).toBeCloseTo(await measure(false), 2);
+  });
 });
