@@ -57,6 +57,13 @@ export class GameSimulation {
     if (metres) this.events.emit('traversal', { kind: 'climb', metres });
   }
 
+  resetForRespawn(held: GoatIntent): void {
+    this.pendingClimbDistance = 0;
+    this.pendingImpact = 0;
+    this.pendingPulses = { jump: false, bleat: false, flop: false, flingTongue: false };
+    this.abilities.resetForRespawn(held);
+  }
+
   /** Advance only COMPLETE 60Hz ticks. Input/facts describe the latest external frame;
    * callers should sample physics each tick for precision-sensitive actions. */
   update(dt: number, intent: GoatIntent = {}, facts: GoatPhysicsFacts = NEUTRAL_FACTS): SimulationStep {
