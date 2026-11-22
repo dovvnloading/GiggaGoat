@@ -38,6 +38,34 @@ function cameraFixture(physics: PhysicsWorld) {
 }
 
 describe('free-roam camera / compact HUD reference framing', () => {
+  it('snaps the camera pivot for a short teleport while retaining normal follow smoothing', async () => {
+    const physics = await PhysicsWorld.create();
+    try {
+      const { view } = cameraFixture(physics);
+      const pose = { translation: V(0, -CAMERA_TARGET_HEIGHT, 0) };
+      const game = {
+        teleportVersion: 0,
+        physics: Object.assign(Object.create(physics) as PhysicsWorld, {
+          getInterpolatedTransform: () => pose,
+        }),
+        rules: { style: { scale: 1 } },
+        goat: { ownsBody: () => false, locomotion: { input: { sprint: false } },
+          torso: { linvel: () => V() } },
+      };
+      const target = new THREE.Vector3();
+      Object.assign(view, { game, cameraTarget: target, cameraTeleportVersion: 0 });
+      view.updateCamera(0, 1 / 60);
+      pose.translation.x = 3;
+      view.updateCamera(0, 1 / 60);
+      expect(target.x).toBeGreaterThan(0);
+      expect(target.x).toBeLessThan(3);
+      pose.translation.x = 8;
+      game.teleportVersion++;
+      view.updateCamera(0, 1 / 60);
+      expect(target.x).toBeCloseTo(8, 8);
+    } finally { physics.dispose(); }
+  });
+
   it.each([0, .24])('keeps the chase camera clear of a close obstacle at x=%s', async x => {
     const physics = await PhysicsWorld.create();
     try {
