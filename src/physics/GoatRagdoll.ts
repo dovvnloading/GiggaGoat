@@ -245,6 +245,12 @@ export class GoatRagdoll {
     for (const leg of this.legs) leg.applyTorqueImpulse(mul(curl, .10 * leg.mass()), true);
     this.torso.applyTorqueImpulse(mul(curl, -.035 * this.mass), true);
   }
+  resetForRespawn(): void {
+    this.locomotion.resetForRespawn();
+    this.balance.resetForRespawn();
+    this.plantedAtWalkingSpeed = false;
+    this.setPose('stand', 0);
+  }
   dispose(): void {
     if (this.destroyed) return;
     this.destroyed = true;

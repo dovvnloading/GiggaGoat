@@ -78,6 +78,19 @@ export class BalanceController {
     if (this.value < .22 && !this.isRagdoll) this.enterRagdoll('impact');
   }
   flop(): void { this.value = 0; this.enterRagdoll('flop'); }
+  resetForRespawn(): void {
+    const wasRagdoll = this.isRagdoll;
+    this.value = 1;
+    this.isRagdoll = false;
+    this.remaining = 0;
+    this.hipSupportFloor = null;
+    this.hipHoldStarted = 0;
+    this.hipReturnStarted = -Infinity;
+    this.lastImpactAt = -Infinity;
+    if (wasRagdoll) {
+      this.goat.events.emit({ type: 'ragdollEnd', goatId: this.goat.id, time: this.goat.world.time });
+    }
+  }
   private enterRagdoll(reason: 'flop' | 'impact'): void {
     this.remaining = this.tuning.ragdollSeconds;
     if (!this.isRagdoll) {
@@ -745,6 +758,27 @@ export class LocomotionController {
       this.isClinging = false;
       this.goat.events.emit({ type: 'wallClingEnd', goatId: this.goat.id, time: this.goat.world.time });
     }
+  }
+
+  /** Forget movement history when a rescue creates a new grounded spawn. */
+  resetForRespawn(): void {
+    this.leaveTraversal();
+    this.grounded = false;
+    this.groundHit = null;
+    this.lastGrounded = false;
+    this.lastGroundAt = -Infinity;
+    this.jumpBufferUntil = -Infinity;
+    this.jumpLockUntil = 0;
+    this.jumpConsumed = false;
+    this.flipAxis = null;
+    this.flipEndsAt = -Infinity;
+    this.flipAngle = 0;
+    this.flipScored = false;
+    this.flightStarted = null;
+    this.airborneSeconds = 0;
+    this.approachSpeed = 0;
+    this.climbStallSeconds = 0;
+    this.climbPhase = 0;
   }
 
   kickOffWall(): void {

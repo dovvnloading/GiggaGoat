@@ -1330,6 +1330,15 @@ export class Game {
     // clearance height on top of the ragdoll's own standing torso offset.
     this.teleport(V(spawn.x, this.spawnGround, spawn.z),
       this.island.spawns[0]!.heading);
+    this.goat.resetForRespawn();
+    const held = { ...this.intent };
+    for (const button of EDGE_BUTTONS) {
+      const state = this.buttons[button];
+      state.pending.length = 0;
+      state.applied = state.sampled;
+      held[button] = state.sampled;
+    }
+    this.rules.resetForRespawn(held);
     this.respawns++;
   }
 

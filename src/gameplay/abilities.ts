@@ -88,6 +88,24 @@ export class GoatAbilities {
   get headbuttCharge(): number { return this.state.charge; }
   get tongueTarget(): string | null { return this.state.tongueTarget; }
 
+  /** Reset interrupted actions while retaining stamina and ability cooldowns. */
+  resetForRespawn(held: GoatIntent): void {
+    const s = this.state;
+    const wasKnockedDown = s.knockedDown;
+    s.balance = TUNING.balance.max;
+    s.knockedDown = false;
+    s.recoverWait = 0;
+    s.balanceRegenWait = 0;
+    s.charge = 0;
+    s.charging = false;
+    s.tongueTarget = null;
+    s.flippedThisAir = false;
+    delete s.airPressAt;
+    s.previous = { jump: Boolean(held.jump), bleat: Boolean(held.bleat),
+      flop: Boolean(held.flop), flingTongue: Boolean(held.flingTongue) };
+    if (wasKnockedDown) this.bus.emit('balance:recovered', { balance: s.balance });
+  }
+
   applyImpact(damage: number): void {
     nonNegative(damage, 'impact');
     const s = this.state;
