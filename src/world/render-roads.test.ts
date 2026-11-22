@@ -48,7 +48,11 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
   const normals = surface.geometry.getAttribute('normal');
   const indices = surface.geometry.getIndex()!;
   const originalVertices = 6 * runs.reduce((sum, run) => sum + run.points.length, 0);
-  if (type === 'road') {
+  const summit = island.pois.find(p => p.id === 'mt-gigga')!.center;
+  const atSummit = (point: RoadPoint) => Math.hypot(point.x - summit.x, point.z - summit.z) < 1e-5;
+  const joined = type === 'trail' && runs.filter(run => run.points.length > SUMMIT_JOIN_SEGMENTS + 1 &&
+    (atSummit(run.points[0]!) || atSummit(run.points.at(-1)!))).length === 3;
+  if (!joined) {
     expect(indices.count / 3).toBe(6 * segments + 2 * pavedSpans.length);
     expect(positions.count).toBe(originalVertices);
   } else {
@@ -62,10 +66,8 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
 
   for (const run of runs) {
     const first = vertex;
-    const summit = island.pois.find(p => p.id === 'mt-gigga')!.center;
-    const atSummit = (point: RoadPoint) => Math.hypot(point.x - summit.x, point.z - summit.z) < 1e-5;
-    const side = type === 'trail' && atSummit(run.points[0]!) ? 'start' :
-      type === 'trail' && atSummit(run.points.at(-1)!) ? 'end' : undefined;
+    const side = joined && atSummit(run.points[0]!) ? 'start' :
+      joined && atSummit(run.points.at(-1)!) ? 'end' : undefined;
     for (const [pointIndex, point] of run.points.entries()) {
       const lx = positions.getX(vertex), lz = positions.getZ(vertex);
       const rx = positions.getX(vertex + 1), rz = positions.getZ(vertex + 1);
@@ -133,7 +135,7 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
       index += bridge ? 24 : 18; // Top, skirts, and the underside on the paved bridge.
     }
   }
-  if (type === 'road') {
+  if (!joined) {
     expect(vertex).toBe(positions.count);
     expect(index).toBe(indices.count);
   } else {

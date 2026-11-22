@@ -6,7 +6,7 @@ type Point = { x: number; z: number };
 /** Replace overlapping summit triangles with a single rendered and physical surface. */
 export function addSummitJunction(
   positions: number[], indices: number[], support: number[], skirts: number[],
-  faces: readonly number[], cuts: readonly [number, number][],
+  faces: readonly number[], cuts: readonly [number, number][], anchors: readonly Point[],
   height: (x: number, z: number) => number,
   ground: ((x: number, z: number) => number) | undefined, scale: number,
 ): void {
@@ -36,13 +36,36 @@ export function addSummitJunction(
     const vertices = rings.flat();
     const start = positions.length / 3;
     for (const p of vertices) positions.push(p.x, height(p.x, p.y), p.y);
+    const triangles: [number, number, number][] = [];
     for (const triangle of THREE.ShapeUtils.triangulateShape(contour, rings.slice(1))) {
       let [a, b, c] = triangle.map(index => start + index) as [number, number, number];
       const cross = (positions[b * 3]! - positions[a * 3]!) * (positions[c * 3 + 2]! - positions[a * 3 + 2]!) -
         (positions[b * 3 + 2]! - positions[a * 3 + 2]!) * (positions[c * 3]! - positions[a * 3]!);
       if (cross > 0) [b, c] = [c, b];
-      indices.push(a, b, c);
-      support.push(a, b, c);
+      triangles.push([a, b, c]);
+    }
+    // Keep the original graded centre lines as interior control points.
+    // A tiny offset avoids placing a sample exactly on an existing diagonal.
+    for (const anchor of anchors) {
+      const x = anchor.x + .000031 * scale, z = anchor.z + .000019 * scale;
+      const triangle = triangles.findIndex(([a, b, c]) => {
+        const ax = positions[a * 3]! - positions[c * 3]!, az = positions[a * 3 + 2]! - positions[c * 3 + 2]!;
+        const bx = positions[b * 3]! - positions[c * 3]!, bz = positions[b * 3 + 2]! - positions[c * 3 + 2]!;
+        const dx = x - positions[c * 3]!, dz = z - positions[c * 3 + 2]!;
+        const area = ax * bz - bx * az;
+        if (Math.abs(area) < 1e-10) return false;
+        const u = (dx * bz - bx * dz) / area, v = (ax * dz - dx * az) / area;
+        return Math.min(u, v, 1 - u - v) > 1e-8;
+      });
+      if (triangle < 0) continue;
+      const [a, b, c] = triangles[triangle]!;
+      const p = positions.length / 3;
+      positions.push(x, height(x, z), z);
+      triangles.splice(triangle, 1, [a, b, p], [b, c, p], [c, a, p]);
+    }
+    for (const triangle of triangles) {
+      indices.push(...triangle);
+      support.push(...triangle);
     }
     for (const ring of rings) for (let i = 0; i < ring.length; i++) {
       const a = ring[i]!, b = ring[(i + 1) % ring.length]!;

@@ -294,6 +294,7 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
   if (summitSide.size !== 3) summitSide.clear();
   const junctionFaces: number[] = [];
   const junctionCuts: [number, number][] = [];
+  const junctionAnchors: { x: number; z: number }[] = [];
 
   for (const run of runs) {
     const { points, width, widths, squareNorthStart } = run;
@@ -371,6 +372,12 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
         side === 'end' ? i >= points.length - 1 - SUMMIT_JOIN_SEGMENTS : false;
       if (joinsSummit) {
         junctionFaces.push(...top);
+        const center = (first: number) => ({
+          x: (positions[first * 3]! + positions[(first + 1) * 3]!) / 2,
+          z: (positions[first * 3 + 2]! + positions[(first + 1) * 3 + 2]!) / 2,
+        });
+        const pa = center(a), pb = center(b);
+        junctionAnchors.push(pa, { x: (pa.x + pb.x) / 2, z: (pa.z + pb.z) / 2 });
         if (side === 'start' && i === SUMMIT_JOIN_SEGMENTS - 1) junctionCuts.push([b, b + 1]);
         if (side === 'end' && i === points.length - 1 - SUMMIT_JOIN_SEGMENTS) junctionCuts.push([a, a + 1]);
       } else indices.push(
@@ -422,7 +429,7 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
       }
       return result;
     };
-    addSummitJunction(positions, indices, supportIndices, skirtVertices, junctionFaces, junctionCuts,
+    addSummitJunction(positions, indices, supportIndices, skirtVertices, junctionFaces, junctionCuts, junctionAnchors,
       junctionHeight, summitGround, scale);
   }
   return { positions, indices, supportIndices, segments, crossSections, pavedBridgeDecks, skirtVertices };
