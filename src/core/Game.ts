@@ -891,6 +891,7 @@ export class Game {
     goat.locomotion.setInput({
       x: mx, z: mz, cameraYaw, sprint: commands.setSprint,
       canSprint: commands.setSprint, canClimb: commands.setClimb, canGlide: commands.setGlide, climbContact,
+      inWater: this.water.sample(goat.torso).fraction > 0,
       acceptForwardSupport: parcelHeld ? this.gigs.isCourierRamp : undefined,
       safetyRail,
     });
