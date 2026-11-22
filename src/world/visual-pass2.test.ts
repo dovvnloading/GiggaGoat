@@ -45,6 +45,7 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
     const replacedLighthouseKinds = new Set([
       'cottage', 'shipwreck', 'dock', 'cave-mouth', 'deck-stilts',
     ]);
+    const lookout = island.props.find(prop => prop.poiId === 'whispering-pines' && prop.kind === 'lookout')!;
     expect(view.group.getObjectByName('lighthouse-lookout-cliff-braces-and-landing'))
       .toBeInstanceOf(THREE.Group);
     expect(view.group.getObjectByName('baaardwalk-painted-rails')).toBeInstanceOf(THREE.Mesh);
@@ -96,9 +97,12 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
         const depth = Math.hypot(m[8]!, m[9]!, m[10]!);
         const replacedFalls = prop.id === PINES_GLADE_CASCADE ||
           prop.id.startsWith('waterfall-cascade-front-terrace-waterfall-');
+        const replacedLookoutDeck = kind === 'platform' && prop.poiId === 'whispering-pines' &&
+          Math.hypot(prop.transform.position.x - lookout.transform.position.x,
+            prop.transform.position.z - lookout.transform.position.z) < .001 * island.size / 600;
         if ((prop.poiId === 'old-lighthouse' && replacedLighthouseKinds.has(kind)) ||
             prop.id.startsWith(MOUNTAIN_SPIRAL_BRIDGE_PREFIX) || prop.id.startsWith(DAM_PINES_BRIDGE_PREFIX) ||
-            (replacedFalls && width === 0)) {
+            replacedLookoutDeck || (replacedFalls && width === 0)) {
           // A zero-scale matrix is intentional; decompose() cannot recover its
           // scale and rotation. The collider descriptor still has real size.
           expect(width + height + depth, prop.id).toBe(0);
