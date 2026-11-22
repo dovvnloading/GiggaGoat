@@ -12,6 +12,7 @@ import { damChannelAt } from './dam-landscape';
 import { overlapsPinesLogEntry, pinesGladePlan } from './pines-log-access';
 import { DOWNTOWN_ROOF_MOUNTS, downtownBuildingModel, isInsideDowntownInfillFootprint } from './visual-downtown';
 import { CASCADE_NATIVE_SIZE, cascadePoolCentre, cascadeWaterLine, waterfallSites } from './visual-water';
+import { boardwalkPierDecks, SPLASH_DIVE_BOARD_ID } from './boardwalk';
 
 // Extra art and physical scenery must not intersect the authored shop infills.
 const INFILL_SCENERY_KINDS = new Set<PropKind>([
@@ -259,12 +260,47 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   // benches are built by buildBaaardwalk at deck height, never on sand.
   const beach: PoiId = 'baa-ardwalk';
   const surf = sites.get(beach)!;
+  const decks = boardwalkPierDecks(island);
+  const mainPier = decks.find(p => p.kind === 'pier');
+  const diveBoard = decks.find(p => p.id === SPLASH_DIVE_BOARD_ID);
+  if (!mainPier || !diveBoard) throw new Error('Baa-ardwalk needs its pier and dive board before buoy placement');
+  // Recover the actual shoreline shift from the placed main-pier footprint.
+  const shoreShift = mainPier.transform.position.z - mainPier.size.z / 2 - (surf.z - 38 * scale);
+  const supports = [...decks, ...island.props.filter(p => p.poiId === beach && p.kind === 'scaffold')];
+  const placedBuoys: Vec2[] = [];
+  const buoyRadius = .5 * scale;
+  function distanceToSupport(x: number, z: number, prop: PropDescriptor): number {
+    const dx = x - prop.transform.position.x, dz = z - prop.transform.position.z;
+    const c = Math.cos(prop.transform.rotationY), s = Math.sin(prop.transform.rotationY);
+    return Math.hypot(Math.max(0, Math.abs(c * dx - s * dz) - prop.size.x / 2),
+      Math.max(0, Math.abs(s * dx + c * dz) - prop.size.z / 2));
+  }
+  function clearBuoy(x: number, z: number): boolean {
+    const landingX = diveBoard!.transform.position.x + diveBoard!.size.x / 2 + 4;
+    const landingZ = Math.max(0, Math.abs(z - diveBoard!.transform.position.z) - .72 * scale);
+    return gridSample(island, x, z) <= island.seaLevel - .4 * scale &&
+      Math.hypot(x - landingX, landingZ) >= 3.6 + buoyRadius + .2 * scale &&
+      supports.every(prop => distanceToSupport(x, z, prop) >= buoyRadius + .5 * scale) &&
+      placedBuoys.every(other => Math.hypot(x - other.x, z - other.z) >= 5 * scale);
+  }
   for (let i = 0; i < 16; i++) {
     const a = i * Math.PI / 8;
     const x = surf.x + Math.sin(a) * 35 * scale;
-    const z = surf.z + (61 + Math.cos(a) * 27) * scale;
-    place('buoy', x, z, 1.0, 1.8, 1.0, beach,
-      { y: 0.55 * scale, mass: 4, shape: 'cylinder', color: i % 2 ? 0xff891e : 0xf6f2e8 });
+    const z = surf.z + shoreShift + (61 + Math.cos(a) * 27) * scale;
+    let selected: Vec2 | undefined = clearBuoy(x, z) ? { x, z } : undefined;
+    // Keep the closest available water position, preserving the ring's order.
+    for (let step = 1; !selected && step <= 120; step++) {
+      const distance = step * .5 * scale;
+      for (let direction = 0; direction < 32; direction++) {
+        const angle = direction * Math.PI / 16;
+        const candidate = { x: x + Math.cos(angle) * distance, z: z + Math.sin(angle) * distance };
+        if (clearBuoy(candidate.x, candidate.z)) { selected = candidate; break; }
+      }
+    }
+    if (!selected) throw new Error('No clear water for Baa-ardwalk buoy ' + i);
+    placedBuoys.push(selected);
+    place('buoy', selected.x, selected.z, 1.0, 1.8, 1.0, beach,
+      { y: island.seaLevel + 0.55 * scale, mass: 4, shape: 'cylinder', color: i % 2 ? 0xff891e : 0xf6f2e8 });
   }
 
   // Downtown: storefront trim follows each building's facade normal
