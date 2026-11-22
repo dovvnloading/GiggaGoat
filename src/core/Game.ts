@@ -862,6 +862,7 @@ export class Game {
     const facts: GoatPhysicsFacts = {
       grounded: goat.locomotion.grounded && climbContact === null,
       canCoyoteJump: goat.locomotion.canCoyoteJump,
+      landingSoon: goat.locomotion.landingSoon,
       airborneTime: goat.locomotion.airborneSeconds,
       climbEffort: Math.hypot(mx, mz),
       touchingSteepWall: climbContact !== null,
@@ -1054,6 +1055,7 @@ export class Game {
     if (commands.jump) {
       if (commands.jump.kind === 'wall-kick') g.locomotion.kickOffWall();
       else if (commands.jump.kind === 'flip') g.locomotion.requestFlip();
+      else if (commands.jump.kind === 'buffered-jump') g.locomotion.bufferGroundJump();
       else g.locomotion.requestJump();
     }
     if (commands.headbutt) {

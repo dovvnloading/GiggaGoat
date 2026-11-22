@@ -286,6 +286,9 @@ export class LocomotionController {
     return !this.grounded && !this.isClinging && !this.goat.isRagdoll &&
       this.canGroundJumpAt(this.clock + this.goat.world.fixedDt);
   }
+  get landingSoon(): boolean {
+    return !this.grounded && !this.isClinging && !this.goat.isRagdoll && !this.hasTimeToFlip();
+  }
   get isFlipping(): boolean { return this.airFlipActive && !this.flipScored; }
 
   private canGroundJumpAt(time: number): boolean {
@@ -303,8 +306,13 @@ export class LocomotionController {
     if (!this.grounded && this.jumpConsumed && this.flipAxis === null && !this.goat.isRagdoll) {
       this.requestFlip();
     } else {
-      this.jumpBufferUntil = this.clock + this.tuning.jumpBufferSeconds;
+      this.bufferGroundJump();
     }
+  }
+
+  /** Buffer a landing jump without interpreting it as a second aerial press. */
+  bufferGroundJump(): void {
+    if (!this.goat.isRagdoll) this.jumpBufferUntil = this.clock + this.tuning.jumpBufferSeconds;
   }
 
   requestFlip(): void {
@@ -586,12 +594,15 @@ export class LocomotionController {
     }
     if (this.flightStarted !== null) this.airborneSeconds = this.clock-this.flightStarted;
     const wasGliding = this.isGliding;
-    this.isGliding = !!this.input.canGlide && !this.grounded && !clinging && !this.crest &&
+    // A queued landing jump takes priority over deploying the glider until
+    // it is consumed or expires, so holding jump cannot delay its landing.
+    this.isGliding = !!this.input.canGlide && this.jumpBufferUntil < this.clock &&
+      !this.grounded && !clinging && !this.crest &&
       !g.isRagdoll && !this.isFlipping && torso.linvel().y <= (wasGliding ? 1.2 : .2);
     if (!this.isGliding) this.glideBank = 0;
     if (g.isRagdoll) { this.crest = null; return; }
 
-    if (this.jumpBufferUntil >= this.clock && this.canGroundJumpAt(this.clock)) {
+    if (!clinging && this.jumpBufferUntil >= this.clock && this.canGroundJumpAt(this.clock)) {
       const impulseSpeed = Math.sqrt(2*9.81*this.tuning.jumpHeight*s);
       const v = torso.linvel();
       // Impulse for the whole linked body, counteracting any downward velocity.
