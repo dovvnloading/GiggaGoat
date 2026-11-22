@@ -516,8 +516,23 @@ export class LocomotionController {
     // A small upward gait impulse can still leave the goat at ride height.
     // Apply the usual takeoff cutoff as soon as it has moved clear of that support.
     const takeoffSpeed = ground && ground.distance <= rideHeight + .08 * s ? 1.6 : 1.2;
-    this.grounded = !!(walkable && ground && ground.distance <=
-      groundedDistance && this.clock >= this.jumpLockUntil && torso.linvel().y < takeoffSpeed);
+    const verticalSpeed = torso.linvel().y;
+    this.grounded = false;
+    if (walkable && ground && this.clock >= this.jumpLockUntil && verticalSpeed < takeoffSpeed) {
+      this.grounded = ground.distance <= groundedDistance;
+      if (!this.grounded && wishLength < .08 && Math.abs(verticalSpeed) < .35 &&
+          ground.distance <= groundedDistance + .09 * s) {
+        // A hoof can still rest on a raised street edge beside the torso ray.
+        const floor = ground.point.y;
+        this.grounded = g.legs.some(leg => {
+          const support = g.world.raycast(leg.translation(), V(0, -1, 0), .48 * s,
+            { groups: GROUND_QUERY_GROUPS });
+          return support !== null && support.collider.handle !== ground.collider.handle &&
+            support.point.y > floor + .03 * s &&
+            support.normal.y >= minGroundY && (!support.body || support.body.isFixed());
+        });
+      }
+    }
     if (this.grounded) {
       this.lastGroundAt = this.clock;
       this.jumpConsumed = false;
