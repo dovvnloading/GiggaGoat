@@ -36,6 +36,19 @@ import { findStockBaleSeat, isLegacyStockBale } from './HoofingtonStock';
 
 export const FIXED_DT = 1 / 60;
 const SODA_POP_IMPULSE = 35;
+const EDGE_BUTTONS = ['jump', 'bleat', 'flop', 'flingTongue'] as const;
+type EdgeButton = (typeof EDGE_BUTTONS)[number];
+type ButtonTransition = { pressed: boolean; glide?: boolean; tongue?: boolean };
+type ButtonTransitions = { sampled: boolean; applied: boolean; pending: ButtonTransition[] };
+
+function buttonTransitions(): Record<EdgeButton, ButtonTransitions> {
+  return {
+    jump: { sampled: false, applied: false, pending: [] },
+    bleat: { sampled: false, applied: false, pending: [] },
+    flop: { sampled: false, applied: false, pending: [] },
+    flingTongue: { sampled: false, applied: false, pending: [] },
+  };
+}
 
 const buildHalfHeight: Record<PieceType, number> = {
   floor: .23, wall: 1, ramp: .9, 'launch-pad': .23,
@@ -147,6 +160,7 @@ export class Game {
   private readonly vfxCueListeners = new Set<(cue: GameVfxCue) => void>();
   private readonly materialAudioListeners = new Set<(contact: MaterialAudioContact) => void>();
   private intent: PlayerIntent = {};
+  private readonly buttons = buttonTransitions();
   private pendingSize: GoatSize | null = null;
   private teleports = 0;
   private drownSeconds = 0;
@@ -734,7 +748,23 @@ export class Game {
   /** Advance by wall-clock elapsed seconds; Rapier alone handles accumulator and fixed ticks. */
   advance(seconds: number, intent: PlayerIntent = {}): ReturnType<PhysicsWorld['step']> {
     if (this.disposed) throw new Error('Game is disposed');
+    if (!Number.isFinite(seconds) || seconds < 0) {
+      throw new RangeError('frameSeconds must be a finite, non-negative number');
+    }
     this.intent = intent;
+    // The renderer can sample both edges before physics advances. Keep their
+    // order so the ability state machine sees every press and its release.
+    for (const button of EDGE_BUTTONS) {
+      const state = this.buttons[button];
+      const pressed = Boolean(intent[button]);
+      if (pressed !== state.sampled) {
+        state.pending.push({ pressed,
+          ...(button === 'jump' ? { glide: Boolean(intent.glide) } : {}),
+          ...(button === 'flingTongue' ? { tongue: Boolean(intent.tongue) } : {}),
+        });
+      }
+      state.sampled = pressed;
+    }
     if (intent.toggleBuild) this.buildMode = !this.buildMode;
     if (intent.buildPiece) this.buildPiece = intent.buildPiece;
     if (intent.placeBuild && this.buildMode) this.placeBuild();
@@ -759,12 +789,23 @@ export class Game {
   step(intent: PlayerIntent = {}): void { this.advance(FIXED_DT, intent); }
 
   private beforeTick(dt: number): void {
+    const intent = { ...this.intent };
+    for (const button of EDGE_BUTTONS) {
+      const state = this.buttons[button];
+      const transition = state.pending.shift();
+      if (transition) {
+        state.applied = transition.pressed;
+        if (button === 'jump') intent.glide = transition.glide;
+        if (button === 'flingTongue') intent.tongue = transition.tongue;
+      }
+      intent[button] = state.applied;
+    }
     if (this.pendingSize !== null && this.goat.size !== this.pendingSize) {
       this.water.untrack(this.goat.torso);
       const run = this.gigs.active;
       const held = this.goat.interactions.tongueBody;
       const courier = run?.setup.config;
-      const keepParcel = !!this.intent.tongue && !!held && run?.status === 'running' &&
+      const keepParcel = !!intent.tongue && !!held && run?.status === 'running' &&
         courier?.kind === 'rooftop-express' &&
         this.gigs.props.get(courier.parcelId)?.body.handle === held.handle;
       const previousSize = this.goat.size;
@@ -777,9 +818,9 @@ export class Game {
       this.lastY = this.goat.torso.translation().y;
       this.pendingSize = null;
     }
-    this.driveGoat(this.goat, this.intent, this.rules, true, dt);
-    this.toys.tick(dt, this.intent);
-    this.party.beforeTick(this.intent);
+    this.driveGoat(this.goat, intent, this.rules, true, dt);
+    this.toys.tick(dt, intent);
+    this.party.beforeTick(intent);
   }
 
   /** Shared player/bot gameplay intent -> ability rules -> physical ragdoll route. */
