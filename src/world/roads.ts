@@ -1,6 +1,6 @@
 import type { IslandData, PoiId, PropColliderDescriptor, RoadDescriptor, RoadPoint, Vec2 } from './types';
 import { clamp, lerp, SeededRandom, smoothstep } from './random';
-import { gridSample, riverAt, stampRoad } from './terrain';
+import { exposeRoadBed, gridSample, riverAt, stampRoad } from './terrain';
 import { CRANE_YARD_PLAN } from './crane-yard';
 import { getDamPlacement } from './the-dam';
 
@@ -369,19 +369,17 @@ export function fitPinesBridgeApproach(island: IslandData): void {
   if (!road) return;
   const bank = road.points.lastIndexOf(road.points.filter(point => point.bridge).at(-1)!);
   if (bank < 0) return;
-  const scale = island.size / 600;
-  const first = bank + 1, last = road.points.length - 2;
-  for (let i = first; i <= last; i++) {
-    const point = road.points[i]!;
-    const edge = roadSideOffset(road, i, road.width * .48);
-    let surface = gridSample(island, point.x, point.z);
-    for (const side of [-1, 1]) {
-      surface = Math.max(surface, gridSample(island, point.x + side * edge.x, point.z + side * edge.z));
-    }
-    const a = road.points[i - 1]!, b = road.points[i + 1]!;
-    const gradeLimit = Math.min(a.y + .17 * Math.hypot(point.x - a.x, point.z - a.z),
-      b.y + .17 * Math.hypot(point.x - b.x, point.z - b.z));
-    point.y = Math.max(point.y, Math.min(gradeLimit, surface + .17 * scale - .2));
+  const forest = road.points.at(-1)!;
+  const planted = island.props.flatMap(prop => {
+    // Lily pads follow the river surface when the underlying channel changes.
+    if (prop.kind === 'lily-pads') return [];
+    const position = prop.transform.position;
+    return Math.hypot(position.x - forest.x, position.z - forest.z) < 45 * island.size / 600
+      ? [{ position, ground: gridSample(island, position.x, position.z) }] : [];
+  });
+  exposeRoadBed(island, road.points.slice(bank), road.width);
+  for (const { position, ground } of planted) {
+    position.y += gridSample(island, position.x, position.z) - ground;
   }
 }
 

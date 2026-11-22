@@ -8,7 +8,7 @@ import { HOOFINGTON_FIELD_ENTRANCES, HOOFINGTON_FIELD_RAILS,
   HOOFINGTON_YARD_ENTRANCES } from './hoofington-entrances';
 import { roadSideOffset } from './roads';
 import { damChannelAt } from './dam-landscape';
-import { overlapsPinesLogEntry } from './pines-log-access';
+import { overlapsPinesLogEntry, pinesGladePlan } from './pines-log-access';
 import { DOWNTOWN_ROOF_MOUNTS, downtownBuildingModel, isInsideDowntownInfillFootprint } from './visual-downtown';
 import { CASCADE_NATIVE_SIZE, cascadePoolCentre, cascadeWaterLine, waterfallSites } from './visual-water';
 
@@ -340,21 +340,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   // Whispering Pines: logs and stones straddle the river; fungi guide the lookout.
   const forest: PoiId = 'whispering-pines';
   const woods = sites.get(forest)!;
-  const lookoutZ = woods.z - 19 * scale;
-  const clearOfRiver = (dx: number): boolean => {
-    const x = woods.x + dx * scale;
-    const river = riverAt({ x, z: lookoutZ }, island.river);
-    return river.distance > river.width / 2 + 8 * scale &&
-      gridSample(island, x, lookoutZ) > island.seaLevel;
-  };
-  // First search the requested 24..54 m corridor, at 2 m intervals.
-  const requested = Array.from({ length: 16 }, (_, i) => 24 + i * 2);
-  // At several seed sites even 54 m is still within the river margin.
-  // Continue east only if none of the requested offsets is dry and clear.
-  const additional = Array.from({ length: 8 }, (_, i) => 56 + i * 2);
-  // Rare terrain seeds can exhaust the dry search corridor. Keep dressing
-  // best-effort rather than failing the whole island.
-  const lookoutDx = requested.find(clearOfRiver) ?? additional.find(clearOfRiver) ?? 70;
+  const { lookoutDx, crossing, crossingIndex } = pinesGladePlan(island, woods);
   const lookout = at(forest, 'lookout', lookoutDx, -19, 9, 24, 9,
     { color: 0x8c6648 });
   // The 24 m authored lookout GLB already has four supporting legs, X braces
@@ -362,16 +348,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   at(forest, 'platform', lookoutDx, -19, 11, 1.1, 11,
     { lift: 16.4, color: 0xad835d });
 
-  // Bridge the closest river waypoint clear of the lookout by 15 metres.
   // Local +Z is perpendicular to the flow and spans the two banks.
-  const riverCrossing = island.river
-    .map((point, index) => ({ point, index }))
-    .filter(({ point }) => Math.hypot(
-      point.x - lookout.transform.position.x,
-      point.z - lookout.transform.position.z) >= 15 * scale)
-    .sort((a, b) => Math.hypot(a.point.x - woods.x, a.point.z - woods.z) -
-      Math.hypot(b.point.x - woods.x, b.point.z - woods.z))[0]!;
-  const { point: crossing, index: crossingIndex } = riverCrossing;
   const upstream = island.river[Math.max(0, crossingIndex - 1)]!;
   const downstream = island.river[Math.min(island.river.length - 1, crossingIndex + 1)]!;
   const directionX = downstream.x - upstream.x;

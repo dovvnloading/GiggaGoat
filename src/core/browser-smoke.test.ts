@@ -652,9 +652,8 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
       await page.tap('Escape');
       await page.waitFor('document.querySelector(".gg-shell h2")?.textContent === "PAUSED"',
         'pause menu', 20000);
-      // The software renderer can starve the game's fixed countdown ticks on
-      // crowded rounds. Keep the default graphics checks above and use the
-      // shipped Low preset for the party simulation.
+      // Keep the default graphics checks above and use the shipped Low preset
+      // to exercise crowded rounds on the runner's software WebGL backend.
       await page.click('[data-action="settings"]');
       await page.click('[data-tab="video"]');
       const graphics = await page.evaluate<string>(`(() => {
@@ -731,8 +730,6 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         await page.waitFor('document.querySelector("[data-party-scoreboard]")?.hidden === false && ' +
           'document.querySelector("[data-party-title]")?.textContent === ' + JSON.stringify(title),
           mode + ' scoreboard to appear', 20000);
-        // The countdown advances on simulation ticks. Software rendering can
-        // take substantially longer than its three displayed seconds.
         await page.waitFor('document.querySelector("[data-party-clock-label]")?.textContent === "ROUND"',
           mode + ' countdown to finish', 45000);
         try {
