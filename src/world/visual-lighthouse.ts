@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { simplifiedWorldGeometry } from './lod';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { IslandData, PropDescriptor, PropKind } from './types';
@@ -13,6 +14,7 @@ import { capeSurface, keeperCottagePiers, lighthouseAccess,
 import { accessArrows, accessPathVisual } from './visual-access-path';
 
 export interface LighthouseVisuals {
+  updateCulling(position: THREE.Vector3): void;
   group: THREE.Group;
   isFallbackHidden(mesh: THREE.InstancedMesh): boolean;
   setLighting(daylight: number, golden: number): void;
@@ -1031,8 +1033,15 @@ export function buildLighthouseVisuals(island: IslandData,
   };
   const fallbackPaint = batchHeroMeshes(group,
     'lighthouse-shared-ship-dock-rowboat-fallback', isModelFallback);
-  batchHeroMeshes(group, 'lighthouse-static-painted-landmarks',
+  const harbour = batchHeroMeshes(group, 'lighthouse-static-painted-landmarks',
     mesh => mesh !== cliffRocks && mesh !== fallbackPaint && !isModelFallback(mesh));
+  const fullHarbour = harbour.geometry;
+  let distantHarbour = fullHarbour;
+  let disposed = false;
+  void simplifiedWorldGeometry(fullHarbour).then(simplified => {
+    if (disposed && simplified !== fullHarbour) simplified.dispose();
+    else distantHarbour = simplified;
+  });
   if (beacon) group.add(beacon.glass, beacon.halo);
   // Add after the hero batch so this stays one named Mesh and one draw call.
   const bridgeRopes = makeRopeBridgeRopes(island);
@@ -1043,7 +1052,6 @@ export function buildLighthouseVisuals(island: IslandData,
   const caveAnchor = group.getObjectByName('lighthouse-recessed-sea-cave');
   if (caveAnchor) caveAnchor.add(new THREE.Object3D());
 
-  let disposed = false;
   let heroSectionsLoaded = 0;
   const importedTextures = new Set<THREE.Texture>();
   function load(path: string, placements: readonly Placement[], name: string,
@@ -1104,8 +1112,14 @@ export function buildLighthouseVisuals(island: IslandData,
     setLighting(daylight: number, golden: number): void {
       beacon?.setLighting(daylight, golden);
     },
+    updateCulling(position): void {
+      const distance = Math.hypot(position.x - center.x, position.z - center.z);
+      harbour.geometry = distance > 155 * scale ? distantHarbour : fullHarbour;
+    },
     dispose(): void {
       disposed = true;
+      harbour.geometry = fullHarbour;
+      if (distantHarbour !== fullHarbour) distantHarbour.dispose();
       beacon?.dispose();
       importedTextures.forEach(texture => texture.dispose());
       // All geometry/materials are released by WorldScene.dispose's traversal.
