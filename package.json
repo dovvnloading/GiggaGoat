@@ -20,6 +20,7 @@
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.21.0",
     "meshoptimizer": "1.1.1",
+    "polygon-clipping": "0.15.7",
     "three": "0.187.0"
   },
   "devDependencies": {
