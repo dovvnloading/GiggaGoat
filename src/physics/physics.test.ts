@@ -30,6 +30,20 @@ afterEach(() => {
 });
 
 describe('real Rapier physics simulation', () => {
+  it.each([-Math.PI, -Math.PI / 2, -.37, 0, .37, Math.PI / 2, Math.PI])(
+    'starts and settles facing its steering heading at spawn yaw %f', async yaw => {
+      const w = await scene();
+      const g = new GoatRagdoll(w, { position: V(), size: .6, yaw });
+      goats.push(g);
+      const spawnFacing = rotate(g.torso.rotation(), V(0, 0, -1));
+      expect(dot(spawnFacing, forward(g.locomotion.heading))).toBeCloseTo(1, 5);
+      simulate(w, 1);
+      const settledFacing = rotate(g.torso.rotation(), V(0, 0, -1));
+      expect(dot(settledFacing, spawnFacing)).toBeGreaterThan(.95);
+      expect(g.isRagdoll).toBe(false);
+    },
+  );
+
   it('stands unaided for ten seconds with a motor-driven torso and four legs', async () => {
     const w = await scene(), g = goat(w);
     expect(g.bodies).toHaveLength(7);
