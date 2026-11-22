@@ -45,7 +45,7 @@ const layouts: Layout[] = [
       ['loader', 0, 0, 5.6, -20], ['timber', 4, 1.1, 3.9, 8], ['pallet', 3.7, -1.6, 1.9, -5]]
   },
   {
-    district: 'crane-yard', name: 'Haulage staging', x: -24, z: -16, degrees: -45, items: [
+    district: 'crane-yard', name: 'Haulage staging', x: 3.107, z: -20.63, degrees: -45, items: [
       ['truck', 0, 0, 6.4], ['fieldBox', 3, -1.4, 2.1, 10], ['fieldBox', 3, 1.2, 1.8, -10]]
   },
   {
@@ -122,6 +122,14 @@ export function districtSets(island: IslandData): DistrictSet[] {
     const centre = island.pois.find(p => p.id === site.district)!.center;
     const ax = centre.x + site.x * scale, az = centre.z + site.z * scale;
     const localRoads = corridors.filter(r => segmentProjection({ x: ax, z: az }, r.start, r.end).distance < 52 * scale + r.buffer);
+    if (site.district === 'crane-yard') {
+      // Keep both vehicle entrances open through the perimeter and turning space.
+      for (const [gateX, outsideZ, insideZ] of [[-4, -44, -22], [20, 44, 23]] as const) {
+        const start = { x: centre.x + gateX * scale, y: centre.y, z: centre.z + outsideZ * scale, bridge: false };
+        const end = { ...start, z: centre.z + insideZ * scale };
+        localRoads.push({ start, end, buffer: 3.3 * scale });
+      }
+    }
     const localBlocks = fixed.filter(b => clearance(b, ax, az) < 52 * scale);
     const angle = site.degrees * Math.PI / 180, c = Math.cos(angle), s = Math.sin(angle);
     function trySite(x: number, z: number): SetPiece[] | undefined {
