@@ -114,6 +114,7 @@ export class GameView {
   private obstructionFraming = 0;
   private readonly cameraAim = new THREE.Vector3();
   private cameraDistance = Infinity;
+  private cameraTeleportVersion = 0;
   private titleCamera = true;
   private readonly cameraCollisionShape = new RAPIER.Ball(.25);
   private readonly cameraCollisionRotation = Q();
@@ -191,6 +192,7 @@ export class GameView {
     this.scene.add(this.partyMarkers, this.buildGhost.root);
     const p = vec(game.goat.torso.translation());
     const size = game.rules.style.scale;
+    this.cameraTeleportVersion = game.teleportVersion;
     this.cameraTarget.copy(p).add(new THREE.Vector3(0, CAMERA_TARGET_HEIGHT * size, 0));
     // Keep the presentation view ready for the first title frame.
     this.camera.position.copy(this.cameraTarget).add(vec(
@@ -830,9 +832,13 @@ export class GameView {
     const { yaw, pitch } = this.input;
     this.cameraAim.set(pose.translation.x, pose.translation.y + CAMERA_TARGET_HEIGHT * size,
       pose.translation.z);
-    if (this.cameraTarget.distanceToSquared(this.cameraAim) > 16 * 16) {
+    if (this.cameraTeleportVersion !== this.game.teleportVersion ||
+        this.cameraTarget.distanceToSquared(this.cameraAim) > 16 * 16) {
+      this.cameraTeleportVersion = this.game.teleportVersion;
       this.cameraTarget.copy(this.cameraAim);
       this.cameraDistance = Infinity;
+      this.clearBoom.set(0, 0, 0);
+      this.obstructionFraming = 0;
     } else {
       this.cameraTarget.lerp(this.cameraAim, lerpAlpha(12, dt));
     }
