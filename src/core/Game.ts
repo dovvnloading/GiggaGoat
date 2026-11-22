@@ -148,6 +148,7 @@ export class Game {
   private readonly materialAudioListeners = new Set<(contact: MaterialAudioContact) => void>();
   private intent: PlayerIntent = {};
   private pendingSize: GoatSize | null = null;
+  private teleports = 0;
   private drownSeconds = 0;
   private lastY = 0;
   private climbMetres = 0;
@@ -1240,6 +1241,9 @@ export class Game {
     return Math.hypot(p.x - position.x, p.y - position.y, p.z - position.z) < distance;
   }
 
+  /** Incremented on every player warp so presentation can reset its own history. */
+  get teleportVersion(): number { return this.teleports; }
+
   get location(): string {
     const p = this.goat.torso.translation();
     const zone = this.isAbovePierDeck(p) ? 'baa-ardwalk' : zoneAt(this.island, p.x, p.z);
@@ -1269,6 +1273,7 @@ export class Game {
       if (rotation) body.setRotation(multiplyRotation(rotation, body.rotation()), true);
       body.setLinvel(V(), true);
       body.setAngvel(V(), true);
+      this.physics.resetInterpolation(body);
     }
     if (uprightHeading !== undefined) {
       // Teleport rotates the physical assembly to yaw=uprightHeading;
@@ -1280,6 +1285,7 @@ export class Game {
     this.climbMetres = 0;
     this.climbRunMetres = 0;
     this.lastY = this.goat.torso.translation().y;
+    this.teleports++;
   }
 
   respawn(): void {
