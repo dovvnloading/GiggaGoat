@@ -527,7 +527,8 @@ export class LocomotionController {
         this.grounded = g.legs.some(leg => {
           const support = g.world.raycast(leg.translation(), V(0, -1, 0), .48 * s,
             { groups: GROUND_QUERY_GROUPS });
-          return support !== null && support.point.y > floor + .03 * s &&
+          return support !== null && support.collider.handle !== ground.collider.handle &&
+            support.point.y > floor + .03 * s &&
             support.normal.y >= minGroundY && (!support.body || support.body.isFixed());
         });
       }

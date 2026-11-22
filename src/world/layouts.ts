@@ -9,6 +9,7 @@ import { DOWNTOWN_BUILDING_SIZES, DOWNTOWN_INFILL, SHOP_FRONTS,
 import { getDamPlacement } from './the-dam';
 import { buildRooftopCourse } from './rooftop-course';
 import { HOOFINGTON_HAUL_BALE_PREFIX, HOOFINGTON_HAUL_PARKING } from './hoofington-entrances';
+import { PINES_LOG_ENTRY_LENGTH, pinesGladePlan } from './pines-log-access';
 
 interface AddOptions {
   id?: string;
@@ -364,18 +365,33 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
     });
     chosen.push({ ...placement, kind });
   }
-  // Low trail overlooks belong beside the route, away from the log crossing.
-  for (const [dx, dz, width, depth, lift] of [[22, -3, 6, 4.5, 1.2], [-15, 19, 5, 4, 2.1]] as const) {
+  // Keep both overlooks north of the gnome course and outside the full log crossing.
+  const { crossing } = pinesGladePlan(island, woods);
+  const logReach = Math.hypot(1.5 * scale, crossing.width / 2 + (3 + PINES_LOG_ENTRY_LENGTH) * scale);
+  const deckOffsets = [0, 2, -2, 4, -4, 6, -6, -8].flatMap(dz =>
+    [0, 2, -2, 4, -4, 6, -6, 8, -8, 10, -10, 12, -12, 14, -14, 16, -16].map(dx => [dx, dz] as const));
+  for (const [dx, dz, width, depth, lift] of [[22, -3, 6, 4.5, 1.2], [18, -8, 5, 4, 2.1]] as const) {
     const radius = Math.hypot(width, depth) * scale / 2;
-    for (const offset of [0, 4, -4, 8, -8, 12, -12, 16, -16]) {
-      const point = at(forest, dx + offset, dz);
+    for (const [shiftX, shiftZ] of deckOffsets) {
+      const x = dx + shiftX, z = dz + shiftZ;
+      if (z >= 0) continue;
+      const point = at(forest, x, z);
       const river = riverAt(point, island.river);
       if (nearRoad(point.x, point.z, radius + 2 * scale) ||
+          Math.hypot(point.x - crossing.x, point.z - crossing.z) <= Math.max(14 * scale, logReach + radius) ||
           river.distance < river.width / 2 + radius + 2 * scale ||
           gridSample(island, point.x, point.z) < island.seaLevel + scale ||
-          props.some(prop => prop.poiId === forest && Math.hypot(
-            prop.transform.position.x - point.x, prop.transform.position.z - point.z) < radius + scale)) continue;
-      supportElevatedDeck(site(forest, 'platform', dx + offset, dz, width, .48, depth, { lift }));
+          props.some(prop => {
+            if (prop.poiId !== forest) return false;
+            const deltaX = Math.abs(prop.transform.position.x - point.x);
+            const deltaZ = Math.abs(prop.transform.position.z - point.z);
+            if (prop.kind === 'platform') {
+              return deltaX < (prop.size.x + width * scale) / 2 + .5 * scale &&
+                deltaZ < (prop.size.z + depth * scale) / 2 + .5 * scale;
+            }
+            return Math.hypot(deltaX, deltaZ) < radius + scale;
+          })) continue;
+      supportElevatedDeck(site(forest, 'platform', x, z, width, .48, depth, { lift }));
       break;
     }
   }

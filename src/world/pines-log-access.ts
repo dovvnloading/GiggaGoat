@@ -1,12 +1,32 @@
 import { accessSlabs, type AccessSection } from './access-path';
-import { gridIndex, gridSample } from './terrain';
-import type { IslandData, PropColliderDescriptor, PropDescriptor, Vec3 } from './types';
+import { gridIndex, gridSample, riverAt } from './terrain';
+import type { IslandData, PropColliderDescriptor, PropDescriptor, Vec2, Vec3 } from './types';
 
 export const PINES_LOG_ENTRY_ID = 'whispering-pines-log-entry-';
 export const PINES_LOG_ENTRY_LENGTH = 4.7;
 const HALF_MOUTH = 1.22;
 const TOE_BOARDS = 5;
 const TOE_BANDS = 4;
+
+export function pinesGladePlan(island: IslandData, woods: Vec2) {
+  const scale = island.size / 600;
+  const lookoutZ = woods.z - 19 * scale;
+  const offsets = Array.from({ length: 24 }, (_, i) => 24 + i * 2);
+  const lookoutDx = offsets.find(dx => {
+    const x = woods.x + dx * scale;
+    const river = riverAt({ x, z: lookoutZ }, island.river);
+    return river.distance > river.width / 2 + 8 * scale &&
+      gridSample(island, x, lookoutZ) > island.seaLevel;
+  }) ?? 70;
+  const lookoutX = woods.x + lookoutDx * scale;
+  const crossingIndex = island.river.reduce((best, point, i) => {
+    if (Math.hypot(point.x - lookoutX, point.z - lookoutZ) < 15 * scale) return best;
+    const previous = island.river[best];
+    return !previous || Math.hypot(point.x - woods.x, point.z - woods.z) <
+      Math.hypot(previous.x - woods.x, previous.z - woods.z) ? i : best;
+  }, -1);
+  return { lookoutDx, crossingIndex, crossing: island.river[crossingIndex]! };
+}
 
 function groundFace(island: IslandData, x: number, z: number): number {
   const { resolution: n, size, heights } = island;
