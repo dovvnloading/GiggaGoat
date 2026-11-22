@@ -13,9 +13,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: pr-275
-            original: "5fdde8b5431cf41bbb7649b5e85903d820be5e6"
-            snapshot: "c8e178ad1f9999e3fd1582f2a6d88caff1122284"
+          - label: pr-255
+            original: "9291b0a3dacf5774fe16b3d71bf355ef4deb33a0"
+            snapshot: "18ca35ac5704149a72eba53b279bd71b3ef52817"
+          - label: pr-272
+            original: "b7e1893698df7423bdcdf37222d10911386d14bd"
+            snapshot: "a90cfcbe3408f8f8e0883660ff0e0f3337d9eb50"
     steps:
       - uses: actions/checkout@v4
         with:
