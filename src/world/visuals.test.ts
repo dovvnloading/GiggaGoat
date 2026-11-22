@@ -113,12 +113,12 @@ describe('Billy Isle hi-fi environment map', () => {
     expect(gridSample(island, x, z)).toBeGreaterThan(island.seaLevel);
     expect(deck.transform.position.x).toBeCloseTo(x, 6);
     expect(deck.transform.position.z).toBeCloseTo(z, 6);
-    expect(deck.size.x / scale).toBeCloseTo(11, 6);
-    expect(deck.size.y / scale).toBeCloseTo(1.1, 6);
-    expect(deck.size.z / scale).toBeCloseTo(11, 6);
+    expect(deck.size.x / scale).toBeCloseTo(9, 6);
+    expect(deck.size.y / scale).toBeCloseTo(.25, 6);
+    expect(deck.size.z / scale).toBeCloseTo(9, 6);
     const ground = gridSample(island, x, z);
     expect(deck.transform.position.y - deck.size.y / 2 - ground)
-      .toBeCloseTo(16.4 * scale, 6);
+      .toBeCloseTo(17.25 * scale, 6);
     expect(deck.transform.position.y + deck.size.y / 2 - ground)
       .toBeCloseTo(17.5 * scale, 6);
   });
@@ -177,7 +177,9 @@ describe('Billy Isle hi-fi environment map', () => {
         }
         expect(collider, prop.id).toBeDefined();
         if (!collider) continue;
-        expect(collider.shape).toBe(prop.kind === 'silo' && prop.poiId === 'hoofington' ? 'trimesh' : prop.shape);
+        const modelCollider = (prop.kind === 'silo' && prop.poiId === 'hoofington') ||
+          (prop.kind === 'lookout' && prop.poiId === 'whispering-pines');
+        expect(collider.shape).toBe(modelCollider ? 'trimesh' : prop.shape);
         expect(Object.values(collider.size).every(v => Number.isFinite(v) && v > 0)).toBe(true);
         expect(Object.values(collider.transform.position).every(Number.isFinite)).toBe(true);
         expect(Number.isFinite(collider.transform.rotationY)).toBe(true);

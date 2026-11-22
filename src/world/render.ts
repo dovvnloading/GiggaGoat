@@ -538,6 +538,16 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const boardwalkRails = buildBoardwalkRailVisuals(scenery);
   if (boardwalkRails) group.add(boardwalkRails.mesh);
   const replacedProps = new Set(waterVisuals.replacedCascadeIds);
+  // The lookout model (and its packed fallback) already contains a deck.
+  // Keep the co-located platform descriptor for physics, but do not draw it.
+  const lookouts = scenery.props.filter(p => p.poiId === 'whispering-pines' && p.kind === 'lookout');
+  for (const deck of scenery.props) {
+    if (deck.poiId !== 'whispering-pines' || deck.kind !== 'platform') continue;
+    if (lookouts.some(tower => Math.hypot(deck.transform.position.x - tower.transform.position.x,
+      deck.transform.position.z - tower.transform.position.z) < .001 * island.size / 600)) {
+      replacedProps.add(deck.id);
+    }
+  }
   for (const deck of island.colliders) {
     if (deck.shape === 'convex' &&
       (deck.id.startsWith(MOUNTAIN_SPIRAL_BRIDGE_PREFIX) || deck.id.startsWith(DAM_PINES_BRIDGE_PREFIX))) {
