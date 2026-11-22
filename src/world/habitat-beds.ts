@@ -105,6 +105,24 @@ export function planHabitatBeds(island: IslandData): Beds {
   return beds;
 }
 
+/** The two-sided planting material renders each painted face from either direction. */
+function removeCoincidentFaces(geometry: THREE.BufferGeometry): void {
+  const positions = geometry.getAttribute('position');
+  const colours = geometry.getAttribute('color');
+  const seen = new Set<string>();
+  const indices: number[] = [];
+  for (let start = 0; start < positions.count; start += 3) {
+    const key = [start, start + 1, start + 2].map(i => [
+      positions.getX(i), positions.getY(i), positions.getZ(i),
+      colours.getX(i), colours.getY(i), colours.getZ(i),
+    ].join(',')).sort().join(';');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    indices.push(start, start + 1, start + 2);
+  }
+  if (indices.length < positions.count) geometry.setIndex(indices);
+}
+
 export function buildHabitatBeds(island: IslandData) {
   const group = new THREE.Group();
   group.name = 'district-plantings';
@@ -119,6 +137,7 @@ export function buildHabitatBeds(island: IslandData) {
       try {
         const geometry = await loadGroundedKitGeometry('assets/library/kenney/nature-kit/' + model + '.glb', loader);
         if (disposed) { geometry.dispose(); return; }
+        removeCoincidentFaces(geometry);
         const span = geometry.boundingBox!.getSize(new THREE.Vector3());
         const mesh = new THREE.InstancedMesh(geometry, material, sites.length);
         const transform = new THREE.Object3D();
