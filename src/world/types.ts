@@ -137,6 +137,8 @@ export type ScenerySurface = 'wood' | 'metal' | 'stone' | 'soft';
 
 export interface PropColliderDescriptor {
   surface?: ScenerySurface;
+  /** Relative exertion of climbing this surface; ladders provide extra support. */
+  climbEffortScale?: number;
   shape: 'cuboid' | 'cylinder' | 'convex' | 'trimesh';
   id: string;
   transform: Transform;
