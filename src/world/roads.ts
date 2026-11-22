@@ -371,6 +371,8 @@ export function fitPinesBridgeApproach(island: IslandData): void {
   if (bank < 0) return;
   const forest = road.points.at(-1)!;
   const planted = island.props.flatMap(prop => {
+    // Lily pads follow the river surface when the underlying channel changes.
+    if (prop.kind === 'lily-pads') return [];
     const position = prop.transform.position;
     return Math.hypot(position.x - forest.x, position.z - forest.z) < 45 * island.size / 600
       ? [{ position, ground: gridSample(island, position.x, position.z) }] : [];

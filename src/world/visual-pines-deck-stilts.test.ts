@@ -6,6 +6,7 @@ import { expect, it, vi } from 'vitest';
 import { buildRapierColliders } from './colliders';
 import { generateIsland } from './island';
 import { PROP_LIBRARY_MODELS } from './library-props';
+import { WORLD_LOD } from './lod';
 import { createWorldScene } from './render';
 import { buildPropVisuals } from './visual-props';
 import { isPinesDeckStilt } from './visual-pines-deck-stilts';
@@ -128,7 +129,8 @@ it('streams the painted stilts grounded at both LODs and preserves the playable 
     const second = new THREE.Vector3().copy(pins[1]!.transform.position);
     // This position puts the second descriptor in the near range and the
     // first in the far range, reversing the original slot order.
-    camera.position.copy(second).addScaledVector(second.clone().sub(first).normalize(), 45);
+    camera.position.copy(second).addScaledVector(second.clone().sub(first).normalize(),
+      WORLD_LOD.detailedDistance + 1);
     camera.lookAt(first);
     camera.updateMatrixWorld();
     const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4()
