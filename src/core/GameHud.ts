@@ -460,8 +460,7 @@ const CSS = `
  .gg-stamina-label,.gg-stamina-value{margin:0;font-size:clamp(9px,2.55vw,11px);line-height:1.15;transform:none;text-shadow:none}
  .gg-stamina-value{font-variant-numeric:tabular-nums;white-space:nowrap}
  .gg-stamina[data-low="true"] .gg-stamina-progress{--gg-portrait-stamina-color:#ff926f}
- .gg-stamina[data-low="true"] .gg-stamina-label{font-size:clamp(9px,2.55vw,11px)}
- .gg-stamina[data-low="true"] .gg-stamina-label::after{content:" LOW";font-size:inherit;color:#ffac93}
+ .gg-stamina[data-low="true"] .gg-stamina-label::after{font-size:clamp(9px,2.55vw,11px);color:#ffac93}
  .gg-prompts{
   left:8px;top:calc(var(--gg-portrait-second-row) + var(--gg-portrait-score-height) + 50px);
   width:var(--gg-portrait-left-width);transform:none;align-items:stretch;gap:5px
