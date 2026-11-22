@@ -80,6 +80,23 @@ describe('Seeded bot goats + headless mock matches', () => {
     expect(restored.toJSON()).toEqual(brain.toJSON());
   });
 
+  it('challenges a rival contesting the center instead of idling', () => {
+    const { match, runner } = botMatch('king-of-the-peak');
+    for (let i = 0; i < 3; i++) runner.tick();
+    const base = match.view();
+    const center = base.arena.summit;
+    const view = { ...base, config: { ...base.config, peakLeadDistance: .42 } };
+    const brain = new BotBrain('bot-0', 'hard', 31);
+    const action = brain.decide(view, [
+      goat('bot-0', center.x + .05, center.z, center.y + 1),
+      goat('bot-1', center.x + .4, center.z, center.y + 1),
+      goat('bot-2', center.x + 20, center.z, center.y + 1),
+      goat('bot-3', center.x - 20, center.z, center.y + 1),
+    ]);
+    expect(brain.goal).toBe('shove');
+    expect(action.moveX).toBeGreaterThan(0);
+  });
+
   it.each(['rising-tide', 'king-of-the-peak', 'hay-heist'] as ModeId[])(
     '%s: a four-bot full match terminates with exhaustive valid placements',
     mode => {
