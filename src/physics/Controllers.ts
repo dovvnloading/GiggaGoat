@@ -493,7 +493,8 @@ export class LocomotionController {
         const excess = -dot(velocity, normal) - maxInward;
         if (excess > 0) body.setLinvel(add(velocity, mul(normal, excess)), true);
       }
-      const motorSpeed = this.input.sprint ? this.tuning.sprintSpeed : this.tuning.walkSpeed;
+      const motorSpeed = (this.input.sprint && this.input.canSprint ? this.tuning.sprintSpeed : this.tuning.walkSpeed)
+        * g.movementSpeedScale;
       const excess = -dot(movement, normal) - maxInward / motorSpeed;
       if (excess > 0) movement = add(movement, mul(normal, excess));
     }
@@ -704,8 +705,7 @@ export class LocomotionController {
       this.heading = Math.atan2(wish.x,-wish.z);
     }
     const sprinting = this.grounded && this.input.sprint && this.input.canSprint;
-    const speedScale = s ** .16;
-    const targetSpeed = (sprinting ? this.tuning.sprintSpeed : this.tuning.walkSpeed)*speedScale*wishLength;
+    const targetSpeed = (sprinting ? this.tuning.sprintSpeed : this.tuning.walkSpeed)*g.movementSpeedScale*wishLength;
     let surfaceWish = wish;
     if (ground && walkable && this.grounded && wishLength > 0) {
       surfaceWish = normalize(sub(wish,mul(ground.normal,dot(wish,ground.normal))));
