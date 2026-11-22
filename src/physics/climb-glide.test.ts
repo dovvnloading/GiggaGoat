@@ -98,4 +98,73 @@ describe('air and wall traversal', () => {
       expect(goat.locomotion.grounded).toBe(true);
     });
   });
+
+  it.each([.6, 1, 1.6] as const)(
+    'does not count a wall climb and roof crest as an airtime trick at size %s', async size => {
+      await scene(size, V(0, 0, 2), (world, goat, step) => {
+        world.createGround(V(5, 1.8, 10), V(0, 1.8, -11));
+        step(35);
+        const landings: number[] = [];
+        let climbTicks = 0;
+        goat.events.on(event => { if (event.type === 'landed') landings.push(event.airtime); });
+        goat.locomotion.setInput({ z: 1 });
+        for (let tick = 0; tick < 240; tick++) {
+          step(1);
+          if (goat.locomotion.isClinging) climbTicks++;
+          if (goat.torso.translation().z < -3 && goat.locomotion.grounded) break;
+        }
+        expect(climbTicks).toBeGreaterThan(30);
+        expect(goat.locomotion.grounded).toBe(true);
+        expect(goat.torso.translation().z).toBeLessThan(-3);
+        expect(Math.max(0, ...landings)).toBeLessThan(.48);
+      });
+    },
+  );
+
+  it('counts only free fall after releasing a long wall hold', async () => {
+    await scene(1, V(0, 0, 2), (world, goat, step) => {
+      world.createGround(V(10, 8, 1), V(0, 8, -2));
+      step(35);
+      goat.locomotion.setInput({ z: 1 });
+      step(125);
+      expect(goat.locomotion.isClinging).toBe(true);
+      goat.locomotion.setInput({ z: 0 });
+      step(90);
+      const releasedAt = world.time;
+      const landings: Array<{ time: number; airtime: number }> = [];
+      goat.events.on(event => {
+        if (event.type === 'landed') landings.push({ time: event.time, airtime: event.airtime });
+      });
+      goat.locomotion.setInput({ z: -1, canClimb: false });
+      for (let tick = 0; tick < 240 && !landings.length; tick++) step(1);
+      expect(landings).toHaveLength(1);
+      expect(landings[0]!.airtime).toBeGreaterThan(.48);
+      expect(landings[0]!.airtime).toBeLessThanOrEqual(landings[0]!.time - releasedAt + 1 / 60);
+    });
+  });
+
+  it('ends one flight on catching a wall and starts a fresh flight on release', async () => {
+    await scene(1, V(0, 0, 0), (world, goat, step) => {
+      world.createGround(V(3, 4, .3), V(0, 4, -1.5));
+      step(35);
+      const events: string[] = [];
+      goat.events.on(event => {
+        if (event.type === 'airtimeStart' || event.type === 'airtimeEnd' || event.type === 'landed') {
+          events.push(event.type);
+        }
+      });
+      goat.locomotion.requestJump();
+      step(1);
+      expect(events).toEqual(['airtimeStart']);
+      goat.locomotion.setInput({ z: 1 });
+      for (let tick = 0; tick < 70 && !goat.locomotion.isClinging; tick++) step(1);
+      expect(goat.locomotion.isClinging).toBe(true);
+      expect(events).toEqual(['airtimeStart', 'airtimeEnd']);
+      expect(goat.locomotion.airborneSeconds).toBe(0);
+      step(30);
+      goat.locomotion.setInput({ z: -1, canClimb: false });
+      for (let tick = 0; tick < 240 && !events.includes('landed'); tick++) step(1);
+      expect(events).toEqual(['airtimeStart', 'airtimeEnd', 'airtimeStart', 'airtimeEnd', 'landed']);
+    });
+  });
 });
