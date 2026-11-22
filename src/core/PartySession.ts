@@ -1,5 +1,5 @@
 import { GameSimulation } from '../gameplay';
-import { GoatRagdoll, forward, type PhysicsContact, type Vec3 } from '../physics';
+import { GoatRagdoll, RAPIER, V, forward, type PhysicsContact, type Vec3 } from '../physics';
 import { heightAt, landAreaAtTideLevel } from '../world';
 import {
   PartyMatch, BotBrain, arenaFromBillyIsle,
@@ -73,9 +73,22 @@ export class PartySession {
     const center = mode === 'king-of-the-peak' ? arena.summit :
       mode === 'hay-heist' ? arena.barns[0]!.position :
         this.game.island.pois.find(p => p.id === 'hoofington')!.center;
-    const land = (x: number, z: number): Vec3 => ({
-      x, y: heightAt(this.game.island, x, z) + 1.25, z,
-    });
+    const land = (x: number, z: number): Vec3 => {
+      const terrain = heightAt(island, x, z);
+      // The rendered and physical road/trail can sit above the heightfield.
+      // Cast directly against static support shapes so this also works before
+      // the world's broad phase has been populated by its first physics step.
+      const originY = terrain + 1.25;
+      const ray = new RAPIER.Ray(V(x, originY, z), V(0, -1, 0));
+      let nearest = Infinity;
+      for (const surface of [this.game.colliders.terrain, ...this.game.colliders.paths]) {
+        const hit = surface.castRayAndGetNormal(ray, 2.5, false);
+        if (hit && hit.normal.y >= this.game.goat.locomotion.minWalkingNormalY) {
+          nearest = Math.min(nearest, hit.timeOfImpact);
+        }
+      }
+      return { x, y: Number.isFinite(nearest) ? originY - nearest : terrain, z };
+    };
     if (mode === 'hay-heist') {
       this.game.teleport(land(center.x - 1.8 * scale, center.z + 4 * scale), 0);
     } else {
