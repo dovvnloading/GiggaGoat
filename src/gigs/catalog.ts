@@ -6,6 +6,8 @@ import { formerLighthouseAccess, lighthouseAccess, lighthouseFlagPositions } fro
 import { sectionCenter } from '../world/access-path';
 import { damOutflowWaterY } from '../world/dam-landscape';
 import { getDamPlacement, type DamPlacement } from '../world/the-dam';
+import { HOOFINGTON_VERGE_WIDTH } from '../world/hoofington-verge';
+import { makeLocalStreets } from '../world/roads';
 import {
   DIFFICULTIES, GIG_IDS,
 } from './types';
@@ -201,6 +203,7 @@ export class GigCatalog {
   private readonly islandSize: number;
   private readonly mowProps: LawnObstacle[];
   private readonly mowRoads: LawnObstacle[];
+  private readonly villagePaving: LawnObstacle;
   private readonly summitTrail: Point[];
   private readonly legacySummitLedgePositions: Readonly<Record<string, Point>>;
   constructor(island: Pick<IslandData, 'seed' | 'pois' | 'props' | 'seaLevel' | 'reservoir' | 'heights' |
@@ -237,6 +240,11 @@ export class GigCatalog {
       return [{ x, z, halfX: road.width / 2 + 1.7 * scale, halfZ: length / 2 + scale,
         cos: dz / length, sin: dx / length }];
     }));
+    const street = makeLocalStreets(island).find(road => road.from === 'hoofington')!;
+    const first = street.points[0]!, last = street.points.at(-1)!;
+    this.villagePaving = { x: first.x, z: (first.z + last.z) / 2,
+      halfX: street.width / 2 + HOOFINGTON_VERGE_WIDTH * scale, halfZ: (last.z - first.z) / 2,
+      cos: 1, sin: 0 };
     this.summitTrail = ((island.roads ?? []).find(road => road.id === 'mt-gigga--hoofington')?.points ?? [])
       .map(copy).reverse();
   }
@@ -252,7 +260,8 @@ export class GigCatalog {
     const c = this.terrain[(iz + 1) * n + ix]!, d = this.terrain[(iz + 1) * n + ix + 1]!;
     return (a + (b - a) * u) * (1 - v) + (c + (d - c) * u) * v;
   }
-  private mowPatches(poi: PoiDescriptor, cols: number, rows: number, rng: Random): Point[] {
+  private mowPatches(poi: PoiDescriptor, cols: number, rows: number, rng: Random,
+    avoidVillagePaving: boolean): Point[] {
     const scale = this.islandSize / 600;
     const layout: Point[][] = [];
     let bestDistance = Infinity;
@@ -271,7 +280,8 @@ export class GigCatalog {
         const halfX = (sideways ? halfRows : halfCols) + MOW_EDGE;
         const halfZ = (sideways ? halfCols : halfRows) + MOW_EDGE;
         if (this.mowProps.some(prop => overlapsLawn(prop, x, z, halfX, halfZ)) ||
-            this.mowRoads.some(road => overlapsLawn(road, x, z, halfX, halfZ))) continue;
+            this.mowRoads.some(road => overlapsLawn(road, x, z, halfX, halfZ)) ||
+            (avoidVillagePaving && overlapsLawn(this.villagePaving, x, z, halfX, halfZ))) continue;
         const patches = this.mowGrid({ x, y: 0, z }, cols, rows, sideways);
         if (!patches.every(patch => this.mowPatchOnLawn(patch))) continue;
         bestDistance = Math.min(bestDistance, offset.distance);
@@ -423,6 +433,10 @@ export class GigCatalog {
     if ((current.config.kind === 'mow-down' || current.config.kind === 'rooftop-express' ||
         saved.offer.gigId === 'beacon-bleat') &&
         JSON.stringify(this.buildVariant(saved.offer, true)) === serialized) return current;
+    if (current.config.kind === 'mow-down' &&
+        JSON.stringify(this.buildVariant(saved.offer, false, false, false, lighthouseAccess, false)) === serialized) {
+      return current;
+    }
     if (saved.offer.gigId === 'beacon-bleat' &&
         JSON.stringify(this.buildVariant(saved.offer, false, false, false, formerLighthouseAccess)) === serialized) {
       return current;
@@ -440,7 +454,7 @@ export class GigCatalog {
   }
 
   private buildVariant(offer: GigOffer, legacyLayout: boolean, fieldSupply = false,
-    legacyDamWater = false, beaconAccess = lighthouseAccess): GigSetup {
+    legacyDamWater = false, beaconAccess = lighthouseAccess, avoidVillagePaving = true): GigSetup {
     if (offer.poiId !== GIG_INFO[offer.gigId]?.poiId ||
       offer.variantSeed !== this.makeOffer(offer.gigId, offer.difficulty, offer.cycle,
         Number(offer.id.split(':')[2])).variantSeed) throw new RangeError('Offer does not match catalog');
@@ -565,7 +579,7 @@ export class GigCatalog {
         const cols = 4 + tier, rows = 3 + (tier === 2 ? 1 : 0);
         const patches = legacyLayout
           ? this.mowGrid(plus(poi.center, 13 + rng.int(3), .2, 8 + rng.int(3)), cols, rows)
-          : this.mowPatches(poi, cols, rows, rng);
+          : this.mowPatches(poi, cols, rows, rng, avoidVillagePaving);
         config = { kind: 'mow-down', patches, biteRadius: 2.4 };
         start = copy(patches[0]!);
         markers = patches.map((p, i) => marker('grass-' + i, 'Munch ' + (i + 1), p, 1, 'patch'));
