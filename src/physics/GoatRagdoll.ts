@@ -1,7 +1,7 @@
 import RAPIER, { type ImpulseJoint, type RevoluteImpulseJoint, type RigidBody, type ColliderDesc } from '@dimforge/rapier3d-compat';
 import { collisionGroups } from './CollisionGroups';
 import { PhysicsEventBus, type PhysicsContact } from './events';
-import { add, clamp, cross, dot, mul, rotate, V, yawQuaternion, type Vec3 } from './math';
+import { add, clamp, cross, dot, mul, rotate, sub, V, yawQuaternion, type Vec3 } from './math';
 import type { PhysicsWorld } from './PhysicsWorld';
 import { BalanceController, LocomotionController } from './Controllers';
 import { GoatInteractions } from './Interactions';
@@ -209,7 +209,7 @@ export class GoatRagdoll {
     this.balance.handleImpact(contact.impulse, other);
   }
 
-  /** Live size progression: rebuild joints/colliders, preserving heading and velocity. */
+  /** Live size progression: rebuild joints/colliders without interrupting traversal. */
   resize(size: GoatSize, keepDynamicTether = false): void {
     if (!GOAT_SIZES.includes(size)) throw new RangeError('Unsupported goat size');
     if (size === this.size) return;
@@ -217,6 +217,18 @@ export class GoatRagdoll {
     const position = torso.translation();
     const velocity = { ...torso.linvel() };
     const rotation = torso.rotation();
+    const oldSize = this.size;
+    const preservePose = !this.locomotion.grounded || this.isRagdoll || this.locomotion.isClinging;
+    const previous = preservePose ? [...this.parts].map(([name, body]) => ({
+      name, position: { ...body.translation() }, rotation: { ...body.rotation() },
+      linear: { ...body.linvel() }, angular: { ...body.angvel() },
+    })) : [];
+    let nextPosition = { ...position };
+    const wall = this.locomotion.isClinging ? this.locomotion.climbSurface : null;
+    if (wall) {
+      const clearance = Math.max(0, dot(sub(position, wall.point), wall.normal));
+      nextPosition = add(position, mul(wall.normal, clearance * (size / oldSize - 1)));
+    }
     const yaw = Math.atan2(2*(rotation.w*rotation.y+rotation.x*rotation.z),
       1-2*(rotation.y*rotation.y+rotation.z*rotation.z));
     const groundOrigin = add(position,V(0,-.92*this.size,0));
@@ -224,7 +236,19 @@ export class GoatRagdoll {
       this.clearBodies();
       this.size = size;
       this.createBodies(groundOrigin,yaw);
-      for (const body of this.bodies) body.setLinvel(velocity,true);
+      if (preservePose) {
+        const ratio = size / oldSize;
+        for (const old of previous) {
+          const body = this.getPart(old.name);
+          body.setTranslation(add(nextPosition, mul(sub(old.position, position), ratio)), true);
+          body.setRotation(old.rotation, true);
+          body.setLinvel(add(velocity, mul(sub(old.linear, velocity), ratio)), true);
+          body.setAngvel(old.angular, true);
+          this.world.resetInterpolation(body);
+        }
+      } else {
+        for (const body of this.bodies) body.setLinvel(velocity,true);
+      }
     };
     if (keepDynamicTether) this.interactions.rebuildHeadWithDynamicTether(rebuild);
     else {
