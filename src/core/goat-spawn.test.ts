@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { forward, RAPIER, V } from '../physics';
+import { dot, forward, RAPIER, rotate, V } from '../physics';
 import { heightAt } from '../world';
 import { Game } from './Game';
 import { GameCharacters } from './GameCharacters';
@@ -16,6 +16,22 @@ const torsoUp = (game: Game): number => {
 };
 
 describe('Player spawn pose and approved goat silhouette', () => {
+  it('aligns player and bot steering with their physical facing in every party mode', async () => {
+    const game = await create();
+    try {
+      for (const mode of ['rising-tide', 'king-of-the-peak', 'hay-heist'] as const) {
+        game.party.start(mode, 4, 'normal');
+        const goats = [game.goat, ...[...game.party.bots.values()].map(bot => bot.goat)];
+        for (const goat of goats) {
+          const bodyFacing = rotate(goat.torso.rotation(), V(0, 0, -1));
+          expect(dot(bodyFacing, forward(goat.locomotion.heading)), `${mode} ${goat.id}`)
+            .toBeCloseTo(1, 5);
+        }
+        game.party.returnToFreeRoam();
+      }
+    } finally { game.dispose(); }
+  });
+
   it('starts the actual KID ragdoll at ground height, stands after settling, and resets on rescue', async () => {
     const game = await create();
     try {
@@ -107,9 +123,8 @@ describe('Player spawn pose and approved goat silhouette', () => {
       camera.updateMatrixWorld(true);
       root.updateWorldMatrix(true, true);
 
-      // Camera must face the actual rigid body's -Z axis, not the locomotion
-      // heading (the physics lane currently gives these opposite yaw signs).
-      const facing = forward(-game.island.spawns[0]!.heading);
+      // The constructor converts the physical spawn yaw to the steering heading.
+      const facing = forward(game.goat.locomotion.heading);
       const toCamera = camera.position.clone().sub(target).setY(0).normalize();
       expect(toCamera.dot(new THREE.Vector3(facing.x, 0, facing.z))).toBeGreaterThan(.65);
 

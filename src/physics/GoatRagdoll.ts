@@ -13,6 +13,7 @@ export type GoatPose = 'stand' | 'walk' | 'gallop' | 'jumpTuck' | 'climb' | 'flo
 export interface GoatOptions {
   /** Ground-level spawn position, not the torso's center. */
   position?: Vec3;
+  /** Physical rotation about +Y; steering heading uses the opposite sign. */
   yaw?: number;
   size?: GoatSize;
   id?: string;
@@ -63,7 +64,8 @@ export class GoatRagdoll {
     this.createBodies(options.position ?? V(), options.yaw ?? 0);
     this.balance = new BalanceController(this);
     this.locomotion = new LocomotionController(this);
-    this.locomotion.heading = options.yaw ?? 0;
+    // yawQuaternion rotates local -Z toward -X; forward(heading) uses +X.
+    this.locomotion.heading = -(options.yaw ?? 0);
     this.interactions = new GoatInteractions(this);
     this.detachBefore = this.world.onBeforeStep(dt => {
       this.locomotion.update(dt);
