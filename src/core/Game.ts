@@ -254,12 +254,6 @@ export class Game {
       yaw: spawn.heading, size: TUNING.size[this.rules.style.tier].scale,
       id: 'player',
     });
-    // GoatRagdoll's yawQuaternion rotates local -Z opposite to the
-    // physics lane's forward(yaw) steering vector. The world spawn heading
-    // was therefore forcing the balance controller to torque a correctly
-    // assembled, stationary goat against its actual facing on every tick.
-    // Match its physical facing without changing any physics-lane code.
-    this.goat.locomotion.heading = -spawn.heading;
     // Registered after GoatRagdoll's motor hook so standing-only head
     // corrections reach Rapier before the same physical tick is solved.
     this.off.push(physics.onBeforeStep(dt => this.holdStandingHead(dt)));
