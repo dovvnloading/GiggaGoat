@@ -462,10 +462,7 @@ export class LocomotionController {
     const g = this.goat, torso = g.torso, s = g.size;
     const position = torso.translation();
     const rideHeight = g.balance.tuning.rideHeight * s;
-    // A loaded suspension oscillates around ride height when pushing into a
-    // wall. Give an existing contact a small release margin so each bob does
-    // not replay the airborne and landing poses. Takeoff still owns its lock.
-    const groundedDistance = rideHeight + (this.grounded ? .20 : .16) * s;
+    const groundedDistance = rideHeight + .16 * s;
     const minGroundY = this.minWalkingNormalY;
     let movement = add(mul(forward(this.input.cameraYaw),this.input.z),
       mul(right(this.input.cameraYaw),this.input.x));
