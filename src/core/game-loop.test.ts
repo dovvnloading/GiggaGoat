@@ -123,6 +123,22 @@ describe('Core game loop — production adapters on real Rapier ticks', () => {
     } finally { game.dispose(); }
   });
 
+  it('keeps the party countdown on time while dropping excess physics work', async () => {
+    const game = await create();
+    try {
+      const match = game.party.start('rising-tide', 3, 'normal');
+      const budget = game.physics.maxSubsteps;
+      expect(game.advance(1.005).steps).toBe(budget);
+      expect(match.toJSON()).toMatchObject({ phase: 'countdown', phaseTicks: 60 });
+      expect(game.advance(.995).steps).toBe(budget);
+      expect(match.toJSON()).toMatchObject({ phase: 'countdown', phaseTicks: 120 });
+      expect(game.advance(1.2).steps).toBe(budget);
+      expect(match.toJSON()).toMatchObject({ phase: 'playing', playTicks: 0 });
+      expect(game.advance(1).steps).toBe(budget);
+      expect(match.toJSON().playTicks).toBe(budget);
+    } finally { game.dispose(); }
+  });
+
   it('supports seven bots without proxy bodies and disposes all 49 extra rigid bodies', async () => {
     const game = await create();
     try {
