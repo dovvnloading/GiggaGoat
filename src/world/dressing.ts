@@ -355,8 +355,10 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     { color: 0x8c6648 });
   // The 24 m authored lookout GLB already has four supporting legs, X braces
   // and a ladder under its 17.5 m deck. Do not overlap them with deck-stilts.
-  at(forest, 'platform', lookoutDx, -19, 11, 1.1, 11,
-    { lift: 16.4, color: 0xad835d });
+  // This is a collision-only floor under the tower's own visible deck.
+  // Match its footprint and leave room below for the ladder approach.
+  at(forest, 'platform', lookoutDx, -19, 9, .25, 9,
+    { lift: 17.25, color: 0xad835d });
 
   // Local +Z is perpendicular to the flow and spans the two banks.
   const upstream = island.river[Math.max(0, crossingIndex - 1)]!;
