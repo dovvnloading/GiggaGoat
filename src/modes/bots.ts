@@ -97,6 +97,17 @@ export class BotBrain {
         const nearby = rivals.filter(rival => rival.position.y >= center.y - 6 &&
           distanceSquared(self.position, rival.position) < 3.2 ** 2);
         const behind = nearby.some(rival => distanceSquared(rival.position, center) < distance);
+        const contestedBy = nearby.find(rival => Math.abs(Math.sqrt(distanceSquared(rival.position, center)) -
+          Math.sqrt(distance)) < view.config.peakLeadDistance!);
+        if (contestedBy && distance < (2 * view.config.peakLeadDistance) ** 2) {
+          // A rival at the exact center can otherwise leave both goats idle
+          // forever. Turn and contest it instead of waiting on the capture point.
+          state.goal = 'shove';
+          state.targetId = contestedBy.id;
+          state.target = { x: contestedBy.position.x, z: contestedBy.position.z };
+          state.nextPlanTick = view.tick + SKILL[state.difficulty].reaction;
+          return;
+        }
         if (!returning && nearby.length >= 2 && behind && distance < (.65 * view.config.peakRadius) ** 2) {
           // When a crowd is already between us and the center, make room for
           // a fresh approach instead of continuing to push the same pile.
