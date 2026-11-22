@@ -144,7 +144,7 @@ export class BalanceController {
     // A loaded tongue needs room to pull the head and torso through a ramp.
     const tethered = g.interactions.isTongueAttached;
     const tiltGain = supported ? (tethered ? 2.5 : 6) : 1;
-    const turnGain = supported ? (tethered ? 2 : 5) : 1;
+    const turnGain = supported ? (tethered ? 2 : 5 * Math.max(1, Math.sqrt(g.movementSpeedScale))) : 1;
     const pitchRoll = V(
       tilt.x * this.tuning.uprightStiffness * tiltGain - omega.x * this.tuning.uprightDamping * Math.sqrt(tiltGain),
       0,
@@ -174,8 +174,8 @@ export class BalanceController {
     // Follow a walkable grade through a short loss of contact as the slope rolls away.
     // Require recent support within reach so a jump or ledge fall keeps its momentum.
     const downhillTerrain = (layers & CollisionLayer.terrain) !== 0 &&
-      normal.y < .995 && slopeSpeed < -.2 && velocity.y >= -3 &&
-      g.locomotion.groundSupportAge <= .18 && height <= (this.tuning.rideHeight + .26) * g.size;
+      normal.y < .995 && slopeSpeed < -.2 && velocity.y >= Math.min(-3, slopeSpeed - 1.5) &&
+      g.locomotion.groundSupportAge <= .18 && height <= (this.tuning.rideHeight + .4) * g.size;
     const downhillSpeed = fixed && (deck || downhillTerrain) ? slopeSpeed : 0;
     const yError = this.tuning.rideHeight*g.size - height + downhillSpeed * dt;
     const relativeSpeed = velocity.y - downhillSpeed;
@@ -522,6 +522,15 @@ export class LocomotionController {
     this.grounded = false;
     if (walkable && ground && this.clock >= this.jumpLockUntil && verticalSpeed < takeoffSpeed) {
       this.grounded = ground.distance <= groundedDistance;
+      if (!this.grounded && !this.jumpConsumed && this.clock - this.lastGroundAt <= .22 &&
+          ground.normal.y < .995 && wishLength > .12) {
+        // At higher configured speeds, the ground falls away between fixed
+        // steps on a downhill grade. Keep recent support within one short
+        // stride, without treating flat ledges or jumps as planted.
+        const slopeSpeed = -(ground.normal.x * torso.linvel().x + ground.normal.z * torso.linvel().z) / ground.normal.y;
+        const extra = Math.min(.2 * s, Math.max(0, -slopeSpeed) * dt * 3);
+        this.grounded = slopeSpeed < -.2 && ground.distance <= groundedDistance + extra;
+      }
       if (!this.grounded && wishLength < .08 && Math.abs(verticalSpeed) < .35 &&
           ground.distance <= groundedDistance + .09 * s) {
         // A hoof can still rest on a raised street edge beside the torso ray.
