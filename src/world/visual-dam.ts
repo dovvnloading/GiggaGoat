@@ -13,6 +13,7 @@ import { damChannelAt } from './dam-landscape';
 import { buildDamBypassPaint } from './visual-dam-bypass';
 
 export interface DamVisuals {
+  updateCulling(position: THREE.Vector3): void;
   group: THREE.Group;
   update(seconds: number): void;
   setWaterLevel(tide: number): void;
@@ -368,11 +369,11 @@ export function buildDamVisuals(island: IslandData,
   const landscape = buildDamLandscape(island, () => {}, light);
   group.add(landscape.group);
 
-  let waterMeshes: Array<{ mesh: THREE.Mesh; highest: number }> = [];
-  let emissive = new Map<THREE.MeshStandardMaterial, number>();
+  let detailed: THREE.Group | undefined;
+  let distant = false;
+  const waterMeshes: Array<{ mesh: THREE.Mesh; highest: number }> = [];
+  const emissive = new Map<THREE.MeshStandardMaterial, number>();
   function trackWater(model: THREE.Group): void {
-    waterMeshes = [];
-    emissive = new Map();
     model.traverse(object => {
       if (!(object instanceof THREE.Mesh) || object.userData['damWater'] !== true) return;
       object.geometry.computeBoundingBox();
@@ -394,6 +395,15 @@ export function buildDamVisuals(island: IslandData,
   function refreshWaterLight(): void {
     for (const [material, intensity] of emissive) material.emissiveIntensity = intensity * light.x;
   }
+  function selectDamModel(): void {
+    if (!detailed) return;
+    const next = distant ? fallback : detailed;
+    if (next.parent === group) return;
+    group.remove(distant ? detailed : fallback);
+    group.add(next);
+    shadowChange = true;
+  }
+
   trackWater(fallback);
   setWaterLevel(tide);
 
@@ -417,13 +427,11 @@ export function buildDamVisuals(island: IslandData,
             throw new Error('Dam GLB contains no renderable meshes');
           }
           waterfallMaps = prepared.waterfallMaps;
-          group.add(prepared.group);
-          trackWater(prepared.group);
+          detailed = prepared.group;
+          trackWater(detailed);
+          selectDamModel();
           setWaterLevel(tide);
           refreshWaterLight();
-          group.remove(fallback);
-          disposeMeshes(fallback);
-          shadowChange = true;
         } catch (error) {
           fail(error);
         }
@@ -435,6 +443,11 @@ export function buildDamVisuals(island: IslandData,
 
   return {
     group,
+    updateCulling(position): void {
+      // Retain the simpler authored fallback when seen from across the island.
+      distant = group.position.distanceToSquared(position) > ((distant ? 165 : 185) * scale) ** 2;
+      selectDamModel();
+    },
     update(seconds: number): void {
       scrollDamWaterfallUVs(waterfallMaps, seconds);
       landscape.update(seconds);
@@ -449,6 +462,8 @@ export function buildDamVisuals(island: IslandData,
     dispose(): void {
       disposed = true;
       landscape.dispose();
+      if (fallback.parent !== group) disposeMeshes(fallback);
+      if (detailed && detailed.parent !== group) disposeMeshes(detailed);
       disposeMeshes(group);
       group.clear();
       group.removeFromParent();
