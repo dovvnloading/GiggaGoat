@@ -174,6 +174,7 @@ export class Game {
   private readonly pierDecks: readonly PropDescriptor[];
   readonly scenerySurfaces = new Map<number, ImpactAudioMaterial>();
   private readonly blockedClimbHandles = new Set<number>();
+  private readonly climbEffortScales = new Map<number, number>();
   private readonly safetyRailHandles = new Set<number>();
   private readonly boardwalkEnd: ReturnType<typeof boardwalkFarEnd>;
   private readonly craneCenter: Vec3;
@@ -208,9 +209,13 @@ export class Game {
       }
     }
     for (const descriptor of island.colliders) {
-      if (descriptor.shape === 'heightfield' || !descriptor.surface) continue;
+      if (descriptor.shape === 'heightfield') continue;
       const collider = colliders.props.get(descriptor.id);
-      if (collider) this.scenerySurfaces.set(collider.handle, descriptor.surface);
+      if (!collider) continue;
+      if (descriptor.surface) this.scenerySurfaces.set(collider.handle, descriptor.surface);
+      if (descriptor.climbEffortScale !== undefined) {
+        this.climbEffortScales.set(collider.handle, descriptor.climbEffortScale);
+      }
     }
     this.pierDecks = boardwalkPierDecks(island);
     this.boardwalkEnd = boardwalkFarEnd(island);
@@ -447,6 +452,7 @@ export class Game {
     const collider = this.colliders.props.get(id);
     if (collider) {
       this.blockedClimbHandles.delete(collider.handle);
+      this.climbEffortScales.delete(collider.handle);
       this.safetyRailHandles.delete(collider.handle);
     }
     this.colliders.bodies.delete(id);
@@ -863,7 +869,8 @@ export class Game {
       grounded: goat.locomotion.grounded && climbContact === null,
       canCoyoteJump: goat.locomotion.canCoyoteJump,
       airborneTime: goat.locomotion.airborneSeconds,
-      climbEffort: Math.hypot(mx, mz),
+      climbEffort: Math.hypot(mx, mz) * (climbContact
+        ? this.climbEffortScales.get(climbContact.collider.handle) ?? 1 : 1),
       touchingSteepWall: climbContact !== null,
       speed: Math.hypot(velocity.x, velocity.z),
       size: sim.style.tier,
