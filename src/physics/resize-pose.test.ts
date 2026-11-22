@@ -12,6 +12,7 @@ describe('goat resize during traversal', () => {
     const goat = new GoatRagdoll(world, { size: .6, position: V(0, 0, 0) });
     try {
       goat.resize(1);
+      expect(goat.torso.translation().y).toBeCloseTo(.92, 4);
       for (let tick = 0; tick < 120; tick++) world.step(1 / 60);
       expect(goat.locomotion.grounded).toBe(true);
       expect(goat.isRagdoll).toBe(false);

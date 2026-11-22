@@ -54,6 +54,7 @@ export class GoatRagdoll {
   private detachAfter: () => void;
   private detachContact: () => void;
   private plantedAtWalkingSpeed = false;
+  private hasStepped = false;
   private destroyed = false;
 
   constructor(world: PhysicsWorld, options: GoatOptions = {}) {
@@ -68,6 +69,7 @@ export class GoatRagdoll {
     this.locomotion.heading = -(options.yaw ?? 0);
     this.interactions = new GoatInteractions(this);
     this.detachBefore = this.world.onBeforeStep(dt => {
+      this.hasStepped = true;
       this.locomotion.update(dt);
       this.balance.update(dt);
       this.interactions.update(dt);
@@ -218,7 +220,13 @@ export class GoatRagdoll {
     const velocity = { ...torso.linvel() };
     const rotation = torso.rotation();
     const oldSize = this.size;
-    const preservePose = !this.locomotion.grounded || this.isRagdoll || this.locomotion.isClinging;
+    // A newly spawned standing goat has not had a ground query yet. Rebuild
+    // it around its feet as before, unless it already has active motion.
+    const angular = torso.angvel();
+    const initialStand = !this.hasStepped && this.pose === 'stand' &&
+      Math.hypot(velocity.x, velocity.y, velocity.z, angular.x, angular.y, angular.z) < .001;
+    const preservePose = this.isRagdoll || this.locomotion.isClinging ||
+      (!this.locomotion.grounded && !initialStand);
     const previous = preservePose ? [...this.parts].map(([name, body]) => ({
       name, position: { ...body.translation() }, rotation: { ...body.rotation() },
       linear: { ...body.linvel() }, angular: { ...body.angvel() },
