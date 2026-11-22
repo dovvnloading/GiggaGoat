@@ -132,4 +132,31 @@ describe('respawn state reset', () => {
       expect(tricks).not.toContain('airtime');
     } finally { game.dispose(); }
   });
+
+  it('clears wall-support history when rescuing a climbing goat', async () => {
+    const game = await settledGame();
+    try {
+      const spawn = game.goat.torso.translation();
+      const floorY = spawn.y + 25;
+      game.physics.createGround(V(20, .5, 20), V(spawn.x, floorY - .5, spawn.z));
+      game.physics.createGround(V(5, 4, 1), V(spawn.x, floorY + 4, spawn.z - 5));
+      game.teleport(V(spawn.x, floorY, spawn.z), 0);
+      for (let tick = 0; tick < 50; tick++) game.step();
+      for (let tick = 0; tick < 150 && !game.goat.locomotion.isClinging; tick++) {
+        game.step({ moveZ: 1, cameraYaw: 0, climb: true });
+      }
+      expect(game.goat.locomotion.isClinging).toBe(true);
+      game.respawn();
+      let airborneStarts = 0;
+      game.goat.events.on(event => { if (event.type === 'airtimeStart') airborneStarts++; });
+      const { x, z } = game.goat.torso.translation();
+      game.teleport(V(x, heightAt(game.island, x, z) + 20, z));
+      game.step();
+      expect(airborneStarts).toBe(0);
+      game.respawn();
+      for (let tick = 0; tick < 30; tick++) game.step();
+      expect(game.goat.locomotion.grounded).toBe(true);
+      expect(airborneStarts).toBe(0);
+    } finally { game.dispose(); }
+  }, 30_000);
 });

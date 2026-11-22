@@ -776,6 +776,7 @@ export class LocomotionController {
     this.grounded = false;
     this.groundHit = null;
     this.lastGrounded = false;
+    this.lastClimbSupported = false;
     this.lastGroundAt = -Infinity;
     this.jumpBufferUntil = -Infinity;
     this.jumpLockUntil = 0;
