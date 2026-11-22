@@ -280,6 +280,7 @@ export class LocomotionController {
   private climbStallSeconds = 0;
   private climbApproach = V();
   private lastGrounded = false;
+  private lastClimbSupported = false;
   constructor(private readonly goat: GoatRagdoll) {}
 
   setInput(partial: Partial<MovementInput>): void {
@@ -580,14 +581,22 @@ export class LocomotionController {
       // The support solver can already be lifting the torso at touchdown.
       this.approachSpeed = Math.max(0, -torso.linvel().y, this.approachSpeed * Math.exp(-dt * 9));
     }
-    if (this.grounded !== this.lastGrounded) {
-      this.lastGrounded = this.grounded;
-      if (this.grounded) {
+    // A wall grip and the controlled crest onto its roof are supported
+    // traversal, even though neither qualifies as grounded locomotion.
+    const climbSupported = clinging || this.crest !== null;
+    const wasSupported = this.lastGrounded || this.lastClimbSupported;
+    const supported = this.grounded || climbSupported;
+    this.lastGrounded = this.grounded;
+    this.lastClimbSupported = climbSupported;
+    if (supported !== wasSupported) {
+      if (supported) {
         const duration = this.flightStarted === null ? 0 : this.clock - this.flightStarted;
         if (this.flightStarted !== null) {
           g.events.emit({type:'airtimeEnd',goatId:g.id,time:g.world.time,duration});
-          g.events.emit({type:'landed',goatId:g.id,time:g.world.time,airtime:duration,
-            verticalSpeed:Math.abs(torso.linvel().y), approachSpeed:this.approachSpeed});
+          if (this.grounded) {
+            g.events.emit({type:'landed',goatId:g.id,time:g.world.time,airtime:duration,
+              verticalSpeed:Math.abs(torso.linvel().y), approachSpeed:this.approachSpeed});
+          }
         }
         this.flightStarted = null;
         this.airborneSeconds = 0;
@@ -615,6 +624,7 @@ export class LocomotionController {
       this.grounded = false;
       this.jumpConsumed = true;
       this.lastGrounded = false;
+      this.lastClimbSupported = false;
       const startedFromGround = this.flightStarted === null;
       this.flightStarted = this.clock;
       this.approachSpeed = 0;
