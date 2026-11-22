@@ -119,6 +119,15 @@ export class PhysicsWorld {
       rotation: slerp(snapshots.previous.rotation, snapshots.current.rotation, t),
     };
   }
+
+  /** Snap a registered body's visual history after an intentional warp. */
+  resetInterpolation(body: RigidBody): void {
+    const snapshots = this.transforms.get(body.handle);
+    if (!snapshots) return;
+    const transform = copyTransform(body);
+    snapshots.previous = transform;
+    snapshots.current = transform;
+  }
   get alpha(): number { return clamp(this.accumulator / this.fixedDt, 0, 1); }
 
   /** Drop excess wall-clock time instead of a spiral of death. Call with seconds. */
