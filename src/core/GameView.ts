@@ -932,7 +932,7 @@ export class GameView {
       if (!this.paused) {
         this.audio?.onInput(intent);
         const start = performance.now();
-        const result = this.game.advance(dt, intent);
+        const result = this.game.advance(elapsed, intent);
         alpha = result.alpha;
         this.simMs += (performance.now() - start - this.simMs) * lerpAlpha(5, dt);
       }
