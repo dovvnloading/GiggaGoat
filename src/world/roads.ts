@@ -301,7 +301,7 @@ export function makeRoads(island: IslandData, rng: SeededRandom): RoadDescriptor
  * Visual/physical through-streets within city plots, separate from the POI
  * connectivity graph. Rendering uses these same graded centreline segments.
  */
-export function makeLocalStreets(island: IslandData): RoadDescriptor[] {
+export function makeLocalStreets(island: Pick<IslandData, 'size' | 'pois' | 'heights' | 'resolution'>): RoadDescriptor[] {
   const scale = island.size / 600;
   return (['hoofington', 'downtown-bleatsville'] as const).map(id => {
     const centre = island.pois.find(p => p.id === id)!.center;

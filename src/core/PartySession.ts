@@ -32,6 +32,7 @@ export class PartySession {
   private readonly onContactOff: () => void;
   private returnPosition: Vec3 | null = null;
   private finished = false;
+  private countdownRemainder = 0;
 
   constructor(game: Game) {
     this.game = game;
@@ -106,6 +107,7 @@ export class PartySession {
     this.latestEvents = [];
     this.contacts.length = 0;
     this.finished = false;
+    this.countdownRemainder = 0;
     return match;
   }
 
@@ -158,6 +160,19 @@ export class PartySession {
     this.contacts.length = 0;
     this.headbutts.length = 0;
     if (match.toJSON().phase === 'results') this.finished = true;
+  }
+
+  /** The pre-round clock can use time discarded by the physics substep cap. */
+  advanceDroppedCountdown(seconds: number): void {
+    const match = this.match;
+    if (match?.phase !== 'countdown' || seconds <= 0) return;
+    const tick = this.game.physics.fixedDt;
+    const elapsed = seconds + this.countdownRemainder;
+    const wholeTicks = Math.floor((elapsed + 1e-10) / tick);
+    this.countdownRemainder = Math.max(0, elapsed - wholeTicks * tick);
+    for (let i = 0; i < wholeTicks && match.phase === 'countdown'; i++) {
+      this.latestEvents.push(...match.step());
+    }
   }
 
   noteHeadbutt(attackerId: string, facing: Point): void {
