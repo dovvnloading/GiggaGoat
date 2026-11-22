@@ -722,8 +722,9 @@ export class LocomotionController {
       this.clock - this.lastGroundAt <= .22 && Math.abs(v.y) < 1.6;
     // A jump is deliberate immediately; walking off a ledge becomes free
     // flight after the short ground-following interval and a clear ground ray.
+    // A freshly spawned goat has no takeoff momentum to preserve yet.
     const momentumAir = !this.grounded && !this.input.inWater &&
-      (this.jumpConsumed || (!ground && this.clock - this.lastGroundAt > .25));
+      (this.jumpConsumed || (!ground && Number.isFinite(this.lastGroundAt) && this.clock - this.lastGroundAt > .25));
     const target = V(surfaceWish.x*targetSpeed,0,surfaceWish.z*targetSpeed);
     let deltaV = this.grounded
       ? clampLength(sub(target,velocity),this.tuning.groundAcceleration*dt)
