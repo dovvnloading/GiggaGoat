@@ -32,6 +32,14 @@ describe('GoatAbilities', () => {
     expect(goat.stamina).toBeLessThan(TUNING.stamina.minStart);
     expect(goat.update(STEP, { climb: true }, wall).setClimb).toBe(false);
   });
+  it('prioritizes wall kicks and coyote jumps, then buffers instead of flipping near landing', () => {
+    const near = { ...wall, landingSoon: true };
+    const abilities = () => new GoatAbilities(new EventBus());
+    expect(abilities().update(STEP, { jump: true, climb: true }, near).jump?.kind).toBe('wall-kick');
+    expect(abilities().update(STEP, { jump: true }, { ...near, canCoyoteJump: true }).jump?.kind).toBe('jump');
+    expect(abilities().update(STEP, { jump: true, glide: true }, near,
+      { glideUnlocked: true }).jump?.kind).toBe('buffered-jump');
+  });
   it('headbutt charge thresholds produce tap, ram and meteor with size scaling', () => {
     const impulse = (durationTicks: number, size: GoatPhysicsFacts['size']) => {
       const goat = new GoatAbilities(new EventBus()); const f = { ...ground, size };

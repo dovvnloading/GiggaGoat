@@ -15,6 +15,8 @@ export interface GoatPhysicsFacts {
   grounded: boolean; airborneTime: number; touchingSteepWall: boolean;
   /** The physics controller can still consume the ordinary jump after losing support. */
   canCoyoteJump?: boolean;
+  /** There is not enough time before landing for a safe air flip. */
+  landingSoon?: boolean;
   speed: number; size: SizeTier; tongueTarget?: string | null;
   impact?: number; climbDistance?: number; climbEffort?: number;
 }
@@ -40,7 +42,7 @@ export interface AbilityCommands {
   tongue?: TongueCommand;
   bleat?: { radius: number; impulse: number };
   ragdoll?: { cause: 'flop'; minSeconds: number };
-  jump?: { kind: 'jump' | 'flip' | 'wall-kick' };
+  jump?: { kind: 'jump' | 'buffered-jump' | 'flip' | 'wall-kick' };
 }
 
 export interface AbilitiesSnapshot {
@@ -68,6 +70,7 @@ function checkFacts(facts: GoatPhysicsFacts): void {
     throw new TypeError('grounded and touchingSteepWall must be booleans');
   }
   if (facts.canCoyoteJump !== undefined) requireBoolean(facts.canCoyoteJump, 'canCoyoteJump');
+  if (facts.landingSoon !== undefined) requireBoolean(facts.landingSoon, 'landingSoon');
   nonNegative(facts.speed, 'speed'); nonNegative(facts.airborneTime, 'airborneTime');
   if (!(facts.size in TUNING.size)) throw new RangeError('invalid size tier');
   if (facts.impact !== undefined) nonNegative(facts.impact, 'impact');
@@ -183,7 +186,7 @@ export class GoatAbilities {
 
     if (climbing || !options.glideUnlocked) delete s.airPressAt;
     if (rising.jump && intent.glide && options.glideUnlocked && !climbing &&
-        !facts.grounded && !facts.canCoyoteJump && !s.flippedThisAir) s.airPressAt = s.clock;
+        !facts.grounded && !facts.canCoyoteJump && !facts.landingSoon && !s.flippedThisAir) s.airPressAt = s.clock;
     // A second tap flips on release. Holding the same button opens the sail.
     const tap = s.airPressAt !== undefined && !pressed.jump && s.clock - s.airPressAt < c.glide.holdSeconds;
     if (s.airPressAt !== undefined && (!pressed.jump || s.clock - s.airPressAt >= c.glide.holdSeconds)) {
@@ -196,6 +199,9 @@ export class GoatAbilities {
         this.bus.emit('ability:used', { name: 'wall-kick' });
       } else if (facts.grounded || facts.canCoyoteJump) {
         commands.jump = { kind: 'jump' };
+      } else if (facts.landingSoon) {
+        delete s.airPressAt;
+        commands.jump = { kind: 'buffered-jump' };
       } else if (facts.airborneTime >= 0.12 && !s.flippedThisAir && s.airPressAt === undefined) {
         s.flippedThisAir = true;
         commands.jump = { kind: 'flip' };
