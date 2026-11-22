@@ -121,7 +121,12 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
     view.group.traverse(object => {
       if (object instanceof THREE.Mesh) meshes.push(object);
     });
-    const shadowPass = meshes.filter(mesh => mesh.castShadow).length;
+    let activeMeshes = 0, shadowPass = 0;
+    view.group.traverseVisible(object => {
+      if (!(object instanceof THREE.Mesh) || (object instanceof THREE.InstancedMesh && !object.count)) return;
+      activeMeshes++;
+      if (object.castShadow) shadowPass++;
+    });
     const outlines = meshes.filter(mesh => mesh.name.startsWith('outline-')).length;
     // This detects the previous ~600-call pattern even without a GPU.
     // These features each contribute a single non-shadow draw.
@@ -132,7 +137,7 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
       expect(feature, name).toHaveLength(1);
       expect(feature[0]!.castShadow, name).toBe(false);
     }
-    expect(meshes.length + shadowPass - featureNames.length)
+    expect(activeMeshes + shadowPass - featureNames.length)
       .toBeLessThan(180 + AUTHORED_HERO_DRESSING_KINDS.size - 1);
     expect(shadowPass).toBeLessThan(20);
     expect(outlines).toBeLessThanOrEqual(8);
