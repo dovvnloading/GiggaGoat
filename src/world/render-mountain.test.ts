@@ -9,8 +9,9 @@ import { Game } from '../core/Game';
 describe('Mt. Gigga grassy tiers and fragment stone (MG-7 / IS-15)', () => {
   it('keeps flat tiers and steep risers grassy in the vertex buffer', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
-    // Test the mountain palette independently of the unchanged trail paint.
+    // Test the mountain base palette independently of trails and district dressing.
     island.roads = [];
+    island.districtSets = [];
     const scene = createWorldScene(island, { chunkSegments: 32 });
     const scale = island.size / 600;
     const cell = island.size / (island.resolution - 1);

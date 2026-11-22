@@ -607,6 +607,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
       boardwalkRails.mesh.visible = railBounds.center.distanceTo(pos) <= cullingDistance + railBounds.radius &&
         frustum.intersectsSphere(railBounds);
     }
+    dam.updateCulling(pos);
+    lighthouse.updateCulling(pos);
     if (kitSets.update(pos)) shadowCastersChanged = true;
     if (props.updateCulling(pos, frustum, cullingDistance,
       mesh => hoofington.isFallbackHidden(mesh) || downtown.isFallbackHidden(mesh) ||
