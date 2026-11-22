@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -84,70 +84,67 @@ describe('Baa-ardwalk approved painting / shore-to-pier regression', () => {
     } finally { visuals.dispose(); world.free(); }
   });
 
-  it('joins sandy land to the sea with overlapping, walkable wooden platforms', () => {
-    for (const seed of ['billy-isle', 'shore-check', 'other-coast']) {
-      for (const size of [400, 600, 850]) {
-        const island = generateIsland({ seed, size, resolution: 97 });
-        const scale = size / 600;
-        const props = island.props.filter(p => p.poiId === 'baa-ardwalk');
-        const pier = props.find(p => p.kind === 'pier')!;
-        const head = props.filter(p => p.kind === 'pier')[1]!;
-        expect(pier, seed).toBeDefined();
-        expect(head, seed).toBeDefined();
-        expect(pier.collidable && pier.climbable).toBe(true);
-        expect(head.collidable && head.climbable).toBe(true);
-        const nearShore = pier.transform.position.z - pier.size.z / 2;
-        const pierEnd = pier.transform.position.z + pier.size.z / 2;
-        const headStart = head.transform.position.z - head.size.z / 2;
-        const farSea = head.transform.position.z + head.size.z / 2;
-        const dryHeight = heightAt(island, pier.transform.position.x, nearShore);
-        expect(topOf(pier) - dryHeight, seed).toBeGreaterThan(0);
-        expect(nearShore, seed).toBeGreaterThanOrEqual(
-          island.pois.find(p => p.id === 'baa-ardwalk')!.center.z - 38 * scale - 0.001);
-        // The sand-to-water crossing is only six metres beyond the first plank.
-        const waterlineHeight = gridSample(island, pier.transform.position.x,
-          nearShore + 6 * scale);
-        if (nearShore > island.pois.find(p => p.id === 'baa-ardwalk')!.center.z -
-            38 * scale + 0.01)
-          expect(waterlineHeight, seed).toBeLessThan(island.seaLevel + 0.3 * scale);
-        expect(heightAt(island, head.transform.position.x, farSea), seed)
-          .toBeLessThan(0);
-        expect(headStart, seed).toBeLessThan(pierEnd);
-        expect(headStart, seed).toBeGreaterThan(nearShore);
-        expect(Math.abs(topOf(head) - topOf(pier)), seed).toBeLessThan(0.08 * scale);
-        expect(farSea - nearShore, seed).toBeGreaterThan(100 * scale);
-        expect(props.filter(p => p.kind === 'pier')).toHaveLength(2);
-        expect(props.filter(p => p.kind === 'deck')).toHaveLength(0);
-        const colliders = new Set(island.colliders
-          .filter(c => c.shape !== 'heightfield').map(c => c.id));
-        expect(colliders.has(pier.id)).toBe(true);
-        expect(colliders.has(head.id)).toBe(true);
-      }
-    }
-  });
+  const shoreVariants = ['billy-isle', 'shore-check', 'other-coast'].flatMap(seed =>
+    [400, 600, 850].map(size => ({ seed, size })));
+  describe.each(shoreVariants)('Boardwalk shore at $size m ($seed)', ({ seed, size }) => {
+    let island: ReturnType<typeof generateIsland>;
+    beforeAll(() => { island = generateIsland({ seed, size, resolution: 97 }); });
 
-  it('keeps procedural scenery vegetation outside both pier/deck footprints', () => {
-    const vegetationKinds = new Set(['tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft']);
-    for (const seed of ['billy-isle', 'shore-check', 'other-coast']) {
-      for (const size of [400, 600, 850]) {
-        const island = generateIsland({ seed, size, resolution: 97 });
-        const decks = island.props.filter(p => p.poiId === 'baa-ardwalk' &&
-          (p.kind === 'pier' || p.kind === 'deck'));
-        expect(decks).toHaveLength(2);
-        const plants = island.props.filter(p => p.id.startsWith('detail-') &&
-          vegetationKinds.has(p.kind));
-        expect(plants.length).toBeGreaterThan(100);
-        for (const plant of plants) for (const deck of decks) {
-          const dx = plant.transform.position.x - deck.transform.position.x;
-          const dz = plant.transform.position.z - deck.transform.position.z;
-          const yaw = deck.transform.rotationY;
-          const c = Math.cos(yaw), s = Math.sin(yaw);
-          const inside = Math.abs(dx * c - dz * s) <= deck.size.x / 2 &&
-            Math.abs(dx * s + dz * c) <= deck.size.z / 2;
-          expect(inside, `${seed}, size ${size}: ${plant.id} on ${deck.kind}`).toBe(false);
-        }
+    it('joins sandy land to the sea with overlapping, walkable wooden platforms', () => {
+      const scale = size / 600;
+      const props = island.props.filter(p => p.poiId === 'baa-ardwalk');
+      const pier = props.find(p => p.kind === 'pier')!;
+      const head = props.filter(p => p.kind === 'pier')[1]!;
+      expect(pier, seed).toBeDefined();
+      expect(head, seed).toBeDefined();
+      expect(pier.collidable && pier.climbable).toBe(true);
+      expect(head.collidable && head.climbable).toBe(true);
+      const nearShore = pier.transform.position.z - pier.size.z / 2;
+      const pierEnd = pier.transform.position.z + pier.size.z / 2;
+      const headStart = head.transform.position.z - head.size.z / 2;
+      const farSea = head.transform.position.z + head.size.z / 2;
+      const dryHeight = heightAt(island, pier.transform.position.x, nearShore);
+      expect(topOf(pier) - dryHeight, seed).toBeGreaterThan(0);
+      expect(nearShore, seed).toBeGreaterThanOrEqual(
+        island.pois.find(p => p.id === 'baa-ardwalk')!.center.z - 38 * scale - 0.001);
+      // The sand-to-water crossing is only six metres beyond the first plank.
+      const waterlineHeight = gridSample(island, pier.transform.position.x,
+        nearShore + 6 * scale);
+      if (nearShore > island.pois.find(p => p.id === 'baa-ardwalk')!.center.z -
+          38 * scale + 0.01)
+        expect(waterlineHeight, seed).toBeLessThan(island.seaLevel + 0.3 * scale);
+      expect(heightAt(island, head.transform.position.x, farSea), seed)
+        .toBeLessThan(0);
+      expect(headStart, seed).toBeLessThan(pierEnd);
+      expect(headStart, seed).toBeGreaterThan(nearShore);
+      expect(Math.abs(topOf(head) - topOf(pier)), seed).toBeLessThan(0.08 * scale);
+      expect(farSea - nearShore, seed).toBeGreaterThan(100 * scale);
+      expect(props.filter(p => p.kind === 'pier')).toHaveLength(2);
+      expect(props.filter(p => p.kind === 'deck')).toHaveLength(0);
+      const colliders = new Set(island.colliders
+        .filter(c => c.shape !== 'heightfield').map(c => c.id));
+      expect(colliders.has(pier.id)).toBe(true);
+      expect(colliders.has(head.id)).toBe(true);
+    });
+
+    it('keeps procedural scenery vegetation outside both pier/deck footprints', () => {
+      const vegetationKinds = new Set(['tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft']);
+      const decks = island.props.filter(p => p.poiId === 'baa-ardwalk' &&
+        (p.kind === 'pier' || p.kind === 'deck'));
+      expect(decks).toHaveLength(2);
+      const plants = island.props.filter(p => p.id.startsWith('detail-') &&
+        vegetationKinds.has(p.kind));
+      expect(plants.length).toBeGreaterThan(100);
+      for (const plant of plants) for (const deck of decks) {
+        const dx = plant.transform.position.x - deck.transform.position.x;
+        const dz = plant.transform.position.z - deck.transform.position.z;
+        const yaw = deck.transform.rotationY;
+        const c = Math.cos(yaw), s = Math.sin(yaw);
+        const inside = Math.abs(dx * c - dz * s) <= deck.size.x / 2 &&
+          Math.abs(dx * s + dz * c) <= deck.size.z / 2;
+        expect(inside, `${seed}, size ${size}: ${plant.id} on ${deck.kind}`).toBe(false);
       }
-    }
+    });
   });
 
   it('supports every themed kiosk and the complete ferris wheel on deck', () => {

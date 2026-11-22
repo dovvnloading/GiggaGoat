@@ -237,7 +237,10 @@ export class SkinnedLegPose {
     this.landingTime += dt;
     const t = Math.min(1, this.landingTime / .24);
     const compress = this.landing * Math.sin(Math.PI * t) * (1 - t);
-    if (!flight && (!floor || floor.normal.y < .65 || (!stride && compress < .001))) {
+    // The torso's ground plane can cross a terrain seam during idle recovery.
+    // Probe the real support under each hoof on banks and slopes.
+    const seatedOnSlope = loco.grounded && goat.pose === 'stand' && !!floor && floor.normal.y < .98;
+    if (!flight && (!floor || floor.normal.y < .65 || (!stride && !seatedOnSlope && compress < .001))) {
       this.groundedGait = false;
       return;
     }
@@ -311,7 +314,9 @@ export class SkinnedLegPose {
         this.target.y = p.y - ((this.target.x - p.x) * n.x + (this.target.z - p.z) * n.z) / n.y;
         const hit = this.groundUnderHoof(goat.world, size);
         if (hit && hit.normal.y >= .65) this.target.y = this.origin.y - hit.distance - this.hoofContact.halfHeight;
-        this.target.y += size * (.014 + (plant ? 0 : stepAmount * (gallop ? .34 : .23) * Math.sin(Math.PI * swing)));
+        // Leave clearance for the low edge of a slanted, idle hoof.
+        const soleLift = seatedOnSlope ? .032 : .014;
+        this.target.y += size * (soleLift + (plant ? 0 : stepAmount * (gallop ? .34 : .23) * Math.sin(Math.PI * swing)));
         if (plant) {
           if (!hit || hit.normal.y < .65) { leg.planted = false; continue; }
           if (this.groundedGait && leg.planted && leg.supportHandle === hit.collider.handle &&
