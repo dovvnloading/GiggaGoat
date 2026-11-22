@@ -252,8 +252,9 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
 
   // The north cafe, south bakery and clothes shop display different uses
   // instead of repeating the same cafe tables on both sides of the street.
-  for (const [x, z] of [[-13.4, -25], [-13.3, 4], [-12.9, 26],
-    [13.5, -31], [13.1, -2], [13.2, 22]] as const) {
+  // Keep bins between the authored benches and planters along both sidewalks.
+  for (const [x, z] of [[-13.4, -26.3], [-13.3, 5.9], [-12.9, 26],
+    [13.5, -29.8], [13.1, -2], [13.2, 22]] as const) {
     scatter('trash', x, z, .85, 1.2, .85);
   }
   scatter('table', -11.8, -40, 1.55, 1.15, 1.55);
@@ -262,8 +263,8 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
   scatter('table', 16.5, 52.4, 1.55, 1.15, 1.55);
   scatter('chair', 16.3, 50.85, .82, 1.4, .82, .25);
   scatter('chair', 16.6, 53.95, .82, 1.4, .82, -.4);
-  for (const [x, z] of [[-13.05,-33], [-12.9, 9.6], [-13.1, 30],
-    [13.2, -33.2], [13, -4.4], [12.9, 32.5]] as const) {
+  for (const [x, z] of [[-13.05,-33], [-12.9, 14.2], [-13.1, 30],
+    [12.9, -25.5], [13, -6.3], [12.9, 32.5]] as const) {
     scatter(BUSH_VARIANTS[bushIndex++ % BUSH_VARIANTS.length]!, x, z, 2, 1.55, 1.8);
   }
   for (const side of [-1, 1]) {
