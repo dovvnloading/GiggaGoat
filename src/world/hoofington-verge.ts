@@ -1,12 +1,14 @@
 import { gridSample } from './terrain';
 import type { IslandData, RoadDescriptor } from './types';
 
+export const HOOFINGTON_VERGE_WIDTH = 2.34;
+
 /** The visible and walkable faces of Hoofington's two sidewalks and curbs. */
 export function hoofingtonVergeData(island: IslandData, road: RoadDescriptor) {
   const scale = island.size / 600;
   const edge = road.width / 2;
   const profiles = [
-    { from: edge + .36 * scale, to: edge + 2.34 * scale,
+    { from: edge + .36 * scale, to: edge + HOOFINGTON_VERGE_WIDTH * scale,
       surface: 1, y: (x: number, z: number) => gridSample(island, x, z) + .04 * scale },
     { from: edge + .022 * scale, to: edge + .36 * scale,
       surface: 2, skirt: true,
