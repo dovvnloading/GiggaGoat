@@ -462,6 +462,9 @@ export class LocomotionController {
     const g = this.goat, torso = g.torso, s = g.size;
     const position = torso.translation();
     const rideHeight = g.balance.tuning.rideHeight * s;
+    // A loaded suspension oscillates around ride height when pushing into a
+    // wall. Give an existing contact a small release margin so each bob does
+    // not replay the airborne and landing poses. Takeoff still owns its lock.
     const groundedDistance = rideHeight + .16 * s;
     const minGroundY = this.minWalkingNormalY;
     let movement = add(mul(forward(this.input.cameraYaw),this.input.z),
@@ -501,8 +504,11 @@ export class LocomotionController {
     // A small upward gait impulse can still leave the goat at ride height.
     // Apply the usual takeoff cutoff as soon as it has moved clear of that support.
     const takeoffSpeed = ground && ground.distance <= rideHeight + .08 * s ? 1.6 : 1.2;
+    const wall = this.input.climbContact === undefined
+      ? this.findClimbSurface(movement) : this.input.climbContact;
+    const releaseDistance = rideHeight + (this.grounded && wall ? .20 : .16) * s;
     this.grounded = !!(walkable && ground && ground.distance <=
-      groundedDistance && this.clock >= this.jumpLockUntil && torso.linvel().y < takeoffSpeed);
+      releaseDistance && this.clock >= this.jumpLockUntil && torso.linvel().y < takeoffSpeed);
     if (this.grounded) {
       this.lastGroundAt = this.clock;
       this.jumpConsumed = false;
@@ -510,8 +516,6 @@ export class LocomotionController {
       this.flipAngle = 0;
       this.flipScored = false;
     }
-    const wall = this.input.climbContact === undefined
-      ? this.findClimbSurface(movement) : this.input.climbContact;
     const clinging = !g.isRagdoll && this.input.canClimb && wishLength > .1 && wall !== null;
     this.climbSurface = clinging ? wall : null;
     // Steep-wall intent takes priority over ordinary ground contact, so a goat can
