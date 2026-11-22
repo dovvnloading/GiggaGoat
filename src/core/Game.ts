@@ -739,6 +739,7 @@ export class Game {
     if (intent.placeBuild && this.buildMode) this.placeBuild();
     this.toys.input(intent);
     const result = this.physics.step(seconds);
+    this.party.advanceDroppedCountdown(result.droppedSeconds);
     // WaterSystem.setSeaLevel wakes all tracked Rapier bodies. It must run
     // outside PhysicsWorld's callbacks to avoid re-entering Rapier during step.
     if (this.party.match && this.water.seaLevel !== this.party.match.tideLevel) {
