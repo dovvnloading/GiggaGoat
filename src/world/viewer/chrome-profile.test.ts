@@ -238,7 +238,7 @@ describe.skipIf(!process.env['CI'])('world viewer real-Chrome frame profiling', 
           '{ document.getElementById(id).style.visibility = ""; });',
       });
 
-      const expression = String.raw`(() => {
+      const expression = String.raw`(async () => {
         const profile = window.__worldProfile;
         const menu = document.getElementById('bookmark');
         if (!profile || !menu || !menu.options.length) throw new Error('Viewer failed to start');
@@ -248,9 +248,12 @@ describe.skipIf(!process.env['CI'])('world viewer real-Chrome frame profiling', 
         profile.sky(true);
         profile.shadows(true);
         profile.outlines(true);
-        const measure = (id) => {
+        const measure = async (id) => {
           menu.value = id;
           menu.dispatchEvent(new Event('change', { bubbles: true }));
+          // Let normal frames select and prepare newly visible LODs before sampling.
+          await new Promise(resolve => requestAnimationFrame(resolve));
+          await new Promise(resolve => requestAnimationFrame(resolve));
           const sample = profile.measure(12);
           const times = [...sample.frameTimesMs].sort((a, b) => a - b);
           return {
@@ -262,24 +265,25 @@ describe.skipIf(!process.env['CI'])('world viewer real-Chrome frame profiling', 
             pixelRatio: sample.pixelRatio, gpu: sample.gpu,
           };
         };
-        const bookmarks = Array.from(menu.options, option => measure(option.value));
-        const crane = { normal: measure('10') };
+        const bookmarks = [];
+        for (const option of menu.options) bookmarks.push(await measure(option.value));
+        const crane = { normal: await measure('10') };
         profile.water(false);
-        crane.noWater = measure('10');
+        crane.noWater = await measure('10');
         profile.water(true);
         profile.shadows(false);
-        crane.noShadows = measure('10');
+        crane.noShadows = await measure('10');
         profile.shadows(true);
         profile.outlines(false);
-        crane.noOutlines = measure('10');
+        crane.noOutlines = await measure('10');
         profile.outlines(true);
         profile.sky(false);
-        crane.noSky = measure('10');
+        crane.noSky = await measure('10');
         profile.sky(true);
         profile.pixelRatio(1.5);
-        crane.pixelRatio1point5 = measure('10');
+        crane.pixelRatio1point5 = await measure('10');
         profile.pixelRatio(1);
-        measure('08');
+        await measure('08');
         const hotspots = profile.meshCosts();
         return { bookmarks, crane, hotspots, dpr: window.devicePixelRatio,
           userAgent: navigator.userAgent };
