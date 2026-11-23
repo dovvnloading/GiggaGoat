@@ -13,6 +13,7 @@ import { overlapsPinesLogEntry, pinesGladePlan } from './pines-log-access';
 import { DOWNTOWN_ROOF_MOUNTS, downtownBuildingModel, isInsideDowntownInfillFootprint } from './visual-downtown';
 import { CASCADE_NATIVE_SIZE, cascadePoolCentre, cascadeWaterLine, waterfallSites } from './visual-water';
 import { boardwalkPierDecks, SPLASH_DIVE_BOARD_ID } from './boardwalk';
+import { buildingFootprints, foliageHitsBuilding, footprintOverlaps, type Footprint } from './footprints';
 
 // Extra art and physical scenery must not intersect the authored shop infills.
 const INFILL_SCENERY_KINDS = new Set<PropKind>([
@@ -142,29 +143,6 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   // farm. Procedural foliage must not be allowed to grow through either road
   // or the village buildings. Find the first clear nearby spot, without
   // switching sides of the street or consuming additional RNG draws.
-  interface Footprint { x: number; z: number; sx: number; sz: number; yaw: number }
-  function footprintOverlaps(a: Footprint, b: Footprint): boolean {
-    const corners = (f: Footprint): Array<{ x: number; z: number }> => {
-      const c = Math.cos(f.yaw), s = Math.sin(f.yaw);
-      const points: Array<{ x: number; z: number }> = [];
-      for (const x of [-f.sx / 2, f.sx / 2])
-        for (const z of [-f.sz / 2, f.sz / 2])
-          points.push({ x: f.x + c * x + s * z, z: f.z - s * x + c * z });
-      return points;
-    };
-    const ac = corners(a), bc = corners(b);
-    for (const angle of [a.yaw, b.yaw]) {
-      const c = Math.cos(angle), s = Math.sin(angle);
-      for (const axis of [{ x: c, z: -s }, { x: s, z: c }]) {
-        const project = (p: { x: number; z: number }): number =>
-          p.x * axis.x + p.z * axis.z;
-        const av = ac.map(project), bv = bc.map(project);
-        if (Math.max(...av) <= Math.min(...bv) + 1e-5 ||
-            Math.max(...bv) <= Math.min(...av) + 1e-5) return false;
-      }
-    }
-    return true;
-  }
   const farmCenter = sites.get(farm)!;
   const farmPassage = (p: { x: number; z: number; length: number; width: number; towing?: boolean }): Footprint =>
     ({ x: farmCenter.x + p.x * scale, z: farmCenter.z + p.z * scale,
@@ -625,6 +603,7 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
   // Seeded hedges, trees, flowers and windblown grass: consistent density, clear paths.
   const vegetationCount = Math.max(160, Math.round(440 * scale));
   const publicGround = downtownPublicSpaces(island);
+  const buildingBounds = buildingFootprints([...island.props, ...result]);
   for (let attempt = 0, accepted = 0; attempt < vegetationCount * 8 &&
       accepted < vegetationCount; attempt++) {
     const angle = turn();
@@ -665,7 +644,10 @@ export function dressIsland(island: IslandData, rng: SeededRandom): PropDescript
     // Keep public paths open while preserving seeded foliage draws and prop IDs.
     if (result.at(-1) === detail &&
         (downtownPublicSpaceAt(publicGround, position.x, position.z, foliageWidth * .55) ||
-          inFarmEntrance(position.x, position.z, foliageWidth, yaw))) result.pop();
+          inFarmEntrance(position.x, position.z, foliageWidth, yaw) ||
+          (['tree-oak', 'tree-pine', 'bush'].includes(kind) && foliageHitsBuilding({
+            x: position.x, z: position.z, sx: foliageWidth, sz: foliageWidth, yaw,
+          }, buildingBounds, .15 * scale)))) result.pop();
     accepted++;
   }
   const nearbyFoliageSpot = (origin: Vec2, clear: (x: number, z: number) => boolean,
