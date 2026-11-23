@@ -813,10 +813,12 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
       expect(highest).toBeGreaterThan(pad.position.y + 3);
       const landed = game.goat.torso.translation();
       const landingGround = heightAt(game.island, landed.x, landed.z);
+      const landingSurface = game.goat.locomotion.groundHit;
       expect(landed.x).toBeGreaterThan(farm.x + 5);
       expect(landed.z).toBeLessThan(pad.position.z - pad.halfExtents.z - .4);
       expect(landingGround).toBeGreaterThan(game.water.seaLevel);
-      expect(landed.y).toBeLessThan(landingGround + 1.4);
+      expect(landingSurface?.point.y).toBeGreaterThan(game.water.seaLevel);
+      expect(landed.y - landingSurface!.point.y).toBeLessThan(1.4);
       expect(game.goat.locomotion.grounded).toBe(true);
     } finally { game.dispose(); }
   });

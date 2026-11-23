@@ -180,7 +180,7 @@ export class BalanceController {
     // the ride-height damping briefly, while deliberate takeoffs stay free.
     const quickStrideBounce = g.movementSpeedScale > 1 && !g.locomotion.jumpedFromSupport &&
       g.locomotion.groundSupportAge <= .1 && velocity.y < 3 &&
-      Math.hypot(velocity.x, velocity.z) > g.locomotion.tuning.walkSpeed * g.movementSpeedScale * .65 &&
+      Math.hypot(velocity.x, velocity.z) > g.locomotion.tuning.walkSpeed * g.movementSpeedScale * .55 &&
       height <= (this.tuning.rideHeight + .28) * g.size && hit.normal.y > .97;
     if (velocity.y > 1.1 && !quickStrideBounce) return;
     if (height > this.tuning.rideHeight*g.size + .65*g.size) return;
@@ -548,7 +548,11 @@ export class LocomotionController {
     const walkable = !!ground && ground.normal.y >= minGroundY;
     // A small upward gait impulse can still leave the goat at ride height.
     // Apply the usual takeoff cutoff as soon as it has moved clear of that support.
-    const takeoffSpeed = ground && ground.distance <= rideHeight + .08 * s ? 1.6 : 1.2;
+    // A faster stride can rise harder for a moment without leaving the pavement.
+    const fastStride = g.movementSpeedScale > 1 && !this.jumpConsumed && wishLength > .12 &&
+      this.clock - this.lastGroundAt <= .1 && ground && ground.normal.y > .97 &&
+      Math.hypot(torso.linvel().x, torso.linvel().z) > this.tuning.walkSpeed * g.movementSpeedScale * .55;
+    const takeoffSpeed = ground && ground.distance <= rideHeight + .08 * s ? (fastStride ? 2.8 : 1.6) : 1.2;
     const verticalSpeed = torso.linvel().y;
     this.grounded = false;
     if (walkable && ground && this.clock >= this.jumpLockUntil && verticalSpeed < takeoffSpeed) {
@@ -563,11 +567,11 @@ export class LocomotionController {
         this.grounded = slopeSpeed < -.2 && ground.distance <= groundedDistance + extra;
       }
       if (!this.grounded && wishLength < .08 && Math.abs(verticalSpeed) < .35 &&
-          ground.distance <= groundedDistance + .09 * s) {
+          ground.distance <= groundedDistance + .16 * s) {
         // A hoof can still rest on a raised street edge beside the torso ray.
         const floor = ground.point.y;
         this.grounded = g.legs.some(leg => {
-          const support = g.world.raycast(leg.translation(), V(0, -1, 0), .48 * s,
+          const support = g.world.raycast(leg.translation(), V(0, -1, 0), .55 * s,
             { groups: GROUND_QUERY_GROUPS });
           return support !== null && support.collider.handle !== ground.collider.handle &&
             support.point.y > floor + .03 * s &&
