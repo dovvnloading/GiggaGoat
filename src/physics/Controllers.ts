@@ -157,7 +157,7 @@ export class BalanceController {
     // A loaded tongue needs room to pull the head and torso through a ramp.
     const tethered = g.interactions.isTongueAttached;
     const tiltGain = supported ? (tethered ? 2.5 : 6) : 1;
-    const turnGain = supported ? (tethered ? 2 : 5) : 1;
+    const turnGain = supported ? (tethered ? 2 : 5 * Math.max(1, Math.sqrt(g.movementSpeedScale))) : 1;
     const pitchRoll = V(
       tilt.x * this.tuning.uprightStiffness * tiltGain - omega.x * this.tuning.uprightDamping * Math.sqrt(tiltGain),
       0,
@@ -174,8 +174,15 @@ export class BalanceController {
 
     const hit = g.locomotion.groundHit;
     const velocity = torso.linvel();
-    if (!hit || g.locomotion.isClinging || velocity.y > 1.1) return;
+    if (!hit || g.locomotion.isClinging) return;
     const height = torso.translation().y - hit.point.y;
+    // A fast stride can kick the torso upward at a pavement seam. Continue
+    // the ride-height damping briefly, while deliberate takeoffs stay free.
+    const quickStrideBounce = g.movementSpeedScale > 1 && !g.locomotion.jumpedFromSupport &&
+      g.locomotion.groundSupportAge <= .1 && velocity.y < 3 &&
+      Math.hypot(velocity.x, velocity.z) > g.locomotion.tuning.walkSpeed * g.movementSpeedScale * .55 &&
+      height <= (this.tuning.rideHeight + .28) * g.size && hit.normal.y > .97;
+    if (velocity.y > 1.1 && !quickStrideBounce) return;
     if (height > this.tuning.rideHeight*g.size + .65*g.size) return;
     const { normal } = hit;
     const layers = hit.collider.collisionGroups() >>> 16;
@@ -187,8 +194,8 @@ export class BalanceController {
     // Follow a walkable grade through a short loss of contact as the slope rolls away.
     // Require recent support within reach so a jump or ledge fall keeps its momentum.
     const downhillTerrain = (layers & CollisionLayer.terrain) !== 0 &&
-      normal.y < .995 && slopeSpeed < -.2 && velocity.y >= -3 &&
-      g.locomotion.groundSupportAge <= .18 && height <= (this.tuning.rideHeight + .26) * g.size;
+      normal.y < .995 && slopeSpeed < -.2 && velocity.y >= Math.min(-3, slopeSpeed - 1.5) &&
+      g.locomotion.groundSupportAge <= .18 && height <= (this.tuning.rideHeight + .4) * g.size;
     const downhillSpeed = fixed && (deck || downhillTerrain) ? slopeSpeed : 0;
     const yError = this.tuning.rideHeight*g.size - height + downhillSpeed * dt;
     const relativeSpeed = velocity.y - downhillSpeed;
@@ -461,9 +468,11 @@ export class LocomotionController {
     const { size, world } = this.goat;
     const held = sub(wall.point, torso);
     const query = { groups: GROUND_QUERY_GROUPS };
+    // Include a small allowance for the moving hip while the hoof is planted.
+    const verticalReach = .9 * size;
     // The supporting hoof stays on its old rung while its partner reaches.
     // Recheck that exact piece of wall and release it once it is out of reach.
-    if (Math.abs(held.y) <= .78 * size && length(held) <= 1.3 * size) {
+    if (Math.abs(held.y) <= verticalReach && length(held) <= 1.3 * size) {
       const skin = .035 * size;
       const anchor = world.raycast(add(wall.point, mul(wall.normal, skin)), mul(wall.normal, -1), 2 * skin, query);
       if (anchor && anchor.collider.handle === wall.collider.handle && dot(anchor.normal, wall.normal) > .9) return anchor;
@@ -472,8 +481,7 @@ export class LocomotionController {
     if (!closest) return null;
     const delta = sub(closest.point, torso);
     const horizontal = Math.hypot(delta.x, delta.z);
-    // The hind hip is .4 body lengths aft and its lower leg spans another .38.
-    if (horizontal < .001 || length(delta) > 1.3 * size || Math.abs(delta.y) > .78 * size) return null;
+    if (horizontal < .001 || length(delta) > 1.3 * size || Math.abs(delta.y) > verticalReach) return null;
     const inward = V(delta.x / horizontal, 0, delta.z / horizontal);
     // Sample just inside a lip to verify its side. A horizontal top or
     // overhang alone cannot supply climbing traction.
@@ -516,7 +524,8 @@ export class LocomotionController {
         const excess = -dot(velocity, normal) - maxInward;
         if (excess > 0) body.setLinvel(add(velocity, mul(normal, excess)), true);
       }
-      const motorSpeed = this.input.sprint ? this.tuning.sprintSpeed : this.tuning.walkSpeed;
+      const motorSpeed = (this.input.sprint && this.input.canSprint ? this.tuning.sprintSpeed : this.tuning.walkSpeed)
+        * g.movementSpeedScale;
       const excess = -dot(movement, normal) - maxInward / motorSpeed;
       if (excess > 0) movement = add(movement, mul(normal, excess));
     }
@@ -539,20 +548,35 @@ export class LocomotionController {
     const walkable = !!ground && ground.normal.y >= minGroundY;
     // A small upward gait impulse can still leave the goat at ride height.
     // Apply the usual takeoff cutoff as soon as it has moved clear of that support.
-    const takeoffSpeed = ground && ground.distance <= rideHeight + .08 * s ? 1.6 : 1.2;
+    // A faster stride can rise harder for a moment without leaving the pavement.
+    const fastStride = g.movementSpeedScale > 1 && !this.jumpConsumed && wishLength > .12 &&
+      this.clock - this.lastGroundAt <= .1 && ground && ground.normal.y > .97 &&
+      Math.hypot(torso.linvel().x, torso.linvel().z) > this.tuning.walkSpeed * g.movementSpeedScale * .55;
+    const takeoffSpeed = ground && ground.distance <= rideHeight + .08 * s ? (fastStride ? 2.8 : 1.6) : 1.2;
     const verticalSpeed = torso.linvel().y;
     this.grounded = false;
     if (walkable && ground && this.clock >= this.jumpLockUntil && verticalSpeed < takeoffSpeed) {
       this.grounded = ground.distance <= groundedDistance;
+      if (!this.grounded && !this.jumpConsumed && this.clock - this.lastGroundAt <= .22 &&
+          ground.normal.y < .995 && wishLength > .12) {
+        // At higher configured speeds, the ground falls away between fixed
+        // steps on a downhill grade. Keep recent support within one short
+        // stride, without treating flat ledges or jumps as planted.
+        const slopeSpeed = -(ground.normal.x * torso.linvel().x + ground.normal.z * torso.linvel().z) / ground.normal.y;
+        const extra = Math.min(.2 * s, Math.max(0, -slopeSpeed) * dt * 3);
+        this.grounded = slopeSpeed < -.2 && ground.distance <= groundedDistance + extra;
+      }
+      const fastEdge = g.movementSpeedScale > 1;
       if (!this.grounded && wishLength < .08 && Math.abs(verticalSpeed) < .35 &&
-          ground.distance <= groundedDistance + .09 * s) {
-        // A hoof can still rest on a raised street edge beside the torso ray.
+          ground.distance <= groundedDistance + (fastEdge ? .16 : .09) * s) {
+        // A hoof can rest on a low street edge beside the torso ray; a high
+        // ledge cannot support a torso that has already moved beyond it.
         const floor = ground.point.y;
         this.grounded = g.legs.some(leg => {
-          const support = g.world.raycast(leg.translation(), V(0, -1, 0), .48 * s,
+          const support = g.world.raycast(leg.translation(), V(0, -1, 0), (fastEdge ? .55 : .48) * s,
             { groups: GROUND_QUERY_GROUPS });
           return support !== null && support.collider.handle !== ground.collider.handle &&
-            support.point.y > floor + .03 * s &&
+            support.point.y > floor + .03 * s && support.point.y <= floor + .5 * s &&
             support.normal.y >= minGroundY && (!support.body || support.body.isFixed());
         });
       }
@@ -730,7 +754,10 @@ export class LocomotionController {
       this.heading = Math.atan2(wish.x,-wish.z);
     }
     const sprinting = this.grounded && this.input.sprint && this.input.canSprint;
-    const speedScale = s ** .16;
+    // A dynamic load needs a controlled tow speed so the tether and cargo
+    // are not thrown through scenery by the faster small-goat motor.
+    const towing = g.interactions.tongueBody?.isDynamic() === true;
+    const speedScale = towing ? Math.min(g.movementSpeedScale, .92) : g.movementSpeedScale;
     const targetSpeed = (sprinting ? this.tuning.sprintSpeed : this.tuning.walkSpeed)*speedScale*wishLength;
     let surfaceWish = wish;
     if (ground && walkable && this.grounded && wishLength > 0) {

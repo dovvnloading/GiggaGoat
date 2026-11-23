@@ -83,8 +83,13 @@ describe('Rooftop Express on actual Rapier steps', () => {
         let lastProgressTick = 0;
         let lastProgressZ = game.goat.torso.translation().z;
         let longestPause = 0;
+        const laneX = game.goat.torso.translation().x + .75;
         for (let tick = 1; tick <= maxTicks && game.gigs.active?.status === 'running'; tick++) {
-          game.step({ cameraYaw: heading, tongue: true, moveZ: 1 });
+          // The slower Big goat needs to steer around roof equipment that the
+          // old speed happened to miss; the parcel must still survive contact.
+          const correction = Math.max(-.25, Math.min(.25, (laneX - game.goat.torso.translation().x) * .5));
+          const cameraYaw = tier === 'Big' ? Math.atan2(correction, -routeDirection) : heading;
+          game.step({ cameraYaw, tongue: true, moveZ: 1 });
           longestPause = Math.max(longestPause, tick - lastProgressTick);
           const z = game.goat.torso.translation().z;
           if ((z - lastProgressZ) * routeDirection >= .4) {

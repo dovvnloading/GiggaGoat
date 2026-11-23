@@ -184,17 +184,26 @@ describe('Beacon and Dam access from their playable boards', () => {
       if (config?.kind !== 'splash-dive') throw new Error('Expected Dam Bomb dive configuration');
       walkTo(game, { ...config.jumpPoint, z: position.z });
       walkTo(game, config.jumpPoint, .35);
+      // Settle after the faster approach so the launch begins from the
+      // board instead of carrying an uncontrolled turn into the water.
+      settle(game, 5);
       const launch = { moveZ: 1, cameraYaw: Math.PI, sprint: true };
       settle(game, 8, launch);
       game.step({ ...launch, flop: true });
       settle(game, 150, { ...launch, sprint: false });
       expect(game.gigs.active?.status).toBe('completed');
 
-      settle(game, 180, { moveZ: 1, cameraYaw: Math.PI });
-      settle(game, 360, { moveZ: 1, cameraYaw: Math.PI / 2 });
+      // Turn toward the gentler bank before the faster dive carries farther downstream.
+      settle(game, 80, { moveZ: 1, cameraYaw: Math.PI });
+      for (let tick = 0; tick < 480; tick++) {
+        const p = game.goat.torso.translation();
+        if (p.x > position.x + 33 * scale && game.water.sample(game.goat.torso).fraction === 0 &&
+            game.goat.locomotion.grounded) break;
+        game.step({ moveZ: 1, cameraYaw: Math.PI / 2 });
+      }
       const bank = game.goat.torso.translation();
       expect(bank.x).toBeGreaterThan(position.x + 33 * scale);
-      expect(bank.y).toBeLessThan(position.y + 8.35 * scale);
+      expect(bank.y - heightAt(game.island, bank.x, bank.z)).toBeLessThan(1.4 * scale);
       expect(game.water.sample(game.goat.torso).fraction).toBe(0);
       expect(game.goat.locomotion.grounded).toBe(true);
       expect(game.respawns).toBe(0);

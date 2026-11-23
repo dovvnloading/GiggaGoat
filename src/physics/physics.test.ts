@@ -216,6 +216,20 @@ describe('real Rapier physics simulation', () => {
     expect(g.torso.translation().y).toBeLessThan(3.4);
   });
 
+  it('lets a Kid fall when its torso moves beyond a high ledge', async () => {
+    const w = await scene();
+    const scale = .2;
+    w.raw.createCollider(RAPIER.ColliderDesc.cuboid(4 * scale, .15 * scale, 9 * scale)
+      .setTranslation(-4 * scale, 2.85 * scale, 0).setCollisionGroups(collisionGroups('terrain')));
+    const g = new GoatRagdoll(w, { size: .6, position: V(-.16 * scale, 3 * scale, 0) });
+    goats.push(g);
+    simulate(w, 1.75);
+    g.flop();
+    simulate(w, 3.5);
+    expect(g.torso.translation().x).toBeGreaterThan(.9 * scale);
+    expect(g.torso.translation().y).toBeLessThan(3.4 * scale);
+  });
+
   it('still enters ragdoll when a moving crate strikes a planted goat', async () => {
     const w = await scene();
     const g = goat(w, .6);

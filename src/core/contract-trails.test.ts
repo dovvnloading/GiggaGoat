@@ -61,6 +61,8 @@ it('walks to the side diving board and lands a real Hard Splash Dive in clear wa
     }
     walk(game, { x: pier.transform.position.x, z: board.transform.position.z }, .65, 2400);
     walk(game, config.jumpPoint, .44);
+    // The quicker approach needs a short pause before an accurately aimed jump.
+    for (let tick = 0; tick < 6; tick++) game.step();
     game.step({ moveZ: 1, cameraYaw: Math.PI / 2, jump: true });
     for (let tick = 0; tick < 165 && game.gigs.active?.status === 'running'; tick++)
       game.step({ moveZ: 1, cameraYaw: Math.PI / 2 });
@@ -214,7 +216,9 @@ it('finishes Hard Summit Sprint at normal sprint pace on the browser QA route', 
     ] as const;
     for (const [x, z] of turns) {
       if (game.gigs.active?.status !== 'running') break;
-      walk(game, { x, z }, .65, 100, true);
+      // Faster, momentum-preserving strides can require another turn at a
+      // waypoint; the gold-time assertion still checks the whole route.
+      walk(game, { x, z }, .65, 200, true);
     }
     expect(game.gigs.active).toMatchObject({ status: 'completed', checkpointIndex: 5, rating: 'gold' });
     expect(game.gigs.active!.metrics.climbed).toBeGreaterThan(9);
@@ -263,7 +267,15 @@ it('preserves actual Summit Sprint ascent across reload and ignores interrupted 
     expect(game.respawns).toBe(1);
     expect(game.gigs.active?.metrics.climbed).toBe(earned);
 
-    game.teleport(trail.points[5]!, 0);
+    // The centreline stores the intended grade; the joined surface can be
+    // higher where another approach meets it. Place the goat on that surface.
+    const upperPoint = trail.points[5]!;
+    const support = game.physics.raycast(V(upperPoint.x, upperPoint.y + 8, upperPoint.z), V(0, -1, 0), 16, {
+      predicate: collider => !game.goat.ownsBody(collider.parent()),
+    });
+    expect(support).not.toBeNull();
+    expect(support!.collider.handle).toBe(game.colliders.paths[1]!.handle);
+    game.teleport(support!.point, 0);
     for (let tick = 0; tick < 45; tick++) game.step();
     expect(game.goat.locomotion.grounded).toBe(true);
     expect(game.gigs.active?.metrics.climbed).toBe(earned);

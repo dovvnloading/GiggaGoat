@@ -59,6 +59,7 @@ it('walks the paved Lighthouse fork both ways on asphalt without changing the br
     const first = route[0]!;
     game.teleport({ x: first.x, y: first.y + .2, z: first.z });
     for (let tick = 0; tick < 30; tick++) game.step();
+    let airborne = 0, longestAirborne = 0, totalAirborne = 0, steps = 0;
     for (const target of [...route.slice(1), ...route.slice(0, -1).reverse()]) {
       let arrived = false;
       for (let tick = 0; tick < 160; tick++) {
@@ -70,11 +71,17 @@ it('walks the paved Lighthouse fork both ways on asphalt without changing the br
           break;
         }
         game.step({ moveZ: 1, cameraYaw: Math.atan2(dx, -dz) });
-        expect(game.goat.locomotion.grounded).toBe(true);
+        steps++;
+        airborne = game.goat.locomotion.grounded ? 0 : airborne + 1;
+        longestAirborne = Math.max(longestAirborne, airborne);
+        if (airborne) totalAirborne++;
         expect(game.goat.locomotion.groundHit?.collider.handle).toBe(asphalt);
       }
       expect(arrived, `Waypoint at ${target.x}, ${target.z}`).toBe(true);
     }
+    // Allow a brief gait bounce but not a sustained flight or false airtime.
+    expect(longestAirborne).toBeLessThanOrEqual(12);
+    expect(totalAirborne / steps).toBeLessThan(.01);
     expect(game.respawns).toBe(0);
   } finally {
     game.dispose();

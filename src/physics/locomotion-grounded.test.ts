@@ -110,7 +110,9 @@ it.each(GOAT_SIZES.flatMap(size => gaits.map(gait => ({ size, ...gait }))))(
       goat.events.on(event => { if (event.type === 'landed') landings.push(event.airtime); });
       goat.locomotion.setInput({ z: 1, sprint, canClimb: false });
       let samples = 0, stride = 0, supported = 0, speed = 0;
-      for (let tick = 0; tick < 430 && goat.torso.translation().z > -12; tick++) {
+      // Slower size tiers need proportionally more time to finish the same route.
+      const maxTicks = Math.ceil(430 / Math.min(1, goat.movementSpeedScale));
+      for (let tick = 0; tick < maxTicks && goat.torso.translation().z > -12; tick++) {
         const z = goat.torso.translation().z;
         world.step(FIXED_DT);
         if (Math.abs(z) >= 6.5) continue;
@@ -126,7 +128,7 @@ it.each(GOAT_SIZES.flatMap(size => gaits.map(gait => ({ size, ...gait }))))(
       expect(samples).toBeGreaterThan(70);
       expect(stride / samples).toBeGreaterThan(.95);
       expect(supported / samples).toBeGreaterThan(.95);
-      if (sprint) expect(speed / samples).toBeGreaterThan(goat.locomotion.tuning.walkSpeed);
+      if (sprint) expect(speed / samples).toBeGreaterThan(goat.locomotion.tuning.walkSpeed * goat.movementSpeedScale);
       // A short crest transition can be real. A normal descent must stay well
       // below the game's .48-second threshold for an airtime style award.
       expect(Math.max(0, ...landings)).toBeLessThan(.30);

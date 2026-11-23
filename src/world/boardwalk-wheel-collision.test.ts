@@ -87,23 +87,36 @@ it('walks through the middle in both directions and meets the supports in either
     const { x, z } = wheel.transform.position;
     const deck = boardwalkFarEnd(game.island)!.deck;
     const floor = deck.transform.position.y + deck.size.y / 2;
-    function approach(xOffset: number, side: number): number {
+    const supportHandles = new Set([...game.colliders.props].filter(([id]) => id.startsWith(wheel.id + '-'))
+      .map(([, collider]) => collider.handle));
+    function approach(xOffset: number, side: number): { furthest: number; touched: boolean; passClearance: number } {
       const cameraYaw = side > 0 ? Math.PI : 0;
       game.teleport({ x: x + xOffset, y: floor, z: z - 6 * side }, -cameraYaw);
       for (let i = 0; i < 40; i++) game.step({ cameraYaw });
-      let furthest = -Infinity;
+      let furthest = -Infinity, passClearance = Infinity, touched = false;
+      const off = game.physics.onContact(event => {
+        if (event.type === 'begin' && ((supportHandles.has(event.colliderA) && game.goat.ownsBody(event.bodyB)) ||
+          (supportHandles.has(event.colliderB) && game.goat.ownsBody(event.bodyA)))) touched = true;
+      });
       for (let i = 0; i < 130; i++) {
         game.step({ cameraYaw, moveZ: 1 });
-        furthest = Math.max(furthest, (game.goat.torso.translation().z - z) * side);
+        const p = game.goat.torso.translation();
+        const forward = (p.z - z) * side;
+        furthest = Math.max(furthest, forward);
+        if (forward >= 0) passClearance = Math.min(passClearance, Math.abs(p.x - x - xOffset));
         if (xOffset === 0) expect(game.goat.locomotion.grounded).toBe(true);
       }
-      return furthest;
+      off();
+      return { furthest, touched, passClearance };
     }
-    for (const direction of [-1, 1]) expect(approach(0, direction)).toBeGreaterThan(2);
+    for (const direction of [-1, 1]) expect(approach(0, direction).furthest).toBeGreaterThan(2);
     for (const xOffset of [-8.232, 8.232]) {
-      const furthest = approach(xOffset, 1);
-      expect(furthest).toBeGreaterThan(-3);
-      expect(furthest).toBeLessThan(0);
+      const result = approach(xOffset, 1);
+      expect(result.furthest).toBeGreaterThan(-3);
+      expect(result.touched).toBe(true);
+      // A faster goat may be deflected around the support. It must never
+      // pass through the pad, which is roughly one metre wide.
+      if (result.furthest >= 0) expect(result.passClearance).toBeGreaterThan(.6);
     }
     expect(game.respawns).toBe(0);
   } finally {

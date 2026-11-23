@@ -1,4 +1,5 @@
 import RAPIER, { type ImpulseJoint, type RevoluteImpulseJoint, type RigidBody, type ColliderDesc } from '@dimforge/rapier3d-compat';
+import { TUNING } from '../gameplay/config';
 import { collisionGroups } from './CollisionGroups';
 import { PhysicsEventBus, type PhysicsContact } from './events';
 import { add, clamp, cross, dot, mul, rotate, sub, V, yawQuaternion, type Vec3 } from './math';
@@ -8,6 +9,7 @@ import { GoatInteractions } from './Interactions';
 
 export const GOAT_SIZES = [0.6, 1, 1.6, 3] as const;
 export type GoatSize = (typeof GOAT_SIZES)[number];
+const SIZE_SPEED = new Map<number, number>(Object.values(TUNING.size).map(({ scale, speed }) => [scale, speed]));
 export type GoatPart = 'torso' | 'neck' | 'head' | 'frontLeft' | 'frontRight' | 'backLeft' | 'backRight';
 export type GoatPose = 'stand' | 'walk' | 'gallop' | 'jumpTuck' | 'climb' | 'flop';
 export interface GoatOptions {
@@ -78,7 +80,7 @@ export class GoatRagdoll {
       // walking into scenery can generate a large impulse as its legs and
       // torso are stopped together, even during an ordinary walking bump.
       const velocity = this.torso.linvel();
-      const walkSpeed = this.locomotion.tuning.walkSpeed * this.size ** .16;
+      const walkSpeed = this.locomotion.tuning.walkSpeed * this.movementSpeedScale;
       this.plantedAtWalkingSpeed = this.locomotion.grounded && !this.isRagdoll &&
         Math.abs(velocity.y) < 2 * Math.sqrt(this.size) &&
         Math.hypot(velocity.x, velocity.z) <= walkSpeed * 1.05;
@@ -93,6 +95,11 @@ export class GoatRagdoll {
   get bodies(): readonly RigidBody[] { return [...this.parts.values()]; }
   get joints(): readonly ImpulseJoint[] { return this.hinges.map(h => h.joint); }
   get mass(): number { return 27 * this.size ** 3; }
+  get movementSpeedScale(): number {
+    const speed = SIZE_SPEED.get(this.size);
+    if (speed === undefined) throw new RangeError('Missing movement speed for goat size');
+    return speed;
+  }
   get isRagdoll(): boolean { return this.balance.isRagdoll; }
   get balanceValue(): number { return this.balance.value; }
   getPart(part: GoatPart): RigidBody {
