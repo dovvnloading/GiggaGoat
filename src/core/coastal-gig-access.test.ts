@@ -193,7 +193,8 @@ describe('Beacon and Dam access from their playable boards', () => {
       settle(game, 150, { ...launch, sprint: false });
       expect(game.gigs.active?.status).toBe('completed');
 
-      settle(game, 180, { moveZ: 1, cameraYaw: Math.PI });
+      // Turn toward the gentler bank before the faster dive carries farther downstream.
+      settle(game, 80, { moveZ: 1, cameraYaw: Math.PI });
       for (let tick = 0; tick < 480; tick++) {
         const p = game.goat.torso.translation();
         if (p.x > position.x + 33 * scale && game.water.sample(game.goat.torso).fraction === 0 &&

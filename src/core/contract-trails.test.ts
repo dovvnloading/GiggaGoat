@@ -216,7 +216,9 @@ it('finishes Hard Summit Sprint at normal sprint pace on the browser QA route', 
     ] as const;
     for (const [x, z] of turns) {
       if (game.gigs.active?.status !== 'running') break;
-      walk(game, { x, z }, .65, 100, true);
+      // Faster, momentum-preserving strides can require another turn at a
+      // waypoint; the gold-time assertion still checks the whole route.
+      walk(game, { x, z }, .65, 200, true);
     }
     expect(game.gigs.active).toMatchObject({ status: 'completed', checkpointIndex: 5, rating: 'gold' });
     expect(game.gigs.active!.metrics.climbed).toBeGreaterThan(9);
