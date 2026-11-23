@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { union, type Polygon } from 'polygon-clipping';
+import ClipperLib from 'clipper-lib';
 
 type Point = { x: number; z: number };
 
@@ -10,15 +10,27 @@ export function addSummitJunction(
   height: (x: number, z: number) => number,
   ground: ((x: number, z: number) => number) | undefined, scale: number,
 ): void {
-  const shapes: Polygon[] = [];
-  for (let i = 0; i < faces.length; i += 3) {
-    const corners = faces.slice(i, i + 3).map(index => [positions[index * 3]!, positions[index * 3 + 2]!] as [number, number]);
-    const [a, b, c] = corners;
-    if (Math.abs((b![0] - a![0]) * (c![1] - a![1]) - (b![1] - a![1]) * (c![0] - a![0])) < 1e-8) continue;
-    shapes.push([[...corners, corners[0]!]]);
+  const grid = 1e-5 * scale;
+  const shapes: ClipperLib.Paths = [];
+  const inputs = Array.from({ length: faces.length / 3 }, (_, i) => faces.slice(i * 3, i * 3 + 3));
+  for (const outline of inputs) {
+    const corners = outline.map(index => ({
+      X: Math.round(positions[index * 3]! / grid), Y: Math.round(positions[index * 3 + 2]! / grid),
+    }));
+    const area = ClipperLib.Clipper.Area(corners);
+    if (area === 0) continue;
+    if (area < 0) corners.reverse();
+    shapes.push(corners);
   }
   if (shapes.length === 0) return;
-  const merged = union(shapes[0]!, ...shapes.slice(1));
+  // Integer clipping keeps coincident edges and their intersections stable.
+  const clipper = new ClipperLib.Clipper();
+  clipper.StrictlySimple = true;
+  clipper.AddPaths(shapes, ClipperLib.PolyType.ptSubject, true);
+  const tree = new ClipperLib.PolyTree();
+  if (!clipper.Execute(ClipperLib.ClipType.ctUnion, tree, ClipperLib.PolyFillType.pftNonZero,
+    ClipperLib.PolyFillType.pftNonZero)) throw new Error('Unable to union summit trails');
+  const merged = ClipperLib.JS.PolyTreeToExPolygons(tree);
   const onCut = (a: Point, b: Point): boolean => cuts.some(([first, second]) => {
     const x = positions[first * 3]!, z = positions[first * 3 + 2]!;
     const dx = positions[second * 3]! - x, dz = positions[second * 3 + 2]! - z;
@@ -30,7 +42,8 @@ export function addSummitJunction(
     return length2 > 1e-8 && on(a) && on(b);
   });
   for (const polygon of merged) {
-    const rings = polygon.map(ring => ring.slice(0, -1).map(([x, z]) => new THREE.Vector2(x, z)));
+    const rings = [polygon.outer, ...polygon.holes].map(ring =>
+      ring.map(point => new THREE.Vector2(point.X * grid, point.Y * grid)));
     const contour = rings[0];
     if (!contour || contour.length < 3) continue;
     const vertices = rings.flat();

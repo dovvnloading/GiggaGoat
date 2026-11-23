@@ -285,13 +285,16 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
   const summitStart = summitGround && type === 'trail'
     ? island.roads.find(road => road.id === SUMMIT_ASCENT_TRAIL)?.points[0] : undefined;
   const summit = type === 'trail' ? island.pois.find(p => p.id === 'mt-gigga')?.center : undefined;
+  const joinSegments = SUMMIT_JOIN_SEGMENTS;
   const summitSide = new Map<RoadRibbonRun, 'start' | 'end'>();
   if (summit) for (const run of runs) {
     const near = (p: RoadPoint) => Math.hypot(p.x - summit.x, p.z - summit.z) < 1e-5;
-    if (run.points.length > SUMMIT_JOIN_SEGMENTS + 1 && near(run.points[0]!)) summitSide.set(run, 'start');
-    else if (run.points.length > SUMMIT_JOIN_SEGMENTS + 1 && near(run.points.at(-1)!)) summitSide.set(run, 'end');
+    if (run.points.length > joinSegments + 1 && near(run.points[0]!)) summitSide.set(run, 'start');
+    else if (run.points.length > joinSegments + 1 && near(run.points.at(-1)!)) summitSide.set(run, 'end');
   }
-  if (summitSide.size !== 3) summitSide.clear();
+  // Oversized worlds can have grade-separated switchback crossings here.
+  // Preserve those independent surfaces rather than flattening them together.
+  if (summitSide.size !== 3 || island.size > 1200) summitSide.clear();
   const junctionFaces: number[] = [];
   const junctionCuts: [number, number][] = [];
   const junctionAnchors: { x: number; z: number }[] = [];
@@ -366,8 +369,8 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
       // Keep the joined and unjoined edges identical while removing tiny
       // floating-point differences before the polygon sweep.
       const step = 1e-5 * scale;
-      const start = side === 'start' ? 0 : points.length - 1 - SUMMIT_JOIN_SEGMENTS;
-      for (let point = start; point <= start + SUMMIT_JOIN_SEGMENTS; point++) {
+      const start = side === 'start' ? 0 : points.length - 1 - joinSegments;
+      for (let point = start; point <= start + joinSegments; point++) {
         for (let part = 0; part < 6; part++) {
           const vertex = (firstVertex + point * 6 + part) * 3;
           positions[vertex] = Math.round(positions[vertex]! / step) * step;
@@ -381,8 +384,8 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
       // Two top triangles and one quad (two triangles) for each outside skirt.
       // Shared indexed vertices at b are reused as a in the next segment.
       const top = [a, b, a + 1, a + 1, b, b + 1];
-      const joinsSummit = side === 'start' ? i < SUMMIT_JOIN_SEGMENTS :
-        side === 'end' ? i >= points.length - 1 - SUMMIT_JOIN_SEGMENTS : false;
+      const joinsSummit = side === 'start' ? i < joinSegments :
+        side === 'end' ? i >= points.length - 1 - joinSegments : false;
       if (joinsSummit) {
         junctionFaces.push(...top);
         const center = (first: number) => ({
@@ -391,8 +394,8 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
         });
         const pa = center(a), pb = center(b);
         junctionAnchors.push(pa, { x: (pa.x + pb.x) / 2, z: (pa.z + pb.z) / 2 });
-        if (side === 'start' && i === SUMMIT_JOIN_SEGMENTS - 1) junctionCuts.push([b, b + 1]);
-        if (side === 'end' && i === points.length - 1 - SUMMIT_JOIN_SEGMENTS) junctionCuts.push([a, a + 1]);
+        if (side === 'start' && i === joinSegments - 1) junctionCuts.push([b, b + 1]);
+        if (side === 'end' && i === points.length - 1 - joinSegments) junctionCuts.push([a, a + 1]);
       } else indices.push(
         ...top,
         a + 2, a + 4, b + 2, b + 2, a + 4, b + 4,

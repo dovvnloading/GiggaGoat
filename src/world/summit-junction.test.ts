@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import { generateIsland } from './island';
-import { roadRibbonData } from './road-ribbons';
+import { roadRibbonData, SUMMIT_JOIN_SEGMENTS } from './road-ribbons';
 import { buildRapierColliders } from './colliders';
 import { createWorldScene } from './render';
 import { GoatRagdoll } from '../physics/GoatRagdoll';
@@ -23,6 +23,7 @@ describe('Mt. Gigga summit junction', () => {
     { seed: 'pines-alt', size: 900, resolution: 65 },
     { seed: 'wp4-low', size: 400, resolution: 65 },
     { seed: 'wp4-cliff', size: 1200, resolution: 65 },
+    { seed: 'art-deck-A', size: 850, resolution: 97 },
   ])('has a single physical trail surface through the junction at $size m', options => {
     const island = generateIsland(options);
     const summit = island.pois.find(p => p.id === 'mt-gigga')!.center;
@@ -34,6 +35,11 @@ describe('Mt. Gigga summit junction', () => {
           Math.max(...[t[0]!, t[3]!, t[6]!]) < summit.x - 12 ||
           Math.min(...[t[2]!, t[5]!, t[8]!]) > summit.z + 12 ||
           Math.max(...[t[2]!, t[5]!, t[8]!]) < summit.z - 12) continue;
+      // At large island sizes, a separate lower switchback can cross the
+      // junction in plan view without touching the summit surface.
+      const verticalRange = 3 * options.size / 600;
+      if (Math.max(t[1]!, t[4]!, t[7]!) < summit.y - verticalRange ||
+          Math.min(t[1]!, t[4]!, t[7]!) > summit.y + verticalRange) continue;
       triangles.push(t);
     }
     const hits = (x: number, z: number) => triangles.filter(t => {
@@ -60,9 +66,13 @@ describe('Mt. Gigga summit junction', () => {
     }
   });
 
-  it('matches rendered and physical trail heights on all three summit approaches', async () => {
+  it.each([
+    { seed: 'billy-isle', size: 600, resolution: 193 },
+    { seed: 'wp4-cliff', size: 1200, resolution: 65 },
+    { seed: 0, size: 2000, resolution: 65 },
+  ])('matches rendered and physical trail heights on all three summit approaches at $size m', async options => {
     await RAPIER.init();
-    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+    const island = generateIsland(options);
     const summit = island.pois.find(p => p.id === 'mt-gigga')!.center;
     const scene = createWorldScene(island);
     const physics = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
@@ -77,7 +87,7 @@ describe('Mt. Gigga summit junction', () => {
       let worstGrade = 0;
       for (const road of approaches) {
         const points = road.from === 'mt-gigga' ? road.points : [...road.points].reverse();
-        for (let i = 0; i < 10; i++) for (const t of [.25, .65]) {
+        for (let i = 0; i < SUMMIT_JOIN_SEGMENTS + 2; i++) for (const t of [.25, .65]) {
           const a = points[i]!, b = points[i + 1]!;
           const x = THREE.MathUtils.lerp(a.x, b.x, t), z = THREE.MathUtils.lerp(a.z, b.z, t);
           const origin = new THREE.Vector3(x, summit.y + 40, z);
@@ -91,12 +101,16 @@ describe('Mt. Gigga summit junction', () => {
           worstGrade = Math.max(worstGrade, error);
         }
       }
-      expect(worstGrade).toBeLessThan(.4);
+      expect(worstGrade).toBeLessThan(.4 * Math.max(1, options.size / 600));
     } finally { scene.dispose(); physics.free(); }
   }, 60_000);
 
-  it('walks a real goat from the summit along each of the three exits', async () => {
-    const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
+  it.each([
+    { seed: 'billy-isle', size: 600, resolution: 193 },
+    { seed: 'wp4-cliff', size: 1200, resolution: 65 },
+    { seed: 0, size: 2000, resolution: 65 },
+  ])('walks a real goat from the summit along each of the three exits at $size m', async options => {
+    const island = generateIsland(options);
     const approaches = island.roads.filter(r => r.type === 'trail' &&
       (r.from === 'mt-gigga' || r.to === 'mt-gigga'));
     for (const road of approaches) {
@@ -108,7 +122,7 @@ describe('Mt. Gigga summit junction', () => {
         position: { x: summit.x, y: summit.y + .25, z: summit.z } });
       try {
         for (let i = 0; i < 70; i++) world.step(1 / 60);
-        for (const index of [1, 4, 7, 10]) {
+        for (const index of [1, 4, 7, SUMMIT_JOIN_SEGMENTS + 2]) {
           const target = points[index]!;
           let distance = Infinity;
           for (let tick = 0; tick < 240; tick++) {
