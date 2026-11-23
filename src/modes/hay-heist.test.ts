@@ -193,6 +193,17 @@ describe('HAY HEIST — barn scoring and cargo physics contracts', () => {
     expect(match.bales.find(b => b.id === 'red-hay-1')!.carrierId).toBeNull();
   });
 
+  it('drops carried hay only when the live headbutt actually hit that goat', () => {
+    const match = heist();
+    match.step({ ...frame(red(0), blue(-9.1)), intents: { b: { tongue: true } } });
+    const nearby = { ...frame(red(-9.9), blue(-9.1)), intents: { b: { tongue: true } } };
+    const swing = { attackerId: 'a', facing: { x: 1, z: 0 } };
+    match.step({ ...nearby, headbutts: [{ ...swing, struckGoatId: null }] });
+    expect(match.getEffects('b').carryingBaleId).toBe('red-hay-1');
+    const hit = match.step({ ...nearby, headbutts: [{ ...swing, struckGoatId: 'b' }] });
+    expect(hit).toContainEqual(expect.objectContaining({ type: 'hay.dropped', playerId: 'b', reason: 'shoved' }));
+  });
+
   it('charges exact stamina per fixed tick, exhausts the carrier and restores sprint', () => {
     const match = heist({ hayCarryDrainPerSecond: 60 });
     match.step({ ...frame(red(10.9), blue(30)), intents: { a: { tongue: true } } });

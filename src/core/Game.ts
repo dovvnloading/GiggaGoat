@@ -1087,7 +1087,6 @@ export class Game {
       // nearby crate. Retain its torso lunge, then resolve an explicitly dynamic
       // forward target in core when that ray did not find one.
       const facing = forward(g.locomotion.heading);
-      if (!g.isRagdoll) this.party.noteHeadbutt(g.id, facing);
       const origin = add(g.head.translation(), V(0, .04 * g.size, 0));
       const range = g.interactions.tuning.headbuttRange * g.size;
       const preferred = this.physics.shapeCast(origin, g.head.rotation(), facing,
@@ -1129,10 +1128,12 @@ export class Game {
           struck = target;
         }
       }
-      if (player) {
-        const targetId = struck ? this.physics.bodyData(struck.handle)?.owner : undefined;
-        this.gigs.noteAbility({ type: 'headbutt', targetId });
+      const target = struck ? this.physics.bodyData(struck.handle) : undefined;
+      if (!g.isRagdoll) {
+        const struckGoatId = target?.kind === 'goat' ? target.owner : undefined;
+        this.party.noteHeadbutt(g.id, facing, struckGoatId ?? null);
       }
+      if (player) this.gigs.noteAbility({ type: 'headbutt', targetId: target?.owner });
       if (this.materialAudioListeners.size && !g.isRagdoll) {
         // Sample the wood/metal role while the body still exists. A stopped
         // headbutt can also reach a solid scenery collider without a knock.

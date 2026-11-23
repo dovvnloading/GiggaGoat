@@ -179,10 +179,10 @@ export class PartySession {
     }
   }
 
-  noteHeadbutt(attackerId: string, facing: Point): void {
+  noteHeadbutt(attackerId: string, facing: Point, struckGoatId?: string | null): void {
     const match = this.match;
     if (match?.mode === 'hay-heist' && (match.phase === 'playing' || match.phase === 'overtime')) {
-      this.headbutts.push({ attackerId, facing });
+      this.headbutts.push({ attackerId, facing, struckGoatId });
     }
   }
 

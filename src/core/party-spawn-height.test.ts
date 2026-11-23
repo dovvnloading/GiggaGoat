@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { GOAT_SIZES, RAPIER, V, type GoatRagdoll } from '../physics';
+import { GOAT_SIZES, RAPIER, V, add, rotate, sub, type GoatRagdoll } from '../physics';
+import { conjugate, multiplyRotation } from '../physics/math';
 import { heightAt } from '../world';
 import { Game } from './Game';
 
@@ -50,14 +51,22 @@ describe('party match spawns', () => {
     } finally { game.dispose(); }
   });
 
-  it('seats an already flopped player in each arena without forcing its limbs upright', async () => {
+  it('seats an upside-down player with folded joints in each arena', async () => {
     const game = await Game.create();
     try {
       game.step({ flop: true });
       for (let tick = 0; tick < 30; tick++) game.step();
       expect(game.goat.isRagdoll).toBe(true);
+      const torso = game.goat.torso;
+      const pivot = torso.translation();
+      const turn = multiplyRotation({ x: 1, y: 0, z: 0, w: 0 }, conjugate(torso.rotation()));
+      for (const body of game.goat.bodies) {
+        body.setTranslation(add(pivot, rotate(turn, sub(body.translation(), pivot))), true);
+        body.setRotation(multiplyRotation(turn, body.rotation()), true);
+      }
       for (const mode of ['king-of-the-peak', 'rising-tide', 'hay-heist'] as const) {
         game.party.start(mode, 7, 'normal');
+        if (mode !== 'hay-heist') expect(rotate(torso.rotation(), V(0, 1, 0)).y).toBeLessThan(-.99);
         expectClearBodies(game, [game.goat]);
         game.party.returnToFreeRoam();
       }
