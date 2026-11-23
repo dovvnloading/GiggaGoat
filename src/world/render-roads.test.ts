@@ -4,7 +4,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { buildRapierColliders, createWorldScene, generateIsland } from './index';
 import { DAM_EAST_ROAD, DAM_MOUNTAIN_TRAIL, DAM_PINES_BRIDGE_PREFIX, DAM_PINES_ROAD,
   damMountainTrailDirt } from './roads';
-import { roadRibbonData, roadRibbonRuns, SUMMIT_ASCENT_TRAIL } from './road-ribbons';
+import { roadRibbonData, roadRibbonRuns, SUMMIT_ASCENT_TRAIL, SUMMIT_JOIN_SEGMENTS } from './road-ribbons';
 import { damChannelAt, isDamHeadwater } from './dam-landscape';
 import { getDamPlacement } from './the-dam';
 import type { IslandData, RoadPoint } from './types';
@@ -47,8 +47,17 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
   else expect(crossSections).toBeUndefined();
   const normals = surface.geometry.getAttribute('normal');
   const indices = surface.geometry.getIndex()!;
-  expect(indices.count / 3).toBe(6 * segments + 2 * pavedSpans.length);
-  expect(positions.count).toBe(6 * runs.reduce((sum, run) => sum + run.points.length, 0));
+  const originalVertices = 6 * runs.reduce((sum, run) => sum + run.points.length, 0);
+  const summit = island.pois.find(p => p.id === 'mt-gigga')!.center;
+  const atSummit = (point: RoadPoint) => Math.hypot(point.x - summit.x, point.z - summit.z) < 1e-5;
+  const joined = type === 'trail' && runs.filter(run => run.points.length > SUMMIT_JOIN_SEGMENTS + 1 &&
+    (atSummit(run.points[0]!) || atSummit(run.points.at(-1)!))).length === 3;
+  if (!joined) {
+    expect(indices.count / 3).toBe(6 * segments + 2 * pavedSpans.length);
+    expect(positions.count).toBe(originalVertices);
+  } else {
+    expect(positions.count).toBeGreaterThan(originalVertices);
+  }
   const lift = type === 'road' ? 0.2 : 0.19;
   const damTrail = island.roads.find(road => road.id === DAM_MOUNTAIN_TRAIL);
   const damTrailEnd = damTrail ? damMountainTrailDirt(island, damTrail).at(-1) : undefined;
@@ -57,6 +66,8 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
 
   for (const run of runs) {
     const first = vertex;
+    const side = joined && atSummit(run.points[0]!) ? 'start' :
+      joined && atSummit(run.points.at(-1)!) ? 'end' : undefined;
     for (const [pointIndex, point] of run.points.entries()) {
       const lx = positions.getX(vertex), lz = positions.getZ(vertex);
       const rx = positions.getX(vertex + 1), rz = positions.getZ(vertex + 1);
@@ -85,8 +96,12 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
       expect(positions.getZ(vertex + 2)).toBe(lz);
       expect(positions.getX(vertex + 3)).toBe(rx);
       expect(positions.getZ(vertex + 3)).toBe(rz);
-      expect(normals.getY(vertex)).toBeGreaterThan(0);
-      expect(normals.getY(vertex + 1)).toBeGreaterThan(0);
+      const replaced = side === 'start' ? pointIndex < SUMMIT_JOIN_SEGMENTS :
+        side === 'end' ? pointIndex > run.points.length - 1 - SUMMIT_JOIN_SEGMENTS : false;
+      if (!replaced) {
+        expect(normals.getY(vertex)).toBeGreaterThan(0);
+        expect(normals.getY(vertex + 1)).toBeGreaterThan(0);
+      }
       if (crossSections) for (let side = 0; side < 6; side++) {
         expect(crossSections.getX(vertex + side)).toBe(side % 2 ? 1 : -1);
         expect(crossSections.getY(vertex + side)).toBeCloseTo(halfWidth, 5);
@@ -95,6 +110,13 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
     }
     let priorLeft = -1, priorRight = -1;
     for (let i = 0; i < run.points.length - 1; i++) {
+      const replaced = side === 'start' ? i < SUMMIT_JOIN_SEGMENTS :
+        side === 'end' ? i >= run.points.length - 1 - SUMMIT_JOIN_SEGMENTS : false;
+      if (replaced) {
+        priorLeft = first + (i + 1) * 6;
+        priorRight = priorLeft + 1;
+        continue;
+      }
       const startLeft = indices.getX(index);
       const endLeft = indices.getX(index + 1);
       const startRight = indices.getX(index + 2);
@@ -113,8 +135,13 @@ function inspectRibbon(island: IslandData, group: THREE.Group, type: Surface): v
       index += bridge ? 24 : 18; // Top, skirts, and the underside on the paved bridge.
     }
   }
-  expect(vertex).toBe(positions.count);
-  expect(index).toBe(indices.count);
+  if (!joined) {
+    expect(vertex).toBe(positions.count);
+    expect(index).toBe(indices.count);
+  } else {
+    expect(vertex).toBe(originalVertices);
+    expect(index).toBeLessThan(indices.count);
+  }
 }
 
 function isCrossingDash(island: IslandData, a: RoadPoint, b: RoadPoint): boolean {
@@ -398,11 +425,17 @@ describe('IS-6 joined road/trail visual ribbons', () => {
       const previous = Float32Array.from(base.positions);
       expect(Array.from(mesh.geometry.index!.array)).toEqual(base.indices);
       const moved = [];
+      const originalVertices = 6 * runs.reduce((count, run) => count + run.points.length, 0);
       for (let component = 0; component < previous.length; component++) {
         if (position.array[component] === previous[component]) continue;
         const vertex = (component - 1) / 3 - first;
         const point = Math.floor(vertex / 6);
         expect(component % 3).toBe(1);
+        if ((component - 1) / 3 >= originalVertices) {
+          expect(base.skirtVertices).toContain((component - 1) / 3);
+          expect(position.array[component]).toBeLessThanOrEqual(previous[component]!);
+          continue;
+        }
         expect(point).toBeGreaterThanOrEqual(0);
         expect(point).toBeLessThan(points.length);
         expect(vertex % 6).toBeGreaterThanOrEqual(4);

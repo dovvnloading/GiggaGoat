@@ -2,10 +2,12 @@ import * as THREE from 'three';
 import type { IslandData, PropColliderDescriptor, RoadDescriptor, RoadPoint } from './types';
 import { DAM_EAST_ROAD, DAM_MOUNTAIN_TRAIL, DAM_PINES_BRIDGE_PREFIX, DAM_PINES_ROAD,
   damMountainTrailDirt, makeLocalStreets, MOUNTAIN_SPIRAL_TRAIL } from './roads';
+import { addSummitJunction } from './summit-junction';
 
 const SURFACE_LIFT = { road: .2, trail: .19 } as const;
 const PAVED_DECK_THICKNESS = .7;
 const PAVED_DECK_CLEARANCE = .07;
+export const SUMMIT_JOIN_SEGMENTS = 8;
 export const SUMMIT_ASCENT_TRAIL = 'mt-gigga--hoofington';
 
 /**
@@ -255,7 +257,7 @@ function pavedBridgeDeck(id: string, p: RoadPoint, q: RoadPoint, width: number,
 export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
   summitGround?: (x: number, z: number) => number): {
   positions: number[]; indices: number[]; supportIndices: number[]; segments: RibbonSegment[];
-  crossSections: number[]; pavedBridgeDecks: PropColliderDescriptor[];
+  crossSections: number[]; pavedBridgeDecks: PropColliderDescriptor[]; skirtVertices: number[];
 } {
   const runs = roadRibbonRuns(island, type);
   const topOffset = SURFACE_LIFT[type];
@@ -264,6 +266,7 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
   const supportIndices: number[] = [];
   const segments: RibbonSegment[] = [];
   const crossSections: number[] = [];
+  const skirtVertices: number[] = [];
   const scale = island.size / 600;
   const pavedBridgeDecks: PropColliderDescriptor[] = [];
   const bridgePoints = new Set<RoadPoint>();
@@ -281,8 +284,24 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
   const pavement = damTrailEnd ? roadRibbonData(island, 'road') : undefined;
   const summitStart = summitGround && type === 'trail'
     ? island.roads.find(road => road.id === SUMMIT_ASCENT_TRAIL)?.points[0] : undefined;
+  const summit = type === 'trail' ? island.pois.find(p => p.id === 'mt-gigga')?.center : undefined;
+  const joinSegments = SUMMIT_JOIN_SEGMENTS;
+  const summitSide = new Map<RoadRibbonRun, 'start' | 'end'>();
+  if (summit) for (const run of runs) {
+    const near = (p: RoadPoint) => Math.hypot(p.x - summit.x, p.z - summit.z) < 1e-5;
+    if (run.points.length > joinSegments + 1 && near(run.points[0]!)) summitSide.set(run, 'start');
+    else if (run.points.length > joinSegments + 1 && near(run.points.at(-1)!)) summitSide.set(run, 'end');
+  }
+  // Oversized worlds can have grade-separated switchback crossings here.
+  // Preserve those independent surfaces rather than flattening them together.
+  if (summitSide.size !== 3 || island.size > 1200) summitSide.clear();
+  const junctionFaces: number[] = [];
+  const junctionCuts: [number, number][] = [];
+  const junctionAnchors: { x: number; z: number }[] = [];
 
-  for (const { points, width, widths, squareNorthStart } of runs) {
+  for (const run of runs) {
+    const { points, width, widths, squareNorthStart } = run;
+    const side = summitSide.get(run);
     const firstVertex = positions.length / 3;
     const directions = points.slice(1).map((b, i) => {
       const a = points[i]!;
@@ -337,6 +356,8 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
         point.x + x, bottom + (leftTop - top), point.z + z,
         point.x - x, bottom + (rightTop - top), point.z - z,
       );
+      const base = positions.length / 3 - 6;
+      skirtVertices.push(base + 2, base + 3, base + 4, base + 5);
       // Signed width coordinates are shared by the asphalt top and its skirts.
       if (type === 'road') crossSections.push(-1, halfWidth, 1, halfWidth,
         -1, halfWidth, 1, halfWidth, -1, halfWidth, 1, halfWidth);
@@ -344,20 +365,47 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
     if (summitGround && points[0] === summitStart) {
       fitSummitEarth(points, positions, firstVertex, island.size / 600, summitGround);
     }
+    if (side) {
+      // Keep the joined and unjoined edges identical while removing tiny
+      // floating-point differences before the polygon sweep.
+      const step = 1e-5 * scale;
+      const start = side === 'start' ? 0 : points.length - 1 - joinSegments;
+      for (let point = start; point <= start + joinSegments; point++) {
+        for (let part = 0; part < 6; part++) {
+          const vertex = (firstVertex + point * 6 + part) * 3;
+          positions[vertex] = Math.round(positions[vertex]! / step) * step;
+          positions[vertex + 2] = Math.round(positions[vertex + 2]! / step) * step;
+        }
+      }
+    }
 
     for (let i = 0; i < points.length - 1; i++) {
       const a = firstVertex + i * 6, b = a + 6;
       // Two top triangles and one quad (two triangles) for each outside skirt.
       // Shared indexed vertices at b are reused as a in the next segment.
       const top = [a, b, a + 1, a + 1, b, b + 1];
-      indices.push(
+      const joinsSummit = side === 'start' ? i < joinSegments :
+        side === 'end' ? i >= points.length - 1 - joinSegments : false;
+      if (joinsSummit) {
+        junctionFaces.push(...top);
+        const center = (first: number) => ({
+          x: (positions[first * 3]! + positions[(first + 1) * 3]!) / 2,
+          z: (positions[first * 3 + 2]! + positions[(first + 1) * 3 + 2]!) / 2,
+        });
+        const pa = center(a), pb = center(b);
+        junctionAnchors.push(pa, { x: (pa.x + pb.x) / 2, z: (pa.z + pb.z) / 2 });
+        if (side === 'start' && i === joinSegments - 1) junctionCuts.push([b, b + 1]);
+        if (side === 'end' && i === points.length - 1 - joinSegments) junctionCuts.push([a, a + 1]);
+      } else indices.push(
         ...top,
         a + 2, a + 4, b + 2, b + 2, a + 4, b + 4,
         a + 3, b + 3, a + 5, b + 3, b + 5, a + 5,
       );
       const p = points[i]!, q = points[i + 1]!;
       const pavedBridge = bridgeSpans.get(p);
-      if (pavedBridge?.end === q) {
+      if (joinsSummit) {
+        // The union below supplies both the visual top and walkable collider.
+      } else if (pavedBridge?.end === q) {
         // Close the visible underside between the two side skirts.
         indices.push(a + 4, a + 5, b + 4, a + 5, b + 5, b + 4);
         supportIndices.push(...top);
@@ -380,5 +428,25 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
       });
     }
   }
-  return { positions, indices, supportIndices, segments, crossSections, pavedBridgeDecks };
+  if (junctionFaces.length) {
+    const junctionHeight = (x: number, z: number): number => {
+      const y = pavementAt(positions, junctionFaces, x, z);
+      if (Number.isFinite(y)) return y;
+      // Union vertices on a shared edge can differ by floating-point rounding.
+      // Interpolate the nearest original edge if the triangle test misses it.
+      let nearest = Infinity, result = summit!.y + topOffset;
+      for (let i = 0; i < junctionFaces.length; i += 3) for (let edge = 0; edge < 3; edge++) {
+        const a = junctionFaces[i + edge]! * 3, b = junctionFaces[i + (edge + 1) % 3]! * 3;
+        const dx = positions[b]! - positions[a]!, dz = positions[b + 2]! - positions[a + 2]!;
+        const length2 = dx * dx + dz * dz;
+        const t = length2 ? THREE.MathUtils.clamp(((x - positions[a]!) * dx + (z - positions[a + 2]!) * dz) / length2, 0, 1) : 0;
+        const distance2 = (x - positions[a]! - t * dx) ** 2 + (z - positions[a + 2]! - t * dz) ** 2;
+        if (distance2 < nearest) { nearest = distance2; result = THREE.MathUtils.lerp(positions[a + 1]!, positions[b + 1]!, t); }
+      }
+      return result;
+    };
+    addSummitJunction(positions, indices, supportIndices, skirtVertices, junctionFaces, junctionCuts, junctionAnchors,
+      junctionHeight, summitGround, scale);
+  }
+  return { positions, indices, supportIndices, segments, crossSections, pavedBridgeDecks, skirtVertices };
 }
