@@ -566,15 +566,17 @@ export class LocomotionController {
         const extra = Math.min(.2 * s, Math.max(0, -slopeSpeed) * dt * 3);
         this.grounded = slopeSpeed < -.2 && ground.distance <= groundedDistance + extra;
       }
+      const fastEdge = g.movementSpeedScale > 1;
       if (!this.grounded && wishLength < .08 && Math.abs(verticalSpeed) < .35 &&
-          ground.distance <= groundedDistance + .16 * s) {
-        // A hoof can still rest on a raised street edge beside the torso ray.
+          ground.distance <= groundedDistance + (fastEdge ? .16 : .09) * s) {
+        // A hoof can rest on a low street edge beside the torso ray; a high
+        // ledge cannot support a torso that has already moved beyond it.
         const floor = ground.point.y;
         this.grounded = g.legs.some(leg => {
-          const support = g.world.raycast(leg.translation(), V(0, -1, 0), .55 * s,
+          const support = g.world.raycast(leg.translation(), V(0, -1, 0), (fastEdge ? .55 : .48) * s,
             { groups: GROUND_QUERY_GROUPS });
           return support !== null && support.collider.handle !== ground.collider.handle &&
-            support.point.y > floor + .03 * s &&
+            support.point.y > floor + .03 * s && support.point.y <= floor + .5 * s &&
             support.normal.y >= minGroundY && (!support.body || support.body.isFixed());
         });
       }
