@@ -2,6 +2,7 @@ import { roadRibbonData } from './road-ribbons';
 import { roadsideGravelAt, roadsideStops } from './roadside-stops';
 import { gridSample, riverAt, segmentProjection } from './terrain';
 import type { IslandData, PropDescriptor, PropKind, Vec2 } from './types';
+import { buildingFootprints, foliageHitsBuilding } from './footprints';
 
 const SCATTER_KINDS = new Set<PropKind>(['tree-pine', 'tree-oak', 'bush', 'flower', 'grass-tuft']);
 
@@ -74,6 +75,7 @@ export function clearPavedRoadScenery(island: IslandData): void {
   const overlapsRoad = pavedRoadOverlap(island);
   const stops = roadsideStops(island);
   const solid = island.props.filter(prop => prop.collidable);
+  const buildings = buildingFootprints(island.props);
   const scatter = solid.filter(prop => prop.id.startsWith('detail-island-') &&
     prop.body.type === 'static' && prop.shape === 'cylinder' && SCATTER_KINDS.has(prop.kind));
   for (const prop of scatter) {
@@ -90,6 +92,9 @@ export function clearPavedRoadScenery(island: IslandData): void {
       if (island.pois.some(poi =>
         Math.hypot(point.x - poi.center.x, point.z - poi.center.z) < poi.radius * 1.25) ||
         roadsideGravelAt(stops, point.x, point.z)) return false;
+      if (['tree-oak', 'tree-pine', 'bush'].includes(prop.kind) && foliageHitsBuilding({
+        x: point.x, z: point.z, sx: prop.size.x, sz: prop.size.z, yaw: prop.transform.rotationY,
+      }, buildings, .15 * scale)) return false;
       return solid.every(other => other === prop || propClearance(other, point) > radius + .12 * scale);
     });
     if (shoulder) Object.assign(position, shoulder, { y: shoulder.y + prop.size.y / 2 });
