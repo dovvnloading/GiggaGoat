@@ -305,11 +305,15 @@ function batchHeroMeshes(root: THREE.Group, name: string,
   return mesh;
 }
 
+function footpathCurve(center: { x: number; z: number }, scale: number): THREE.CatmullRomCurve3 {
+  return new THREE.CatmullRomCurve3(LIGHTHOUSE_FOOTPATH.map(([dx, dz]) =>
+    new THREE.Vector3(center.x + dx * scale, 0, center.z + dz * scale)), false, 'centripetal');
+}
+
 /** A strip conforming to the heightfield: decorative, not a false flat collider. */
 function makeWindingFootpath(island: IslandData, center: { x: number; z: number }, applyMap?: ApplyGroundMap): THREE.Mesh {
   const scale = island.size / 600;
-  const curve = new THREE.CatmullRomCurve3(LIGHTHOUSE_FOOTPATH.map(([dx, dz]) =>
-    new THREE.Vector3(center.x + dx! * scale, 0, center.z + dz! * scale)), false, 'centripetal');
+  const curve = footpathCurve(center, scale);
   const vertices: number[] = [], indices: number[] = [], colours: number[] = [];
   const across = [-1.23, -.70, .70, 1.23];
   for (let i = 0; i <= 72; i++) {
@@ -634,22 +638,77 @@ function makeLookoutBraces(island: IslandData, deck: PropDescriptor): THREE.Grou
   return timber.finish('lighthouse-lookout-cliff-braces-and-landing');
 }
 
-function makeFlowers(island: IslandData, center: { x: number; z: number }): THREE.Group {
+/** Build the planted pairs after checking both visible footprints against the cape. */
+export function makeLighthouseFlowers(island: IslandData, center: { x: number; z: number }): THREE.Group {
   const group = new THREE.Group();
   group.name = 'lighthouse-grass-and-wildflowers';
   const scale = island.size / 600;
+  const obstacles = island.props.filter(prop => prop.poiId === 'old-lighthouse' &&
+    ['house', 'cottage', 'lighthouse', 'cave-mouth', 'dock', 'platform'].includes(prop.kind));
+  const path = footpathCurve(center, scale).getPoints(72);
+  const tower = obstacles.find(prop => prop.kind === 'lighthouse');
+  const stairs = tower ? lighthouseAccess(tower, (x, z) => gridSample(island, x, z)) : [];
+  const centerOf = (section: AccessSection) => ({ x: (section.inner.x + section.outer.x) / 2,
+    z: (section.inner.z + section.outer.z) / 2 });
+  const stairSegments = stairs.slice(1).map((end, i) => {
+    const start = stairs[i]!;
+    const width = (section: AccessSection) =>
+      Math.hypot(section.outer.x - section.inner.x, section.outer.z - section.inner.z);
+    return { start: centerOf(start), end: centerOf(end),
+      radius: Math.max(width(start), width(end)) / 2 + .65 * scale };
+  });
+  const inside = (x: number, z: number, prop: PropDescriptor): boolean => {
+    const dx = x - prop.transform.position.x, dz = z - prop.transform.position.z;
+    const c = Math.cos(prop.transform.rotationY), s = Math.sin(prop.transform.rotationY);
+    // Leave additional room in front of the recessed cave entrance.
+    const margin = (prop.kind === 'cave-mouth' ? 3 : .65) * scale;
+    return Math.abs(c * dx - s * dz) < prop.size.x / 2 + margin &&
+      Math.abs(s * dx + c * dz) < prop.size.z / 2 + margin;
+  };
+  const distanceToSegment = (x: number, z: number, a: { x: number; z: number },
+    b: { x: number; z: number }): number => {
+    const dx = b.x - a.x, dz = b.z - a.z;
+    const length2 = dx * dx + dz * dz;
+    const t = length2 ? THREE.MathUtils.clamp(((x - a.x) * dx + (z - a.z) * dz) / length2, 0, 1) : 0;
+    return Math.hypot(x - (a.x + t * dx), z - (a.z + t * dz));
+  };
+  const clear = (x: number, z: number): boolean => {
+    if (obstacles.some(prop => inside(x, z, prop))) return false;
+    for (let i = 1; i < path.length; i++) {
+      if (distanceToSegment(x, z, path[i - 1]!, path[i]!) < 3.05 * scale) return false;
+    }
+    if (stairSegments.some(({ start, end, radius }) => distanceToSegment(x, z, start, end) < radius)) return false;
+    return gridSample(island, x, z) > island.seaLevel + .2 * scale;
+  };
+  const placements: Array<{ x: number; z: number; angle: number; index: number }> = [];
+  for (let index = 0; index < 32; index++) {
+    const angle = index * 2.399963 + .2;
+    const initialRadius = 10 + (index % 4) * 2.9;
+    // Retain clear original placements; search nearby positions deterministically
+    // for the few pairs that would otherwise grow through masonry or paths.
+    for (let attempt = 0; attempt < 192; attempt++) {
+      const ring = attempt === 0 ? 0 : Math.floor((attempt - 1) / 16);
+      const step = attempt === 0 ? 0 : (attempt - 1) % 16 + 1;
+      const turn = step === 0 ? 0 : Math.ceil(step / 2) * (step % 2 ? 1 : -1) * .18;
+      const radius = (initialRadius + ring * 1.2) * scale;
+      const x = center.x + Math.cos(angle + turn) * radius;
+      const z = center.z + Math.sin(angle + turn) * radius;
+      if (!clear(x, z) || !clear(x + .4 * scale, z) || placements.some(other =>
+        Math.hypot(other.x - x, other.z - z) < .8 * scale)) continue;
+      placements.push({ x, z, angle, index });
+      break;
+    }
+  }
   const dummy = new THREE.Object3D();
   const grass = new THREE.InstancedMesh(
     kitShape('grassClump'),
-    new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_RAMP }), 32);
+    new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_RAMP }), placements.length);
   const flowers = new THREE.InstancedMesh(
     kitShape('flower'),
-    new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_RAMP }), 32);
-  for (let i = 0; i < 32; i++) {
-    const angle = i * 2.399963 + 0.2;
-    const r = (10 + (i % 4) * 2.9) * scale;
-    const x = center.x + Math.cos(angle) * r;
-    const z = center.z + Math.sin(angle) * r;
+    new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_RAMP }), placements.length);
+  grass.name = 'lighthouse-grass';
+  flowers.name = 'lighthouse-wildflowers';
+  placements.forEach(({ x, z, angle, index }, i) => {
     const ground = gridSample(island, x, z);
     dummy.position.set(x, ground, z);
     dummy.rotation.set(0, angle, 0);
@@ -657,10 +716,10 @@ function makeFlowers(island: IslandData, center: { x: number; z: number }): THRE
     dummy.updateMatrix();
     grass.setMatrixAt(i, dummy.matrix);
     dummy.position.set(x + 0.4 * scale, gridSample(island, x + 0.4 * scale, z), z);
-    dummy.scale.setScalar((i % 3 === 0 ? 1 : 0.7) * scale);
+    dummy.scale.setScalar((index % 3 === 0 ? 1 : 0.7) * scale);
     dummy.updateMatrix();
     flowers.setMatrixAt(i, dummy.matrix);
-  }
+  });
   for (const mesh of [grass, flowers]) {
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
@@ -790,7 +849,7 @@ export function buildLighthouseVisuals(island: IslandData,
     }
     group.add(footings);
   }
-  group.add(makeFlowers(island, center));
+  group.add(makeLighthouseFlowers(island, center));
 
   const lighthouse = get('lighthouse');
   const beacon = lighthouse ? makeBeacon(lighthouse, scale) : undefined;
