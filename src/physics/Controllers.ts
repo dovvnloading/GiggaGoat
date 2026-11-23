@@ -561,11 +561,9 @@ export class LocomotionController {
     this.grounded = false;
     if (walkable && ground && this.clock >= this.jumpLockUntil && verticalSpeed < takeoffSpeed) {
       this.grounded = ground.distance <= groundedDistance;
-      if (!this.grounded && !this.jumpConsumed && this.clock - this.lastGroundAt <= .22 &&
-          ground.normal.y < .995 && wishLength > .12) {
-        // At higher configured speeds, the ground falls away between fixed
-        // steps on a downhill grade. Keep recent support within one short
-        // stride, without treating flat ledges or jumps as planted.
+      if (!this.grounded && !this.jumpConsumed && this.clock - this.lastGroundAt <= .22 && wishLength > .12) {
+        // Follow the vertical drop per fixed step, including on a shallow
+        // grade crossed at speed. Flat ground and sideways travel add no reach.
         const slopeSpeed = -(ground.normal.x * torso.linvel().x + ground.normal.z * torso.linvel().z) / ground.normal.y;
         const extra = Math.min(.2 * s, Math.max(0, -slopeSpeed) * dt * 3);
         this.grounded = slopeSpeed < -.2 && ground.distance <= groundedDistance + extra;
