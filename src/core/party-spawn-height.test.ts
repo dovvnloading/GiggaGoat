@@ -1,9 +1,87 @@
 import { describe, expect, it } from 'vitest';
-import { RAPIER, V } from '../physics';
+import { GOAT_SIZES, RAPIER, V, type GoatRagdoll } from '../physics';
 import { heightAt } from '../world';
 import { Game } from './Game';
 
+function expectClearBodies(game: Game, goats: GoatRagdoll[]): void {
+  game.physics.raw.propagateModifiedBodyPositionsToColliders();
+  for (const goat of goats) {
+    const own = new Set(goat.bodies.map(body => body.handle));
+    const torso = goat.torso.translation();
+    game.physics.raw.forEachCollider(other => {
+      if (other.isSensor() || !other.isEnabled() || own.has(other.parent()?.handle ?? -1)) return;
+      const near = other.projectPoint(torso, true)?.point;
+      if (near && Math.hypot(near.x - torso.x, near.y - torso.y, near.z - torso.z) > 3 * goat.size) return;
+      for (const body of goat.bodies) {
+        for (let i = 0; i < body.numColliders(); i++) {
+          const contact = other.contactCollider(body.collider(i), 0);
+          if (contact) expect(contact.distance, goat.id + ' scenery or opponent contact').toBeGreaterThan(-.02);
+        }
+      }
+    });
+  }
+}
+
 describe('party match spawns', () => {
+  it('gives each opponent room to turn at kickoff, including beside a GIGGA player', async () => {
+    const game = await Game.create();
+    try {
+      for (const size of GOAT_SIZES) {
+        game.goat.resize(size);
+        for (const mode of ['hay-heist', 'king-of-the-peak', 'rising-tide'] as const) {
+          game.party.start(mode, 7, 'normal');
+          const goats = [game.goat, ...Array.from(game.party.bots.values(), bot => bot.goat)];
+          expectClearBodies(game, goats);
+          const spawns = goats.map(goat => {
+            const { x, z } = goat.torso.translation();
+            const head = goat.head.translation();
+            const reach = Math.hypot(head.x - x, head.z - z) + goat.head.collider(0).radius();
+            return { id: goat.id, x, z, reach };
+          });
+          for (const [i, a] of spawns.entries()) {
+            for (const b of spawns.slice(i + 1)) {
+              expect(Math.hypot(a.x - b.x, a.z - b.z), `${mode} size ${size}: ${a.id}, ${b.id}`)
+                .toBeGreaterThan(a.reach + b.reach);
+            }
+          }
+          game.party.returnToFreeRoam();
+        }
+      }
+    } finally { game.dispose(); }
+  });
+
+  it('seats an already flopped player in each arena without forcing its limbs upright', async () => {
+    const game = await Game.create();
+    try {
+      game.step({ flop: true });
+      for (let tick = 0; tick < 30; tick++) game.step();
+      expect(game.goat.isRagdoll).toBe(true);
+      for (const mode of ['king-of-the-peak', 'rising-tide', 'hay-heist'] as const) {
+        game.party.start(mode, 7, 'normal');
+        expectClearBodies(game, [game.goat]);
+        game.party.returnToFreeRoam();
+      }
+    } finally { game.dispose(); }
+  });
+
+  it('keeps the game and player in place when a team cannot fit at kickoff', async () => {
+    const game = await Game.create();
+    try {
+      const yard = game.island.pois.find(poi => poi.id === 'crane-yard')!.center;
+      const blocker = game.physics.raw.createCollider(RAPIER.ColliderDesc.cuboid(20, 30, 15)
+        .setTranslation(yard.x + 14.5, yard.y, yard.z - 20));
+      const before = game.goat.torso.translation();
+      const version = game.teleportVersion;
+      expect(() => game.party.start('hay-heist', 7, 'normal')).toThrow('No clear party spawn');
+      expect(game.party.match).toBeNull();
+      expect(game.party.bots.size).toBe(0);
+      expect(game.goat.torso.translation()).toEqual(before);
+      expect(game.teleportVersion).toBe(version);
+      game.physics.raw.removeCollider(blocker, false);
+      expect(game.party.start('hay-heist', 7, 'normal')).toBe(game.party.match);
+    } finally { game.dispose(); }
+  });
+
   it('finds a raised road even before the first physics step', async () => {
     const game = await Game.create({ seed: 'billy-isle', resolution: 193 });
     try {

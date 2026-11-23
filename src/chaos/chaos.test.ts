@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { performance } from 'node:perf_hooks';
-import { PhysicsWorld, RAPIER, V } from '../physics';
+import { GoatRagdoll, PhysicsWorld, RAPIER, V } from '../physics';
 import type { Vec3 } from '../physics';
 import { BreakableRegistry, ChainReactions, DynamicBodyBudget, SurfaceSystem,
   WaterSystem, applyPhysicsMaterial, PHYSICS_MATERIALS } from './index';
@@ -94,6 +94,16 @@ describe('water: actual displaced mass, motion and typed events', () => {
     water.setSeaLevel(-50);
     steps(world,1);
     expect(water.events.drain().some(e=>e.type==='exit')).toBe(true);
+  });
+
+  it('uses the goat trunk volume for flotation at every waterline', async () => {
+    const world = await scene(), water = manage(new WaterSystem(world, { seaLevel: 0 }));
+    const goat = manage(new GoatRagdoll(world));
+    const trunk = goat.torso.collider(0);
+    water.setSeaLevel(trunk.translation().y);
+    expect(water.sample(goat.torso).fraction).toBeCloseTo(.5);
+    water.setSeaLevel(3);
+    expect(water.sample(goat.torso).displaced).toBeCloseTo(trunk.volume(), 6);
   });
 
   it('a goat-sized buoyant proxy can paddle slowly rather than rocket away', async () => {

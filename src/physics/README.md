@@ -71,8 +71,11 @@ Our built-in ground, boxes and goat body parts do so.
 `new GoatRagdoll(physics,{position?,yaw?,size?,id?})` makes seven actual dynamic rigid
 bodies: `torso`, `neck`, `head` and `legs` (four). Six revolute `joints` have
 motor targets driven from named poses: `stand`, `walk`, `gallop`, `jumpTuck`,
-`climb`, and `flop`. Each body has an individual collider and mass, and connected
-joints disable adjacent collision. Other prop/goat collisions are physical.
+`climb`, and `flop`. Each body carries its own mass. The torso also carries a
+massless rounded collider spanning the ears of the skinned goat. It participates
+in solid contact throughout movement and ragdoll poses. Buoyancy uses the trunk.
+The live bodies and party spawn checks use the same fixture definitions in
+[`GoatGeometry.ts`](./GoatGeometry.ts). Connected joints disable adjacent collision.
 Body parts are also accessible by `getPart(name)` and `bodies`.
 `goat.setPose(name,phase?)` is available for animations, though the locomotion
 controller normally selects and cycles poses.
@@ -90,8 +93,10 @@ means camera-forward and positive x camera-right. `requestJump()` handles
 ground jumps with coyote time and jump buffering; a second aerial press
 injects a physical somersault torque. Check `grounded`, `groundHit`,
 `isClinging`, `airborneSeconds`, and `heading` for HUD/camera state.
-Walking slopes are limited by `maxSlopeDegrees`; moving into steep walls
-enables powered climbing. Wall-cling can be disabled by external
+Walking slopes are limited by `maxSlopeDegrees`. While grounded, the walking
+motor uses upper-body contact normals to slide along fixed walls and stop at
+closed corners. Loose props and other goats still receive the physical shove.
+Moving into steep walls with climbing enabled engages the climbing controller. Wall-cling can be disabled by external
 `setInput({canClimb:false})` at any moment.
 
 `goat.balance` maintains upright torque and a critically damped ride-height

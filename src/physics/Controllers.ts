@@ -3,6 +3,7 @@ import { CollisionLayer, GROUND_QUERY_GROUPS } from './CollisionGroups';
 import { add, clamp, clampLength, cross, dot, forward, length, mul, normalize, right, rotate, sub, V, type Vec3 } from './math';
 import type { GoatRagdoll } from './GoatRagdoll';
 import { CLIMB_STRIDE, climbStep } from './climb-gait';
+import { groundMotorTarget, upperBodyColliders } from './ground-motor-contact';
 
 const HIP_RECOVERY_HOLD_LIMIT = .65;
 const HIP_RECOVERY_HANDOFF_SECONDS = .55;
@@ -491,17 +492,20 @@ export class LocomotionController {
   }
 
   findSafetyRail(wish: Vec3, rails: ReadonlySet<number>): MovementInput['safetyRail'] {
-    const { torso, head, world, size } = this.goat;
+    const { torso, world, size } = this.goat;
     const velocity = torso.linvel();
     const approach = Math.hypot(velocity.x, velocity.z) > 1.5
       ? normalize(V(velocity.x, 0, velocity.z)) : normalize(wish);
     if (length(approach) === 0) return;
-    const leading = dot(sub(head.translation(), torso.translation()), approach) > 0 ? head : torso;
-    const hit = world.shapeCast(leading.translation(), leading.rotation(), approach,
-      leading.collider(0).shape, .7 * size, { predicate: collider => rails.has(collider.handle) });
-    if (!hit || Math.abs(hit.normal.y) > .65) return;
-    const normal = normalize(V(hit.normal.x, 0, hit.normal.z));
-    if (dot(approach, normal) < -.12) return { normal, distance: hit.distance };
+    let nearest: MovementInput['safetyRail'];
+    for (const part of upperBodyColliders(this.goat)) {
+      const hit = world.shapeCast(part.translation(), part.rotation(), approach, part.shape,
+        nearest?.distance ?? .7 * size, { predicate: collider => rails.has(collider.handle) });
+      if (!hit || Math.abs(hit.normal.y) > .65) continue;
+      const normal = normalize(V(hit.normal.x, 0, hit.normal.z));
+      if (dot(approach, normal) < -.12) nearest = { normal, distance: hit.distance };
+    }
+    return nearest;
   }
 
   update(dt: number): void {
@@ -776,7 +780,8 @@ export class LocomotionController {
     // A freshly spawned goat has no takeoff momentum to preserve yet.
     const momentumAir = !this.grounded && !this.input.inWater &&
       (this.jumpConsumed || (!ground && Number.isFinite(this.lastGroundAt) && this.clock - this.lastGroundAt > .25));
-    const target = V(surfaceWish.x*targetSpeed,0,surfaceWish.z*targetSpeed);
+    const desired = V(surfaceWish.x*targetSpeed,0,surfaceWish.z*targetSpeed);
+    const target = this.grounded ? groundMotorTarget(g, desired) : desired;
     let deltaV = this.grounded
       ? clampLength(sub(target,velocity),this.tuning.groundAcceleration*dt)
       : momentumAir ? V() : clampLength(sub(target,velocity),this.tuning.airAcceleration*dt);
