@@ -217,6 +217,8 @@ export interface MovementInput {
   canSprint: boolean;
   canClimb: boolean;
   canGlide?: boolean;
+  /** Swimming keeps the water motor's directional response. */
+  inWater?: boolean;
   /** The host may provide this tick's contact after applying world exclusions. */
   climbContact?: RayHit | null;
   /** A known ramp may already support the front of the goat before its torso reaches it. */
@@ -757,9 +759,34 @@ export class LocomotionController {
     }
     const v = torso.linvel();
     const velocity = V(v.x,0,v.z);
+    // A brief gap above shallow ground is common mid-stride. Keep its
+    // established ground-following response without granting grounded abilities.
+    const striding = wishLength > .12 && (g.pose === 'walk' || g.pose === 'gallop');
+    const strideGap = striding && !this.jumpConsumed && walkable && ground &&
+      ground.distance <= groundedDistance + .13 * s &&
+      this.clock - this.lastGroundAt <= .22 && Math.abs(v.y) < 1.6;
+    // A jump is deliberate immediately; walking off a ledge becomes free
+    // flight after the short ground-following interval and a clear ground ray.
+    // A freshly spawned goat has no takeoff momentum to preserve yet.
+    const momentumAir = !this.grounded && !this.input.inWater &&
+      (this.jumpConsumed || (!ground && Number.isFinite(this.lastGroundAt) && this.clock - this.lastGroundAt > .25));
     const target = V(surfaceWish.x*targetSpeed,0,surfaceWish.z*targetSpeed);
-    const accel = this.grounded ? this.tuning.groundAcceleration : this.tuning.airAcceleration;
-    let deltaV = clampLength(sub(target,velocity),accel*dt);
+    let deltaV = this.grounded
+      ? clampLength(sub(target,velocity),this.tuning.groundAcceleration*dt)
+      : momentumAir ? V() : clampLength(sub(target,velocity),this.tuning.airAcceleration*dt);
+    if (momentumAir && wishLength > 0) {
+      // Air input accelerates toward the desired direction; it must not
+      // brake an already faster takeoff or brake at all after release.
+      const along = dot(velocity, wish), speed = length(velocity);
+      const push = clamp(targetSpeed - along, 0, this.tuning.airAcceleration * dt * wishLength);
+      if (push > 0) {
+        let steered = add(velocity, mul(wish, push));
+        // Turning an already-fast goat can redirect momentum, but cannot
+        // create extra speed; counter-steering may still slow it down.
+        if (speed > targetSpeed && along >= 0) steered = mul(normalize(steered), speed);
+        deltaV = sub(steered, velocity);
+      }
+    }
     if (this.grounded && wishLength > 0) {
       const direction = normalize(target);
       const speed = length(velocity);
@@ -775,12 +802,6 @@ export class LocomotionController {
     }
     // Body parts share their load through the joint solver.
     torso.applyImpulse(mul(deltaV,g.mass),true);
-    // A brief gap above shallow ground is common mid-stride. Keep the
-    // walking animation through it without granting any grounded abilities.
-    const striding = wishLength > .12 && (g.pose === 'walk' || g.pose === 'gallop');
-    const strideGap = striding && !this.jumpConsumed && walkable && ground &&
-      ground.distance <= groundedDistance + .13 * s &&
-      this.clock - this.lastGroundAt <= .22 && Math.abs(v.y) < 1.6;
     if (this.grounded || strideGap) {
       const galloping = sprinting || (strideGap && g.pose === 'gallop' && this.input.sprint);
       g.phase += dt * (galloping ? 12 : 7.6) * Math.max(.4, wishLength);
