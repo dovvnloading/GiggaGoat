@@ -267,7 +267,15 @@ it('preserves actual Summit Sprint ascent across reload and ignores interrupted 
     expect(game.respawns).toBe(1);
     expect(game.gigs.active?.metrics.climbed).toBe(earned);
 
-    game.teleport(trail.points[5]!, 0);
+    // The centreline stores the intended grade; the joined surface can be
+    // higher where another approach meets it. Place the goat on that surface.
+    const upperPoint = trail.points[5]!;
+    const support = game.physics.raycast(V(upperPoint.x, upperPoint.y + 8, upperPoint.z), V(0, -1, 0), 16, {
+      predicate: collider => !game.goat.ownsBody(collider.parent()),
+    });
+    expect(support).not.toBeNull();
+    expect(support!.collider.handle).toBe(game.colliders.paths[1]!.handle);
+    game.teleport(support!.point, 0);
     for (let tick = 0; tick < 45; tick++) game.step();
     expect(game.goat.locomotion.grounded).toBe(true);
     expect(game.gigs.active?.metrics.climbed).toBe(earned);
