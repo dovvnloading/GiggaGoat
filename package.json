@@ -19,10 +19,12 @@
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.21.0",
+    "clipper-lib": "6.4.2",
     "meshoptimizer": "1.1.1",
     "three": "0.187.0"
   },
   "devDependencies": {
+    "@types/clipper-lib": "6.4.0",
     "@types/node": "24.19.2",
     "@types/three": "0.187.0",
     "typescript": "5.9.3",

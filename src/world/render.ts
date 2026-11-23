@@ -443,7 +443,7 @@ function buildRoads(island: IslandData, terrain: readonly Chunk[], atmosphere: R
   const summitGround = (x: number, z: number) => Math.min(near(x, z), far(x, z));
 
   for (const type of ['road', 'trail'] as const) {
-    const { positions, indices, segments, crossSections } = roadRibbonData(island, type, summitGround);
+    const { positions, indices, segments, crossSections, skirtVertices } = roadRibbonData(island, type, summitGround);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setIndex(indices);
@@ -466,8 +466,7 @@ function buildRoads(island: IslandData, terrain: readonly Chunk[], atmosphere: R
       // The two skirt edges have identical XZ at top and bottom. Unwrap their
       // height separately so sloping trail embankments retain stone detail.
       const uv = geometry.getAttribute('uv');
-      for (let i = 0; i < positions.length / 3; i++) {
-        if (i % 6 < 2) continue;
+      for (const i of skirtVertices) {
         uv.setXY(i, (positions[i * 3]! + positions[i * 3 + 2]!) / tile, positions[i * 3 + 1]! / tile);
       }
       applyMap(material, 'mt-gigga', 0xf5f1e8);
