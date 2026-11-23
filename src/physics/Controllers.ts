@@ -562,10 +562,12 @@ export class LocomotionController {
     if (walkable && ground && this.clock >= this.jumpLockUntil && verticalSpeed < takeoffSpeed) {
       this.grounded = ground.distance <= groundedDistance;
       if (!this.grounded && !this.jumpConsumed && this.clock - this.lastGroundAt <= .22 && wishLength > .12) {
-        // Follow the vertical drop per fixed step, including on a shallow
-        // grade crossed at speed. Flat ground and sideways travel add no reach.
+        // On a shallow grade the ray can miss ride height by the solver's
+        // contact tolerance. Larger gaps require an actual downhill grade.
         const slopeSpeed = -(ground.normal.x * torso.linvel().x + ground.normal.z * torso.linvel().z) / ground.normal.y;
-        const extra = Math.min(.2 * s, Math.max(0, -slopeSpeed) * dt * 3);
+        const solver = g.world.raw.integrationParameters;
+        const reach = ground.normal.y < .995 ? .2 * s : solver.normalizedAllowedLinearError * solver.lengthUnit;
+        const extra = Math.min(reach, Math.max(0, -slopeSpeed) * dt * 3);
         this.grounded = slopeSpeed < -.2 && ground.distance <= groundedDistance + extra;
       }
       const fastEdge = g.movementSpeedScale > 1;
