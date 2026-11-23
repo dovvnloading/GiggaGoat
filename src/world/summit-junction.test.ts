@@ -10,9 +10,19 @@ import { PhysicsWorld } from '../physics/PhysicsWorld';
 
 describe('Mt. Gigga summit junction', () => {
   it.each([
+    425, 450, 500, 537, 700, 713, 800, 827, 1000, 1013, 1100, 1177,
+  ])('builds the junction at %i m without geometry errors', size => {
+    const island = generateIsland({ seed: `summit-${size}`, size, resolution: 65 });
+    expect(roadRibbonData(island, 'trail').supportIndices.length).toBeGreaterThan(0);
+  });
+
+  it.each([
     { seed: 'billy-isle', size: 600, resolution: 193 },
     { seed: 'summit-small', size: 400, resolution: 97 },
     { seed: 'summit-large', size: 900, resolution: 97 },
+    { seed: 'pines-alt', size: 900, resolution: 65 },
+    { seed: 'wp4-low', size: 400, resolution: 65 },
+    { seed: 'wp4-cliff', size: 1200, resolution: 65 },
   ])('has a single physical trail surface through the junction at $size m', options => {
     const island = generateIsland(options);
     const summit = island.pois.find(p => p.id === 'mt-gigga')!.center;

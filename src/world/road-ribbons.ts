@@ -362,6 +362,19 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
     if (summitGround && points[0] === summitStart) {
       fitSummitEarth(points, positions, firstVertex, island.size / 600, summitGround);
     }
+    if (side) {
+      // Keep the joined and unjoined edges identical while removing tiny
+      // floating-point differences before the polygon sweep.
+      const step = 1e-5 * scale;
+      const start = side === 'start' ? 0 : points.length - 1 - SUMMIT_JOIN_SEGMENTS;
+      for (let point = start; point <= start + SUMMIT_JOIN_SEGMENTS; point++) {
+        for (let part = 0; part < 6; part++) {
+          const vertex = (firstVertex + point * 6 + part) * 3;
+          positions[vertex] = Math.round(positions[vertex]! / step) * step;
+          positions[vertex + 2] = Math.round(positions[vertex + 2]! / step) * step;
+        }
+      }
+    }
 
     for (let i = 0; i < points.length - 1; i++) {
       const a = firstVertex + i * 6, b = a + 6;

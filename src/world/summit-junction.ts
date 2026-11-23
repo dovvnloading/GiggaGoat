@@ -47,7 +47,7 @@ export function addSummitJunction(
     // Keep the original graded centre lines as interior control points.
     // A tiny offset avoids placing a sample exactly on an existing diagonal.
     for (const anchor of anchors) {
-      const x = anchor.x + .000031 * scale, z = anchor.z + .000019 * scale;
+      const x = anchor.x + .0017 * scale, z = anchor.z + .0011 * scale;
       const triangle = triangles.findIndex(([a, b, c]) => {
         const ax = positions[a * 3]! - positions[c * 3]!, az = positions[a * 3 + 2]! - positions[c * 3 + 2]!;
         const bx = positions[b * 3]! - positions[c * 3]!, bz = positions[b * 3 + 2]! - positions[c * 3 + 2]!;
