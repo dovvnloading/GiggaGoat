@@ -95,7 +95,8 @@ injects a physical somersault torque. Check `grounded`, `groundHit`,
 `isClinging`, `airborneSeconds`, and `heading` for HUD/camera state.
 Walking slopes are limited by `maxSlopeDegrees`. While grounded, the walking
 motor uses upper-body contact normals to slide along fixed walls and stop at
-closed corners. Loose props and other goats still receive the physical shove.
+closed corners. A load-bearing hoof on a loose prop can support walking when the
+centre ray falls just short of the floor. Loose props and other goats still receive the physical shove.
 Moving into steep walls with climbing enabled engages the climbing controller. Wall-cling can be disabled by external
 `setInput({canClimb:false})` at any moment.
 

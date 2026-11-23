@@ -3,7 +3,7 @@ import { CollisionLayer, GROUND_QUERY_GROUPS } from './CollisionGroups';
 import { add, clamp, clampLength, cross, dot, forward, length, mul, normalize, right, rotate, sub, V, type Vec3 } from './math';
 import type { GoatRagdoll } from './GoatRagdoll';
 import { CLIMB_STRIDE, climbStep } from './climb-gait';
-import { groundMotorTarget, upperBodyColliders } from './ground-motor-contact';
+import { groundMotorTarget, hasLoadedPropFooting, upperBodyColliders } from './ground-motor-contact';
 
 const HIP_RECOVERY_HOLD_LIMIT = .65;
 const HIP_RECOVERY_HANDOFF_SECONDS = .55;
@@ -569,6 +569,10 @@ export class LocomotionController {
         this.grounded = slopeSpeed < -.2 && ground.distance <= groundedDistance + extra;
       }
       const fastEdge = g.movementSpeedScale > 1;
+      if (!this.grounded && !this.jumpConsumed && !g.isRagdoll && Math.abs(verticalSpeed) < .35 &&
+          ground.distance <= groundedDistance + .16 * s) {
+        this.grounded = hasLoadedPropFooting(g, minGroundY);
+      }
       if (!this.grounded && wishLength < .08 && Math.abs(verticalSpeed) < .35 &&
           ground.distance <= groundedDistance + (fastEdge ? .16 : .09) * s) {
         // A hoof can rest on a low street edge beside the torso ray; a high

@@ -4,6 +4,41 @@ import { PhysicsWorld } from './PhysicsWorld';
 import { groundMotorTarget } from './ground-motor-contact';
 import { V } from './math';
 
+it.each(['planted', 'side', 'falling', 'clear'] as const)(
+  'checks actual hoof support when walking over a %s prop', async contact => {
+    const world = await PhysicsWorld.create();
+    world.createGround();
+    const size = .6;
+    // Start the torso 5 mm above the normal support range. One front hoof
+    // just touches the top of a 14 cm block; the other three clear the floor.
+    const goat = new GoatRagdoll(world, { size, position: V(0, .101, 0) });
+    try {
+      const x = -.24 * size, z = -.40 * size;
+      const prop = contact === 'side'
+        ? world.createBox(V(x - .106, .24, z), V(.05, .24, .06), 30)
+        : world.createBox(V(x, .07, contact === 'clear' ? z - .4 : z), V(.06, .07, .06), 30);
+      goat.locomotion.setInput({ z: .6, canClimb: false });
+      world.step(world.fixedDt);
+      // The previous contact manifold still exists when a prop is knocked away.
+      if (contact === 'falling') prop.setLinvel(V(0, -2, 0), true);
+      world.step(world.fixedDt);
+      const heightLimit = (goat.balance.tuning.rideHeight + .16) * size;
+      expect(goat.locomotion.groundHit!.distance).toBeGreaterThan(heightLimit);
+      expect(goat.locomotion.grounded).toBe(contact === 'planted');
+      if (contact === 'planted') {
+        goat.locomotion.requestJump();
+        world.step(world.fixedDt);
+        expect(goat.locomotion.jumpedFromSupport).toBe(true);
+        world.step(world.fixedDt);
+        expect(goat.locomotion.grounded).toBe(false);
+      }
+    } finally {
+      goat.dispose();
+      world.dispose();
+    }
+  },
+);
+
 it.each([true, false])('slides along fixed contact planes in either collider order (wall first = %s)', async wallFirst => {
   const world = await PhysicsWorld.create({ gravity: V() });
   const wall = () => world.createGround(V(3, 3, .05), V(0, 1, -1.11));

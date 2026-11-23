@@ -1,4 +1,5 @@
 import type { Collider } from '@dimforge/rapier3d-compat';
+import { CollisionLayer } from './CollisionGroups';
 import type { GoatRagdoll } from './GoatRagdoll';
 import { dot, mul, normalize, sub, V, type Vec3 } from './math';
 
@@ -8,6 +9,31 @@ export function* upperBodyColliders(goat: GoatRagdoll): Generator<Collider> {
   for (const body of [goat.head, goat.neck, goat.torso]) {
     for (let i = 0; i < body.numColliders(); i++) yield body.collider(i);
   }
+}
+
+/** Test the solver load under a hoof when a loose prop lifts it above the floor. */
+export function hasLoadedPropFooting(goat: GoatRagdoll, minNormalY: number): boolean {
+  const world = goat.world.raw;
+  return goat.legs.some(leg => {
+    const hoof = leg.collider(0);
+    let supported = false;
+    world.contactPairsWith(hoof, other => {
+      const prop = other.parent();
+      const layers = other.collisionGroups() >>> 16;
+      if (supported || !(layers & CollisionLayer.prop) ||
+          !prop?.isDynamic() || prop.handle === goat.interactions.tongueBody?.handle) return;
+      world.contactPair(hoof, other, (manifold, flipped) => {
+        if (!manifold.numSolverContacts() || manifold.normal().y * (flipped ? 1 : -1) < minNormalY) return;
+        const point = manifold.solverContactPoint(0);
+        if (!point || point.y >= leg.translation().y || Math.abs(prop.velocityAtPoint(point).y) > .5) return;
+        // A speculative contact can have the right normal without carrying any load.
+        for (let i = 0; i < manifold.numContacts(); i++) {
+          if (manifold.contactImpulse(i) > 0) { supported = true; return; }
+        }
+      });
+    });
+    return supported;
+  });
 }
 
 /** Closest planar velocity that moves along or away from every contact face. */

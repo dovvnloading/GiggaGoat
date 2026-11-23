@@ -33,14 +33,12 @@ it.each(['easy', 'medium', 'hard'] as const)('uses the native lift for a stable 
     const config = g.gigs.active!.setup.config;
     if (config.kind !== 'stack-up') throw Error('wrong gig');
     const pad = config.center;
-    // Enter the rack from the pad side, west of the loose cone at (+2, +4).
-    go(g, { x: pad.x + .8, z: pad.z + 4.8 });
+    go(g, { x: pad.x + 1.5, z: pad.z + 4.8 });
     for (const [layer, index] of [0, 2, 4, 1].slice(0, config.requiredLayers).entries()) {
       const crate = g.gigs.props.get(config.crateIds[index]!)!.body;
       const row = crate.translation().z;
-      const lane = pad.x + (index === 1 ? 5.3 : 1.05);
-      const approachZ = row + (row > pad.z ? -.65 : .65);
-      go(g, { x: lane, z: approachZ });
+      const lane = pad.x + (index === 1 ? 5.3 : 2.1);
+      go(g, { x: lane, z: row + .65 });
       go(g, { x: lane, z: row });
       go(g, crate.translation(), 2.05);
       for (let t = 0; t < 35 && !g.goat.interactions.isTongueAttached; t++) g.step({ tongue: true });
