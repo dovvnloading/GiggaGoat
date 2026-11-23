@@ -684,6 +684,35 @@ function onScreen(point: THREE.Vector3, camera: THREE.PerspectiveCamera): boolea
 describe('terrain-draped river ribbons (IS-11 / DM-1 / WP-8)', () => {
   it.each([
     { seed: 'billy-isle', size: 600, resolution: 193 },
+    { seed: 'pines-alt', size: 900, resolution: 97 },
+    { seed: 'forest-low-1', size: 400, resolution: 65 },
+  ])('fades the forest river at the real shoreline on $seed', options => {
+    const island = generateIsland(options), scale = options.size / 600;
+    const visuals = buildWaterVisuals(island);
+    try {
+      const river = visuals.inland.getObjectByName('rippling-river') as THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
+      const positions = river.geometry.getAttribute('position');
+      const style = river.geometry.getAttribute('streamStyle');
+      const rows = forestRows(river);
+      expect(rows.length).toBeGreaterThan(50);
+      const last = rows.at(-1)!, previous = rows.at(-2)!;
+      const bankHeight = (row: RibbonRow) => Math.max(...[row.start, row.end].map(i =>
+        gridSample(island, positions.getX(i), positions.getZ(i))));
+      expect(bankHeight(last)).toBeLessThan(island.seaLevel + .25 * scale);
+      expect(bankHeight(previous)).toBeGreaterThan(island.seaLevel - .4 * scale);
+      expect(style.getZ(last.start)).toBeCloseTo(1, 5);
+      expect(style.getZ(previous.start)).toBeGreaterThan(0);
+      expect(style.getZ(rows[0]!.start)).toBe(0);
+      const endpoint = island.river.at(-1)!;
+      expect(makeForestOutflowClearance(island)(endpoint.x, endpoint.z, .1 * scale)).toBe(true);
+      expect(river.material.fragmentShader).toContain('1.0 - vStreamStyle.z');
+      visuals.update(0, island.seaLevel + 2 * scale);
+      expect(river.material.uniforms['uStreamTide']!.value).toBe(island.seaLevel + 2 * scale);
+    } finally { disposeWaterMeshes(visuals); }
+  });
+
+  it.each([
+    { seed: 'billy-isle', size: 600, resolution: 193 },
     { seed: 'dam-ribbon-alt', size: 900, resolution: 97 },
   ])('keeps the mountain banks draped and rounds both Pines banks on $seed',
     ({ seed, size, resolution }) => {
