@@ -2,7 +2,7 @@ import RAPIER, { type ImpulseJoint, type RevoluteImpulseJoint, type RigidBody, t
 import { TUNING } from '../gameplay/config';
 import { collisionGroups } from './CollisionGroups';
 import { PhysicsEventBus, type PhysicsContact } from './events';
-import { add, clamp, cross, dot, mul, rotate, V, yawQuaternion, type Vec3 } from './math';
+import { add, clamp, cross, dot, mul, rotate, sub, V, yawQuaternion, type Vec3 } from './math';
 import type { PhysicsWorld } from './PhysicsWorld';
 import { BalanceController, LocomotionController } from './Controllers';
 import { GoatInteractions } from './Interactions';
@@ -56,6 +56,7 @@ export class GoatRagdoll {
   private detachAfter: () => void;
   private detachContact: () => void;
   private plantedAtWalkingSpeed = false;
+  private hasStepped = false;
   private destroyed = false;
 
   constructor(world: PhysicsWorld, options: GoatOptions = {}) {
@@ -70,6 +71,7 @@ export class GoatRagdoll {
     this.locomotion.heading = -(options.yaw ?? 0);
     this.interactions = new GoatInteractions(this);
     this.detachBefore = this.world.onBeforeStep(dt => {
+      this.hasStepped = true;
       this.locomotion.update(dt);
       this.balance.update(dt);
       this.interactions.update(dt);
@@ -216,7 +218,7 @@ export class GoatRagdoll {
     this.balance.handleImpact(contact.impulse, other);
   }
 
-  /** Live size progression: rebuild joints/colliders, preserving heading and velocity. */
+  /** Live size progression: rebuild joints/colliders without interrupting traversal. */
   resize(size: GoatSize, keepDynamicTether = false): void {
     if (!GOAT_SIZES.includes(size)) throw new RangeError('Unsupported goat size');
     if (size === this.size) return;
@@ -224,6 +226,24 @@ export class GoatRagdoll {
     const position = torso.translation();
     const velocity = { ...torso.linvel() };
     const rotation = torso.rotation();
+    const oldSize = this.size;
+    // A newly spawned standing goat has not had a ground query yet. Rebuild
+    // it around its feet as before, unless it already has active motion.
+    const angular = torso.angvel();
+    const initialStand = !this.hasStepped && this.pose === 'stand' &&
+      Math.hypot(velocity.x, velocity.y, velocity.z, angular.x, angular.y, angular.z) < .001;
+    const preservePose = this.isRagdoll || this.locomotion.isClinging ||
+      (!this.locomotion.grounded && !initialStand);
+    const previous = preservePose ? [...this.parts].map(([name, body]) => ({
+      name, position: { ...body.translation() }, rotation: { ...body.rotation() },
+      linear: { ...body.linvel() }, angular: { ...body.angvel() },
+    })) : [];
+    let nextPosition = { ...position };
+    const wall = this.locomotion.isClinging ? this.locomotion.climbSurface : null;
+    if (wall) {
+      const clearance = Math.max(0, dot(sub(position, wall.point), wall.normal));
+      nextPosition = add(position, mul(wall.normal, clearance * (size / oldSize - 1)));
+    }
     const yaw = Math.atan2(2*(rotation.w*rotation.y+rotation.x*rotation.z),
       1-2*(rotation.y*rotation.y+rotation.z*rotation.z));
     const groundOrigin = add(position,V(0,-.92*this.size,0));
@@ -231,7 +251,19 @@ export class GoatRagdoll {
       this.clearBodies();
       this.size = size;
       this.createBodies(groundOrigin,yaw);
-      for (const body of this.bodies) body.setLinvel(velocity,true);
+      if (preservePose) {
+        const ratio = size / oldSize;
+        for (const old of previous) {
+          const body = this.getPart(old.name);
+          body.setTranslation(add(nextPosition, mul(sub(old.position, position), ratio)), true);
+          body.setRotation(old.rotation, true);
+          body.setLinvel(add(velocity, mul(sub(old.linear, velocity), ratio)), true);
+          body.setAngvel(old.angular, true);
+          this.world.resetInterpolation(body);
+        }
+      } else {
+        for (const body of this.bodies) body.setLinvel(velocity,true);
+      }
     };
     if (keepDynamicTether) this.interactions.rebuildHeadWithDynamicTether(rebuild);
     else {
