@@ -61,6 +61,8 @@ it('walks to the side diving board and lands a real Hard Splash Dive in clear wa
     }
     walk(game, { x: pier.transform.position.x, z: board.transform.position.z }, .65, 2400);
     walk(game, config.jumpPoint, .44);
+    // The quicker approach needs a short pause before an accurately aimed jump.
+    for (let tick = 0; tick < 6; tick++) game.step();
     game.step({ moveZ: 1, cameraYaw: Math.PI / 2, jump: true });
     for (let tick = 0; tick < 165 && game.gigs.active?.status === 'running'; tick++)
       game.step({ moveZ: 1, cameraYaw: Math.PI / 2 });

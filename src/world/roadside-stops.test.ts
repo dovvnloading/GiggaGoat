@@ -226,12 +226,14 @@ describe('Billy Isle roadside stops', () => {
       const originalProp = game.island.props.find(p => p.id === COAST_TURNOUT_GNOME_ID)!;
       expect(Math.hypot(gnome.x - originalProp.transform.position.x, gnome.z - originalProp.transform.position.z))
         .toBeLessThan(.4);
-      for (let tick = 0; tick < 6; tick++) {
-        const p = game.goat.torso.translation();
-        const look = Math.atan2(gnome.x - p.x, p.z - gnome.z);
-        game.step({ moveZ: 1, cameraYaw: look, climb: false });
-      }
       for (let tick = 0; tick < 24; tick++) game.step();
+      // Turn toward the gnome after stopping; the faster approach can otherwise
+      // carry the goat past the intended aiming position while airborne.
+      for (let tick = 0; tick < 4; tick++) {
+        const p = game.goat.torso.translation(), target = body.translation();
+        game.step({ moveZ: .2, cameraYaw: Math.atan2(target.x - p.x, p.z - target.z), climb: false });
+      }
+      for (let tick = 0; tick < 12; tick++) game.step();
       for (let tick = 0; tick < 6; tick++) game.step({ tongue: true });
       expect(game.goat.interactions.tongueBody?.handle).toBe(body.handle);
       game.step({ tongue: false });

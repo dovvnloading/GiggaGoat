@@ -174,8 +174,15 @@ export class BalanceController {
 
     const hit = g.locomotion.groundHit;
     const velocity = torso.linvel();
-    if (!hit || g.locomotion.isClinging || velocity.y > 1.1) return;
+    if (!hit || g.locomotion.isClinging) return;
     const height = torso.translation().y - hit.point.y;
+    // A fast stride can kick the torso upward at a pavement seam. Continue
+    // the ride-height damping briefly, while deliberate takeoffs stay free.
+    const quickStrideBounce = g.movementSpeedScale > 1 && !g.locomotion.jumpedFromSupport &&
+      g.locomotion.groundSupportAge <= .1 && velocity.y < 3 &&
+      Math.hypot(velocity.x, velocity.z) > g.locomotion.tuning.walkSpeed * g.movementSpeedScale * .65 &&
+      height <= (this.tuning.rideHeight + .28) * g.size && hit.normal.y > .97;
+    if (velocity.y > 1.1 && !quickStrideBounce) return;
     if (height > this.tuning.rideHeight*g.size + .65*g.size) return;
     const { normal } = hit;
     const layers = hit.collider.collisionGroups() >>> 16;
@@ -459,9 +466,11 @@ export class LocomotionController {
     const { size, world } = this.goat;
     const held = sub(wall.point, torso);
     const query = { groups: GROUND_QUERY_GROUPS };
+    // Include a small allowance for the moving hip while the hoof is planted.
+    const verticalReach = .9 * size;
     // The supporting hoof stays on its old rung while its partner reaches.
     // Recheck that exact piece of wall and release it once it is out of reach.
-    if (Math.abs(held.y) <= .78 * size && length(held) <= 1.3 * size) {
+    if (Math.abs(held.y) <= verticalReach && length(held) <= 1.3 * size) {
       const skin = .035 * size;
       const anchor = world.raycast(add(wall.point, mul(wall.normal, skin)), mul(wall.normal, -1), 2 * skin, query);
       if (anchor && anchor.collider.handle === wall.collider.handle && dot(anchor.normal, wall.normal) > .9) return anchor;
@@ -470,8 +479,7 @@ export class LocomotionController {
     if (!closest) return null;
     const delta = sub(closest.point, torso);
     const horizontal = Math.hypot(delta.x, delta.z);
-    // The hind hip is .4 body lengths aft and its lower leg spans another .38.
-    if (horizontal < .001 || length(delta) > 1.3 * size || Math.abs(delta.y) > .78 * size) return null;
+    if (horizontal < .001 || length(delta) > 1.3 * size || Math.abs(delta.y) > verticalReach) return null;
     const inward = V(delta.x / horizontal, 0, delta.z / horizontal);
     // Sample just inside a lip to verify its side. A horizontal top or
     // overhang alone cannot supply climbing traction.
@@ -738,7 +746,11 @@ export class LocomotionController {
       this.heading = Math.atan2(wish.x,-wish.z);
     }
     const sprinting = this.grounded && this.input.sprint && this.input.canSprint;
-    const targetSpeed = (sprinting ? this.tuning.sprintSpeed : this.tuning.walkSpeed)*g.movementSpeedScale*wishLength;
+    // A dynamic load needs a controlled tow speed so the tether and cargo
+    // are not thrown through scenery by the faster small-goat motor.
+    const towing = g.interactions.tongueBody?.isDynamic() === true;
+    const speedScale = towing ? Math.min(g.movementSpeedScale, .92) : g.movementSpeedScale;
+    const targetSpeed = (sprinting ? this.tuning.sprintSpeed : this.tuning.walkSpeed)*speedScale*wishLength;
     let surfaceWish = wish;
     if (ground && walkable && this.grounded && wishLength > 0) {
       surfaceWish = normalize(sub(wish,mul(ground.normal,dot(wish,ground.normal))));
