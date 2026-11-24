@@ -121,7 +121,9 @@ tongue near any free bale to pick it up; releasing, pressing `dropHay`,
 running out of stamina or an enemy headbutt drops it. Shoved carriers have
 half a second of pickup lockout so the defender gets a real steal window. Headbutts also punt
 nearby loose bales in front of the goat. Send executed headbutts with their
-facing in `ModeFrame.headbutts` on the action tick. A bale only scores at an
+facing in `ModeFrame.headbutts` on the action tick. Physics hosts set
+`struckGoatId` to the goat they hit, or `null` for a miss. Hosts that omit
+the field use the observed range and facing to resolve a shove. A bale only scores at an
 **opposing** barn when last touched by that barn's team; friendly bales taken
 home are returned, not scored. Bales respawn at their source after scoring.
 The target is five captures, with score ties going to a golden-delivery overtime.

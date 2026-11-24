@@ -129,8 +129,9 @@ it.each([
       walk(-26.6, -16.3);
       walk(-26.6, z, { sprint: true });
       const bale = attach(id);
-      // Leave extra room west of the farmhouse for the longer Hard tows.
-      const route = tier === 'hard' && z > -10
+      // A bale from the far end swings wide on the turn. Stay in the west lane
+      // until its trailing edge clears the farmhouse, on every contract tier.
+      const route = z > -10
         ? [[-27.25, z - 1.65], [-27.4, -14.5], [-26.2, -17.05], [-24.6, -21.8]] as const
         : [[-26.75, z], [-26.1, -17.05], [-24.6, -21.8]] as const;
       for (const [x, along] of route) {

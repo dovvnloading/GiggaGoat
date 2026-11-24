@@ -1,5 +1,5 @@
 import type {
-  Bale, Barn, GoatObservation, HeistState, MatchSnapshot, ModeArena, ModeInputIntent, PlayerState, Point, Position,
+  Bale, Barn, GoatHeadbutt, GoatObservation, HeistState, MatchSnapshot, ModeArena, ModeInputIntent, PlayerState, Point, Position,
 } from './types';
 import type { Emit, RuleOutcome } from './internal';
 import { direction, distanceSquared, TICKS_PER_SECOND, compareIds } from './internal';
@@ -74,7 +74,7 @@ export function updateHayHeist(
   arena: ModeArena,
   observations: Map<string, GoatObservation>,
   intents: Readonly<Record<string, ModeInputIntent>>,
-  headbutts: ReadonlyMap<string, Point> | undefined,
+  headbutts: ReadonlyMap<string, GoatHeadbutt> | undefined,
   emit: Emit,
 ): RuleOutcome {
   const heist = state.heist!;
@@ -100,16 +100,18 @@ export function updateHayHeist(
     }
   }
 
-  // A resolved headbutt prioritizes the nearest carrier in front of the goat.
+  // Live matches use the actual physical hit; observation-only frames estimate reach.
   for (const player of players) {
-    const aim = headbutts?.get(player.id);
-    if (!aim || state.tick - (heist.lastKickTick[player.id] ?? -KICK_COOLDOWN) < KICK_COOLDOWN) continue;
+    const headbutt = headbutts?.get(player.id);
+    if (!headbutt || state.tick - (heist.lastKickTick[player.id] ?? -KICK_COOLDOWN) < KICK_COOLDOWN) continue;
     const origin = observations.get(player.id)!.position;
-    const facing = direction(aim);
+    const facing = direction(headbutt.facing);
     const victim = players
       .filter(other => other.teamId !== player.teamId &&
         heist.bales.some(bale => bale.carrierId === other.id) &&
-        inHeadbuttReach(origin, observations.get(other.id)!.position, facing, 2.6))
+        (headbutt.struckGoatId === undefined
+          ? inHeadbuttReach(origin, observations.get(other.id)!.position, facing, 2.6)
+          : other.id === headbutt.struckGoatId))
       .sort((a, b) => distanceSquared(origin, observations.get(a.id)!.position) -
         distanceSquared(origin, observations.get(b.id)!.position) || compareIds(a.id, b.id))[0];
     if (victim) {

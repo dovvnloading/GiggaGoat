@@ -3,6 +3,13 @@ import type { Material, PieceType } from './config';
 import { EventBus } from './events';
 import { clamp, copyJSON, integer, isRecord, nonNegative, requireNumber, requireRecord, requireString } from './math';
 
+export const BUILD_PIECE_SIZES = {
+  floor: { x: 2, y: .46, z: 2 },
+  wall: { x: .46, y: 2, z: 2 },
+  ramp: { x: 2, y: 1.8, z: 2 },
+  'launch-pad': { x: 2, y: .46, z: 2 },
+} as const satisfies Record<PieceType, { x: number; y: number; z: number }>;
+
 /** The ramp's rising +Z edge, shared by the collider, model and placement preview. */
 export const BUILD_RAMP_VERTICES = [
   -1, -.9, -1, 1, -.9, -1, -1, -.9, 1, 1, -.9, 1, -1, .9, 1, 1, .9, 1,
@@ -125,6 +132,8 @@ export class Inventory {
 /** Face-connected voxel support. Elevated pieces must connect to a ground
  * cell on their foundation. Rotations affect the mesh, not the support cell. */
 export class HayBuild {
+  /** The host supplies live occupancy when it has a physical world. */
+  isPlacementObstructed?: (placement: Placement) => boolean;
   private readonly map = new Map<number, BuildPiece>();
   private nextId = 1;
   constructor(private readonly inventory: Inventory, private readonly bus: EventBus) {}
@@ -174,7 +183,8 @@ export class HayBuild {
       return { valid: false, reason: 'out-of-bounds' };
     }
     if (![0, 1, 2, 3].includes(placement.rotation)) return { valid: false, reason: 'invalid-rotation' };
-    if ([...this.map.values()].some(p => p.id !== replacing && overlapsCell(p, placement))) {
+    if ([...this.map.values()].some(p => p.id !== replacing && overlapsCell(p, placement)) ||
+        this.isPlacementObstructed?.(placement)) {
       return { valid: false, reason: 'overlap' };
     }
     if (!this.isSupported(placement, replacing)) return { valid: false, reason: 'no-support' };

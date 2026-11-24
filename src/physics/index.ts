@@ -7,6 +7,7 @@ export type {
 export { CollisionLayer, ALL_COLLISION_LAYERS, collisionGroups, groupMask,
   GROUND_QUERY_GROUPS } from './CollisionGroups';
 export type { CollisionGroupName, GroupSelection } from './CollisionGroups';
+export { STANDING_GOAT_RADIUS, standingGoatShapes } from './GoatGeometry';
 export { GoatRagdoll, GOAT_SIZES } from './GoatRagdoll';
 export type { GoatOptions, GoatSize, GoatPose, GoatPart, MotorTuning } from './GoatRagdoll';
 export { BalanceController, LocomotionController } from './Controllers';
