@@ -61,7 +61,9 @@ describe('district micro-dressing and daytime life', () => {
     const life = buildPollinators(island);
     const camera = new THREE.Vector3().copy(plan[0]!.center);
     const frustum = new THREE.Frustum();
-    // Default planes have zero normals/constant and accept this bounded scene.
+    // An intentionally unrestricted frustum for the animation test. The
+    // default Three.js planes are not an all-space camera frustum.
+    for (const plane of frustum.planes) plane.setComponents(0, 0, 0, 1);
     life.update(1, island.seaLevel, 1, 0, camera, frustum);
     const visible = life.group.children.find(o => o.visible) as THREE.InstancedMesh;
     expect(visible).toBeDefined();

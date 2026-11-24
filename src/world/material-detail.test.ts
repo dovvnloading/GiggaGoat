@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
+import { readFileSync } from 'node:fs';
+import { DOWNTOWN_MODELS, DOWNTOWN_BUILDING_SIZES } from './visual-downtown';
 import { downtownFinish, paintPropFinish, propFinish } from './material-detail';
 import { paintHoofingtonFacades } from './surface-paint';
 import { bakeLibraryGeometry, type HoofPlacement } from './visual-hoofington';
@@ -26,6 +28,27 @@ describe('local-metre architectural material finishes', () => {
     expect(downtownFinish('shop', 'flower')).toBe(0);
     expect(downtownFinish('building-type-j', 'Material')).toBe(10);
     expect(downtownFinish('awning', 'Material')).toBe(0);
+    expect(downtownFinish('building-type-m', 'Material', true)).toBe(11);
+  });
+  it('checks the authored building GLB material coverage, not only synthetic meshes', () => {
+    const keys = [...Object.keys(DOWNTOWN_BUILDING_SIZES), 'highrise'] as Array<keyof typeof DOWNTOWN_MODELS>;
+    const coverage: Record<string, number[]> = {};
+    for (const key of keys) {
+      const glb = readFileSync('public/' + DOWNTOWN_MODELS[key]);
+      const model = JSON.parse(glb.subarray(20, 20 + glb.readUInt32LE(12)).toString()) as {
+        meshes: Array<{ name?: string; primitives: Array<{ material?: number }> }>;
+        materials?: Array<{ name?: string }>;
+      };
+      const styles = model.meshes.flatMap(mesh => mesh.primitives.map(primitive =>
+        downtownFinish(mesh.name ?? '', model.materials?.[primitive.material ?? -1]?.name ?? '', key === 'brickHouse')));
+      coverage[key] = [...new Set(styles)].sort((a, b) => a - b);
+    }
+    console.log('WORLD_FACADE_FINISH_COVERAGE ' + JSON.stringify(coverage));
+    // At a minimum the town tower and brick townhouse must carry actual
+    // surface treatment. Additional imported material labels are reported
+    // for review rather than guessed from the source filename.
+    expect(coverage.highrise).toContain(4);
+    expect(coverage.brickHouse?.some(style => style === 8 || style === 11), JSON.stringify(coverage)).toBe(true);
   });
   it('keeps source positions and palette while carrying material IDs into the district batch', () => {
     const model = new THREE.Group();

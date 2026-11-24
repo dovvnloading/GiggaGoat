@@ -7,15 +7,15 @@ export function downtownFinish(mesh: string, material: string, brick = false): n
   const name = material.toLowerCase(), part = mesh.toLowerCase();
   if (/glass|glaz|window.?pane/.test(name)) return 7;
   if (/brick/.test(name)) return 8;
+  if (/door|flower|leaf|wood|sign|awning|window|trim|frame/.test(name)) return 0;
   if (/wall|plaster|stucco|masonry/.test(name)) return brick ? 8 : 4;
   if (/roof|membrane|shingle/.test(name)) return 5;
   if (/plinth|cornice|foundation|stone|concrete/.test(name)) return 9;
   if (/steel|metal|aluminium|aluminum|gutter|vent/.test(name)) return 6;
-  if (/door|flower|leaf|wood|sign|awning|window|trim|frame/.test(name)) return 0;
   // The commercial kit also supplies one shared palette atlas. Its shell
   // is treated conservatively in the shader, with colour/normal masks.
-  if (/^building[-_ ](?:type[-_ ]?)?/.test(part) &&
-      /paint|atlas|material|colormap|palette/.test(name)) return 10;
+  if (/^building(?:[-_ ]|$)/.test(part) &&
+      /paint|atlas|material|colormap|palette/.test(name)) return brick ? 11 : 10;
   return 0;
 }
 
@@ -152,7 +152,17 @@ else if (facadeStyle > 3.5) {
     float glazing = smoothstep(0.015, 0.13, diffuseColor.b - diffuseColor.r) *
       smoothstep(0.0, 0.07, diffuseColor.b - diffuseColor.g);
     float paint = smoothstep(0.14, 0.33, lum) * (1.0 - glazing);
-    diffuseColor.rgb *= 1.0 + wall * paint * (0.07 * (wash - 0.5) - 0.10 * nearGround + grain * 0.018);
+    float surface = wall * paint;
+    diffuseColor.rgb *= 1.0 + surface * (0.07 * (wash - 0.5) - 0.10 * nearGround + grain * 0.018);
+    if (facadeStyle > 10.5) {
+      // The brick-building atlas lacks separate material slots on some
+      // imported faces: apply running bond to its warm wall paint only.
+      float warm = smoothstep(0.018, 0.13, diffuseColor.r - diffuseColor.b);
+      float course = m.y / 0.22;
+      float column = along / 0.44 + mod(floor(course), 2.0) * 0.5;
+      float joint = max(paintedJoint(course, 0.028), paintedJoint(column, 0.018));
+      diffuseColor.rgb *= 1.0 - surface * warm * joint * 0.15;
+    }
   }
 }
 `;
