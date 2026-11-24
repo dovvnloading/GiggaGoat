@@ -846,6 +846,7 @@ export class GameHud {
       inventory, buildMode: game.buildMode,
       buildPiece: game.buildPiece, ragdoll: game.goat.isRagdoll,
       location: game.location, coins: rules.wallet.coins, boardInRange,
+      happening: game.happeningMessage,
       partyTitle: game.party.match ? game.party.title : undefined,
       gig: run ? {
         title: run.setup.info.title, status: run.status, objective: run.objective,

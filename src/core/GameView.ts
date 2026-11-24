@@ -13,6 +13,7 @@ import type { GameAudio } from './GameAudio';
 import { PropFactory, InstancedPropRenderer } from '../props';
 import { HEIST_BALE_SIZE } from '../props/PropFactory';
 import { Game } from './Game';
+import { HappeningVisuals } from './HappeningVisuals';
 import type { GameRenderer } from './game-renderer';
 import { GameCharacters } from './GameCharacters';
 import { GameVfx } from './GameVfx';
@@ -60,6 +61,7 @@ export class GameView {
   private readonly atmosphere: IslandAtmosphere;
   private clearFogDensity = .0016;
   private readonly toyEffects: ToyEffects;
+  private readonly happeningVisuals: HappeningVisuals;
   readonly camera = new THREE.PerspectiveCamera(67, 1, .07, 2200);
   readonly scene = new THREE.Scene();
   readonly world: WorldScene;
@@ -182,6 +184,8 @@ export class GameView {
     this.hud = new GameHud(host);
     this.toyEffects = new ToyEffects(game.toys);
     this.scene.add(this.toyEffects.root);
+    this.happeningVisuals = new HappeningVisuals(game.island, game.happenings);
+    this.scene.add(this.happeningVisuals.root);
     this.characters = new GameCharacters(this.scene, game);
     this.vfx = new GameVfx(this.scene, game,
       this.characters.player.root, this.characters.player.mounts.neck);
@@ -986,6 +990,7 @@ export class GameView {
     this.renderer.setClearColor(this.world.fogColor);
     this.updateCamera(alpha, sceneDt);
     this.updateCameraFraming(sceneDt);
+    this.happeningVisuals.update(this.game.physics.time, this.camera.position, !match);
     this.atmosphere.update(weather, this.camera.position, playerPosition, this.currentSettings.graphics === 'low');
     if ('isSoftwareRenderer' in this.renderer) {
       this.renderer.setEnvironment(weather, this.world.sun.position, this.world.sun.target.position);
@@ -1043,6 +1048,7 @@ export class GameView {
     this.buildGhost.dispose();
     this.atmosphere.dispose();
     this.toyEffects.dispose();
+    this.happeningVisuals.dispose();
     this.vfx.dispose();
     this.characters.dispose();
     this.clearGroup(this.boardMarkers);
