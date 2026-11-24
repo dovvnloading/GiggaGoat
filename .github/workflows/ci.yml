@@ -24,7 +24,16 @@ jobs:
       - name: Test (headless Chrome, serial)
         env:
           BROWSER_SMOKE: '1'
+          WORLD_DETAIL_PREVIEWS: ${{ github.event_name == 'pull_request' && '1' || '0' }}
         run: npm run test:chrome
+      - name: Upload world art review screenshots
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-detail-previews
+          path: .world-detail-previews/*.jpg
+          if-no-files-found: ignore
+          include-hidden-files: true
       - name: Build
         run: npm run build
       - name: Upload tested Pages build

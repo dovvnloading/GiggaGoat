@@ -153,6 +153,25 @@ function apronWear(center: Vec2, scale: number, seed: string) {
   }
   for (const x of [-37.5, 37.5]) for (const z of [-23, 1, 25]) p.drain(x, z);
   p.hatch(27, 5); p.hatch(-21, -15);
+  // Stencilled bay IDs aligned with the existing loading stripe row. Their
+  // seven-segment geometry works in the headless/software renderer too.
+  const digits = ['abcdef', 'bc', 'abged', 'abgcd', 'fgbc', 'afgcd', 'afgecd', 'abc', 'abcdefg', 'abfgcd'];
+  const stroke = (x: number, z: number, digit: number) => {
+    const paint = (u: number, v: number, w: number, l: number) =>
+      p.rect(x + u, z + v, w, l, 0xe3c36c, .76);
+    const on = (segment: string) => digits[digit]!.includes(segment);
+    if (on('a')) paint(0, -.37, .36, .065);
+    if (on('g')) paint(0, 0, .36, .065);
+    if (on('d')) paint(0, .37, .36, .065);
+    if (on('f')) paint(-.19, -.18, .065, .29);
+    if (on('b')) paint(.19, -.18, .065, .29);
+    if (on('e')) paint(-.19, .18, .065, .29);
+    if (on('c')) paint(.19, .18, .065, .29);
+  };
+  for (let i = 0; i < 6; i++) {
+    const x = -27 + i * 8.6;
+    stroke(x - .25, 20.15, 0); stroke(x + .25, 20.15, i + 1);
+  }
   return p.patches;
 }
 
@@ -171,12 +190,24 @@ function streetWear(center: Vec2, scale: number, seed: string, city: boolean) {
   return p.patches;
 }
 
-function sidewalkWear(center: Vec2, scale: number) {
-  const p = painter(center, scale);
+function sidewalkWear(center: Vec2, scale: number, seed: string) {
+  const p = painter(center, scale), rng = new SeededRandom(seed + ':sidewalk-debris');
   // Subtle concrete slab divisions and inspection lids in the walking band.
   for (const side of [-1, 1]) {
     for (let z = -41; z < 42; z += 2.3) {
       p.rect(side * 5.92, z, 1.91, .035, 0x686359, .45);
+    }
+    // Gutter-side leaf drifts and occasional folded paper scraps, rather
+    // than evenly peppered random litter across the walking band.
+    for (const z of [-35, -14, 4, 16, 32]) {
+      for (let i = 0; i < 8; i++) {
+        const x = side * (5.12 + rng.range(0, .36)), at = z + rng.range(-.65, .65);
+        const l = rng.range(.12, .29), yaw = rng.range(0, Math.PI * 2);
+        p.rect(x, at, l * .42, l, rng.pick([0x9f7f46, 0xb89b61, 0x8c7753]), rng.range(.40, .72), yaw);
+      }
+      const x = side * 5.38;
+      p.polygon([[x - .09, z + .31], [x + .12, z + .35], [x + .08, z + .51], [x - .07, z + .46]],
+        0xc5c3b2, .67);
     }
     for (const z of [-31, -4, 19, 38]) {
       p.rect(side * 6.09, z, .55, .68, 0x555b57, .65);
@@ -218,7 +249,7 @@ export function buildPavementDetails(
   if (city) {
     add(asphalt, 'downtown-road-maintenance', streetWear(city, scale, seed, true));
     add(streets.getObjectByName('paved-village-sidewalks'),
-      'downtown-sidewalk-joints-and-utility-lids', sidewalkWear(city, scale));
+      'downtown-sidewalk-joints-and-utility-lids', sidewalkWear(city, scale, seed));
   }
   if (village) add(asphalt, 'hoofington-road-maintenance', streetWear(village, scale, seed, false));
   if (!group.children.length) material.dispose();

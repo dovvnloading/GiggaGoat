@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -328,6 +328,35 @@ describe.skipIf(!process.env['CI'])('world viewer real-Chrome frame profiling', 
         expect(mark.p50Ms).toBeLessThan(1000 / 60);
         expect(mark.width).toBeGreaterThan(1000);
         expect(mark.height).toBeGreaterThan(600);
+      }
+      // Preserve real rendered world views for PR art review. Capture after
+      // profiling so screenshot overhead cannot distort the frame timings.
+      if (process.env['WORLD_DETAIL_PREVIEWS'] === '1') {
+        const output = join(process.cwd(), '.world-detail-previews');
+        mkdirSync(output, { recursive: true });
+        await send('Runtime.evaluate', {
+          expression: '["panel","reference","labels","hint"].forEach(id => ' +
+            '{ document.getElementById(id).style.visibility = "hidden"; });',
+        });
+        try {
+          for (const id of ['08', '09', '10', '11', '12', '13', '14', '15']) {
+            const response = await send('Runtime.evaluate', {
+              expression: '(() => { const menu = document.getElementById("bookmark"); ' +
+                'menu.value = ' + JSON.stringify(id) + '; menu.dispatchEvent(new Event("change", ' +
+                '{ bubbles: true })); window.__worldProfile.measure(3); })()',
+            });
+            expect(response.exceptionDetails).toBeUndefined();
+            await sleep(250);
+            const image = await send('Page.captureScreenshot', { format: 'jpeg', quality: 86, fromSurface: true });
+            expect(image.data).toBeTruthy();
+            writeFileSync(join(output, id + '.jpg'), Buffer.from(image.data, 'base64'));
+          }
+        } finally {
+          await send('Runtime.evaluate', {
+            expression: '["panel","reference","labels","hint"].forEach(id => ' +
+              '{ document.getElementById(id).style.visibility = ""; });',
+          });
+        }
       }
       // Recorded by a successful main-branch Chrome CI run at the same
       // viewport, renderer scale and GPU backend.
