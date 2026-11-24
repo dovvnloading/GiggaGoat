@@ -14,6 +14,7 @@ import { buildBoardwalkRailVisuals } from './visual-boardwalk-rails';
 import { createEnvironmentLod } from './environment-lod';
 import { buildDistrictGround, groundUV, type ApplyGroundMap } from './district-ground';
 import { buildGroundDetails } from './visual-ground';
+import { buildPavementDetails } from './pavement-detail';
 import { buildStreetDetails } from './visual-streets';
 import { buildHabitatBeds } from './habitat-beds';
 import { buildMeadowScatter } from './visual-meadow';
@@ -519,9 +520,11 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     geometry: chunk.low, x: chunk.mesh.position.x, z: chunk.mesh.position.z,
   })));
   group.add(tideRoutes.mesh);
-  group.add(buildStreetDetails(island, finish.applyMap));
+  const streets = buildStreetDetails(island, finish.applyMap);
+  group.add(streets);
   // Coalesce unchanged ground decals to keep the extra zebra mesh within the draw budget.
-  group.add(buildGroundDetails(island, 192, finish.applyMap));
+  const ground = buildGroundDetails(island, 192, finish.applyMap);
+  group.add(ground, buildPavementDetails(island, ground, streets, roads));
   group.add(buildMeadowScatter(island, sky.atmosphere, finish.pavedAt));
   const verges = buildVergeVisuals(island, finish.pavedAt);
   group.add(verges.group);
