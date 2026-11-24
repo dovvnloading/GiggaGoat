@@ -3,6 +3,7 @@ import { CollisionLayer, GROUND_QUERY_GROUPS } from './CollisionGroups';
 import { add, clamp, clampLength, cross, dot, forward, length, mul, normalize, right, rotate, sub, V, type Vec3 } from './math';
 import type { GoatRagdoll } from './GoatRagdoll';
 import { CLIMB_STRIDE, climbStep } from './climb-gait';
+import { groundMotorTarget, hasLoadedPropFooting, upperBodyColliders } from './ground-motor-contact';
 
 const HIP_RECOVERY_HOLD_LIMIT = .65;
 const HIP_RECOVERY_HANDOFF_SECONDS = .55;
@@ -491,17 +492,20 @@ export class LocomotionController {
   }
 
   findSafetyRail(wish: Vec3, rails: ReadonlySet<number>): MovementInput['safetyRail'] {
-    const { torso, head, world, size } = this.goat;
+    const { torso, world, size } = this.goat;
     const velocity = torso.linvel();
     const approach = Math.hypot(velocity.x, velocity.z) > 1.5
       ? normalize(V(velocity.x, 0, velocity.z)) : normalize(wish);
     if (length(approach) === 0) return;
-    const leading = dot(sub(head.translation(), torso.translation()), approach) > 0 ? head : torso;
-    const hit = world.shapeCast(leading.translation(), leading.rotation(), approach,
-      leading.collider(0).shape, .7 * size, { predicate: collider => rails.has(collider.handle) });
-    if (!hit || Math.abs(hit.normal.y) > .65) return;
-    const normal = normalize(V(hit.normal.x, 0, hit.normal.z));
-    if (dot(approach, normal) < -.12) return { normal, distance: hit.distance };
+    let nearest: MovementInput['safetyRail'];
+    for (const part of upperBodyColliders(this.goat)) {
+      const hit = world.shapeCast(part.translation(), part.rotation(), approach, part.shape,
+        nearest?.distance ?? .7 * size, { predicate: collider => rails.has(collider.handle) });
+      if (!hit || Math.abs(hit.normal.y) > .65) continue;
+      const normal = normalize(V(hit.normal.x, 0, hit.normal.z));
+      if (dot(approach, normal) < -.12) nearest = { normal, distance: hit.distance };
+    }
+    return nearest;
   }
 
   update(dt: number): void {
@@ -557,16 +561,20 @@ export class LocomotionController {
     this.grounded = false;
     if (walkable && ground && this.clock >= this.jumpLockUntil && verticalSpeed < takeoffSpeed) {
       this.grounded = ground.distance <= groundedDistance;
-      if (!this.grounded && !this.jumpConsumed && this.clock - this.lastGroundAt <= .22 &&
-          ground.normal.y < .995 && wishLength > .12) {
-        // At higher configured speeds, the ground falls away between fixed
-        // steps on a downhill grade. Keep recent support within one short
-        // stride, without treating flat ledges or jumps as planted.
+      if (!this.grounded && !this.jumpConsumed && this.clock - this.lastGroundAt <= .22 && wishLength > .12) {
+        // On a shallow grade the ray can miss ride height by the solver's
+        // contact tolerance. Larger gaps require an actual downhill grade.
         const slopeSpeed = -(ground.normal.x * torso.linvel().x + ground.normal.z * torso.linvel().z) / ground.normal.y;
-        const extra = Math.min(.2 * s, Math.max(0, -slopeSpeed) * dt * 3);
+        const solver = g.world.raw.integrationParameters;
+        const reach = ground.normal.y < .995 ? .2 * s : solver.normalizedAllowedLinearError * solver.lengthUnit;
+        const extra = Math.min(reach, Math.max(0, -slopeSpeed) * dt * 3);
         this.grounded = slopeSpeed < -.2 && ground.distance <= groundedDistance + extra;
       }
       const fastEdge = g.movementSpeedScale > 1;
+      if (!this.grounded && !this.jumpConsumed && !g.isRagdoll && Math.abs(verticalSpeed) < .35 &&
+          ground.distance <= groundedDistance + .16 * s) {
+        this.grounded = hasLoadedPropFooting(g, minGroundY);
+      }
       if (!this.grounded && wishLength < .08 && Math.abs(verticalSpeed) < .35 &&
           ground.distance <= groundedDistance + (fastEdge ? .16 : .09) * s) {
         // A hoof can rest on a low street edge beside the torso ray; a high
@@ -776,7 +784,8 @@ export class LocomotionController {
     // A freshly spawned goat has no takeoff momentum to preserve yet.
     const momentumAir = !this.grounded && !this.input.inWater &&
       (this.jumpConsumed || (!ground && Number.isFinite(this.lastGroundAt) && this.clock - this.lastGroundAt > .25));
-    const target = V(surfaceWish.x*targetSpeed,0,surfaceWish.z*targetSpeed);
+    const desired = V(surfaceWish.x*targetSpeed,0,surfaceWish.z*targetSpeed);
+    const target = this.grounded ? groundMotorTarget(g, desired) : desired;
     let deltaV = this.grounded
       ? clampLength(sub(target,velocity),this.tuning.groundAcceleration*dt)
       : momentumAir ? V() : clampLength(sub(target,velocity),this.tuning.airAcceleration*dt);

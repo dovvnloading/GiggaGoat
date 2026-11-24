@@ -50,7 +50,12 @@ export interface ModeInputIntent extends GoatIntent {
   dropHay?: boolean;
 }
 export interface GoatContact { attackerId: string; victimId: string }
-export interface GoatHeadbutt { attackerId: string; facing: Point }
+export interface GoatHeadbutt {
+  attackerId: string;
+  facing: Point;
+  /** Physical goat struck, or null for a miss. Observation-only hosts omit this. */
+  struckGoatId?: string | null;
+}
 export interface ModeFrame {
   goats: readonly GoatObservation[];
   intents?: Readonly<Record<string, ModeInputIntent>>;

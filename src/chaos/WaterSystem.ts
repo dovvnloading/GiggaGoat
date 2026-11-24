@@ -1,4 +1,4 @@
-import type { RigidBody } from '@dimforge/rapier3d-compat';
+import type { Collider, RigidBody } from '@dimforge/rapier3d-compat';
 import { PhysicsWorld, V } from '../physics';
 import type { Vec3 } from '../physics';
 import { clamp01, colliderWorldExtents, EventStream, finitePositive, horizontal, magnitude, unit } from './internal';
@@ -127,11 +127,17 @@ export class WaterSystem {
   /** Returns current displaced volume; also useful for debug waterline visualisation. */
   sample(body: RigidBody): Immersion { return this.immersion(body); }
 
+  private displacesWater(body: RigidBody, collider: Collider): boolean {
+    // Massless goat fixtures supply contact geometry. Swimming
+    // uses the trunk for buoyancy and drag.
+    return !collider.isSensor() && (this.physics.bodyData(body.handle)?.kind !== 'goat' || collider.mass() > 0);
+  }
+
   private immersion(body: RigidBody): Immersion {
     let displaced = 0, fullVolume = 0, weightedFlow = V(), dominantId = 'sea', dominantAmount = 0;
     for (let i = 0; i < body.numColliders(); i++) {
       const c = body.collider(i);
-      if (!c || c.isSensor()) continue;
+      if (!this.displacesWater(body, c)) continue;
       const volume = c.volume();
       if (!(volume > 0) || !Number.isFinite(volume)) continue;
       fullVolume += volume;
@@ -218,7 +224,7 @@ export class WaterSystem {
       let radius2 = 0;
       for (let i=0;i<body.numColliders();i++) {
         const c=body.collider(i);
-        if (!c || c.isSensor()) continue;
+        if (!this.displacesWater(body, c)) continue;
         const h=colliderWorldExtents(c);
         radius2 = Math.max(radius2, (h.x*h.x+h.y*h.y+h.z*h.z)/3);
       }

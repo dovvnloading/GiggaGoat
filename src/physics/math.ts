@@ -17,6 +17,15 @@ export const clampLength = (v: Vec3, max: number): Vec3 =>
   length(v) > max ? mul(normalize(v), max) : v;
 export const lerp = (a: Vec3, b: Vec3, t: number): Vec3 => add(mul(a, 1-t), mul(b, t));
 export const conjugate = (q: Quat): Quat => Q(-q.x, -q.y, -q.z, q.w);
+export const multiplyRotation = (a: Quat, b: Quat): Quat => ({
+  x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+  y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+  z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+  w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+});
+/** Rotation applied to a complete articulated goat by an upright teleport. */
+export const uprightRotation = (current: Quat, heading?: number): Quat | null =>
+  heading === undefined ? null : multiplyRotation(yawQuaternion(heading), conjugate(current));
 export function rotate(q: Quat, v: Vec3): Vec3 {
   const u = V(q.x, q.y, q.z);
   const t = mul(cross(u, v), 2);

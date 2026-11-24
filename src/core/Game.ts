@@ -1,15 +1,15 @@
 import { Toybox } from './Toybox';
-import type { RigidBody, ColliderDesc } from '@dimforge/rapier3d-compat';
+import type { RigidBody, ColliderDesc, Shape } from '@dimforge/rapier3d-compat';
 import {
   PhysicsWorld, GoatRagdoll, RAPIER, V, forward, add, sub, mul, rotate, collisionGroups,
-  type Vec3, type Quat, type GoatSize, type MovementInput, type PhysicsEvent, type RayHit,
+  type Vec3, type GoatSize, type MovementInput, type PhysicsEvent, type RayHit,
 } from '../physics';
 import {
   generateIsland, buildRapierColliders, heightAt, zoneAt,
   type ColliderBuild, type IslandData, type PropDescriptor,
 } from '../world';
 import {
-  GameSimulation, TUNING, BUILD_RAMP_VERTICES, type GoatIntent, type GoatPhysicsFacts,
+  GameSimulation, TUNING, BUILD_PIECE_SIZES, BUILD_RAMP_VERTICES, type GoatIntent, type GoatPhysicsFacts,
   type AbilityCommands, type BuiltinTrick, type PieceType, type BuildPiece,
   type Placement, type Validation,
 } from '../gameplay';
@@ -17,6 +17,7 @@ import {
   WaterSystem, BreakableRegistry, ChainReactions, SurfaceSystem,
   DynamicBodyBudget, applyPhysicsMaterial, type DestructionEvent,
 } from '../chaos';
+import { multiplyRotation, uprightRotation, yawQuaternion } from '../physics/math';
 import { addRapierPropCollider } from '../world/colliders';
 import { isSodaBarrel } from '../world/types';
 import { BOARDWALK_SHORE_GUARD_ID, BOARDWALK_SHORE_ID, boardwalkFarEnd, boardwalkPierDecks } from '../world/boardwalk';
@@ -50,17 +51,12 @@ function buttonTransitions(): Record<EdgeButton, ButtonTransitions> {
   };
 }
 
-const buildHalfHeight: Record<PieceType, number> = {
-  floor: .23, wall: 1, ramp: .9, 'launch-pad': .23,
-};
+function buildShape(type: PieceType): Shape {
+  if (type === 'ramp') return new RAPIER.ConvexPolyhedron(new Float32Array(BUILD_RAMP_VERTICES));
+  const { x, y, z } = BUILD_PIECE_SIZES[type];
+  return new RAPIER.Cuboid(x / 2, y / 2, z / 2);
+}
 
-/** Compose rotations for a whole-ragdoll rescue without modifying joint angles. */
-const multiplyRotation = (a: Quat, b: Quat): Quat => ({
-  x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
-  y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
-  z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
-  w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
-});
 export interface PlayerIntent extends GoatIntent {
   cameraPitch?: number;
   cycleToy?: number;
@@ -343,6 +339,7 @@ export class Game {
       this.acknowledgedGigAttempt = restoredGig.attemptId;
     }
     this.party = new PartySession(this);
+    this.rules.build.isPlacementObstructed = placement => this.buildIntersectsGoat(placement);
     // Saved active cargo already has its own pose. The static world and gig
     // catalog still own the original authored coordinates for every bale.
     const restoredHay = new Set<string>();
@@ -626,21 +623,37 @@ export class Game {
   buildPosition(piece: Placement, origin = this.buildOrigin): Vec3 {
     const grid = TUNING.build.gridSize;
     const base = piece.foundationOffset === undefined
-      ? grid / 2 : piece.foundationOffset + buildHalfHeight[piece.type];
+      ? grid / 2 : piece.foundationOffset + BUILD_PIECE_SIZES[piece.type].y / 2;
     return V(origin.x + piece.cell.x * grid, origin.y + piece.cell.y * grid + base,
       origin.z + piece.cell.z * grid);
   }
 
+  private buildIntersectsGoat(placement: Placement): boolean {
+    const shape = buildShape(placement.type);
+    const position = this.buildPosition(placement);
+    const rotation = yawQuaternion(placement.rotation * Math.PI / 2);
+    const parameters = this.physics.raw.integrationParameters;
+    const tolerance = parameters.normalizedAllowedLinearError * parameters.lengthUnit;
+    // Direct shape tests also see party members created before the first fixed tick.
+    const intersects = (goat: GoatRagdoll) => goat.bodies.some(body => {
+      for (let i = 0; i < body.numColliders(); i++) {
+        const collider = body.collider(i);
+        const contact = collider.contactShape(shape, position, rotation, 0);
+        if (contact && contact.distance < -tolerance) return true;
+      }
+      return false;
+    });
+    if (intersects(this.goat)) return true;
+    for (const { goat } of this.party.bots.values()) if (intersects(goat)) return true;
+    return false;
+  }
+
   private addBuildBody(piece: BuildPiece): void {
-    const p = this.buildPosition(piece), yaw = piece.rotation * Math.PI / 2;
-    const rotation = { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) };
+    const p = this.buildPosition(piece);
+    const rotation = yawQuaternion(piece.rotation * Math.PI / 2);
     const body = this.physics.raw.createRigidBody(RAPIER.RigidBodyDesc.fixed()
       .setTranslation(p.x, p.y, p.z).setRotation(rotation));
-    const collider = piece.type === 'ramp'
-      ? RAPIER.ColliderDesc.convexHull(new Float32Array(BUILD_RAMP_VERTICES))
-      : RAPIER.ColliderDesc.cuboid(
-        piece.type === 'wall' ? .23 : 1, buildHalfHeight[piece.type], 1);
-    if (!collider) throw new Error('Invalid Hay-Build ramp');
+    const collider = new RAPIER.ColliderDesc(buildShape(piece.type));
     this.physics.raw.createCollider(collider.setCollisionGroups(collisionGroups('build-piece'))
       .setFriction(.85).setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS |
         RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS), body);
@@ -648,7 +661,7 @@ export class Game {
     this.buildBodies.set(piece.id, body);
     if (piece.type === 'launch-pad') {
       this.surfaces.createLaunchPad({ id: 'hay-' + piece.id,
-        position: p, halfExtents: V(.97, buildHalfHeight[piece.type], .97),
+        position: p, halfExtents: V(.97, BUILD_PIECE_SIZES[piece.type].y / 2, .97),
         sensorOnly: true, direction: rotate(rotation, V(0, 1, -.45)), launchSpeed: 13 });
     }
   }
@@ -1074,7 +1087,6 @@ export class Game {
       // nearby crate. Retain its torso lunge, then resolve an explicitly dynamic
       // forward target in core when that ray did not find one.
       const facing = forward(g.locomotion.heading);
-      if (!g.isRagdoll) this.party.noteHeadbutt(g.id, facing);
       const origin = add(g.head.translation(), V(0, .04 * g.size, 0));
       const range = g.interactions.tuning.headbuttRange * g.size;
       const preferred = this.physics.shapeCast(origin, g.head.rotation(), facing,
@@ -1116,10 +1128,12 @@ export class Game {
           struck = target;
         }
       }
-      if (player) {
-        const targetId = struck ? this.physics.bodyData(struck.handle)?.owner : undefined;
-        this.gigs.noteAbility({ type: 'headbutt', targetId });
+      const target = struck ? this.physics.bodyData(struck.handle) : undefined;
+      if (!g.isRagdoll) {
+        const struckGoatId = target?.kind === 'goat' ? target.owner : undefined;
+        this.party.noteHeadbutt(g.id, facing, struckGoatId ?? null);
       }
+      if (player) this.gigs.noteAbility({ type: 'headbutt', targetId: target?.owner });
       if (this.materialAudioListeners.size && !g.isRagdoll) {
         // Sample the wood/metal role while the body still exists. A stopped
         // headbutt can also reach a solid scenery collider without a knock.
@@ -1306,12 +1320,7 @@ export class Game {
     // Ordinary gig teleports preserve the ragdoll's pose. Respawn instead
     // rotates the complete connected assembly back upright about its torso,
     // preserving all six joints and their current relative rotations.
-    const q = this.goat.torso.rotation();
-    const wanted = uprightHeading === undefined ? null : {
-      x: 0, y: Math.sin(uprightHeading / 2), z: 0, w: Math.cos(uprightHeading / 2),
-    };
-    const rotation = wanted && multiplyRotation(wanted,
-      { x: -q.x, y: -q.y, z: -q.z, w: q.w });
+    const rotation = uprightRotation(this.goat.torso.rotation(), uprightHeading);
     for (const body of this.goat.bodies) {
       const local = sub(body.translation(), current);
       body.setTranslation(add(target, rotation ? rotate(rotation, local) : local), true);
@@ -1320,6 +1329,7 @@ export class Game {
       body.setAngvel(V(), true);
       this.physics.resetInterpolation(body);
     }
+    this.physics.raw.propagateModifiedBodyPositionsToColliders();
     if (uprightHeading !== undefined) {
       // Teleport rotates the physical assembly to yaw=uprightHeading;
       // forward() expects the opposite sign for the same facing.
@@ -1412,6 +1422,7 @@ export class Game {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    delete this.rules.build.isPlacementObstructed;
     for (const unsub of this.off.splice(0)) unsub();
     this.visualCueListeners.clear();
     this.vfxCueListeners.clear();

@@ -1,5 +1,5 @@
 import { GameSimulation } from '../gameplay';
-import { GoatRagdoll, RAPIER, V, forward, type PhysicsContact, type Vec3 } from '../physics';
+import { GoatRagdoll, forward, type PhysicsContact, type Vec3 } from '../physics';
 import { heightAt, landAreaAtTideLevel } from '../world';
 import {
   PartyMatch, BotBrain, arenaFromBillyIsle,
@@ -7,6 +7,7 @@ import {
   type ModeId, type ModeInputIntent, type Point, type RulesConfig,
 } from '../modes';
 import type { Game, PlayerIntent } from './Game';
+import { PartySpawns } from './PartySpawns';
 
 export interface PartyBot {
   goat: GoatRagdoll;
@@ -46,11 +47,6 @@ export class PartySession {
     if (this.match) throw new Error('Return to free roam before starting another round');
     if (!Number.isInteger(count) || count < 3 || count > 7) throw new RangeError('Choose 3–7 bots');
     if (!['easy', 'normal', 'hard'].includes(difficulty)) throw new RangeError('Invalid bot difficulty');
-    this.game.gigs.abandon();
-    const before = this.game.goat.torso.translation();
-    // Game.teleport accepts foot-ground coordinates, not the torso centre.
-    this.returnPosition = { x: before.x,
-      y: before.y - .92 * this.game.goat.size, z: before.z };
     const island = this.game.island;
     const arena = arenaFromBillyIsle(island, { heightAt, landAreaAtTideLevel });
     const scale = island.size / 600;
@@ -73,41 +69,36 @@ export class PartySession {
     const center = mode === 'king-of-the-peak' ? arena.summit :
       mode === 'hay-heist' ? arena.barns[0]!.position :
         this.game.island.pois.find(p => p.id === 'hoofington')!.center;
-    const land = (x: number, z: number): Vec3 => {
-      const terrain = heightAt(island, x, z);
-      // The rendered and physical road/trail can sit above the heightfield.
-      // Cast directly against static support shapes so this also works before
-      // the world's broad phase has been populated by its first physics step.
-      const originY = terrain + 1.25;
-      const ray = new RAPIER.Ray(V(x, originY, z), V(0, -1, 0));
-      let nearest = Infinity;
-      for (const surface of [this.game.colliders.terrain, ...this.game.colliders.paths]) {
-        const hit = surface.castRayAndGetNormal(ray, 2.5, false);
-        if (hit && hit.normal.y >= this.game.goat.locomotion.minWalkingNormalY) {
-          nearest = Math.min(nearest, hit.timeOfImpact);
-        }
-      }
-      return { x, y: Number.isFinite(nearest) ? originY - nearest : terrain, z };
-    };
-    if (mode === 'hay-heist') {
-      this.game.teleport(land(center.x - 1.8 * scale, center.z + 4 * scale), 0);
-    } else {
-      this.game.teleport(land(center.x - 4, center.z + 4));
-    }
-    for (let i = 0; i < count; i++) {
+    const playerHeading = mode === 'hay-heist' ? 0 : undefined;
+    const playerStart = mode === 'hay-heist'
+      ? { x: center.x - 1.8 * scale, z: center.z + 4 * scale }
+      : { x: center.x - 4, z: center.z + 4 };
+    const botSize = .6;
+    const roster = Array.from({ length: count }, (_, i) => {
       const id = 'bot-' + (i + 1);
       const teamId = mode === 'hay-heist' ? (i % 2 === 0 ? 'blue' : 'red') : undefined;
       const base = mode === 'hay-heist' ?
         arena.barns.find(b => b.teamId === teamId)!.position : center;
       const angle = i * 2.39996;
-      const position = mode === 'hay-heist'
-        ? land(base.x + ((Math.floor(i / 2) % 3) - 1) * 2.2 * scale,
-          base.z + (teamId === 'red' ? 1 : -1) * (3.6 + Math.floor(i / 6) * 2) * scale)
-        : land(base.x + Math.cos(angle) * (6 + i % 3 * 2),
-          base.z + Math.sin(angle) * (6 + i % 3 * 2));
-      const goat = new GoatRagdoll(this.game.physics, {
-        id, position, yaw: mode === 'hay-heist' ? teamId === 'red' ? 0 : Math.PI : angle, size: .6,
-      });
+      const yaw = mode === 'hay-heist' ? teamId === 'red' ? 0 : Math.PI : angle;
+      const point = mode === 'hay-heist'
+        ? { x: base.x + ((Math.floor(i / 2) % 3) - 1) * 2.2 * scale,
+            z: base.z + (teamId === 'red' ? 1 : -1) * (3.6 + Math.floor(i / 6) * 2) * scale }
+        : { x: base.x + Math.cos(angle) * (6 + i % 3 * 2),
+            z: base.z + Math.sin(angle) * (6 + i % 3 * 2) };
+      return { id, teamId, point, yaw };
+    });
+    const seats = new PartySpawns(this.game, [playerStart, ...roster.map(bot => bot.point)]);
+    const playerSeat = seats.player(playerStart, playerHeading);
+    const botSeats = roster.map(bot => seats.bot(bot.point, botSize, bot.yaw));
+    this.game.gigs.abandon();
+    const before = this.game.goat.torso.translation();
+    // Game.teleport accepts foot-ground coordinates, not the torso centre.
+    this.returnPosition = { x: before.x,
+      y: before.y - .92 * this.game.goat.size, z: before.z };
+    this.game.teleport(playerSeat, playerHeading);
+    for (const [i, { id, teamId, yaw }] of roster.entries()) {
+      const goat = new GoatRagdoll(this.game.physics, { id, position: botSeats[i]!, yaw, size: botSize });
       this.game.water.track(goat.torso, { buoyancyScale: .7, paddleSpeed: 2.6 });
       this.bots.set(id, { goat, brain: new BotBrain(id, difficulty, 217 + i),
         rules: new GameSimulation(530 + i), name: NAMES[i]! });
@@ -188,10 +179,10 @@ export class PartySession {
     }
   }
 
-  noteHeadbutt(attackerId: string, facing: Point): void {
+  noteHeadbutt(attackerId: string, facing: Point, struckGoatId?: string | null): void {
     const match = this.match;
     if (match?.mode === 'hay-heist' && (match.phase === 'playing' || match.phase === 'overtime')) {
-      this.headbutts.push({ attackerId, facing });
+      this.headbutts.push({ attackerId, facing, struckGoatId });
     }
   }
 

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { BUILD_RAMP_VERTICES, BUILD_RAMP_TRIANGLES } from '../gameplay';
+import { BUILD_PIECE_SIZES, BUILD_RAMP_VERTICES, BUILD_RAMP_TRIANGLES } from '../gameplay';
 import { PROP_LIBRARY_MODELS, bakeLibraryPropGeometry } from '../world/library-props';
 import { fitLibraryModel, isAuthoredLibraryAsset } from '../world/library-fit';
 import { kitShape } from '../world/kit-preview';
@@ -26,12 +26,7 @@ interface WorldArtFit {
 
 
 
-export const BUILD_PIECE_SIZES: Readonly<Record<BuildPieceType, Readonly<Size3>>> = {
-  floor: { x: 2, y: .46, z: 2 },
-  wall: { x: .46, y: 2, z: 2 },
-  ramp: { x: 2, y: 1.8, z: 2 },
-  'launch-pad': { x: 2, y: .46, z: 2 },
-};
+export { BUILD_PIECE_SIZES };
 export const SURFACE_HALF_EXTENTS: Readonly<Size3> = { x: 2.1, y: .23, z: 2.1 };
 export const GIG_BOARD_SIZE: Readonly<Size3> = { x: 3.6, y: 4.25, z: .6 };
 export const DEFAULT_CRATE_SIZE: Readonly<Size3> = { x: 1.5, y: 1.5, z: 1.5 };

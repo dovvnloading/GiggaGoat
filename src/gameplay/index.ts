@@ -10,7 +10,7 @@ export type { GoatIntent, GoatPhysicsFacts, AbilityCommands, AbilitiesSnapshot, 
 export { StyleSystem } from './style';
 export type { StyleEvent, StyleSnapshot, ComboSnapshot } from './style';
 export { Inventory, HayBuild } from './build';
-export { BUILD_RAMP_VERTICES, BUILD_RAMP_TRIANGLES } from './build';
+export { BUILD_PIECE_SIZES, BUILD_RAMP_VERTICES, BUILD_RAMP_TRIANGLES } from './build';
 export type { Cell, Placement, BuildPiece, QuarterTurn, MaterialCounts, Validation, PlacementFailure, BuildSnapshot } from './build';
 export { CudWallet, UnlockRegistry, ChallengeTracker } from './progression';
 export type { WalletSnapshot, UnlockId, UnlockDefinition, UnlockResult, UnlocksSnapshot, ChallengeId,
