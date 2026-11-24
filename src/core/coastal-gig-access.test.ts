@@ -43,7 +43,7 @@ it('walks the coast road shoulder without sustained airtime on sloping turf', as
     const score = game.rules.style.score;
     const landings: number[] = [];
     game.goat.events.on(event => { if (event.type === 'landed') landings.push(event.airtime); });
-    let slopeSteps = 0;
+    let firstSlopeZ = Infinity, lastSlopeZ = -Infinity;
     for (let tick = 0; tick < 131; tick++) {
       game.step({ moveZ: 1, cameraYaw });
       const { z } = game.goat.torso.translation();
@@ -51,12 +51,13 @@ it('walks the coast road shoulder without sustained airtime on sloping turf', as
         expect(game.goat.locomotion.groundHit?.collider.handle).toBe(game.colliders.terrain.handle);
         expect(game.goat.locomotion.grounded).toBe(true);
         expect(game.goat.pose).toBe('walk');
-        slopeSteps++;
+        firstSlopeZ = Math.min(firstSlopeZ, z);
+        lastSlopeZ = Math.max(lastSlopeZ, z);
       }
     }
     settle(game, 79, { cameraYaw });
     const end = game.goat.torso.translation();
-    expect(slopeSteps).toBeGreaterThan(24);
+    expect(lastSlopeZ - firstSlopeZ).toBeGreaterThan(1.7);
     expect(end.z).toBeGreaterThan(221);
     expect(end.y).toBeLessThan(start.y - .9);
     expect(Math.max(0, ...landings)).toBeLessThan(.4);

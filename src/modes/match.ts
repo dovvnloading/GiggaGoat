@@ -1,6 +1,6 @@
 import type {
-  GoatModeEffect, GoatObservation, MatchEvent, MatchOptions, MatchSnapshot, MatchView,
-  ModeArena, ModeFrame, Phase, Placement, PlayerSpec, PlayerState, Point, RulesConfig, TeamPlacement,
+  GoatHeadbutt, GoatModeEffect, GoatObservation, MatchEvent, MatchOptions, MatchSnapshot, MatchView,
+  ModeArena, ModeFrame, Phase, Placement, PlayerSpec, PlayerState, RulesConfig, TeamPlacement,
 } from './types';
 import type { Emit, EventPayload, RuleOutcome } from './internal';
 import { clone, distanceSquared, finite, integer, validateArena, TICKS_PER_SECOND, compareIds } from './internal';
@@ -245,7 +245,7 @@ export class PartyMatch {
     // corrupt replay determinism or silently use one extra game tick.
     const observations = new Map<string, GoatObservation>();
     const headbutts = this.mode === 'hay-heist' && frame.headbutts?.length
-      ? new Map<string, Point>() : undefined;
+      ? new Map<string, GoatHeadbutt>() : undefined;
     if (this.phase !== 'countdown') {
       for (const goat of frame.goats) {
         if (observations.has(goat.id) || !this.data.players.some(p => p.id === goat.id)) {
@@ -259,14 +259,18 @@ export class PartyMatch {
         if (!observations.has(player.id)) throw new Error(`missing observation for ${player.id}`);
       }
       if (headbutts && frame.headbutts) {
-        for (const { attackerId, facing } of frame.headbutts) {
+        for (const headbutt of frame.headbutts) {
+          const { attackerId, facing, struckGoatId } = headbutt;
           if (!observations.has(attackerId) || headbutts.has(attackerId)) {
             throw new Error('unknown or repeated headbutt attacker');
+          }
+          if (struckGoatId != null && (struckGoatId === attackerId || !observations.has(struckGoatId))) {
+            throw new Error('invalid headbutt target');
           }
           finite(facing.x, 'headbutt facing');
           finite(facing.z, 'headbutt facing');
           if (Math.hypot(facing.x, facing.z) <= .0001) throw new Error('headbutt facing is zero');
-          headbutts.set(attackerId, facing);
+          headbutts.set(attackerId, headbutt);
         }
       }
     }

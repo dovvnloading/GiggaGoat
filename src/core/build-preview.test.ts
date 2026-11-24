@@ -58,6 +58,55 @@ describe('Hay-Build placement preview', () => {
     }
   });
 
+  it('blocks a wall around a party goat in the preview and on placement', async () => {
+    const game = await Game.create();
+    try {
+      game.party.start('hay-heist', 3, 'normal');
+      const bot = game.party.bots.get('bot-1')!.goat;
+      const { x, y, z } = bot.torso.translation();
+      const cameraYaw = Math.PI / 2;
+      // This quarter-turn puts the thin dimension of the wall on world Z.
+      // Aim from the side so the snapped wall crosses the bot's torso.
+      const grid = TUNING.build.gridSize;
+      const targetX = Math.round(x / grid) * grid, targetZ = Math.round(z / grid) * grid;
+      const dz = targetZ - z;
+      for (const body of bot.bodies) {
+        const p = body.translation();
+        body.setTranslation(V(p.x, p.y, p.z + dz), true);
+      }
+      game.teleport(V(targetX - 4.5, y - .92 * bot.size, targetZ), -cameraYaw);
+      game.advance(0, { toggleBuild: true, buildPiece: 'wall', cameraYaw });
+      const preview = game.buildPreview()!;
+      expect(preview.position.x).toBe(targetX);
+      expect(preview.position.z).toBe(targetZ);
+      expect(preview.validation).toEqual({ valid: false, reason: 'overlap' });
+      const stock = game.rules.inventory.all;
+      game.advance(0, { placeBuild: true, cameraYaw });
+      expect(game.rules.inventory.all).toEqual(stock);
+      expect(game.buildBodies.size).toBe(0);
+    } finally { game.dispose(); }
+  });
+
+  it('checks the live player pose and the solid side of a ramp before an edit spends materials', async () => {
+    const game = await Game.create();
+    try {
+      const cell = { x: 20, y: 0, z: 20 };
+      const ramp = { type: 'ramp', cell, rotation: 0 } as const;
+      const centre = game.buildPosition(ramp);
+      const floor = game.rules.build.place({ ...ramp, type: 'floor' }).piece!;
+      // Between ticks the goat can warp into the ramp's bounding box, above
+      // its low end. Turning the same ramp around puts its high end here.
+      game.teleport(V(centre.x, centre.y + .12, centre.z - .64), 0);
+      expect(game.rules.build.validatePlacement(ramp, floor.id).valid).toBe(true);
+      const stock = game.rules.inventory.all;
+      expect(game.rules.build.edit(floor.id, { type: 'ramp', rotation: 2 }).validation)
+        .toEqual({ valid: false, reason: 'overlap' });
+      expect(game.rules.inventory.all).toEqual(stock);
+      expect(game.rules.build.getPiece(floor.id)).toEqual(floor);
+      expect(game.rules.build.edit(floor.id, ramp).validation.valid).toBe(true);
+    } finally { game.dispose(); }
+  });
+
   it('plants a remote floor against local terrain and saves its height alongside an older build', async () => {
     const game = await Game.create();
     try {

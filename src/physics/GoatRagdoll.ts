@@ -1,5 +1,6 @@
-import RAPIER, { type ImpulseJoint, type RevoluteImpulseJoint, type RigidBody, type ColliderDesc } from '@dimforge/rapier3d-compat';
+import RAPIER, { type ImpulseJoint, type RevoluteImpulseJoint, type RigidBody } from '@dimforge/rapier3d-compat';
 import { TUNING } from '../gameplay/config';
+import { goatBodyGeometry, HIPS } from './GoatGeometry';
 import { collisionGroups } from './CollisionGroups';
 import { PhysicsEventBus, type PhysicsContact } from './events';
 import { add, clamp, cross, dot, mul, rotate, sub, V, yawQuaternion, type Vec3 } from './math';
@@ -31,7 +32,6 @@ type Motor = {
   joint: RevoluteImpulseJoint;
   recoveryAngle: number | undefined;
 };
-const HIP_NAMES = ['frontLeft','frontRight','backLeft','backRight'] as const;
 let nextGoatId = 1;
 
 /**
@@ -91,7 +91,7 @@ export class GoatRagdoll {
   get torso(): RigidBody { return this.getPart('torso'); }
   get neck(): RigidBody { return this.getPart('neck'); }
   get head(): RigidBody { return this.getPart('head'); }
-  get legs(): readonly RigidBody[] { return HIP_NAMES.map(name => this.getPart(name)); }
+  get legs(): readonly RigidBody[] { return HIPS.map(hip => this.getPart(hip.name)); }
   get bodies(): readonly RigidBody[] { return [...this.parts.values()]; }
   get joints(): readonly ImpulseJoint[] { return this.hinges.map(h => h.joint); }
   get mass(): number { return 27 * this.size ** 3; }
@@ -118,23 +118,21 @@ export class GoatRagdoll {
   private createBodies(origin: Vec3, yaw: number): void {
     const s = this.size;
     const orientation = yawQuaternion(yaw);
-    const addBody = (name: GoatPart, offset: Vec3, shape: ColliderDesc, mass: number): RigidBody => {
-      const at = add(origin, rotate(orientation,mul(offset, s)));
+    for (const { part, offset, colliders } of goatBodyGeometry(s)) {
+      const at = add(origin, rotate(orientation, offset));
       const body = this.world.raw.createRigidBody(
         RAPIER.RigidBodyDesc.dynamic().setTranslation(at.x, at.y, at.z)
           .setRotation(orientation).setLinearDamping(0.45).setAngularDamping(0.75)
           .setCcdEnabled(true),
       );
-      this.world.raw.createCollider(shape.setMass(mass * s ** 3).setFriction(1.15)
-        .setRestitution(0.04).setCollisionGroups(collisionGroups('goat'))
-        .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS), body);
-      this.world.registerBody(body, { kind: 'goat', owner: this.id, data: { part: name } });
-      this.parts.set(name, body);
-      return body;
-    };
-    const torso = addBody('torso', V(0, .92, 0), RAPIER.ColliderDesc.cuboid(.29*s,.27*s,.52*s),14);
-    const neck = addBody('neck', V(0, 1.24, -.62), RAPIER.ColliderDesc.cuboid(.15*s,.22*s,.19*s),2);
-    const head = addBody('head', V(0, 1.48, -.84), RAPIER.ColliderDesc.ball(.23*s),3);
+      for (const collider of colliders) {
+        this.world.raw.createCollider(collider.setFriction(1.15).setRestitution(0.04)
+          .setCollisionGroups(collisionGroups('goat'))
+          .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS), body);
+      }
+      this.world.registerBody(body, { kind: 'goat', owner: this.id, data: { part } });
+      this.parts.set(part, body);
+    }
     const attach = (name: Motor['name'], a: RigidBody, b: RigidBody, anchorA: Vec3, anchorB: Vec3): void => {
       const desc = RAPIER.JointData.revolute(mul(anchorA,s),mul(anchorB,s),V(1,0,0));
       const joint = this.world.raw.createImpulseJoint(desc,a,b,true) as RevoluteImpulseJoint;
@@ -142,14 +140,10 @@ export class GoatRagdoll {
       joint.setLimits(-.95,.95);
       this.hinges.push({ name, joint, recoveryAngle: undefined });
     };
-    attach('neck',torso,neck,V(0,.17,-.5),V(0,-.15,.12));
-    attach('head',neck,head,V(0,.13,-.12),V(0,-.11,.10));
-    for (const [i, name] of HIP_NAMES.entries()) {
-      const x = i % 2 === 0 ? -.24 : .24;
-      const z = i < 2 ? -.40 : .40;
-      const leg = addBody(name,V(x,.44,z),
-        RAPIER.ColliderDesc.cuboid(.10*s,.38*s,.115*s),2);
-      attach(name,torso,leg,V(x,-.23,z),V(0,.25,0));
+    attach('neck', this.torso, this.neck, V(0, .17, -.5), V(0, -.15, .12));
+    attach('head', this.neck, this.head, V(0, .13, -.12), V(0, -.11, .10));
+    for (const { name, x, z } of HIPS) {
+      attach(name, this.torso, this.getPart(name), V(x, -.23, z), V(0, .25, 0));
     }
     this.driveMotors();
   }
@@ -261,6 +255,7 @@ export class GoatRagdoll {
           body.setAngvel(old.angular, true);
           this.world.resetInterpolation(body);
         }
+        this.world.raw.propagateModifiedBodyPositionsToColliders();
       } else {
         for (const body of this.bodies) body.setLinvel(velocity,true);
       }
