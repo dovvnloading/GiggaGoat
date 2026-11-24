@@ -168,6 +168,7 @@ let elapsed = 0;
 let fps = 60;
 let sampleSeconds = 0;
 let capturing = false;
+let profilingPreview = false;
 
 function makeColliderGeometry(collider: ColliderDescriptor): THREE.BufferGeometry {
   if (collider.shape === 'heightfield') {
@@ -582,27 +583,24 @@ if (new URLSearchParams(window.location.search).has('profile')) {
                 node.geometry.getAttribute('position').count) / 3 : count, 0) ?? 0,
         };
       },
-      /** Capture the actual WebGL frame before the browser clears its backbuffer.
-       * This avoids waiting for Chrome's page compositor on software WebGL.
+      /** Render one real bookmark frame and let Chrome composite it without
+       * the continuous animation loop competing for the software GPU.
+       * The CI harness captures the page surface after this promise resolves.
        */
-      captureBookmark(id: string): string {
+      async preparePreview(id: string): Promise<string> {
         if (!findBookmark(id)) throw new Error('Unknown bookmark: ' + id);
+        profilingPreview = true;
         bookmarkInput.value = id;
         applyBookmark(id);
-        for (let i = 0; i < 7; i++) {
-          worldView.update(elapsed + i / 60);
-          updateCameraControls(1 / 60);
-          renderWorldFrame();
-        }
-        // Read in the same JS task as the render, as in captureAllBookmarks.
-        const canvas = document.createElement('canvas');
-        canvas.width = renderer.domElement.width;
-        canvas.height = renderer.domElement.height;
-        const context = canvas.getContext('2d');
-        if (!context) throw new Error('2D canvas unavailable');
-        context.drawImage(renderer.domElement, 0, 0);
-        return canvas.toDataURL('image/jpeg', 0.86);
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        worldView.update(elapsed);
+        updateCameraControls(1 / 60);
+        renderWorldFrame();
+        // Yield past the rendered frame before asking CDP for the surface.
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        return bookmarkInput.value;
       },
+      endPreview(): void { profilingPreview = false; },
       measure(frames = 16): {
         frameTimesMs: number[]; drawCalls: number; triangles: number;
         width: number; height: number; pixelRatio: number; gpu: string;
@@ -631,7 +629,7 @@ if (new URLSearchParams(window.location.search).has('profile')) {
   });
 }
 renderer.setAnimationLoop(() => {
-  if (capturing) return;
+  if (capturing || profilingPreview) return;
   const rawDelta = clock.getDelta();
   const delta = Math.min(rawDelta, 0.08);
   // Measure real delivered-frame time, including browser composition. A tab

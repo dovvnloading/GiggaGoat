@@ -263,6 +263,50 @@ describe.skipIf(!process.env['CI'])('world viewer real-Chrome frame profiling', 
           '{ document.getElementById(id).style.visibility = ""; });',
       });
 
+      // Export clean views before the synchronous multi-bookmark benchmark.
+      // SwiftShader may still have a large queue of submitted frames after that
+      // burst. Capture one composited frame at a time instead of forcing a
+      // synchronous WebGL-to-2D readback or rendering continuously while CDP
+      // waits for the screenshot.
+      if (process.env['WORLD_DETAIL_PREVIEWS'] === '1') {
+        const output = join(process.cwd(), '.world-detail-previews');
+        mkdirSync(output, { recursive: true });
+        const hidden = await send('Runtime.evaluate', {
+          expression: 'window.__worldProfile.pixelRatio(1); ' +
+            '["panel","reference","labels","hint"].forEach(id => ' +
+            '{ document.getElementById(id).style.visibility = "hidden"; });',
+        }, 30000);
+        expect(hidden.exceptionDetails, 'hide preview overlays').toBeUndefined();
+        for (const id of ['08', '09', '10', '11', '12', '13', '14', '15']) {
+          console.log('WORLD_DETAIL_PREVIEW preparing ' + id);
+          const prepared = await send('Runtime.evaluate', {
+            expression: 'window.__worldProfile.preparePreview(' + JSON.stringify(id) + ')',
+            awaitPromise: true, returnByValue: true,
+          }, 60000);
+          expect(prepared.exceptionDetails, 'bookmark ' + id + ' preparation failed').toBeUndefined();
+          expect(prepared.result?.value, 'bookmark ' + id + ' must be active').toBe(id);
+          console.log('WORLD_DETAIL_PREVIEW capturing ' + id);
+          const image = await send('Page.captureScreenshot', {
+            format: 'jpeg', quality: 68, fromSurface: true,
+          }, 60000);
+          expect(typeof image.data === 'string' && image.data.length > 0,
+            'bookmark ' + id + ' must return a JPEG').toBe(true);
+          const bytes = Buffer.from(image.data, 'base64');
+          expect(bytes.length, 'bookmark ' + id + ' returned an empty JPEG').toBeGreaterThan(2);
+          expect(bytes.readUInt16BE(0), 'bookmark ' + id + ' JPEG header').toBe(0xffd8);
+          expect(bytes.readUInt16BE(bytes.length - 2), 'bookmark ' + id + ' JPEG trailer').toBe(0xffd9);
+          writeFileSync(join(output, id + '.jpg'), bytes);
+          console.log('WORLD_DETAIL_PREVIEW saved ' + id + ' (' + bytes.length + ' bytes)');
+        }
+        // On failure the outer finally closes Chrome; only resume on success.
+        const resumed = await send('Runtime.evaluate', {
+          expression: '["panel","reference","labels","hint"].forEach(id => ' +
+            '{ document.getElementById(id).style.visibility = ""; }); ' +
+            'window.__worldProfile.endPreview();',
+        }, 30000);
+        expect(resumed.exceptionDetails, 'resume regular profiling').toBeUndefined();
+      }
+
       const expression = String.raw`(() => {
         const profile = window.__worldProfile;
         const menu = document.getElementById('bookmark');
@@ -342,32 +386,6 @@ describe.skipIf(!process.env['CI'])('world viewer real-Chrome frame profiling', 
         expect(mark.p50Ms).toBeLessThan(1000 / 60);
         expect(mark.width).toBeGreaterThan(1000);
         expect(mark.height).toBeGreaterThan(600);
-      }
-      // Preserve real rendered world views for PR art review. Capture after
-      // profiling so screenshot overhead cannot distort the frame timings.
-      // Read the WebGL canvas in the same task as the render; unlike the page
-      // screenshot API this does not wait for the headless Chrome compositor.
-      if (process.env['WORLD_DETAIL_PREVIEWS'] === '1') {
-        const output = join(process.cwd(), '.world-detail-previews');
-        mkdirSync(output, { recursive: true });
-        const jpegPrefix = 'data:image/jpeg;base64,';
-        for (const id of ['08', '09', '10', '11', '12', '13', '14', '15']) {
-          console.log('WORLD_DETAIL_PREVIEW capturing ' + id);
-          const response = await send('Runtime.evaluate', {
-            expression: 'window.__worldProfile.captureBookmark(' + JSON.stringify(id) + ')',
-            returnByValue: true,
-          }, 60000);
-          expect(response.exceptionDetails, 'bookmark ' + id + ' capture failed').toBeUndefined();
-          const data = response.result?.value;
-          expect(typeof data === 'string' && data.startsWith(jpegPrefix),
-            'bookmark ' + id + ' must return a JPEG').toBe(true);
-          const bytes = Buffer.from(data.slice(jpegPrefix.length), 'base64');
-          expect(bytes.length, 'bookmark ' + id + ' returned an empty JPEG').toBeGreaterThan(2);
-          expect(bytes.readUInt16BE(0), 'bookmark ' + id + ' JPEG header').toBe(0xffd8);
-          expect(bytes.readUInt16BE(bytes.length - 2), 'bookmark ' + id + ' JPEG trailer').toBe(0xffd9);
-          writeFileSync(join(output, id + '.jpg'), bytes);
-          console.log('WORLD_DETAIL_PREVIEW saved ' + id + ' (' + bytes.length + ' bytes)');
-        }
       }
       // Recorded by a successful main-branch Chrome CI run at the same
       // viewport, renderer scale and GPU backend.
