@@ -18,6 +18,8 @@ export interface GameProgress {
   gigs: GigSnapshot;
   gigBodies: GigBodySave[];
   acknowledgedGigAttempt?: number;
+  /** Stable IDs of one-time local discoveries; absent in older saves. */
+  happenings?: import('./IslandHappenings').HappeningId[];
   gigPlayerPose?: GigPlayerPose;
   /** Saves made before remote gigs kept the player's position. */
   rooftopPose?: RooftopPose;

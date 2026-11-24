@@ -31,6 +31,7 @@ import { COAST_TURNOUT_GNOME_ID } from '../world/roadside-stops';
 import { CRANE_YARD_PLAN } from '../world/crane-yard';
 import { HAY_HAUL_TAG_RADIUS } from '../gigs';
 import { GigSession } from './GigSession';
+import { IslandHappenings, placeIslandHappenings } from './IslandHappenings';
 import { PartySession } from './PartySession';
 import type { GameProgress } from './Persistence';
 import { findStockBaleSeat, isLegacyStockBale } from './HoofingtonStock';
@@ -141,6 +142,7 @@ export class Game {
   readonly surfaces: SurfaceSystem;
   readonly budget: DynamicBodyBudget;
   readonly gigs: GigSession;
+  readonly happenings: IslandHappenings;
   private acknowledgedGigAttempt = 0;
   readonly party: PartySession;
   readonly surfaceMarkers: SurfaceMarker[] = [];
@@ -339,6 +341,8 @@ export class Game {
       this.acknowledgedGigAttempt = restoredGig.attemptId;
     }
     this.party = new PartySession(this);
+    this.happenings = new IslandHappenings(placeIslandHappenings(island,
+      this.gigs.boards.map(board => board.position)), options.progress?.happenings);
     this.rules.build.isPlacementObstructed = placement => this.buildIntersectsGoat(placement);
     // Saved active cargo already has its own pose. The static world and gig
     // catalog still own the original authored coordinates for every bale.
@@ -1204,6 +1208,10 @@ export class Game {
       if (player) {
         this.lastActionTime = this.physics.time;
         this.gigs.noteAbility({ type: 'bleat' });
+        if (!this.party.match && this.gigs.active?.status !== 'running' && !this.buildMode) {
+          const reward = this.happenings.bleat(this.happeningPosition(), this.physics.time);
+          if (reward) this.rules.wallet.credit(reward, 'island-discovery');
+        }
       }
       g.interactions.bleat();
     }
@@ -1388,9 +1396,20 @@ export class Game {
     return V(position.x, y, position.z);
   }
 
+  private happeningPosition(): Vec3 {
+    const p = this.goat.torso.translation();
+    return { x: p.x, y: p.y - .92 * this.goat.size, z: p.z };
+  }
+
+  get happeningMessage() {
+    if (this.party.match || this.gigs.active?.status === 'running' || this.pendingGigResult || this.buildMode) return;
+    return this.happenings.message(this.happeningPosition(), this.physics.time);
+  }
+
   exportProgress(): GameProgress {
     const progress: GameProgress = { gameplay: this.rules.toJSON(), gigs: this.gigs.director.toJSON(),
-      gigBodies: this.gigs.saveBodies(), acknowledgedGigAttempt: this.acknowledgedGigAttempt };
+      gigBodies: this.gigs.saveBodies(), acknowledgedGigAttempt: this.acknowledgedGigAttempt,
+      happenings: this.happenings.snapshot() };
     const run = this.gigs.active;
     if (run?.status === 'running') {
       const { x, y, z } = this.goat.torso.translation();
