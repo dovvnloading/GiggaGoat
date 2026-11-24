@@ -582,6 +582,27 @@ if (new URLSearchParams(window.location.search).has('profile')) {
                 node.geometry.getAttribute('position').count) / 3 : count, 0) ?? 0,
         };
       },
+      /** Capture the actual WebGL frame before the browser clears its backbuffer.
+       * This avoids waiting for Chrome's page compositor on software WebGL.
+       */
+      captureBookmark(id: string): string {
+        if (!findBookmark(id)) throw new Error('Unknown bookmark: ' + id);
+        bookmarkInput.value = id;
+        applyBookmark(id);
+        for (let i = 0; i < 7; i++) {
+          worldView.update(elapsed + i / 60);
+          updateCameraControls(1 / 60);
+          renderWorldFrame();
+        }
+        // Read in the same JS task as the render, as in captureAllBookmarks.
+        const canvas = document.createElement('canvas');
+        canvas.width = renderer.domElement.width;
+        canvas.height = renderer.domElement.height;
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('2D canvas unavailable');
+        context.drawImage(renderer.domElement, 0, 0);
+        return canvas.toDataURL('image/jpeg', 0.86);
+      },
       measure(frames = 16): {
         frameTimesMs: number[]; drawCalls: number; triangles: number;
         width: number; height: number; pixelRatio: number; gpu: string;

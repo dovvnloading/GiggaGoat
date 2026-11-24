@@ -105,11 +105,25 @@ describe.skipIf(!process.env['CI'])('world viewer real-Chrome frame profiling', 
         if (message.error) request.reject(new Error(message.error.message));
         else request.resolve(message.result);
       });
-      const send = (method: string, params: Record<string, unknown> = {}): Promise<any> =>
+      const send = (method: string, params: Record<string, unknown> = {},
+        timeoutMs?: number): Promise<any> =>
         new Promise((resolve, reject) => {
           const id = ++nextId;
-          pending.set(id, { resolve, reject });
-          connectedSocket.send(JSON.stringify({ id, method, params }));
+          const timer = timeoutMs === undefined ? undefined : setTimeout(() => {
+            pending.delete(id);
+            reject(new Error(method + ' timed out after ' + timeoutMs + 'ms'));
+          }, timeoutMs);
+          pending.set(id, {
+            resolve: result => { clearTimeout(timer); resolve(result); },
+            reject: error => { clearTimeout(timer); reject(error); },
+          });
+          try {
+            connectedSocket.send(JSON.stringify({ id, method, params }));
+          } catch (error) {
+            pending.delete(id);
+            clearTimeout(timer);
+            reject(error);
+          }
         });
 
       await send('Emulation.setDeviceMetricsOverride', {
@@ -331,31 +345,28 @@ describe.skipIf(!process.env['CI'])('world viewer real-Chrome frame profiling', 
       }
       // Preserve real rendered world views for PR art review. Capture after
       // profiling so screenshot overhead cannot distort the frame timings.
+      // Read the WebGL canvas in the same task as the render; unlike the page
+      // screenshot API this does not wait for the headless Chrome compositor.
       if (process.env['WORLD_DETAIL_PREVIEWS'] === '1') {
         const output = join(process.cwd(), '.world-detail-previews');
         mkdirSync(output, { recursive: true });
-        await send('Runtime.evaluate', {
-          expression: '["panel","reference","labels","hint"].forEach(id => ' +
-            '{ document.getElementById(id).style.visibility = "hidden"; });',
-        });
-        try {
-          for (const id of ['08', '09', '10', '11', '12', '13', '14', '15']) {
-            const response = await send('Runtime.evaluate', {
-              expression: '(() => { const menu = document.getElementById("bookmark"); ' +
-                'menu.value = ' + JSON.stringify(id) + '; menu.dispatchEvent(new Event("change", ' +
-                '{ bubbles: true })); window.__worldProfile.measure(3); })()',
-            });
-            expect(response.exceptionDetails).toBeUndefined();
-            await sleep(250);
-            const image = await send('Page.captureScreenshot', { format: 'jpeg', quality: 86, fromSurface: true });
-            expect(image.data).toBeTruthy();
-            writeFileSync(join(output, id + '.jpg'), Buffer.from(image.data, 'base64'));
-          }
-        } finally {
-          await send('Runtime.evaluate', {
-            expression: '["panel","reference","labels","hint"].forEach(id => ' +
-              '{ document.getElementById(id).style.visibility = ""; });',
-          });
+        const jpegPrefix = 'data:image/jpeg;base64,';
+        for (const id of ['08', '09', '10', '11', '12', '13', '14', '15']) {
+          console.log('WORLD_DETAIL_PREVIEW capturing ' + id);
+          const response = await send('Runtime.evaluate', {
+            expression: 'window.__worldProfile.captureBookmark(' + JSON.stringify(id) + ')',
+            returnByValue: true,
+          }, 60000);
+          expect(response.exceptionDetails, 'bookmark ' + id + ' capture failed').toBeUndefined();
+          const data = response.result?.value;
+          expect(typeof data === 'string' && data.startsWith(jpegPrefix),
+            'bookmark ' + id + ' must return a JPEG').toBe(true);
+          const bytes = Buffer.from(data.slice(jpegPrefix.length), 'base64');
+          expect(bytes.length, 'bookmark ' + id + ' returned an empty JPEG').toBeGreaterThan(2);
+          expect(bytes.readUInt16BE(0), 'bookmark ' + id + ' JPEG header').toBe(0xffd8);
+          expect(bytes.readUInt16BE(bytes.length - 2), 'bookmark ' + id + ' JPEG trailer').toBe(0xffd9);
+          writeFileSync(join(output, id + '.jpg'), bytes);
+          console.log('WORLD_DETAIL_PREVIEW saved ' + id + ' (' + bytes.length + ' bytes)');
         }
       }
       // Recorded by a successful main-branch Chrome CI run at the same
@@ -390,5 +401,7 @@ describe.skipIf(!process.env['CI'])('world viewer real-Chrome frame profiling', 
         console.warn('Chrome profile cleanup deferred:', error);
       }
     }
-  }, 420000);
+  // The optional eight-frame art export has its own bounded CDP requests.
+  // Give it additional wall-clock budget without changing the regular profile.
+  }, process.env['WORLD_DETAIL_PREVIEWS'] === '1' ? 600000 : 420000);
 });
