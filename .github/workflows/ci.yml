@@ -61,7 +61,7 @@ jobs:
       - name: Capture recorded baseline
         run: |
           ln -s ../node_modules .living-world-baseline/node_modules
-          npm run capture:living-world -- --root .living-world-baseline --out .living-world-captures/before --label before --samples 24
+          npm run capture:living-world -- --root .living-world-baseline --out .living-world-captures/before --label before --samples 24 --allow-legacy-goat
       - name: Capture implemented game and continuous walkthrough
         if: always()
         run: npm run capture:living-world -- --out .living-world-captures/after --label after --samples 24 --tour 100

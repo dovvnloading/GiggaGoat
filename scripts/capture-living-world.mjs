@@ -17,6 +17,7 @@ const label = option('--label', 'capture');
 const samples = Math.max(3, Math.floor(Number(option('--samples', '24'))));
 const quality = option('--quality', 'high');
 const seed = option('--seed', 'billy-isle');
+const allowLegacyGoat = args.includes('--allow-legacy-goat');
 const tourSeconds = Math.max(0, Math.min(120, Number(option('--tour', '0'))));
 if (!Number.isFinite(samples) || !Number.isFinite(tourSeconds)) throw new Error('Samples and tour seconds must be finite numbers');
 if (!['low', 'medium', 'high'].includes(quality)) throw new Error('Quality must be low, medium or high');
@@ -144,7 +145,8 @@ try {
     view.updateCamera=()=>{view.world.sun.position.setLength(145).add(view.cameraTarget);
       view.world.sun.target.position.copy(view.cameraTarget);view.world.sun.target.updateMatrixWorld();};
     view.updateCameraFraming=()=>{};
-    document.querySelectorAll('.gg-hud').forEach(node=>node.remove());
+    const hud=[...document.querySelectorAll('.gg-ui')].map(node=>({node,display:node.style.display}));
+    for(const entry of hud)entry.node.style.display='none';
     let timestamp=0;
     const render=(millis=100,finish=true)=>{timestamp+=millis; view.nextPausedRender=0; view.frame(timestamp);
       if(finish)renderer.getContext?.().finish();};
@@ -157,7 +159,7 @@ try {
       {id:'downtown-market',camera:at(11,55,2.4),target:at(25,53,1.2)},
       {id:'downtown-rooftop',camera:at(-17,18,14),target:at(7,35,0)},
       ...ART_BOOKMARKS.filter(p=>p.district).map(p=>({...p,id:'approach-'+p.district}))];
-    window.__livingCapture={game,view,renderer,audio,bridge,audioUnlocked,points,render,city,at,updateCamera,updateCameraFraming};
+    window.__livingCapture={game,view,renderer,audio,bridge,audioUnlocked,points,render,city,at,updateCamera,updateCameraFraming,hud};
     for(let i=0;i<600;i++)game.advance(1/60,{});render();
     await Promise.all([view.residents?.ready,view.marketVisuals?.ready]);
     return {seed:game.island.seed,points:points.map(p=>p.id)};
@@ -166,16 +168,19 @@ try {
   await delay(1000);
   let readinessReportedAt = 0;
   await until(async () => {
-    assetReadiness = await evaluate(`(()=>{const c=window.__livingCapture,pending=[],groups=[];
+    assetReadiness = await evaluate(`(()=>{const c=window.__livingCapture,pending=[],groups=[],residents=c.view.residents?.stats?.();
       c.view.scene.traverse(o=>{if('ready' in o.userData||'libraryReady' in o.userData){
         groups.push({name:o.name,type:o.type,ready:o.userData.ready,libraryReady:o.userData.libraryReady,
           loadedModels:o.userData.loadedModels,failedAssets:o.userData.failedAssets,
           libraryLoaded:o.userData.libraryLoaded,libraryFailed:o.userData.libraryFailed,
           libraryPending:o.userData.libraryPending});
         if(o.userData.ready===false)pending.push(o.name||o.type);}});
-      if(c.view.characters.player.isReady===false)pending.push('animated player goat');
+      if(c.view.characters.player.isReady===false&&!${allowLegacyGoat})pending.push('animated player goat');
+      if(residents&&(residents.loaded!==residents.logical||residents.failedModels.length))pending.push('authored resident rigs');
       return {pending,groups,goatReady:c.view.characters.player.isReady,
-        goatVariant:c.view.characters.player.variant,residents:c.view.residents?.stats?.()};})()`);
+        goatVariant:c.view.characters.player.variant,residents};})()`);
+    if (assetReadiness.residents?.failedModels.length)
+      throw new Error('Required resident models failed: ' + assetReadiness.residents.failedModels.join(', '));
     if (assetReadiness.pending.length && Date.now() - readinessReportedAt > 15000) {
       readinessReportedAt = Date.now();
       console.log('Waiting for authored assets: ' + JSON.stringify(assetReadiness));
@@ -218,6 +223,7 @@ try {
       if(typeof MediaRecorder==='undefined'||typeof c.renderer.domElement.captureStream!=='function')
         throw new Error('This browser cannot record the gameplay canvas');
       const start=c.at(8,-42,0);c.game.teleport(start,Math.PI);
+      for(const entry of c.hud)entry.node.style.display=entry.display;
       c.view.updateCamera=c.updateCamera;c.view.updateCameraFraming=c.updateCameraFraming;
       c.view.alignCameraForPlay();c.view.camera.fov=c.view.currentSettings.fov;c.view.camera.updateProjectionMatrix();
       c.view.input.yaw=Math.PI;c.view.input.pitch=.12;
@@ -275,11 +281,17 @@ try {
     writeFileSync(join(out,'gameplay.webm'), Buffer.from(tour.base64,'base64'));
     delete tour.base64;
   }
-  const meta = await evaluate('({userAgent:navigator.userAgent,hardwareConcurrency:navigator.hardwareConcurrency,audioUnlocked:window.__livingCapture.audioUnlocked})');
+  const meta = await evaluate(`({userAgent:navigator.userAgent,hardwareConcurrency:navigator.hardwareConcurrency,
+    audioUnlocked:window.__livingCapture.audioUnlocked,
+    authoredGoatReady:window.__livingCapture.view.characters.player.isReady,
+    goatRendering:window.__livingCapture.view.characters.player.isReady?'authored GLB':'legacy fallback',
+    allowLegacyGoat:${allowLegacyGoat}})`);
   const sha = execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
   const dirty = execFileSync('git',['status','--porcelain'],{cwd:root,encoding:'utf8'}).trim();
   writeFileSync(join(out,'profile.json'),JSON.stringify({label,sha,dirty,seed,quality,date:new Date().toISOString(),
     measurement:'Synchronous production GameView frames with gl.finish; not delivered FPS or reference hardware acceptance.',
+    hudPolicy:{fixedSceneScreenshots:'hidden',tourPage:tourSeconds>0?'production HUD restored':'not recorded',
+      recordedVideo:'canvas stream only; DOM HUD is not composited'},
     os:platform()+' '+release(),cpu:cpus()[0]?.model,memoryBytes:totalmem(),...meta,results,tour,errors,warnings,assetReadiness},null,2)+'\n');
   await evaluate('window.__livingCapture.view.dispose();window.__livingCapture.bridge.dispose();window.__livingCapture.audio.dispose();window.__livingCapture.game.dispose();');
   fixtureDisposed = true;
@@ -294,7 +306,7 @@ try {
     } catch { /* A crashed context may not expose a final frame. */ }
   }
   writeFileSync(join(out,'failure.json'),JSON.stringify({label,date:new Date().toISOString(),
-    error:error instanceof Error?error.stack:String(error),errors,warnings,assetReadiness,
+    error:error instanceof Error?error.stack:String(error),errors,warnings,assetReadiness,allowLegacyGoat,
     pendingRequests:[...network.values()]},null,2)+'\n');
   throw error;
 } finally {
