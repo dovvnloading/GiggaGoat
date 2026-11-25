@@ -1,6 +1,6 @@
 /** Reproducible production Game/GameView capture. Requires local Chrome; no extra packages.
  * node scripts/capture-living-world.mjs --root . --out /absolute/output --label after
- * Samples completed GL frames, not a hardware FPS claim. Camera cuts are explicit.
+ * Samples CPU submission work, not completed GPU frames or FPS. Camera cuts are explicit.
  */
 import { createServer } from 'vite';
 import { spawn, execFileSync } from 'node:child_process';
@@ -18,6 +18,7 @@ const samples = Math.max(3, Math.floor(Number(option('--samples', '24'))));
 const quality = option('--quality', 'high');
 const seed = option('--seed', 'billy-isle');
 const allowLegacyGoat = args.includes('--allow-legacy-goat');
+const softwareRenderer = args.includes('--software-renderer');
 const tourSeconds = Math.max(0, Math.min(120, Number(option('--tour', '0'))));
 const tourOnly = args.includes('--tour-only');
 const tourQuality = option('--tour-quality', quality);
@@ -87,7 +88,8 @@ try {
   });
   if (!binary) throw new Error('A working Chrome binary is required; set CHROME_PATH. No capture was produced.');
   browser = spawn(binary, ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
-    '--enable-webgl', '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=' + angleBackend,
+    ...(softwareRenderer ? ['--disable-webgl', '--disable-webgl2'] :
+      ['--enable-webgl', '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=' + angleBackend]),
     '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
     '--autoplay-policy=no-user-gesture-required',
     '--remote-debugging-port=0', '--window-size=1280,720', '--user-data-dir=' + profile,
@@ -145,6 +147,7 @@ try {
       import('/src/audio/index.ts'),import('/src/core/GameAudio.ts'),import('/src/audio/soundtrack-assets.ts')]);
     const game=await Game.create({seed:${JSON.stringify(seed)}});
     const renderer=await createGameRenderer();
+    if(${softwareRenderer}&&!renderer.isSoftwareRenderer)throw new Error('Production software fallback was not selected');
     const audio=new AudioEngine({seed:game.island.seed,recordedAssets:BILLY_ISLE_RECORDINGS});
     const audioUnlocked=await audio.unlock();
     if(${tourSeconds}>0&&!audioUnlocked)throw new Error('Audio did not unlock; refusing to claim an audio capture');
@@ -222,9 +225,11 @@ try {
         residents:c.game.life?.residents.length||0,residentStates:c.game.life?.residents.map(r=>({id:r.id,position:r.position,activity:r.activity})),
         pixelRatio:c.renderer.getPixelRatio(),width:c.renderer.domElement.width,height:c.renderer.domElement.height,
         gpu:ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):'software',time:c.game.physics.time};})()`);
+    const screenshotStarted=performance.now();
     const screenshot = await send('Page.captureScreenshot', { format:'jpeg',quality:88,fromSurface:true });
+    const screenshotWaitMs=performance.now()-screenshotStarted;
     writeFileSync(join(out, point.id+'.jpg'), Buffer.from(screenshot.data, 'base64'));
-    results.push({id:point.id,camera:point.camera,target:point.target,...measurement});
+    results.push({id:point.id,camera:point.camera,target:point.target,...measurement,screenshotWaitMs});
     console.log(JSON.stringify({id:point.id,p50Ms:measurement.p50Ms,p95Ms:measurement.p95Ms,
       drawCalls:measurement.drawCalls,residents:measurement.residents}));
   }
@@ -271,7 +276,7 @@ try {
       if(!recordingContext)throw new Error('A CPU recording surface is unavailable');
       const copyFrame=()=>recordingContext.drawImage(c.renderer.domElement,0,0);
       const probes=[];
-      for(const mode of ['timer-only','render-only','webgl-stream-idle','webgl-manual','cpu-copy-manual']){
+      for(const mode of ['timer-only','render-only','source-stream-idle','source-manual','cpu-copy-manual']){
         const capture=mode.includes('stream')||mode.includes('manual'),copy=mode==='cpu-copy-manual';
         if(copy)copyFrame();
         const probeStream=capture?(copy?recordingCanvas:c.renderer.domElement).captureStream(0):null;
@@ -330,6 +335,8 @@ try {
           quality:c.view.currentSettings.graphics,cssWidth:${tourWidth},cssHeight:${tourHeight},
           width:c.renderer.domElement.width,height:c.renderer.domElement.height,pixelRatio:c.renderer.getPixelRatio(),mime,
           captureSurface:'CPU-backed 2D copy of the completed production canvas',scheduler:'requestAnimationFrame',
+          softwareFrameLimit:c.renderer.isSoftwareRenderer?30:null,
+          renderer:c.renderer.isSoftwareRenderer?'production software fallback':'WebGL',
           requestedFrames,probes,visibility:document.visibilityState,
           requestedCanvasFps:15,audio:destination.stream.getAudioTracks().length>0&&c.audio.status.unlocked,
           route,reachedWaypoints:reached,completedRoute:index>=route.length,
@@ -340,7 +347,9 @@ try {
         cleanup();c.tourDone=true;
       }catch(error){fail(error);}};
       recorder.start(1000);
-      const tick=()=>{try{const now=performance.now(),millis=now-last,dt=Math.max(0,millis/1000);frames.push(millis);last=now;
+      const tick=()=>{try{const now=performance.now(),millis=now-last;
+        if(c.renderer.isSoftwareRenderer&&millis<1000/30-1){timer=requestAnimationFrame(tick);return;}
+        const dt=Math.max(0,millis/1000);frames.push(millis);last=now;
         const p=c.game.goat.torso.translation(),target=route[Math.min(index,route.length-1)],
           dx=c.city.x+target[0]-p.x,dz=c.city.z+target[1]-p.z,d=Math.hypot(dx,dz);
         const elapsed=(now-began)/1000;
@@ -371,13 +380,14 @@ try {
   }
   const meta = await evaluate(`({userAgent:navigator.userAgent,hardwareConcurrency:navigator.hardwareConcurrency,
     audioUnlocked:window.__livingCapture.audioUnlocked,
+    renderer:window.__livingCapture.renderer.isSoftwareRenderer?'production software fallback':'WebGL',
     authoredGoatReady:window.__livingCapture.view.characters.player.isReady,
     goatRendering:window.__livingCapture.view.characters.player.isReady?'authored GLB':'legacy fallback',
     allowLegacyGoat:${allowLegacyGoat}})`);
   const sha = execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
   const dirty = execFileSync('git',['status','--porcelain'],{cwd:root,encoding:'utf8'}).trim();
-  writeFileSync(join(out,'profile.json'),JSON.stringify({label,sha,dirty,seed,quality,angleBackend,date:new Date().toISOString(),
-    measurement:'Synchronous production GameView frames with gl.finish; not delivered FPS or reference hardware acceptance.',
+  writeFileSync(join(out,'profile.json'),JSON.stringify({label,sha,dirty,seed,quality,angleBackend,softwareRenderer,date:new Date().toISOString(),
+    measurement:'CPU GameView submission with gl.finish (Chromium implements this as flush). Excludes GPU completion and presentation; not delivered FPS. Screenshot wait includes queued render/readback work.',
     hudPolicy:{fixedSceneScreenshots:'hidden',tourPage:tourSeconds>0?'production HUD restored':'not recorded',
       recordedVideo:'canvas stream only; DOM HUD is not composited'},
     os:platform()+' '+release(),cpu:cpus()[0]?.model,memoryBytes:totalmem(),...meta,results,tour,errors,warnings,assetReadiness},null,2)+'\n');
