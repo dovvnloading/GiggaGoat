@@ -32,7 +32,7 @@ The pilot reuses the repository's Kenney `mini-characters` and `food-kit` assets
 
 ## Reproduce browser evidence
 
-The PR's `living-world-evidence` CI job runs the actual `Game`, `GameView`, renderer and audio bridge on the before-state and current change. It uses identical seed, quality, viewport, camera bookmarks and sample counts and uploads an artifact named **living-world-evidence**.
+The PR's `living-world-evidence` CI job runs the actual `Game`, `GameView`, renderer and audio bridge on the before-state and current change. It uses identical seed, quality, viewport, camera bookmarks and 12 timed samples per view and uploads an artifact named **living-world-evidence**. The command below requests 24 samples for a longer local measurement. These small headless samples are diagnostic, not statistically reliable reference-device tail-latency acceptance.
 
 With a working Chrome installation:
 

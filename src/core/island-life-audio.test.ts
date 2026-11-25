@@ -41,6 +41,29 @@ describe('living-world spatial Foley (LW-107)', () => {
     audio.dispose();
   });
 
+  it('follows the authored sprint cadence without phantom footfalls when gait changes without travel', () => {
+    const audio = new IslandLifeAudio([]), resident = actor('runner');
+    audio.sample(0, [resident], listener, true);
+    resident.distanceTravelled = .9;
+    expect(audio.sample(1, [resident], listener, true)).toHaveLength(1);
+    resident.activity = 'flee'; resident.speed = 2.6;
+    expect(audio.sample(1.1, [resident], listener, true)).toEqual([]);
+    // At 1.8 m tall, the authored sprint plants a foot every 1.152 m.
+    resident.distanceTravelled = 1.151;
+    expect(audio.sample(1.2, [resident], listener, true)).toEqual([]);
+    resident.distanceTravelled = 1.153;
+    expect(audio.sample(1.3, [resident], listener, true)).toMatchObject([{ sound: 'footstep-resident' }]);
+    resident.distanceTravelled = 1.65; // Crosses a walk step, but no sprint step.
+    expect(audio.sample(1.4, [resident], listener, true)).toEqual([]);
+    resident.activity = 'walk';
+    expect(audio.sample(1.5, [resident], listener, true)).toEqual([]);
+    resident.activity = 'flee';
+    expect(audio.sample(1.6, [resident], listener, true)).toEqual([]);
+    resident.distanceTravelled = 2.305;
+    expect(audio.sample(1.7, [resident], listener, true)).toMatchObject([{ sound: 'footstep-resident' }]);
+    audio.dispose();
+  });
+
   it('plays accepted reaction edges once and caps a busy nearby scene at four cues', () => {
     const audio = new IslandLifeAudio([]);
     const residents = Array.from({ length: 16 }, (_, i) => actor(String(i), 16 - i));

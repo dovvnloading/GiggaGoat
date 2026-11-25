@@ -40,6 +40,12 @@ export interface AmbientResidentState {
   height: number;
   radius: number;
 }
+
+/** One authored walk or sprint cycle covers two steps, in metres at this height. */
+export function residentStride(height: number, running = false): number {
+  return height * (running ? 1.28 : .91);
+}
+
 export interface AmbientLifePlan {
   readonly navigation: AmbientNavigation;
   readonly stations: readonly AmbientStation[];

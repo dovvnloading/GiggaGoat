@@ -1,9 +1,9 @@
 import type { AudioCue, Vec3 } from '../audio';
-import type { AmbientResidentState } from '../world';
+import { residentStride, type AmbientResidentState } from '../world';
 
 /** Distance-driven, bounded Foley on the existing audio engine, never a second context. */
 export class IslandLifeAudio {
-  private readonly steps = new Map<string, number>();
+  private readonly steps = new Map<string, { walk: number; run: number }>();
   private readonly reactions = new Map<string, number>();
   private lastTime = -Infinity;
   private nextWater = 0;
@@ -18,10 +18,17 @@ export class IslandLifeAudio {
     this.lastTime = time;
     const cues: Array<{cue:AudioCue;distance:number}> = [];
     for (const actor of residents) {
-      const step = Math.floor(actor.distanceTravelled / (actor.height * .91 / 2) + actor.phase * 2);
-      const previous = this.steps.get(actor.id);
+      const walk = Math.floor(actor.distanceTravelled / (residentStride(actor.height) / 2) + actor.phase * 2);
+      const run = Math.floor(actor.distanceTravelled / (residentStride(actor.height, true) / 2) + actor.phase * 2);
+      const counts = this.steps.get(actor.id);
+      const running = actor.activity === 'flee';
+      const step = running ? run : walk;
+      const previous = running ? counts?.run : counts?.walk;
       const reaction = this.reactions.get(actor.id) ?? actor.reactionUntil;
-      this.steps.set(actor.id, step);
+      // Observe both authored phases even while a clip is inactive, inaudible,
+      // or suppressed. Switching gait alone must never sound like a footfall.
+      if (counts) { counts.walk = walk; counts.run = run; }
+      else this.steps.set(actor.id, { walk, run });
       this.reactions.set(actor.id, actor.reactionUntil);
       if (!enabled || first) continue;
       const p = actor.position;

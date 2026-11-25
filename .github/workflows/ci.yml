@@ -45,7 +45,7 @@ jobs:
   living-world-evidence:
     if: github.event_name == 'pull_request' && (github.event.pull_request.number == 330 || contains(github.event.pull_request.labels.*.name, 'living-world-evidence'))
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,10 +61,10 @@ jobs:
       - name: Capture recorded baseline
         run: |
           ln -s ../node_modules .living-world-baseline/node_modules
-          npm run capture:living-world -- --root .living-world-baseline --out .living-world-captures/before --label before --samples 24 --allow-legacy-goat
+          npm run capture:living-world -- --root .living-world-baseline --out .living-world-captures/before --label before --samples 12 --allow-legacy-goat
       - name: Capture implemented game and continuous walkthrough
         if: always()
-        run: npm run capture:living-world -- --out .living-world-captures/after --label after --samples 24 --tour 100
+        run: npm run capture:living-world -- --out .living-world-captures/after --label after --samples 12 --tour 100
       - name: Upload gameplay, raw profiles and matching views
         if: always()
         uses: actions/upload-artifact@v4

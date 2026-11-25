@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
-import type { AmbientResidentState } from './ambient-life';
+import { residentStride, type AmbientResidentState } from './ambient-life';
 import { publicAssetUrl } from './public-assets';
 import { applyAmbientDistanceFade } from './visual-wind';
+
+export { residentStride } from './ambient-life';
 
 /** Existing CC0 Kenney assets; retain their authored palette, proportions and rigs. */
 export const RESIDENT_MODELS = {
@@ -78,11 +80,6 @@ function releaseTemplate(model: ResidentModel, template: Template): void {
   if (template.asset) disposeAsset(template.asset);
   // A pending promise retains ownership until it can dispose its own result.
   if (templates.get(model) === template) templates.delete(model);
-}
-
-/** One full authored walk cycle covers two steps, in metres at the requested height. */
-export function residentStride(height: number, running = false): number {
-  return height * (running ? 1.28 : .91);
 }
 
 export function residentClip(activity: AmbientResidentState['activity'], phase: number): Clip {

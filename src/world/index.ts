@@ -18,7 +18,7 @@ export { createWorldScene } from './render';
 export type { WorldScene, WorldSceneOptions } from './render';
 export { islandWeather } from './island-weather';
 export type { IslandWeather } from './island-weather';
-export { createAmbientLifePlan } from './ambient-life';
+export { createAmbientLifePlan, residentStride } from './ambient-life';
 export type { AmbientActivity, AmbientLifePlan, AmbientResidentDefinition, AmbientResidentModel,
   AmbientResidentRole, AmbientResidentState, AmbientStation, AmbientStationKind } from './ambient-life';
 export { createAmbientNavigation, findAmbientPath, isAmbientFootSupported,
