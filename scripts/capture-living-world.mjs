@@ -19,8 +19,16 @@ const quality = option('--quality', 'high');
 const seed = option('--seed', 'billy-isle');
 const allowLegacyGoat = args.includes('--allow-legacy-goat');
 const tourSeconds = Math.max(0, Math.min(120, Number(option('--tour', '0'))));
+const tourQuality = option('--tour-quality', quality);
+const tourWidth = Math.floor(Number(option('--tour-width', '1280')));
+const tourHeight = Math.floor(Number(option('--tour-height', '720')));
+const requireTourRoute = args.includes('--require-tour-route');
 if (!Number.isFinite(samples) || !Number.isFinite(tourSeconds)) throw new Error('Samples and tour seconds must be finite numbers');
-if (!['low', 'medium', 'high'].includes(quality)) throw new Error('Quality must be low, medium or high');
+if (![quality, tourQuality].every(value => ['low', 'medium', 'high'].includes(value)))
+  throw new Error('Quality and tour quality must be low, medium or high');
+if (![tourWidth, tourHeight].every(value => Number.isFinite(value) && value >= 160 && value <= 3840))
+  throw new Error('Tour viewport dimensions must be between 160 and 3840 CSS pixels');
+if (requireTourRoute && tourSeconds === 0) throw new Error('A required route needs a recorded tour');
 mkdirSync(out, { recursive: true });
 const profile = mkdtempSync(join(tmpdir(), 'gigga-living-world-'));
 let browser, server, socket, fixtureDisposed = false, assetReadiness;
@@ -155,8 +163,8 @@ try {
     const points=[
       {id:'spawn',camera:{...view.camera.position},target:game.goat.torso.translation()},
       {id:'downtown-street',camera:at(7,40,2.2),target:at(8,-20,2)},
-      {id:'downtown-fountain',camera:at(-11,-44,2.4),target:at(-21,-54,1.1)},
-      {id:'downtown-market',camera:at(11,55,2.4),target:at(25,53,1.2)},
+      {id:'downtown-fountain',camera:at(-7,-49,3.1),target:at(-21,-54,1.1)},
+      {id:'downtown-market',camera:at(10,61,4.5),target:at(24,55,.8)},
       {id:'downtown-rooftop',camera:at(-17,18,14),target:at(7,35,0)},
       ...ART_BOOKMARKS.filter(p=>p.district).map(p=>({...p,id:'approach-'+p.district}))];
     window.__livingCapture={game,view,renderer,audio,bridge,audioUnlocked,points,render,city,at,updateCamera,updateCameraFraming,hud};
@@ -216,12 +224,19 @@ try {
   }
   let tour;
   if (tourSeconds > 0) {
-    console.log('Recording '+tourSeconds+' seconds of continuous gameplay with audio');
+    console.log('Recording '+tourSeconds+' seconds of continuous gameplay with audio at '+tourQuality+
+      ' quality in a '+tourWidth+'x'+tourHeight+' CSS viewport');
+    // The matching stills stay at their requested quality and 1280x720. CI's
+    // software GPU uses the ordinary Low preset and a smaller video viewport
+    // so recording can keep up without changing the production physics clock.
+    await send('Emulation.setDeviceMetricsOverride', {
+      width:tourWidth,height:tourHeight,deviceScaleFactor:1,mobile:false });
     await evaluate(`(()=>{const c=window.__livingCapture;
       if(!c.audio.audioContext||c.audio.audioContext.state!=='running'||!c.audio.limiter)
         throw new Error('Audio graph is not running for the requested recording');
       if(typeof MediaRecorder==='undefined'||typeof c.renderer.domElement.captureStream!=='function')
         throw new Error('This browser cannot record the gameplay canvas');
+      c.view.applySettings({...c.view.currentSettings,graphics:${JSON.stringify(tourQuality)}});
       const start=c.at(8,-42,0);c.game.teleport(start,Math.PI);
       for(const entry of c.hud)entry.node.style.display=entry.display;
       c.view.updateCamera=c.updateCamera;c.view.updateCameraFraming=c.updateCameraFraming;
@@ -231,11 +246,11 @@ try {
       const stream=c.renderer.domElement.captureStream(15);
       const destination=c.audio.audioContext.createMediaStreamDestination();c.audio.limiter.connect(destination);
       for(const track of destination.stream.getAudioTracks())stream.addTrack(track);
-      const mime=MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')?'video/webm;codecs=vp9,opus':'video/webm';
+      const mime=MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')?'video/webm;codecs=vp8,opus':'video/webm';
       const recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:1600000});
-      const chunks=[],frames=[],began=performance.now(),simulationBegan=c.game.physics.time,
+      const chunks=[],frames=[],frameWork=[],began=performance.now(),simulationBegan=c.game.physics.time,
         initialPosition={...c.game.goat.torso.translation()},reactionsBefore=c.game.life?.stats?.reactions||0;
-      let last=began,index=0,bleated=false,bleatAt=null,droppedPhysicsSeconds=0,timer,cleaned=false;
+      let last=began,index=0,bleated=false,bleatAt=null,bleatSimulationAt=null,droppedPhysicsSeconds=0,timer,cleaned=false;
       const reached=[];
       // Validated with actual Rapier controls and critical visible furniture:
       // pass left of the gig board, then north of the market planters.
@@ -254,10 +269,13 @@ try {
         if(!bytes.length)throw new Error('MediaRecorder returned no video');
         let text='';for(let i=0;i<bytes.length;i+=32768)text+=String.fromCharCode(...bytes.subarray(i,i+32768));
         c.tour={base64:btoa(text),seconds:(performance.now()-began)/1000,
-          simulatedSeconds:c.game.physics.time-simulationBegan,droppedPhysicsSeconds,frames,
+          simulatedSeconds:c.game.physics.time-simulationBegan,droppedPhysicsSeconds,frames,frameWork,
+          quality:c.view.currentSettings.graphics,cssWidth:${tourWidth},cssHeight:${tourHeight},
+          width:c.renderer.domElement.width,height:c.renderer.domElement.height,pixelRatio:c.renderer.getPixelRatio(),mime,
           requestedCanvasFps:15,audio:destination.stream.getAudioTracks().length>0&&c.audio.status.unlocked,
           route,reachedWaypoints:reached,completedRoute:index>=route.length,
           initialPosition,finalPosition:{...c.game.goat.torso.translation()},bleatRequestedAt:bleatAt,
+          bleatSimulationAt,
           residentReactions:(c.game.life?.stats?.reactions||0)-reactionsBefore,marketDisruptionRequested:false,
           kind:'Uncut scripted controller walk through the production Game/GameView; camera follows the real goat. Wall-clock loop intervals are not GPU or delivered-FPS measurements.'};
         cleanup();c.tourDone=true;
@@ -268,11 +286,18 @@ try {
           dx=c.city.x+target[0]-p.x,dz=c.city.z+target[1]-p.z,d=Math.hypot(dx,dz);
         const elapsed=(now-began)/1000;
         if(d<1.2&&index<route.length){reached.push({index,wallSeconds:elapsed,simulationSeconds:c.game.physics.time-simulationBegan});index++;}
-        const idle=elapsed<8||elapsed>${Math.max(9,tourSeconds-12)}||index>=route.length;
+        const nearbyResident=c.game.life?.residents.some(r=>Math.hypot(r.position.x-p.x,r.position.z-p.z)<8&&
+          Math.abs(r.position.y-p.y)<3);
+        const bleat=!bleated&&elapsed>10&&(nearbyResident||elapsed>${Math.max(10,tourSeconds*.7)});
+        if(bleat){bleated=true;bleatAt=elapsed;bleatSimulationAt=c.game.physics.time-simulationBegan;}
+        const observingReaction=bleatSimulationAt!==null&&c.game.physics.time-simulationBegan-bleatSimulationAt<3;
+        const idle=elapsed<8||elapsed>${Math.max(9,tourSeconds-12)}||index>=route.length||observingReaction;
         const yaw=Math.atan2(dx,-dz);c.view.input.yaw=yaw;c.view.input.pitch=.12;
-        const bleat=!bleated&&elapsed>${Math.max(10,tourSeconds*.5)};if(bleat){bleated=true;bleatAt=elapsed;}
         const intent={moveX:0,moveZ:idle?0:.65,cameraYaw:yaw,climb:false,bleat};c.bridge.onInput(intent);
-        droppedPhysicsSeconds+=c.game.advance(dt,intent).droppedSeconds;c.render(Math.max(1,millis),false);
+        const simulationStart=performance.now(),advance=c.game.advance(dt,intent),renderStart=performance.now();
+        droppedPhysicsSeconds+=advance.droppedSeconds;c.render(Math.max(1,millis),false);
+        frameWork.push({simulationMs:renderStart-simulationStart,renderSubmitMs:performance.now()-renderStart,
+          steps:advance.steps,droppedSeconds:advance.droppedSeconds});
         if(elapsed>=${tourSeconds})recorder.stop();else timer=setTimeout(tick,16);
       }catch(error){fail(error);}};tick();return true;})()`);
     await until(async () => {const status=await evaluate('({done:window.__livingCapture.tourDone,error:window.__livingCapture.tourError})');
@@ -296,6 +321,11 @@ try {
   await evaluate('window.__livingCapture.view.dispose();window.__livingCapture.bridge.dispose();window.__livingCapture.audio.dispose();window.__livingCapture.game.dispose();');
   fixtureDisposed = true;
   if(errors.length) { console.error('Capture recorded '+errors.length+' errors; inspect profile.json'); process.exitCode=1; }
+  if(requireTourRoute&&!tour?.completedRoute) {
+    console.error('The recorded tour reached '+(tour?.reachedWaypoints.length||0)+'/'+(tour?.route.length||0)+
+      ' waypoints; inspect gameplay.webm and profile.json. An incomplete route is not accepted as a walkthrough.');
+    process.exitCode=1;
+  }
 } catch (error) {
   // Preserve the failed scene as evidence too. A ready flag can remain false
   // after a loader takes its warned-about fallback without a network error.

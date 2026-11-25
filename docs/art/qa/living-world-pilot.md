@@ -32,7 +32,7 @@ The pilot reuses the repository's Kenney `mini-characters` and `food-kit` assets
 
 ## Reproduce browser evidence
 
-The PR's `living-world-evidence` CI job runs the actual `Game`, `GameView`, renderer and audio bridge on the before-state and current change. It uses identical seed, quality, viewport, camera bookmarks and 12 timed samples per view and uploads an artifact named **living-world-evidence**. The command below requests 24 samples for a longer local measurement. These small headless samples are diagnostic, not statistically reliable reference-device tail-latency acceptance.
+The PR's `living-world-evidence` CI job runs the actual `Game`, `GameView`, renderer and audio bridge on the before-state and current change. Its matching stills use identical seed, High quality, 1280×720 viewport, camera bookmarks and 12 timed samples per view. The separate continuous video uses the ordinary Low preset in a 640×360 CSS viewport to reduce the software GPU's recording load; its actual canvas resolution and quality are recorded explicitly. The job uploads an artifact named **living-world-evidence**. The command below requests 24 samples for a longer local measurement. These small headless samples are diagnostic, not statistically reliable reference-device tail-latency acceptance.
 
 With a working Chrome installation:
 
@@ -41,9 +41,9 @@ npm install
 npm run capture:living-world -- --out .living-world-captures/after --label after --samples 24 --tour 100
 ```
 
-Set `CHROME_PATH` if Chrome is not installed in a standard Linux location. The capture script uses existing dependencies only. `--root` selects a separate checkout; `--seed`, `--quality`, `--points` and `--samples` make the run reproducible. `--tour` adds a continuous 90–120 second scripted controller walk using the real goat camera and the existing audio mix.
+Set `CHROME_PATH` if Chrome is not installed in a standard Linux location. The capture script uses existing dependencies only. `--root` selects a separate checkout; `--seed`, `--quality`, `--points` and `--samples` make the run reproducible. `--tour` adds a continuous 90–120 second scripted controller walk using the real goat camera and the existing audio mix. The video defaults to the still quality and 1280×720; `--tour-quality`, `--tour-width` and `--tour-height` independently control it. CI passes `--require-tour-route`, which fails the evidence job if the recorded goat does not reach every waypoint, while retaining the video and profile for diagnosis.
 
-The artifact contains matching JPEGs from spawn, Downtown street/fountain/market/rooftop and eight district approaches, a raw `profile.json` for each checkout, and an uncut `gameplay.webm` for the implemented game. The profile records exact SHA and dirty state, seed, quality, camera, resolution/DPR, browser, renderer, OS/CPU, individual timing samples, p50/p95/p99, draw calls, triangles, texture/geometry counts, physical bodies, actor states and browser errors. Fixed views hide the HUD to expose the scene. The tour restores the page HUD, but the video records the game canvas and audio without compositing DOM overlays. The clip uses automated controller input; it is not a human acceptance tour.
+The artifact contains matching JPEGs from spawn, Downtown street/fountain/market/rooftop and eight district approaches, a raw `profile.json` for each checkout, and an uncut `gameplay.webm` for the implemented game. The profile records exact checked-out SHA and dirty state, seed, quality, camera, resolution/DPR, browser, renderer, OS/CPU, individual timing samples, p50/p95/p99, draw calls, triangles, texture/geometry counts, physical bodies, actor states and browser errors. GitHub PR jobs normally check out the synthetic merge commit; use the associated run's head SHA to identify the branch revision. The tour additionally records simulation and render-submission work, actual elapsed simulation, dropped time, reached waypoints, reactions and codec. Fixed views hide the HUD to expose the scene. The tour restores the page HUD, but the video records the game canvas and audio without compositing DOM overlays. The clip uses automated controller input; it is not a human acceptance tour.
 
 ### Baseline asset issue discovered during capture
 
@@ -52,6 +52,8 @@ The first two capture attempts correctly failed their authored-goat readiness ch
 The recorded baseline source stays unchanged. Its capture alone uses the explicit `--allow-legacy-goat` flag and records the legacy state in the profile, preserving the actual before-state. The implemented game must load the authored goat and the entire resident cast. No corrected source or redirected asset is silently substituted into the baseline. Failed-run diagnostics remain available in [the first capture run](https://github.com/dovvnloading/GiggaGoat/actions/runs/45643701717) and [the diagnostic run](https://github.com/dovvnloading/GiggaGoat/actions/runs/45646262384).
 
 **Measurement limits:** still profiles measure synchronous `GameView` work through `gl.finish()` in headless Chrome. They do not establish presented-frame FPS or the proposed 16.67 ms reference-device budget. The clip records real wall-clock frame intervals separately. Before-state has no new ambient systems; the same capture harness is applied to both. The fixed camera samples are explicit cuts; only the gameplay clip is continuous.
+
+The first completed artifact, from [the `3886c54` run](https://github.com/dovvnloading/GiggaGoat/actions/runs/45648658197), loaded the authored goat and all 16 residents with no browser errors, but its High-quality recording advanced only 4.10 simulation seconds in 102.99 wall-clock seconds and reached zero waypoints. That clip is diagnostic evidence, not an accepted walkthrough. This finding led to separate video quality controls, per-phase timings and the explicit route-completion requirement. The production timestep and catch-up cap are unchanged.
 
 ## Verification
 
@@ -66,7 +68,7 @@ Focused automated coverage exercises:
 
 The initial implementation at `b56ad946` passed TypeScript, **1,362 unit tests in 171 files**, **25 Chrome tests in three files**, and its production build in [CI](https://github.com/dovvnloading/GiggaGoat/actions/runs/45643701717/job/139308865746). Chrome exercised gameplay, menus, every party mode and the existing world-profile limits; the prop library reported 89 loaded assets and zero failures. This run used Chrome 157 with ANGLE/SwiftShader and does not establish physical-GPU performance. Later capture/asset fixes receive their own checks on the PR head.
 
-Local browser evidence is unavailable in the execution workspace because a working Chromium binary is absent; the supported GitHub Actions runner provides the browser checks and capture artifact. Existing Chrome profile thresholds are unchanged. Use the PR's checks for the exact tested commit and final test counts; evidence is not silently inferred from a build.
+The supported GitHub Actions runner provides the browser checks and capture artifact. Existing Chrome profile thresholds are unchanged. Use the PR's checks for the exact tested commit and final test counts; evidence is not silently inferred from a build.
 
 ## Review still required
 

@@ -64,7 +64,7 @@ jobs:
           npm run capture:living-world -- --root .living-world-baseline --out .living-world-captures/before --label before --samples 12 --allow-legacy-goat
       - name: Capture implemented game and continuous walkthrough
         if: always()
-        run: npm run capture:living-world -- --out .living-world-captures/after --label after --samples 12 --tour 100
+        run: npm run capture:living-world -- --out .living-world-captures/after --label after --samples 12 --tour 100 --tour-quality low --tour-width 640 --tour-height 360 --require-tour-route
       - name: Upload gameplay, raw profiles and matching views
         if: always()
         uses: actions/upload-artifact@v4
