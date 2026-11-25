@@ -125,6 +125,13 @@ export function createResidentRig(asset: GLTF, initial: AmbientResidentState) {
   const nativeHeight = bounds.max.y - bounds.min.y;
   if (!(nativeHeight > .1)) throw new Error('Resident model has invalid bounds');
   const scale = initial.height / nativeHeight;
+  // A camera inside the authored large head can cover the whole follow view.
+  // Keep a stable body envelope in resident-local metres, including a little
+  // room for the authored bob/lean, instead of testing distance to the feet.
+  const cameraBounds = bounds.clone().translate(new THREE.Vector3(0, -bounds.min.y, 0));
+  cameraBounds.min.multiplyScalar(scale);
+  cameraBounds.max.multiplyScalar(scale);
+  cameraBounds.expandByScalar(initial.height * .05);
   model.scale.setScalar(scale);
   model.position.y = -bounds.min.y * scale;
   root.add(model);
@@ -159,7 +166,7 @@ export function createResidentRig(asset: GLTF, initial: AmbientResidentState) {
   });
   const point = new THREE.Vector3();
   let previousTime = NaN, shotStart = 0, previousActivity = initial.activity;
-  let disposed = false;
+  let disposed = false, cameraHidden = false;
   const weights = Object.fromEntries(CLIPS.map(name => [name, name === 'idle' ? 1 : 0])) as Record<Clip, number>;
 
   function update(state: AmbientResidentState, time: number, animate = true): void {
@@ -210,6 +217,16 @@ export function createResidentRig(asset: GLTF, initial: AmbientResidentState) {
   return {
     root,
     update,
+    cameraVisible(state: AmbientResidentState, camera: THREE.Vector3): boolean {
+      // Rotate the camera into the body's local box. The extra exit clearance
+      // avoids flicker as a resident or the follow camera skirts its boundary.
+      const dx = camera.x - state.position.x, dz = camera.z - state.position.z;
+      const cos = Math.cos(state.yaw), sin = Math.sin(state.yaw);
+      point.set(cos * dx - sin * dz, camera.y - state.position.y, sin * dx + cos * dz);
+      const clearance = initial.height * (cameraHidden ? .5 : .35);
+      cameraHidden = cameraBounds.distanceToPoint(point) < clearance;
+      return !cameraHidden;
+    },
     dispose(): void {
       if (disposed) return;
       disposed = true;
@@ -240,6 +257,7 @@ export function buildAmbientLifeVisuals(
   const rigs = new Map<string, ReturnType<typeof createResidentRig>>();
   const acquired = new Map<ResidentModel, Template>();
   const nextPose = new Map<string, number>();
+  const inRange = new Set<string>();
   const failedModels: ResidentModel[] = [];
   let disposed = false, visibleCount = 0, animatedCount = 0;
   const shadowGeometry = new THREE.CircleGeometry(1, 16).rotateX(-Math.PI / 2);
@@ -269,6 +287,7 @@ export function buildAmbientLifeVisuals(
         if (state.model !== model) continue;
         const rig = createResidentRig(asset, state);
         rigs.set(state.id, rig);
+        inRange.add(state.id);
         root.add(rig.root);
       }
     } catch (error) {
@@ -296,17 +315,23 @@ export function buildAmbientLifeVisuals(
         const distance2 = dx * dx + dy * dy + dz * dz;
         // Residents are <12 pixels tall here on the game's normal camera.
         // Hysteresis prevents rapid toggle at a boundary. No quality population pop.
-        const limit = rig.root.visible ? 225 : 205;
-        rig.root.visible = distance2 < limit * limit;
+        const limit = inRange.has(state.id) ? 225 : 205;
+        const withinRange = distance2 < limit * limit;
+        if (withinRange) inRange.add(state.id); else inRange.delete(state.id);
+        // Object visibility is honored by both production renderers. Keep
+        // this per-actor rule independent of pooled materials and far LOD.
+        rig.root.visible = withinRange && rig.cameraVisible(state, camera);
         const near = distance2 < 38 * 38;
-        const animate = rig.root.visible && (near || time >= (nextPose.get(state.id) ?? 0));
+        // A nearby hidden actor still observes reaction transitions and gait;
+        // restoring its mesh must not restart a gesture or reveal a stale pose.
+        const animate = withinRange && (near || time >= (nextPose.get(state.id) ?? 0));
         rig.update(state, time, animate);
-        if (!rig.root.visible) continue;
-        visibleCount++;
         if (animate) {
           animatedCount++;
           nextPose.set(state.id, time + (near ? 0 : 1 / farRate));
         }
+        if (!rig.root.visible) continue;
+        visibleCount++;
         if (distance2 > 100 * 100) continue;
         shadow.position.set(state.position.x, state.position.y + .018, state.position.z);
         shadow.rotation.y = state.yaw;
@@ -327,6 +352,7 @@ export function buildAmbientLifeVisuals(
       for (const rig of rigs.values()) rig.dispose();
       rigs.clear();
       nextPose.clear();
+      inRange.clear();
       for (const [model, template] of acquired) releaseTemplate(model, template);
       acquired.clear();
       shadowGeometry.dispose();

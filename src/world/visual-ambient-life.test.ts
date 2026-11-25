@@ -105,6 +105,106 @@ describe('shipped resident art and grounded animation', () => {
 });
 
 describe('resident presentation lifecycle and quality', () => {
+  it.each(Object.keys(RESIDENT_MODELS) as (keyof typeof RESIDENT_MODELS)[])(
+    'keeps a camera inside the native %s head clear at every quality', async model => {
+      const asset = await load(model), resident = state({ model });
+      const visuals = buildAmbientLifeVisuals([resident], { loadAsset: async () => asset });
+      await visuals.ready;
+      try {
+        const actor = visuals.root.getObjectByName('resident-' + resident.id)!;
+        const shadows = visuals.root.getObjectByName('resident-contact-shadows') as THREE.InstancedMesh;
+        let time = 0;
+        for (const [index, quality] of (['low', 'medium', 'high'] as const).entries()) {
+          resident.yaw = index * Math.PI / 2 + .3;
+          const clearCamera = new THREE.Vector3(resident.position.x, resident.position.y + 1, resident.position.z - 4);
+          visuals.update([resident], ++time, clearCamera, quality);
+          expect(actor.visible).toBe(true);
+          // Probe the actual posed, authored head, not a guessed foot radius.
+          const head = actor.getObjectByName('head-mesh')!;
+          const insideHead = new THREE.Box3().setFromObject(head, true).getCenter(new THREE.Vector3());
+          visuals.update([resident], ++time, insideHead, quality);
+          expect(actor.visible).toBe(false);
+          expect(shadows.count).toBe(0);
+          expect(visuals.stats()).toMatchObject({ logical: 1, loaded: 1, visible: 0, animated: 1 });
+          visuals.update([resident], ++time, clearCamera, quality);
+          expect(actor.visible).toBe(true);
+          expect(shadows.count).toBe(1);
+        }
+      } finally { visuals.dispose(); }
+    });
+
+  it('holds near-camera hysteresis independently from far range and respects body height', async () => {
+    const asset = await load('male-a'), resident = state({ yaw: 0, height: 2.2 });
+    const visuals = buildAmbientLifeVisuals([resident], { loadAsset: async () => asset });
+    await visuals.ready;
+    try {
+      const actor = visuals.root.getObjectByName('resident-' + resident.id)!;
+      const bounds = new THREE.Box3().setFromObject(actor, true);
+      const camera = bounds.getCenter(new THREE.Vector3());
+      let time = 0;
+      const visibleAtClearance = (heights: number) => {
+        camera.x = bounds.max.x + resident.height * heights;
+        visuals.update([resident], ++time, camera);
+        return actor.visible;
+      };
+      expect(visibleAtClearance(.75)).toBe(true);
+      expect(visibleAtClearance(.2)).toBe(false);
+      expect(visibleAtClearance(.45)).toBe(false);
+      expect(visibleAtClearance(.75)).toBe(true);
+      expect(visibleAtClearance(.45)).toBe(true);
+      expect(visibleAtClearance(.2)).toBe(false);
+      // Looking from well above a tall actor should not hide it merely
+      // because the camera and feet share the same horizontal position.
+      camera.set(resident.position.x, resident.position.y + resident.height * 2, resident.position.z);
+      visuals.update([resident], ++time, camera);
+      expect(actor.visible).toBe(true);
+      camera.copy(bounds.getCenter(new THREE.Vector3()));
+      visuals.update([resident], ++time, camera);
+      expect(actor.visible).toBe(false);
+      // Camera occlusion must not reset the independently active far band.
+      for (const [distance, visible] of [[210, true], [226, false], [210, false], [204, true]] as const) {
+        camera.set(resident.position.x + distance, resident.position.y, resident.position.z);
+        visuals.update([resident], ++time, camera);
+        expect(actor.visible).toBe(visible);
+      }
+    } finally { visuals.dispose(); }
+  });
+
+  it('restores current authored gait and reactions after repeated camera passes without changing residents', async () => {
+    const asset = await load('female-a'), resident = state({ model: 'female-a' });
+    const reference = createResidentRig(asset, resident);
+    const visuals = buildAmbientLifeVisuals([resident], { loadAsset: async () => asset });
+    await visuals.ready;
+    try {
+      const actor = visuals.root.getObjectByName('resident-' + resident.id)!;
+      for (let frame = 1; frame <= 90; frame++) {
+        const hidden = (frame >= 10 && frame < 30) || (frame >= 40 && frame < 60) || (frame >= 70 && frame < 90);
+        resident.position.x += .025;
+        resident.distanceTravelled = frame * .04;
+        resident.activity = frame >= 70 && frame < 90 ? 'flee' : frame >= 40 && frame < 50 ? 'startle' :
+          frame >= 50 && frame < 60 ? 'work' : frame >= 10 && frame < 20 ? 'wave' : 'walk';
+        resident.speed = resident.activity === 'flee' ? 2.4 : resident.activity === 'walk' ? 1.2 : 0;
+        const before = structuredClone(resident);
+        const camera = new THREE.Vector3(resident.position.x, resident.position.y + resident.height * .75,
+          resident.position.z + (hidden ? 0 : 4));
+        const time = frame / 30;
+        reference.update(resident, time);
+        visuals.update([resident], time, camera, (['low', 'medium', 'high'] as const)[frame % 3]!);
+        expect(resident).toEqual(before);
+        expect(actor.visible).toBe(!hidden);
+        if (hidden) continue;
+        // Compare with an uninterrupted native rig, including transitions
+        // that began and ended while this actor's presentation was hidden.
+        reference.root.traverse(node => {
+          if (!(node instanceof THREE.Bone)) return;
+          const restored = actor.getObjectByName(node.name)!;
+          expect(restored.position.distanceTo(node.position)).toBeLessThan(1e-8);
+          expect(restored.quaternion.toArray()).toEqual(node.quaternion.toArray());
+        });
+      }
+    } finally { visuals.dispose(); reference.dispose(); }
+  });
+
   it('loads one template per model and keeps nearby population at every quality', async () => {
     const asset = await load('male-a');
     const loader = vi.fn(async () => asset);
