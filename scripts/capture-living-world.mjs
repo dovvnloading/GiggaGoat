@@ -4,9 +4,9 @@
  */
 import { createServer } from 'vite';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { cpus, platform, release, totalmem } from 'node:os';
+import { cpus, platform, release, tmpdir, totalmem } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const args = process.argv.slice(2);
@@ -21,20 +21,19 @@ const tourSeconds = Math.max(0, Math.min(120, Number(option('--tour', '0'))));
 if (!Number.isFinite(samples) || !Number.isFinite(tourSeconds)) throw new Error('Samples and tour seconds must be finite numbers');
 if (!['low', 'medium', 'high'].includes(quality)) throw new Error('Quality must be low, medium or high');
 mkdirSync(out, { recursive: true });
-const profile = join(out, '.chrome-profile');
-mkdirSync(profile, { recursive: true });
-let browser, server, socket, fixtureDisposed = false;
-const errors = [], network = new Map();
+const profile = mkdtempSync(join(tmpdir(), 'gigga-living-world-'));
+let browser, server, socket, fixtureDisposed = false, assetReadiness;
+const errors = [], warnings = [], network = new Map();
 const pending = new Map();
 let sequence = 0;
-async function until(read, seconds = 45) {
+async function until(read, seconds = 45, description = 'Capture') {
   const stop = Date.now() + seconds * 1000;
   while (Date.now() < stop) {
     const result = await read();
     if (result) return result;
     await delay(150);
   }
-  throw new Error('Capture timed out');
+  throw new Error(description + ' timed out');
 }
 function send(method, params = {}, timeout = 90000) {
   return new Promise((done, fail) => {
@@ -53,7 +52,10 @@ async function evaluate(expression) {
 }
 try {
   server = await createServer({ root, configFile: join(root, 'vite.config.ts'),
-    server: { host: '127.0.0.1', port: 0 }, plugins: [{ name: 'living-world-evidence',
+    // The source is fixed during evidence collection. Neither captures nor the
+    // baseline checkout should enter Vite's watcher or dependency HTML crawl.
+    server: { host: '127.0.0.1', port: 0, watch: null, hmr: false },
+    optimizeDeps: { entries: ['index.html'] }, plugins: [{ name: 'living-world-evidence',
       configureServer(vite) { vite.middlewares.use('/__living-world-capture', (_, response) => {
         response.setHeader('Content-Type', 'text/html');
         response.end('<!doctype html><html><head><link rel="icon" href="data:,"><style>' +
@@ -104,6 +106,11 @@ try {
     } else if (packet.method === 'Runtime.exceptionThrown') errors.push(packet.params.exceptionDetails);
     else if (packet.method === 'Runtime.consoleAPICalled' && packet.params.type === 'error')
       errors.push(packet.params.args.map(arg => arg.value ?? arg.description).join(' '));
+    else if (packet.method === 'Runtime.consoleAPICalled' && packet.params.type === 'warning') {
+      const warning = packet.params.args.map(arg => arg.value ?? arg.description).join(' ');
+      warnings.push(warning);
+      console.warn('Browser warning: ' + warning.slice(0, 800));
+    }
     else if (packet.method === 'Network.requestWillBeSent') network.set(packet.params.requestId, packet.params.request.url);
     else if (packet.method === 'Network.loadingFinished') network.delete(packet.params.requestId);
     else if (packet.method === 'Network.loadingFailed') {
@@ -155,11 +162,26 @@ try {
     await Promise.all([view.residents?.ready,view.marketVisuals?.ready]);
     return {seed:game.island.seed,points:points.map(p=>p.id)};
   })()`);
-  await until(() => network.size === 0, 120);
+  await until(() => network.size === 0, 120, 'Initial network requests');
   await delay(1000);
-  await until(async () => await evaluate(`(()=>{let pending=0;window.__livingCapture.view.scene.traverse(o=>{
-    if(o.userData.ready===false)pending++;});
-    if(window.__livingCapture.view.characters.player.isReady===false)pending++;return pending===0;})()`), 120);
+  let readinessReportedAt = 0;
+  await until(async () => {
+    assetReadiness = await evaluate(`(()=>{const c=window.__livingCapture,pending=[],groups=[];
+      c.view.scene.traverse(o=>{if('ready' in o.userData||'libraryReady' in o.userData){
+        groups.push({name:o.name,type:o.type,ready:o.userData.ready,libraryReady:o.userData.libraryReady,
+          loadedModels:o.userData.loadedModels,failedAssets:o.userData.failedAssets,
+          libraryLoaded:o.userData.libraryLoaded,libraryFailed:o.userData.libraryFailed,
+          libraryPending:o.userData.libraryPending});
+        if(o.userData.ready===false)pending.push(o.name||o.type);}});
+      if(c.view.characters.player.isReady===false)pending.push('animated player goat');
+      return {pending,groups,goatReady:c.view.characters.player.isReady,
+        goatVariant:c.view.characters.player.variant,residents:c.view.residents?.stats?.()};})()`);
+    if (assetReadiness.pending.length && Date.now() - readinessReportedAt > 15000) {
+      readinessReportedAt = Date.now();
+      console.log('Waiting for authored assets: ' + JSON.stringify(assetReadiness));
+    }
+    return assetReadiness.pending.length === 0;
+  }, 120, 'Authored scene asset readiness');
   const snapshots = await evaluate('window.__livingCapture.points');
   const chosen = option('--points', '').split(',').filter(Boolean);
   const results = [];
@@ -168,7 +190,7 @@ try {
       c.view.camera.position.copy(p.camera);c.view.camera.fov=p.fov||62;c.view.camera.updateProjectionMatrix();
       c.view.cameraTarget.copy(p.target);
       c.view.camera.lookAt(p.target.x,p.target.y,p.target.z); c.render();return true;})()`);
-    await until(() => network.size === 0, 120);
+    await until(() => network.size === 0, 120, 'Camera asset requests for ' + point.id);
     await delay(250);
     const measurement = await evaluate(`(()=>{const c=window.__livingCapture;
       for(let i=0;i<4;i++)c.render();const times=[];
@@ -209,7 +231,10 @@ try {
         initialPosition={...c.game.goat.torso.translation()},reactionsBefore=c.game.life?.stats?.reactions||0;
       let last=began,index=0,bleated=false,bleatAt=null,droppedPhysicsSeconds=0,timer,cleaned=false;
       const reached=[];
-      const route=[[8,-16],[8,22],[8,44],[14,55],[20,55],[14,55],[8,40]];
+      // Validated with actual Rapier controls and critical visible furniture:
+      // pass left of the gig board, then north of the market planters.
+      const route=[[8,-16],[6.2,-5],[6.2,8],[8,22],[8,44],[8,55.6],
+        [14,55.6],[20,55.6],[14,55.6],[8,55.6],[8,40]];
       const cleanup=()=>{if(cleaned)return;cleaned=true;clearTimeout(timer);stream.getTracks().forEach(t=>t.stop());
         try{c.audio.limiter.disconnect(destination);}catch{/* Engine disposal may already have disconnected it. */}};
       const fail=error=>{c.tourError=String(error?.message||error);cleanup();c.tourDone=true;};
@@ -240,7 +265,7 @@ try {
         const idle=elapsed<8||elapsed>${Math.max(9,tourSeconds-12)}||index>=route.length;
         const yaw=Math.atan2(dx,-dz);c.view.input.yaw=yaw;c.view.input.pitch=.12;
         const bleat=!bleated&&elapsed>${Math.max(10,tourSeconds*.5)};if(bleat){bleated=true;bleatAt=elapsed;}
-        const intent={moveX:0,moveZ:idle?0:.65,cameraYaw:yaw,bleat};c.bridge.onInput(intent);
+        const intent={moveX:0,moveZ:idle?0:.65,cameraYaw:yaw,climb:false,bleat};c.bridge.onInput(intent);
         droppedPhysicsSeconds+=c.game.advance(dt,intent).droppedSeconds;c.render(Math.max(1,millis),false);
         if(elapsed>=${tourSeconds})recorder.stop();else timer=setTimeout(tick,16);
       }catch(error){fail(error);}};tick();return true;})()`);
@@ -255,13 +280,22 @@ try {
   const dirty = execFileSync('git',['status','--porcelain'],{cwd:root,encoding:'utf8'}).trim();
   writeFileSync(join(out,'profile.json'),JSON.stringify({label,sha,dirty,seed,quality,date:new Date().toISOString(),
     measurement:'Synchronous production GameView frames with gl.finish; not delivered FPS or reference hardware acceptance.',
-    os:platform()+' '+release(),cpu:cpus()[0]?.model,memoryBytes:totalmem(),...meta,results,tour,errors},null,2)+'\n');
+    os:platform()+' '+release(),cpu:cpus()[0]?.model,memoryBytes:totalmem(),...meta,results,tour,errors,warnings,assetReadiness},null,2)+'\n');
   await evaluate('window.__livingCapture.view.dispose();window.__livingCapture.bridge.dispose();window.__livingCapture.audio.dispose();window.__livingCapture.game.dispose();');
   fixtureDisposed = true;
   if(errors.length) { console.error('Capture recorded '+errors.length+' errors; inspect profile.json'); process.exitCode=1; }
 } catch (error) {
+  // Preserve the failed scene as evidence too. A ready flag can remain false
+  // after a loader takes its warned-about fallback without a network error.
+  if (socket?.readyState === WebSocket.OPEN) {
+    try {
+      const screenshot = await send('Page.captureScreenshot', { format:'jpeg',quality:80,fromSurface:true }, 5000);
+      writeFileSync(join(out, 'failure.jpg'), Buffer.from(screenshot.data, 'base64'));
+    } catch { /* A crashed context may not expose a final frame. */ }
+  }
   writeFileSync(join(out,'failure.json'),JSON.stringify({label,date:new Date().toISOString(),
-    error:error instanceof Error?error.stack:String(error),errors,pendingRequests:[...network.values()]},null,2)+'\n');
+    error:error instanceof Error?error.stack:String(error),errors,warnings,assetReadiness,
+    pendingRequests:[...network.values()]},null,2)+'\n');
   throw error;
 } finally {
   if (!fixtureDisposed && socket?.readyState === WebSocket.OPEN) {
