@@ -19,6 +19,7 @@ const quality = option('--quality', 'high');
 const seed = option('--seed', 'billy-isle');
 const allowLegacyGoat = args.includes('--allow-legacy-goat');
 const tourSeconds = Math.max(0, Math.min(120, Number(option('--tour', '0'))));
+const tourOnly = args.includes('--tour-only');
 const tourQuality = option('--tour-quality', quality);
 const tourWidth = Math.floor(Number(option('--tour-width', '1280')));
 const tourHeight = Math.floor(Number(option('--tour-height', '720')));
@@ -29,6 +30,7 @@ if (![quality, tourQuality].every(value => ['low', 'medium', 'high'].includes(va
 if (![tourWidth, tourHeight].every(value => Number.isFinite(value) && value >= 160 && value <= 3840))
   throw new Error('Tour viewport dimensions must be between 160 and 3840 CSS pixels');
 if (requireTourRoute && tourSeconds === 0) throw new Error('A required route needs a recorded tour');
+if (tourOnly && tourSeconds === 0) throw new Error('Tour-only capture needs a recorded tour');
 mkdirSync(out, { recursive: true });
 const profile = mkdtempSync(join(tmpdir(), 'gigga-living-world-'));
 let browser, server, socket, fixtureDisposed = false, assetReadiness;
@@ -202,7 +204,7 @@ try {
   const snapshots = await evaluate('window.__livingCapture.points');
   const chosen = option('--points', '').split(',').filter(Boolean);
   const results = [];
-  for (const point of snapshots.filter(p => !chosen.length || chosen.includes(p.id))) {
+  for (const point of (tourOnly ? [] : snapshots.filter(p => !chosen.length || chosen.includes(p.id)))) {
     await evaluate(`(()=>{const c=window.__livingCapture,p=${JSON.stringify(point)};
       c.view.camera.position.copy(p.camera);c.view.camera.fov=p.fov||62;c.view.camera.updateProjectionMatrix();
       c.view.cameraTarget.copy(p.target);
@@ -235,11 +237,12 @@ try {
     // so recording can keep up without changing the production physics clock.
     await send('Emulation.setDeviceMetricsOverride', {
       width:tourWidth,height:tourHeight,deviceScaleFactor:1,mobile:false });
-    await evaluate(`(()=>{const c=window.__livingCapture;
+    await evaluate(`(async()=>{const c=window.__livingCapture;
       if(!c.audio.audioContext||c.audio.audioContext.state!=='running'||!c.audio.limiter)
         throw new Error('Audio graph is not running for the requested recording');
       if(typeof MediaRecorder==='undefined'||typeof c.renderer.domElement.captureStream!=='function')
         throw new Error('This browser cannot record the gameplay canvas');
+      if(document.hidden)throw new Error('The recording page is hidden');
       c.view.applySettings({...c.view.currentSettings,graphics:${JSON.stringify(tourQuality)}});
       const start=c.at(8,-42,0);c.game.teleport(start,Math.PI);
       for(const entry of c.hud)entry.node.style.display=entry.display;
@@ -257,24 +260,63 @@ try {
       track(c.view,'updateHud','hudMs');track(c.bridge,'frame','audioMs');
       track(c.view.world,'update','worldMs');track(c.view.world,'updateCulling','cullingMs');
       track(c.view.residents,'update','residentsMs');track(c.view.characters,'update','charactersMs');
-      const stream=c.renderer.domElement.captureStream(15);
       const destination=c.audio.audioContext.createMediaStreamDestination();c.audio.limiter.connect(destination);
-      for(const track of destination.stream.getAudioTracks())stream.addTrack(track);
       const mime=MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')?'video/webm;codecs=vp8,opus':'video/webm';
+      // Copy the completed production canvas into a CPU-backed recording
+      // surface. The game's renderer, camera, assets and pixels are unchanged;
+      // only MediaRecorder's readback surface differs. Measure this explicitly.
+      const recordingCanvas=document.createElement('canvas');
+      recordingCanvas.width=c.renderer.domElement.width;recordingCanvas.height=c.renderer.domElement.height;
+      const recordingContext=recordingCanvas.getContext('2d',{alpha:false,willReadFrequently:true});
+      if(!recordingContext)throw new Error('A CPU recording surface is unavailable');
+      const copyFrame=()=>recordingContext.drawImage(c.renderer.domElement,0,0);
+      const probes=[];
+      for(const mode of ['timer-only','render-only','webgl-stream-idle','webgl-manual','cpu-copy-manual']){
+        const capture=mode.includes('stream')||mode.includes('manual'),copy=mode==='cpu-copy-manual';
+        if(copy)copyFrame();
+        const probeStream=capture?(copy?recordingCanvas:c.renderer.domElement).captureStream(0):null;
+        const track=probeStream?.getVideoTracks()[0];
+        if(track&&typeof track.requestFrame!=='function')throw new Error('Explicit canvas frame requests are unavailable');
+        if(probeStream)for(const audioTrack of destination.stream.getAudioTracks())probeStream.addTrack(audioTrack.clone());
+        const probeRecorder=probeStream?new MediaRecorder(probeStream,{mimeType:mime,videoBitsPerSecond:1600000}):null;
+        let bytes=0,requested=0,nextCapture=0;
+        if(probeRecorder)probeRecorder.ondataavailable=e=>{bytes+=e.data.size;};
+        const ended=probeRecorder?new Promise((done,fail)=>{probeRecorder.onstop=done;probeRecorder.onerror=e=>fail(e.error);}):null;
+        probeRecorder?.start();
+        const began=performance.now(),intervals=[],work=[];let last=began;
+        await new Promise((done,fail)=>{const tick=()=>{try{const now=performance.now(),millis=now-last;last=now;
+          intervals.push(millis);const start=performance.now();
+          if(mode!=='timer-only'){c.game.advance(millis/1000,{});c.render(Math.max(1,millis),false);}
+          let copyMs=0;
+          if(mode.endsWith('manual')&&now>=nextCapture){const copyStart=performance.now();if(copy)copyFrame();
+            copyMs=performance.now()-copyStart;track.requestFrame();requested++;nextCapture=now+1000/15;}
+          work.push({totalMs:performance.now()-start,copyMs});
+          if(now-began>=2000)done();else setTimeout(tick,16);
+        }catch(error){fail(error);}};tick();});
+        const seconds=(performance.now()-began)/1000;
+        if(probeRecorder){probeRecorder.stop();await ended;probeStream.getTracks().forEach(track=>track.stop());}
+        probes.push({mode,seconds,intervals,work,requested,bytes,visibility:document.visibilityState});
+      }
+      c.game.teleport(start,Math.PI);c.view.alignCameraForPlay();
+      for(let i=0;i<30;i++)c.game.advance(1/60,{});c.render(16,false);copyFrame();
+      const stream=recordingCanvas.captureStream(0),videoTrack=stream.getVideoTracks()[0];
+      if(!videoTrack||typeof videoTrack.requestFrame!=='function')throw new Error('Explicit canvas frame requests are unavailable');
+      for(const track of destination.stream.getAudioTracks())stream.addTrack(track);
       const recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:1600000});
       const chunks=[],frames=[],frameWork=[],began=performance.now(),simulationBegan=c.game.physics.time,
         initialPosition={...c.game.goat.torso.translation()},reactionsBefore=c.game.life?.stats?.reactions||0;
-      let last=began,index=0,bleated=false,bleatAt=null,bleatSimulationAt=null,droppedPhysicsSeconds=0,timer,cleaned=false;
+      let last=began,index=0,bleated=false,bleatAt=null,bleatSimulationAt=null,droppedPhysicsSeconds=0,timer,cleaned=false,
+        nextCapture=began,requestedFrames=0;
       const reached=[];
       // Validated with actual Rapier controls and critical visible furniture:
       // pass left of the gig board, then north of the market planters.
       const route=[[8,-16],[6.2,-5],[6.2,8],[8,22],[8,44],[8,55.6],
         [14,55.6],[20,55.6],[14,55.6],[8,55.6],[8,40]];
-      const cleanup=()=>{if(cleaned)return;cleaned=true;clearTimeout(timer);stream.getTracks().forEach(t=>t.stop());
+      const cleanup=()=>{if(cleaned)return;cleaned=true;cancelAnimationFrame(timer);stream.getTracks().forEach(t=>t.stop());
         for(const reset of restore)reset();
         try{c.audio.limiter.disconnect(destination);}catch{/* Engine disposal may already have disconnected it. */}};
       const fail=error=>{c.tourError=String(error?.message||error);cleanup();c.tourDone=true;};
-      c.stopTour=()=>{c.tourError??='Recording cancelled during fixture teardown';clearTimeout(timer);
+      c.stopTour=()=>{c.tourError??='Recording cancelled during fixture teardown';cancelAnimationFrame(timer);
         if(recorder.state!=='inactive')recorder.stop();cleanup();};
       recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
       c.tourDone=false;c.tourError=null;recorder.onerror=e=>fail(e.error||'MediaRecorder failed');
@@ -287,6 +329,8 @@ try {
           simulatedSeconds:c.game.physics.time-simulationBegan,droppedPhysicsSeconds,frames,frameWork,
           quality:c.view.currentSettings.graphics,cssWidth:${tourWidth},cssHeight:${tourHeight},
           width:c.renderer.domElement.width,height:c.renderer.domElement.height,pixelRatio:c.renderer.getPixelRatio(),mime,
+          captureSurface:'CPU-backed 2D copy of the completed production canvas',scheduler:'requestAnimationFrame',
+          requestedFrames,probes,visibility:document.visibilityState,
           requestedCanvasFps:15,audio:destination.stream.getAudioTracks().length>0&&c.audio.status.unlocked,
           route,reachedWaypoints:reached,completedRoute:index>=route.length,
           initialPosition,finalPosition:{...c.game.goat.torso.translation()},bleatRequestedAt:bleatAt,
@@ -312,9 +356,12 @@ try {
         const simulationStart=performance.now(),advance=c.game.advance(dt,intent),renderStart=performance.now();
         for(const name of Object.keys(phaseWork))phaseWork[name]=0;
         droppedPhysicsSeconds+=advance.droppedSeconds;c.render(Math.max(1,millis),false);
-        frameWork.push({simulationMs:renderStart-simulationStart,renderSubmitMs:performance.now()-renderStart,
+        const rendered=performance.now();let captureCopyMs=0;
+        if(now>=nextCapture){const copyStart=performance.now();copyFrame();captureCopyMs=performance.now()-copyStart;
+          videoTrack.requestFrame();requestedFrames++;nextCapture=now+1000/15;}
+        frameWork.push({simulationMs:renderStart-simulationStart,renderSubmitMs:rendered-renderStart,captureCopyMs,
           ...phaseWork,steps:advance.steps,droppedSeconds:advance.droppedSeconds});
-        if(elapsed>=${tourSeconds})recorder.stop();else timer=setTimeout(tick,16);
+        if(elapsed>=${tourSeconds})recorder.stop();else timer=requestAnimationFrame(tick);
       }catch(error){fail(error);}};tick();return true;})()`);
     await until(async () => {const status=await evaluate('({done:window.__livingCapture.tourDone,error:window.__livingCapture.tourError})');
       if(status.error)throw new Error(status.error);return status.done;}, tourSeconds + 45);
