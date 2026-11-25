@@ -3,6 +3,10 @@
 A wobbly-physics goat sandbox for the browser: lick, headbutt, climb and build your way across
 Billy Isle, and grow GIGGA by causing stylish chaos. See [docs/DESIGN.md](docs/DESIGN.md).
 
+## Local discoveries
+
+Look for animated roadside vignettes around Billy Isle, from the Hoofington breakfast bell to the keeper's signal lantern. Get close and bleat (E / gamepad X) to trigger a little scene and earn Cud Coins on your first discovery. You can revisit for another reaction after a short cooldown; discoveries persist with your normal save. They are optional and stay out of active gigs and party modes.
+
 ## Develop
 
 ```bash

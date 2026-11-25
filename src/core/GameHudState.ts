@@ -16,6 +16,7 @@ export interface HudInput {
   coins: number;
   ragdoll: boolean;
   boardInRange?: boolean;
+  happening?: import('./IslandHappenings').HappeningMessage;
   partyTitle?: string;
   gig?: {
     title: string;
@@ -166,6 +167,8 @@ export function deriveHudState(input: HudInput): HudState {
         detail: (run.rating ?? 'bronze').toUpperCase() + ' · +' + num(run.payout ?? 0) + ' CUD COINS',
         active: false };
     }
+  } else if (!input.boardInRange && !input.buildMode && input.happening) {
+    gig = { ...input.happening, active: false };
   }
   const stamina = clampHudPercent(input.stamina);
   return {
