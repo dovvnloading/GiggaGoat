@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { kitShape } from './kit-preview';
 import { gridSample } from './terrain';
 import type { IslandData, Vec2 } from './types';
+import { ambientFlightActivity, ambientInRange, sampleEnvironmentWind } from './environment-wind';
+import { applyAmbientDistanceFade } from './visual-wind';
 
 const TURN = Math.PI * 2;
 type BoatModel = 'harborSailboat' | 'harborFishingBoat';
@@ -86,9 +88,11 @@ export function buildHarborLife(island: IslandData) {
   group.name = 'harbor-life';
   const scale = island.size / 600;
   const boatMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  applyAmbientDistanceFade(boatMaterial, 180 * scale, 205 * scale);
   const wakeMaterial = new THREE.MeshBasicMaterial({
     transparent: true, depthWrite: false, vertexColors: true, side: THREE.DoubleSide,
   });
+  applyAmbientDistanceFade(wakeMaterial, 165 * scale, 190 * scale);
   const boatGeometries = new Map<BoatModel, THREE.BufferGeometry>();
   const boats = harborPassages(island).map((route, i) => {
     let geometry = boatGeometries.get(route.model);
@@ -112,6 +116,8 @@ export function buildHarborLife(island: IslandData) {
   const wingGeometry = gullWing();
   const bodyMaterial = new THREE.MeshBasicMaterial({ color: 0xf0ede1 });
   const wingMaterial = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  applyAmbientDistanceFade(bodyMaterial, 130 * scale, 155 * scale);
+  applyAmbientDistanceFade(wingMaterial, 130 * scale, 155 * scale);
   const flights = [
     { district: 'baa-ardwalk', x: -14, z: 64, radius: 29, height: 13, count: 5, period: 29 },
     { district: 'old-lighthouse', x: -20, z: 14, radius: 24, height: 23, count: 5, period: 33 },
@@ -135,9 +141,11 @@ export function buildHarborLife(island: IslandData) {
       root.add(mesh);
     }
     group.add(root);
-    return [{ root, body, wing, flight, bounds: new THREE.Sphere(center.clone(), (flight.radius + 15) * scale) }];
+    return [{ root, body, wing, flight, inRange: false,
+      bounds: new THREE.Sphere(center.clone(), (flight.radius + 15) * scale) }];
   });
   const bird = new THREE.Object3D(), feather = new THREE.Object3D(), matrix = new THREE.Matrix4();
+  const wind = sampleEnvironmentWind(0, island.seed);
 
   return {
     group,
@@ -148,27 +156,37 @@ export function buildHarborLife(island: IslandData) {
         const theta = route.phase + time * TURN / route.period;
         vessel.position.set(route.x + route.radiusX * Math.cos(theta), tide,
           route.z + route.radiusZ * Math.sin(theta));
-        vessel.visible = camera.distanceToSquared(vessel.position) < (215 * scale) ** 2;
+        vessel.visible = ambientInRange(camera.distanceTo(vessel.position), vessel.visible, 215 * scale, 8 * scale);
         if (!vessel.visible) continue;
         const yaw = Math.atan2(-route.radiusX * Math.sin(theta), route.radiusZ * Math.cos(theta));
+        sampleEnvironmentWind(time, island.seed, rain, vessel.position.x, vessel.position.z, wind);
         vessel.rotation.y = yaw;
-        boat.position.y = (-.30 + .105 * Math.sin(time * 1.85 + route.phase)) * scale;
-        boat.rotation.set(.04 * Math.sin(time * 1.45), 0, .062 * Math.cos(time * 1.67 + route.phase));
+        const chop = .65 + .35 * wind.strength;
+        boat.position.y = (-.30 + .105 * chop * Math.sin(time * 1.85 + route.phase)) * scale;
+        const across = wind.x * Math.cos(yaw) - wind.z * Math.sin(yaw);
+        boat.rotation.set(.035 * chop * Math.sin(time * 1.45 + route.phase), 0,
+          .047 * chop * Math.cos(time * 1.67 + route.phase) + across * .018);
         wake.position.y = .065 * scale;
       }
-      for (const { root, body, wing, flight, bounds } of flocks) {
+      const activity = ambientFlightActivity(daylight, rain, 'gull');
+      bodyMaterial.opacity = wingMaterial.opacity = activity;
+      for (const flock of flocks) {
+        const { root, body, wing, flight, bounds } = flock;
         root.position.y = Math.max(island.seaLevel + flight.height * scale, tide + 7 * scale);
         bounds.center.copy(root.position);
-        root.visible = daylight > .20 && rain < .8 && camera.distanceToSquared(bounds.center) < (163 * scale) ** 2 &&
-          frustum.intersectsSphere(bounds);
+        flock.inRange = ambientInRange(camera.distanceTo(bounds.center) - bounds.radius,
+          flock.inRange, 163 * scale, 8 * scale);
+        root.visible = activity > .001 && flock.inRange && frustum.intersectsSphere(bounds);
         if (!root.visible) continue;
+        sampleEnvironmentWind(time, island.seed, rain, root.position.x, root.position.z, wind);
         for (let i = 0; i < flight.count; i++) {
           const angle = time * TURN / flight.period + .21 * i + flight.height;
           const radius = (flight.radius + (i % 2 ? 2.1 : -1.8) * i) * scale;
           bird.position.set(radius * Math.cos(angle), (i * .49 + 1.8 * Math.sin(angle * 2 + i)) * scale,
             radius * .68 * Math.sin(angle));
           bird.scale.setScalar(scale * (.88 + i * .078));
-          bird.rotation.set(.06 * Math.sin(angle * 2), Math.atan2(-Math.sin(angle), .68 * Math.cos(angle)), -.18);
+          bird.rotation.set(.06 * Math.sin(angle * 2), Math.atan2(-Math.sin(angle), .68 * Math.cos(angle)),
+            -.18 + .055 * wind.gust * Math.sin(angle + wind.phase));
           bird.updateMatrix();
           body.setMatrixAt(i, bird.matrix);
           const glide = THREE.MathUtils.smoothstep(Math.sin(angle + i * .81), -.2, .75);

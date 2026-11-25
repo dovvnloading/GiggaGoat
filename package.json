@@ -12,7 +12,8 @@
     "test": "vitest run --project unit",
     "test:watch": "vitest --project unit",
     "ci": "npm run typecheck && npm run test && npm run test:chrome && npm run build",
-    "test:chrome": "vitest run --project chrome"
+    "test:chrome": "vitest run --project chrome",
+    "capture:living-world": "node scripts/capture-living-world.mjs"
   },
   "engines": {
     "node": ">=22.12.0"

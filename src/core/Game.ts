@@ -7,6 +7,7 @@ import {
 import {
   generateIsland, buildRapierColliders, heightAt, zoneAt,
   type ColliderBuild, type IslandData, type PropDescriptor,
+  islandWeather,
 } from '../world';
 import {
   GameSimulation, TUNING, BUILD_PIECE_SIZES, BUILD_RAMP_VERTICES, type GoatIntent, type GoatPhysicsFacts,
@@ -32,6 +33,8 @@ import { CRANE_YARD_PLAN } from '../world/crane-yard';
 import { HAY_HAUL_TAG_RADIUS } from '../gigs';
 import { GigSession } from './GigSession';
 import { IslandHappenings, placeIslandHappenings } from './IslandHappenings';
+import { IslandLifeDirector } from './IslandLifeDirector';
+import { MarketScene, MARKET_CRATE_ID } from './MarketScene';
 import { PartySession } from './PartySession';
 import type { GameProgress } from './Persistence';
 import { findStockBaleSeat, isLegacyStockBale } from './HoofingtonStock';
@@ -143,6 +146,10 @@ export class Game {
   readonly budget: DynamicBodyBudget;
   readonly gigs: GigSession;
   readonly happenings: IslandHappenings;
+  readonly life: IslandLifeDirector;
+  readonly market: MarketScene;
+  private readonly lifeObstacleSources: Array<{ body: RigidBody; radius: number; height: number }> = [];
+  private readonly lifeObstacles: Array<{ position: Vec3; radius: number; height: number }> = [];
   private acknowledgedGigAttempt = 0;
   readonly party: PartySession;
   readonly surfaceMarkers: SurfaceMarker[] = [];
@@ -284,6 +291,11 @@ export class Game {
     }));
     this.off.push(this.breakables.events.on(event => {
       const prop = this.propByBody.get(event.bodyHandle);
+      if (this.life && this.ambientLifeEnabled) {
+        this.life.react('chaos', event.position, this.physics.time, Math.min(1.6, event.mass / 15));
+        if (prop?.id === MARKET_CRATE_ID)
+          this.market.disrupt(prop.id, forward(this.goat.locomotion.heading), 1.2, this.physics.time);
+      }
       const material = sceneryAudioMaterial(prop);
       if (material && event.cause !== 'soda') {
         this.sendMaterialAudio({ type: 'break', event, material, position: event.position });
@@ -307,6 +319,8 @@ export class Game {
         this.breakables.register(body, { impulseThreshold: 12, damageThreshold: 30, chunks: 6 });
       }
       if (!body || !this.nearPlayer(body.translation(), 20) || !this.recentChaos()) return;
+      if (this.life && this.ambientLifeEnabled)
+        this.life.react('chaos', body.translation(), this.physics.time, event.type === 'sodaPop' ? 1.5 : .7);
       if (event.type === 'topple') this.award('topple', Math.min(2, event.tiltRadians));
       else if (event.type === 'sodaPop') this.award('destruction', 1.6);
     }));
@@ -343,6 +357,15 @@ export class Game {
     this.party = new PartySession(this);
     this.happenings = new IslandHappenings(placeIslandHappenings(island,
       this.gigs.boards.map(board => board.position)), options.progress?.happenings);
+    this.life = new IslandLifeDirector(island, this.gigs.boards.map(board => board.position));
+    this.market = new MarketScene(physics, island, colliders, this.budget);
+    const town = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
+    for (const [id, body] of colliders.bodies) {
+      const prop = island.props.find(p => p.id === id);
+      if (!prop || prop.body.type !== 'dynamic' ||
+        Math.hypot(prop.transform.position.x-town.x, prop.transform.position.z-town.z) > 100 * island.size / 600) continue;
+      this.lifeObstacleSources.push({body, radius:Math.hypot(prop.size.x,prop.size.z)/2, height:prop.size.y});
+    }
     this.rules.build.isPlacementObstructed = placement => this.buildIntersectsGoat(placement);
     // Saved active cargo already has its own pose. The static world and gig
     // catalog still own the original authored coordinates for every bale.
@@ -806,6 +829,7 @@ export class Game {
   step(intent: PlayerIntent = {}): void { this.advance(FIXED_DT, intent); }
 
   private beforeTick(dt: number): void {
+    this.market.setEnabled(this.ambientLifeEnabled);
     const intent = { ...this.intent };
     for (const button of EDGE_BUTTONS) {
       const state = this.buttons[button];
@@ -1157,6 +1181,10 @@ export class Game {
       // The preferred body can be removed immediately by the break below.
       const fixedBuildHandle = preferred?.body && !preferred.body.isDynamic() ? preferred.body.handle : undefined;
       if (struck) {
+        if (player && this.ambientLifeEnabled) {
+          const prop = this.propByBody.get(struck.handle);
+          if (prop) this.market.disrupt(prop.id, facing, .8 + charge * 1.4, this.physics.time);
+        }
         const impact = commands.headbutt.impulse * .75;
         const shake = commands.headbutt.level === 'meteor' ? Math.max(SODA_POP_IMPULSE, impact) : impact;
         if (!this.chains.shakeSoda(struck, shake)) this.breakables.hit(struck, impact);
@@ -1172,6 +1200,9 @@ export class Game {
         }
       }
       if (struck || hitPiece || contact) {
+        if (player && this.ambientLifeEnabled)
+          this.life.react('headbutt', contact?.point ?? preferred?.point ?? origin,
+            this.physics.time, .7 + charge);
         this.sendVfxCue({ type: 'headbutt-hit',
           position: contact?.point ?? preferred?.point ?? origin,
           direction: facing, power: .8 + charge * 1.8 });
@@ -1208,6 +1239,8 @@ export class Game {
       if (player) {
         this.lastActionTime = this.physics.time;
         this.gigs.noteAbility({ type: 'bleat' });
+        if (this.ambientLifeEnabled)
+          this.life.react('bleat', this.happeningPosition(), this.physics.time, .7 + g.size * .2);
         if (!this.party.match && this.gigs.active?.status !== 'running' && !this.buildMode) {
           const reward = this.happenings.bleat(this.happeningPosition(), this.physics.time);
           if (reward) this.rules.wallet.credit(reward, 'island-discovery');
@@ -1261,6 +1294,41 @@ export class Game {
     }
     if (!this.party.match) this.gigs.tick(tickClimb);
     this.party.afterTick();
+    this.updateIslandLife(dt);
+  }
+
+  get ambientLifeEnabled(): boolean {
+    return !this.party.match && this.gigs.active?.status !== 'running' && !this.pendingGigResult && !this.buildMode;
+  }
+
+  private updateIslandLife(dt: number): void {
+    const player = this.goat.torso.translation();
+    const enabled = this.ambientLifeEnabled;
+    this.market.update(this.physics.time, player, enabled, this.water.seaLevel);
+    let count = 0;
+    const append = (body: RigidBody, radius: number, height: number): void => {
+      if (!body.isValid() || !body.isEnabled()) return;
+      const obstacle = this.lifeObstacles[count] ?? {position:V(), radius, height};
+      Object.assign(obstacle.position, body.translation());
+      obstacle.radius = radius; obstacle.height = height;
+      this.lifeObstacles[count++] = obstacle;
+    };
+    for (const source of this.lifeObstacleSources) append(source.body, source.radius, source.height);
+    for (const item of this.market.items) if (item.body) append(item.body, item.radius, item.radius*2);
+    // The pieces getter sorts and copies the build snapshot. Read it once per
+    // active tick, then use the existing body map instead of copying per body.
+    const buildPieces = enabled && this.buildBodies.size ? this.rules.build.pieces : [];
+    for (const piece of buildPieces) {
+      const body = this.buildBodies.get(piece.id);
+      if (!body?.isValid()) continue;
+      const size = BUILD_PIECE_SIZES[piece.type];
+      append(body, Math.hypot(size.x,size.z)/2, size.y);
+    }
+    this.lifeObstacles.length = count;
+    const weather = islandWeather(this.physics.time);
+    this.life.step(dt, { time:this.physics.time, phase:weather.phase, rain:weather.rain,
+      tideLevel:this.water.seaLevel, player:{position:player,radius:.65*this.goat.size},
+      enabled, obstacles:this.lifeObstacles });
   }
 
   private onGoatEvent(event: PhysicsEvent): void {
@@ -1446,6 +1514,8 @@ export class Game {
     this.visualCueListeners.clear();
     this.vfxCueListeners.clear();
     this.materialAudioListeners.clear();
+    this.life.dispose();
+    this.market.dispose();
     this.party.dispose();
     this.gigs.dispose();
     this.goat.dispose();

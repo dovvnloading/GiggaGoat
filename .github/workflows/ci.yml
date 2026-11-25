@@ -42,6 +42,38 @@ jobs:
         with:
           path: dist
 
+  living-world-evidence:
+    if: github.event_name == 'pull_request' && (github.event.pull_request.number == 330 || contains(github.event.pull_request.labels.*.name, 'living-world-evidence'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - name: Check out the recorded pre-implementation baseline
+        uses: actions/checkout@v4
+        with:
+          ref: 92001c7ec3f851be8468590b237833e0d0e007f8
+          path: .living-world-baseline
+      - name: Capture recorded baseline
+        run: |
+          ln -s ../node_modules .living-world-baseline/node_modules
+          npm run capture:living-world -- --root .living-world-baseline --out .living-world-captures/before --label before --samples 24
+      - name: Capture implemented game and continuous walkthrough
+        if: always()
+        run: npm run capture:living-world -- --out .living-world-captures/after --label after --samples 24 --tour 100
+      - name: Upload gameplay, raw profiles and matching views
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: living-world-evidence
+          path: .living-world-captures/
+          include-hidden-files: true
+          if-no-files-found: warn
+
   deploy:
     needs: ci
     if: github.ref == 'refs/heads/main'

@@ -4,11 +4,11 @@ import type {
   SoundId, Surface, WalkingGoat,
 } from '../audio';
 import { dot } from '../physics/math';
-import { biomeAt, zoneAt } from '../world';
-import type { IslandWeather } from '../world/island-weather';
+import { biomeAt, zoneAt, type IslandWeather } from '../world';
 import type { GoatRagdoll, PhysicsEvent, Vec3 } from '../physics';
 import type { Game, MaterialAudioContact, PlayerIntent } from './Game';
 import type { GameSettings } from './Persistence';
+import { IslandLifeAudio } from './IslandLifeAudio';
 
 /** The narrow audio interface allows a fake AudioEngine in headless core tests. */
 export type AudioSink = Pick<AudioEngine, 'updateFrame' | 'setSettings' | 'audioContext' |
@@ -104,8 +104,17 @@ export class GameAudio {
   private pendingMenuCue: { sound: MenuSound; expiresAt: number } | null = null;
   private wasUnlocked = false;
   private transition: Promise<void> | null = null;
+  private readonly lifeAudio: IslandLifeAudio;
+  private menuOpen = false;
 
   constructor(private readonly game: Game, private readonly audio: AudioSink) {
+    this.lifeAudio = new IslandLifeAudio(game.island.props.filter(p => p.kind === 'fountain')
+      .map(p => p.transform.position));
+    if (game.market) {
+      const rustle = (position: Vec3): void => this.queueCue({sound:'market-rustle',position,intensity:.45});
+      game.market.listeners.add(rustle);
+      this.off.push(()=>game.market.listeners.delete(rustle));
+    }
     this.mills = game.island.props.filter(p => p.kind === 'windmill').map(p => p.transform.position);
     this.turbines = game.island.colliders.flatMap(c =>
       c.shape !== 'heightfield' && c.id === 'the-dam-control-house' ? [c.transform.position] : []);
@@ -176,6 +185,7 @@ export class GameAudio {
   }
 
   setMenuOpen(open: boolean): void {
+    this.menuOpen = open;
     this.audio.setMenuAudio(open);
     this.audio.endResultAudio();
     if (open) { this.charging = false; this.reeling = false; }
@@ -239,6 +249,8 @@ export class GameAudio {
       this.sizes.set(goat.id, goat.size);
     }
     const player = goats[0]!;
+    if (this.game.life) this.cues.push(...this.lifeAudio.sample(this.game.physics.time,
+      this.game.life.residents, camera.position, !this.hidden && !this.menuOpen && this.game.ambientLifeEnabled));
     const atPier = this.game.isAbovePierDeck(player.position);
     const zone = atPier ? 'baa-ardwalk' : zoneAt(this.game.island, player.position.x, player.position.z);
     const poi = zone ?? this.game.island.pois.find(site =>
@@ -312,5 +324,6 @@ export class GameAudio {
     this.cues.length = 0;
     this.positions.clear();
     this.sizes.clear();
+    this.lifeAudio.dispose();
   }
 }
