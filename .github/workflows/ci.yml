@@ -19,6 +19,8 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Typecheck
         run: npm run typecheck
+      - name: Test (living-world QA helpers)
+        run: npm run test:living-world-qa
       - name: Test (unit)
         run: npm test
       - name: Test (headless Chrome, serial)

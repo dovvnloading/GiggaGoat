@@ -80,6 +80,27 @@ The [matching runtime artifact](https://github.com/dovvnloading/GiggaGoat/action
 
 The supported GitHub Actions runner provides the browser checks and capture artifact. Existing Chrome profile thresholds are unchanged. Use the PR's checks for the exact tested commit and final test counts; evidence is not silently inferred from a build.
 
+## Physical reference-device acceptance capture (local)
+
+The headless jobs do not exercise a physical display/GPU or an independent human player. The new local QA page boots the ordinary game (including menus, real player controls, audio, dynamic resolution and the unmodified renderer and physics loop), not the scripted tour controller. It is outside the production build and uses no extra dependencies.
+
+From a clean checkout of the exact PR head on the intended reference device:
+
+```bash
+npm install
+npm run qa:living-world
+```
+
+Open the printed loopback URL in a normal hardware-accelerated Chrome window. Use a fresh browser profile or the isolated local origin, not an existing save. Record device model, OS, GPU/driver, browser version, display refresh rate, AC/battery state, viewport/DPR, quality and ambient conditions. Confirm actual hardware acceleration in chrome://gpu; a renderer string alone is not proof. Do not use headless, SwiftShader, the production software fallback or an unverified renderer as physical-GPU evidence.
+
+1. Select a quality in the ordinary settings and enter Free Roam. Let assets stream fully. Walk to Downtown. Press **N** to begin a profile; press **N** again to download the raw JSON. The page never sends simulated movement or teleports the goat. Press **M** after a rooftop idle and again after revisiting the market to timestamp reviewer observations; these markers are not automatic checks. Include an accepted bleat near residents and an actual crate disruption. Review the resident reaction counts, market-spill event, position history, asset readiness and console errors in the JSON.
+2. Capture the independent 90–120 second human tour separately with a screen recorder that includes game audio and HUD. Check animation contact, camera clearance, reaction and recovery, weather readability and scene composition against the reference art. Retain the uncut footage and failed attempts. Do not use a recorded run to establish uninstrumented performance.
+3. For each Low, Medium and High preset, run a separate **unrecorded** profile of the same route and a long session (at least 10 minutes; include chaos, culling/revisit, pause/resume, mode changes and a fresh reload). Capture the browser's presentation/compositor frame trace using Chrome Performance or an equivalent physical-device tool; collect GPU/process memory and loading/repeated-regeneration observations separately. Compare the exact same route, resolution, device and quality against the before-state. Keep performance traces and video as distinct evidence. A resize or quality change segments timing samples; paused/hidden intervals are marked, not folded into active gameplay. The 250,000-frame safety limit is explicit in the exported finish reason; start another run rather than treating a capped run as a full session.
+4. The raw profile includes clean checkout identity at startup and export, actual canvas size and quality, frame-start interval p50/p95/p99/worst and >33 ms counts, CPU render submission, physics work and dropped time, optional sparse asynchronous GPU timer queries, draw calls/triangles, body/resident/voice counts, resource counts, optional JS heap, browser errors and timed manual markers. Frame-start intervals are **not proof of delivered/displayed frames**; GPU query timings measure GPU render work, not presentation. A software, unknown or dirty/mismatched checkout is not acceptable hardware evidence. Missing/disjoint GPU samples are not zero latency. Never equate texture/geometry counts or JS heap with total memory. Validate actual presentation timing and long-session memory against Q07 separately.
+5. Attach raw JSON, before/after traces, human video/audio, screenshots and the independent reviewer's explicit Q01/Q02/Q03/Q04/Q05/Q06/Q07/Q08/Q09 findings to the PR. State PASS/FAIL/NOT EVIDENCED with the SHA, evidence links and remediation. Any missing or failing applicable gate keeps acceptance open. No automatic PASS is emitted by this harness; the roadmap's existing stop rule and proposed budgets are unchanged.
+
+`npm run test:living-world-qa` syntax-checks the local scripts and tests nearest-rank statistics, software-renderer rejection/classification and pause/quality/resolution interval boundaries. The physical-device run and human visual approval cannot be produced by CI.
+
 ## Review still required
 
 1. Inspect the fully streamed before/after frames and clip. Check silhouettes and palette against the reference art, close feet through at least two walk cycles, turns/crossfades, fountain/table contact, window alignment and dusk/rain readability.
