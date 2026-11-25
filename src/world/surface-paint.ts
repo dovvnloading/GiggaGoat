@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { clamp, GradientNoise, hashString, smoothstep } from './random';
 import type { IslandData } from './types';
+import { DOWNTOWN_FINISH_GLSL } from './material-detail';
 
 const MAP_RESOLUTION = 256;
 /** The software renderer samples the same authored masks as the terrain shaders. */
@@ -151,7 +152,7 @@ uniform float uFacadeScale;
 varying vec4 vHoofingtonFacade;
 ${PAINTED_JOINT}`).replace('#include <color_fragment>', `#include <color_fragment>
 float facadeStyle = vHoofingtonFacade.w;
-if (facadeStyle > 0.5) {
+if (facadeStyle > 0.5 && facadeStyle < 3.5) {
   vec3 metres = vHoofingtonFacade.xyz * uFacadeScale;
   float wall = 1.0 - smoothstep(0.12, 0.35, abs(dot(normalize(vNormal), viewMatrix[1].xyz)));
   float along = metres.x + metres.z * 0.82;
@@ -181,7 +182,8 @@ if (facadeStyle > 0.5) {
   }
   vec3 footingTint = mix(vec3(1.0), vec3(0.78, 0.74, 0.67), footing * (0.45 + 0.55 * weathering));
   diffuseColor.rgb *= mix(vec3(1.0), footingTint * (0.96 + 0.08 * weathering - 0.14 * siding), wall);
-}`);
+}
+${DOWNTOWN_FINISH_GLSL}`);
   };
 }
 

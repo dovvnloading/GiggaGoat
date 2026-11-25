@@ -9,6 +9,7 @@ import { publicAssetUrl } from './public-assets';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
 import { createDistrictLod, type BakedPlacement, type DistrictLod } from './district-lod';
 import { WORLD_LOD, simplifiedWorldGeometry } from './lod';
+import { downtownFinish } from './material-detail';
 
 /**
  * CC0 authored models are resolved by publicAssetUrl, including World Lab.
@@ -189,17 +190,22 @@ const white = new THREE.Color(0xffffff);
 const texel = new THREE.Color();
 const sampleUv = new THREE.Vector2();
 
-type FacadeSource = 'house' | 'barn' | 'windmill' | 'silo';
+type FacadeSource = 'house' | 'barn' | 'windmill' | 'silo' | 'downtown' | 'downtown-brick';
 function facadeSource(path: string): FacadeSource | null {
   if (path.startsWith('assets/library/custom/hoofington-houses/')) return 'house';
   if (path === HOOFINGTON_MODELS.barn) return 'barn';
   if (path === HOOFINGTON_MODELS.windmill) return 'windmill';
   if (path === HOOFINGTON_MODELS.silo) return 'silo';
+  if (path.endsWith('/downtown-shops/shop-m-pink.glb')) return 'downtown-brick';
+  if (path.startsWith('assets/library/custom/downtown-shops/') ||
+      path === 'assets/library/custom/town/downtown-tower.glb') return 'downtown';
   return null;
 }
 
 /** Only the sourced exterior shells of these existing models receive detail. */
 function facadeStyle(source: FacadeSource, mesh: string, material: string): number {
+  if (source === 'downtown' || source === 'downtown-brick')
+    return downtownFinish(mesh, material, source === 'downtown-brick');
   if (source === 'house') return mesh.startsWith('building-type-') && material.endsWith('_paint') ? 1 : 0;
   if (source === 'barn') return material === 'Diffuse_color' ? 2 : 0;
   if (source === 'windmill') {

@@ -12,6 +12,7 @@ import { CRANE_RAMP_GUARD_PREFIX, CRANE_SWITCHBACK_PREFIX } from './crane-yard';
 import type { IslandData } from './types';
 import { WORLD_LOD, completelyOccluded, isSmallWorldModel,
   simplifiedWorldGeometry } from './lod';
+import { propFinish, paintPropFinish } from './material-detail';
 
 export interface PropBatch {
   sphere: THREE.Sphere;
@@ -248,6 +249,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
             'max(0.0, position.y + 0.25) * 0.015;\n#endif');
         };
       }
+      const finish = propFinish(kind);
+      if (finish && island) paintPropFinish(material, finish, island.size / 600);
       materials.set(kind, material);
     }
     const mesh = new THREE.InstancedMesh(geometry, material, entries.length);
