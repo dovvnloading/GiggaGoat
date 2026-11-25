@@ -32,7 +32,7 @@ try{
   const gpu=debug?gl.getParameter(debug.UNMASKED_RENDERER_WEBGL):null;
   const classification=classifyRenderer(software,gpu);
   const timer=gl?.getExtension('EXT_disjoint_timer_query_webgl2')??null;
-  const tracker=createIntervalTracker();
+  const tracker=createIntervalTracker(),activeTracker=createIntervalTracker();
   const originalRender=renderer.render;
   const originalAdvance=game.advance;
   let session=null,exporting=false,pending=null,physicsMs=0,droppedSeconds=0;
@@ -78,7 +78,7 @@ try{
     const end=snapshot(),endAssets=assetState(),wallMs=elapsed();
     note('finish',{reason});
     if(pending){finished.gpuUnresolved++;clearQuery();}
-    session=null;tracker.reset();
+    session=null;tracker.reset();activeTracker.reset();
     try{
       let finalBuild=null,identityError=null;
       try{finalBuild=await identity();}catch(error){identityError=String(error);}
@@ -112,7 +112,8 @@ try{
         },
         seed:game.island.seed,wallMs,finishReason:reason,initial:finished.initial,end,
         initialAssets:finished.initialAssets,endAssets,
-        summaries,gpuSummary:summarize(finished.gpuSamples.map(s=>s.ms)),
+        summaries,allActiveFrameIntervals:summarize(finished.frames.flatMap(f=>f.activeIntervalMs===null?[]:[f.activeIntervalMs])),
+        gpuSummary:summarize(finished.gpuSamples.map(s=>s.ms)),
         frames:finished.frames,gpuSamples:finished.gpuSamples,gpuDisjoint:finished.gpuDisjoint,
         gpuUnresolved:finished.gpuUnresolved,snapshots:finished.snapshots,events:finished.events,
         errors:[...errors],warnings:[...warnings]
@@ -134,15 +135,17 @@ try{
     const active=session;
     if(!active)return originalRender.apply(this,args);
     if(view.paused||document.hidden){
-      tracker.reset();physicsMs=0;droppedSeconds=0;
+      tracker.reset();activeTracker.reset();physicsMs=0;droppedSeconds=0;
       if(!wasPaused){note('paused');wasPaused=true;}
       return originalRender.apply(this,args);
     }
-    if(wasPaused){note('resumed');wasPaused=false;tracker.reset();}
+    if(wasPaused){note('resumed');wasPaused=false;tracker.reset();activeTracker.reset();}
     if(active.frames.length>=MAX_FRAMES){void finish('sample-cap');return originalRender.apply(this,args);}
     const start=performance.now(),quality=view.currentSettings.graphics;
     const {width,height}=renderer.domElement,pixelRatio=renderer.getPixelRatio();
     const intervalMs=tracker.sample(start,quality+':'+width+'x'+height+'@'+pixelRatio);
+    // Keep a second unsegmented active series so adaptive resolution cannot hide a transition hitch.
+    const activeIntervalMs=activeTracker.sample(start,'active');
     if(timer&&!gl.isContextLost())pollQuery();
     let query=null;
     if(timer&&!pending&&!gl.isContextLost()&&active.frames.length%30===0){
@@ -157,7 +160,7 @@ try{
     finally{
       const renderSubmitMs=performance.now()-submit;
       if(query){gl.endQuery(timer.TIME_ELAPSED_EXT);pending={query,frame:active.frames.length};}
-      active.frames.push({ms:start-active.start,intervalMs,renderSubmitMs,physicsMs,droppedSeconds,
+      active.frames.push({ms:start-active.start,intervalMs,activeIntervalMs,renderSubmitMs,physicsMs,droppedSeconds,
         quality,width,height,pixelRatio});
       physicsMs=0;droppedSeconds=0;
       if(start-lastSample>=1000){
@@ -168,10 +171,14 @@ try{
     }
   };
   document.addEventListener('visibilitychange',()=>{
-    tracker.reset();physicsMs=0;droppedSeconds=0;
+    tracker.reset();activeTracker.reset();physicsMs=0;droppedSeconds=0;
     note(document.hidden?'hidden':'visible');
   });
   renderer.domElement.addEventListener('webglcontextlost',()=>{note('webgl-context-lost');record(errors,'webgl','Context lost');});
+  game.onVisualCue(cue=>{
+    if(session&&cue.goatId===game.goat.id&&(cue.action==='bleat'||cue.action==='headbutt'))
+      note('accepted-player-action',{action:cue.action,position:{...game.goat.torso.translation()}});
+  });
   game.goat.events.on(event=>{
     if(session&&event.type==='knockedBody')note('goat-event',{type:event.type});
   });
@@ -182,7 +189,7 @@ try{
     try{
       const current=await identity();
       if(view.paused||document.hidden)return;
-      tracker.reset();physicsMs=0;droppedSeconds=0;lastSample=-Infinity;wasPaused=false;
+      tracker.reset();activeTracker.reset();physicsMs=0;droppedSeconds=0;lastSample=-Infinity;wasPaused=false;
       session={start:performance.now(),startedAt:new Date().toISOString(),build:current,
         initial:snapshot(),initialAssets:assetState(),frames:[],snapshots:[],events:[],
         gpuSamples:[],gpuDisjoint:0,gpuUnresolved:0,markers:0};
