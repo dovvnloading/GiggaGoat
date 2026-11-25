@@ -37,7 +37,7 @@ The PR's `living-world-evidence` CI job runs the actual `Game`, `GameView`, rend
 With a working Chrome installation:
 
 ```bash
-npm install
+npm ci
 npm run capture:living-world -- --out .living-world-captures/after --label after --samples 24 --tour 100
 ```
 
@@ -87,11 +87,16 @@ The headless jobs do not exercise a physical display/GPU or an independent human
 From a clean checkout of the exact PR head on the intended reference device:
 
 ```bash
-npm install
+npm ci
+git status --porcelain
 npm run qa:living-world
 ```
 
+`npm ci` preserves the checked-in lockfile. Verify that `git status --porcelain` prints nothing before starting the recorder. Some npm versions rewrite the lockfile during `npm install`, which makes the checkout ineligible for acceptance captures.
+
 Open the printed loopback URL in a normal hardware-accelerated Chrome window. Use a fresh browser profile or the isolated local origin, not an existing save. Record device model, OS, GPU/driver, browser version, display refresh rate, AC/battery state, viewport/DPR, quality and ambient conditions. Confirm actual hardware acceleration in chrome://gpu; a renderer string alone is not proof. Do not use headless, SwiftShader, the production software fallback or an unverified renderer as physical-GPU evidence.
+
+For the before-state, open the ordinary game from a separate clean worktree at [`92001c7`](https://github.com/dovvnloading/GiggaGoat/tree/92001c7ec3f851be8468590b237833e0d0e007f8). Run `npm ci` and `npm run dev -- --host 127.0.0.1` there and open its separate loopback URL. The QA page exists on the PR branch. Collect the same Chrome Performance presentation trace on both checkouts, and record the before-state's legacy goat asset fallback as part of the comparison.
 
 1. Select a quality in the ordinary settings and enter Free Roam. Let assets stream fully. Walk to Downtown. Press **N** to begin a profile; press **N** again to download the raw JSON. The page never sends simulated movement or teleports the goat. Press **M** after a rooftop idle and again after revisiting the market to timestamp reviewer observations; these markers are not automatic checks. Include an accepted bleat near residents and an actual crate disruption. Review the accepted-player-action events, resident reaction counts, market-spill event, position history, asset readiness and console errors in the JSON.
 2. Capture the independent 90–120 second human tour separately with a screen recorder that includes game audio and HUD. Check animation contact, camera clearance, reaction and recovery, weather readability and scene composition against the reference art. Retain the uncut footage and failed attempts. Do not use a recorded run to establish uninstrumented performance.
