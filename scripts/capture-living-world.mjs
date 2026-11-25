@@ -243,13 +243,14 @@ try {
     await send('Emulation.setDeviceMetricsOverride', {
       width:tourWidth,height:tourHeight,deviceScaleFactor:1,mobile:false });
     await evaluate(`(async()=>{const c=window.__livingCapture;
+      const {LivingWorldTour,DOWNTOWN_TOUR_START}=await import('/src/core/living-world-tour.ts');
       if(!c.audio.audioContext||c.audio.audioContext.state!=='running'||!c.audio.limiter)
         throw new Error('Audio graph is not running for the requested recording');
       if(typeof MediaRecorder==='undefined'||typeof c.renderer.domElement.captureStream!=='function')
         throw new Error('This browser cannot record the gameplay canvas');
       if(document.hidden)throw new Error('The recording page is hidden');
       c.view.applySettings({...c.view.currentSettings,graphics:${JSON.stringify(tourQuality)}});
-      const start=c.at(8,-42,0);c.game.teleport(start,Math.PI);
+      const start=c.at(DOWNTOWN_TOUR_START[0],DOWNTOWN_TOUR_START[1],0);c.game.teleport(start,Math.PI);
       for(const entry of c.hud)entry.node.style.display=entry.display;
       c.view.updateCamera=c.updateCamera;c.view.updateCameraFraming=c.updateCameraFraming;
       c.view.alignCameraForPlay();c.view.camera.fov=c.view.currentSettings.fov;c.view.camera.updateProjectionMatrix();
@@ -284,14 +285,20 @@ try {
         if(track&&typeof track.requestFrame!=='function')throw new Error('Explicit canvas frame requests are unavailable');
         if(probeStream)for(const audioTrack of destination.stream.getAudioTracks())probeStream.addTrack(audioTrack.clone());
         const probeRecorder=probeStream?new MediaRecorder(probeStream,{mimeType:mime,videoBitsPerSecond:1600000}):null;
-        let bytes=0,requested=0,nextCapture=0;
+        let bytes=0,requested=0,nextCapture=0,probeTicks=0;
+        const probeBudget=Math.round(2/c.game.physics.fixedDt);
         if(probeRecorder)probeRecorder.ondataavailable=e=>{bytes+=e.data.size;};
         const ended=probeRecorder?new Promise((done,fail)=>{probeRecorder.onstop=done;probeRecorder.onerror=e=>fail(e.error);}):null;
         probeRecorder?.start();
         const began=performance.now(),intervals=[],work=[];let last=began;
         await new Promise((done,fail)=>{const tick=()=>{try{const now=performance.now(),millis=now-last;last=now;
           intervals.push(millis);const start=performance.now();
-          if(mode!=='timer-only'){c.game.advance(millis/1000,{});c.render(Math.max(1,millis),false);}
+          if(mode!=='timer-only'){
+            const due=Math.min(probeBudget,Math.floor((now-began)/1000/c.game.physics.fixedDt+1e-9));
+            const ticks=Math.min(c.game.physics.maxSubsteps,Math.max(0,due-probeTicks));
+            for(let i=0;i<ticks;i++){c.game.step();probeTicks++;}
+            c.render(Math.max(1,millis),false);
+          }
           let copyMs=0;
           if(mode.endsWith('manual')&&now>=nextCapture){const copyStart=performance.now();if(copy)copyFrame();
             copyMs=performance.now()-copyStart;track.requestFrame();requested++;nextCapture=now+1000/15;}
@@ -300,7 +307,12 @@ try {
         }catch(error){fail(error);}};tick();});
         const seconds=(performance.now()-began)/1000;
         if(probeRecorder){probeRecorder.stop();await ended;probeStream.getTracks().forEach(track=>track.stop());}
-        probes.push({mode,seconds,intervals,work,requested,bytes,visibility:document.visibilityState});
+        // The probes measure wall-clock work but must not leave a different
+        // weather/rigid-body state or fractional tick remainder on each runner.
+        const measuredTicks=probeTicks;
+        if(mode!=='timer-only')while(probeTicks<probeBudget){c.game.step();probeTicks++;}
+        probes.push({mode,seconds,intervals,work,requested,bytes,measuredTicks,
+          paddingTicks:probeTicks-measuredTicks,simulationTicks:probeTicks,visibility:document.visibilityState});
       }
       c.game.teleport(start,Math.PI);c.view.alignCameraForPlay();
       for(let i=0;i<30;i++)c.game.advance(1/60,{});c.render(16,false);copyFrame();
@@ -310,14 +322,9 @@ try {
       const recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:1600000});
       const chunks=[],frames=[],frameWork=[],began=performance.now(),simulationBegan=c.game.physics.time,
         initialPosition={...c.game.goat.torso.translation()},reactionsBefore=c.game.life?.stats?.reactions||0;
-      let last=began,index=0,bleated=false,bleatAt=null,bleatSimulationAt=null,droppedPhysicsSeconds=0,timer,cleaned=false,
-        nextCapture=began,requestedFrames=0;
-      const reached=[];
-      // Validated with actual Rapier controls and critical visible furniture:
-      // pass left of the gig board, then north of the market planters.
-      const route=[[8,-16],[6.2,-5],[6.2,8],[8,22],[8,44],[8,55.6],
-        [14,55.6],[20,55.6],[14,55.6],[8,55.6],[8,40]];
-      const cleanup=()=>{if(cleaned)return;cleaned=true;cancelAnimationFrame(timer);stream.getTracks().forEach(t=>t.stop());
+      let last=began,droppedPhysicsSeconds=0,timer,cleaned=false,nextCapture=began,requestedFrames=0;
+      const driver=new LivingWorldTour(c.game,${tourSeconds});
+      const cleanup=()=>{if(cleaned)return;cleaned=true;cancelAnimationFrame(timer);driver.dispose();stream.getTracks().forEach(t=>t.stop());
         for(const reset of restore)reset();
         try{c.audio.limiter.disconnect(destination);}catch{/* Engine disposal may already have disconnected it. */}};
       const fail=error=>{c.tourError=String(error?.message||error);cleanup();c.tourDone=true;};
@@ -334,14 +341,15 @@ try {
           simulatedSeconds:c.game.physics.time-simulationBegan,droppedPhysicsSeconds,frames,frameWork,
           quality:c.view.currentSettings.graphics,cssWidth:${tourWidth},cssHeight:${tourHeight},
           width:c.renderer.domElement.width,height:c.renderer.domElement.height,pixelRatio:c.renderer.getPixelRatio(),mime,
-          captureSurface:'CPU-backed 2D copy of the completed production canvas',scheduler:'requestAnimationFrame',
+          captureSurface:'CPU-backed 2D copy of the completed production canvas',scheduler:'requestAnimationFrame render; fixed-tick input',
           softwareFrameLimit:c.renderer.isSoftwareRenderer?30:null,
           renderer:c.renderer.isSoftwareRenderer?'production software fallback':'WebGL',
           requestedFrames,probes,visibility:document.visibilityState,
           requestedCanvasFps:15,audio:destination.stream.getAudioTracks().length>0&&c.audio.status.unlocked,
-          route,reachedWaypoints:reached,completedRoute:index>=route.length,
-          initialPosition,finalPosition:{...c.game.goat.torso.translation()},bleatRequestedAt:bleatAt,
-          bleatSimulationAt,
+          route:driver.steering.route,reachedWaypoints:driver.steering.reachedWaypoints,completedRoute:driver.completedRoute,
+          routeTrace:driver.trace,recoveryAttempts:driver.steering.recoveries,routeFailure:driver.steering.failure,
+          initialPosition,finalPosition:{...c.game.goat.torso.translation()},bleatRequestedAt:driver.steering.bleatWallAt,
+          bleatSimulationAt:driver.steering.bleatSimulationAt,
           residentReactions:(c.game.life?.stats?.reactions||0)-reactionsBefore,marketDisruptionRequested:false,
           kind:'Uncut scripted controller walk through the production Game/GameView; camera follows the real goat. Wall-clock loop intervals are not GPU or delivered-FPS measurements.'};
         cleanup();c.tourDone=true;
@@ -350,19 +358,11 @@ try {
       const tick=()=>{try{const now=performance.now(),millis=now-last;
         if(c.renderer.isSoftwareRenderer&&millis<1000/30-1){timer=requestAnimationFrame(tick);return;}
         const dt=Math.max(0,millis/1000);frames.push(millis);last=now;
-        const p=c.game.goat.torso.translation(),target=route[Math.min(index,route.length-1)],
-          dx=c.city.x+target[0]-p.x,dz=c.city.z+target[1]-p.z,d=Math.hypot(dx,dz);
         const elapsed=(now-began)/1000;
-        if(d<1.2&&index<route.length){reached.push({index,wallSeconds:elapsed,simulationSeconds:c.game.physics.time-simulationBegan});index++;}
-        const nearbyResident=c.game.life?.residents.some(r=>Math.hypot(r.position.x-p.x,r.position.z-p.z)<8&&
-          Math.abs(r.position.y-p.y)<3);
-        const bleat=!bleated&&elapsed>10&&(nearbyResident||elapsed>${Math.max(10,tourSeconds*.7)});
-        if(bleat){bleated=true;bleatAt=elapsed;bleatSimulationAt=c.game.physics.time-simulationBegan;}
-        const observingReaction=bleatSimulationAt!==null&&c.game.physics.time-simulationBegan-bleatSimulationAt<3;
-        const idle=elapsed<8||elapsed>${Math.max(9,tourSeconds-12)}||index>=route.length||observingReaction;
-        const yaw=Math.atan2(dx,-dz);c.view.input.yaw=yaw;c.view.input.pitch=.12;
-        const intent={moveX:0,moveZ:idle?0:.65,cameraYaw:yaw,climb:false,bleat};c.bridge.onInput(intent);
-        const simulationStart=performance.now(),advance=c.game.advance(dt,intent),renderStart=performance.now();
+        const simulationStart=performance.now();
+        const advance=driver.advanceFrame(dt,elapsed,intent=>{
+          c.view.input.yaw=intent.cameraYaw;c.view.input.pitch=.12;c.bridge.onInput(intent);
+        }),renderStart=performance.now();
         for(const name of Object.keys(phaseWork))phaseWork[name]=0;
         droppedPhysicsSeconds+=advance.droppedSeconds;c.render(Math.max(1,millis),false);
         const rendered=performance.now();let captureCopyMs=0;
@@ -397,6 +397,8 @@ try {
   if(requireTourRoute&&!tour?.completedRoute) {
     console.error('The recorded tour reached '+(tour?.reachedWaypoints.length||0)+'/'+(tour?.route.length||0)+
       ' waypoints; inspect gameplay.webm and profile.json. An incomplete route is not accepted as a walkthrough.');
+    console.error('Route diagnostic: '+JSON.stringify({failure:tour?.routeFailure,recoveries:tour?.recoveryAttempts,
+      recentTrace:tour?.routeTrace?.slice(-5)}));
     process.exitCode=1;
   }
 } catch (error) {
