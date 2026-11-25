@@ -34,6 +34,10 @@ const profile = mkdtempSync(join(tmpdir(), 'gigga-living-world-'));
 let browser, server, socket, fixtureDisposed = false, assetReadiness;
 const errors = [], warnings = [], network = new Map();
 const pending = new Map();
+// Keep CPU-only WebGL separate from Chromium's compositor. Using SwiftShader
+// as the whole GL driver also exercises GPU-only compositor/readback paths on
+// the CPU. Record this distinct configuration explicitly with the evidence.
+const angleBackend = 'swiftshader-webgl';
 let sequence = 0;
 async function until(read, seconds = 45, description = 'Capture') {
   const stop = Date.now() + seconds * 1000;
@@ -81,7 +85,7 @@ try {
   });
   if (!binary) throw new Error('A working Chrome binary is required; set CHROME_PATH. No capture was produced.');
   browser = spawn(binary, ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
-    '--enable-webgl', '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader',
+    '--enable-webgl', '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=' + angleBackend,
     '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
     '--autoplay-policy=no-user-gesture-required',
     '--remote-debugging-port=0', '--window-size=1280,720', '--user-data-dir=' + profile,
@@ -243,6 +247,16 @@ try {
       c.view.alignCameraForPlay();c.view.camera.fov=c.view.currentSettings.fov;c.view.camera.updateProjectionMatrix();
       c.view.input.yaw=Math.PI;c.view.input.pitch=.12;
       for(let i=0;i<30;i++)c.game.advance(1/60,{});c.render(16,false);
+      const phaseWork={},restore=[];
+      const track=(owner,key,label)=>{if(!owner||typeof owner[key]!=='function')return;
+        const original=owner[key];owner[key]=function(...args){
+        const start=performance.now();try{return original.apply(this,args);}
+        finally{phaseWork[label]=(phaseWork[label]||0)+performance.now()-start;}};
+        restore.push(()=>{owner[key]=original;});};
+      track(c.renderer,'render','rendererMs');track(c.view,'updateCamera','cameraMs');
+      track(c.view,'updateHud','hudMs');track(c.bridge,'frame','audioMs');
+      track(c.view.world,'update','worldMs');track(c.view.world,'updateCulling','cullingMs');
+      track(c.view.residents,'update','residentsMs');track(c.view.characters,'update','charactersMs');
       const stream=c.renderer.domElement.captureStream(15);
       const destination=c.audio.audioContext.createMediaStreamDestination();c.audio.limiter.connect(destination);
       for(const track of destination.stream.getAudioTracks())stream.addTrack(track);
@@ -257,6 +271,7 @@ try {
       const route=[[8,-16],[6.2,-5],[6.2,8],[8,22],[8,44],[8,55.6],
         [14,55.6],[20,55.6],[14,55.6],[8,55.6],[8,40]];
       const cleanup=()=>{if(cleaned)return;cleaned=true;clearTimeout(timer);stream.getTracks().forEach(t=>t.stop());
+        for(const reset of restore)reset();
         try{c.audio.limiter.disconnect(destination);}catch{/* Engine disposal may already have disconnected it. */}};
       const fail=error=>{c.tourError=String(error?.message||error);cleanup();c.tourDone=true;};
       c.stopTour=()=>{c.tourError??='Recording cancelled during fixture teardown';clearTimeout(timer);
@@ -295,9 +310,10 @@ try {
         const yaw=Math.atan2(dx,-dz);c.view.input.yaw=yaw;c.view.input.pitch=.12;
         const intent={moveX:0,moveZ:idle?0:.65,cameraYaw:yaw,climb:false,bleat};c.bridge.onInput(intent);
         const simulationStart=performance.now(),advance=c.game.advance(dt,intent),renderStart=performance.now();
+        for(const name of Object.keys(phaseWork))phaseWork[name]=0;
         droppedPhysicsSeconds+=advance.droppedSeconds;c.render(Math.max(1,millis),false);
         frameWork.push({simulationMs:renderStart-simulationStart,renderSubmitMs:performance.now()-renderStart,
-          steps:advance.steps,droppedSeconds:advance.droppedSeconds});
+          ...phaseWork,steps:advance.steps,droppedSeconds:advance.droppedSeconds});
         if(elapsed>=${tourSeconds})recorder.stop();else timer=setTimeout(tick,16);
       }catch(error){fail(error);}};tick();return true;})()`);
     await until(async () => {const status=await evaluate('({done:window.__livingCapture.tourDone,error:window.__livingCapture.tourError})');
@@ -313,7 +329,7 @@ try {
     allowLegacyGoat:${allowLegacyGoat}})`);
   const sha = execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
   const dirty = execFileSync('git',['status','--porcelain'],{cwd:root,encoding:'utf8'}).trim();
-  writeFileSync(join(out,'profile.json'),JSON.stringify({label,sha,dirty,seed,quality,date:new Date().toISOString(),
+  writeFileSync(join(out,'profile.json'),JSON.stringify({label,sha,dirty,seed,quality,angleBackend,date:new Date().toISOString(),
     measurement:'Synchronous production GameView frames with gl.finish; not delivered FPS or reference hardware acceptance.',
     hudPolicy:{fixedSceneScreenshots:'hidden',tourPage:tourSeconds>0?'production HUD restored':'not recorded',
       recordedVideo:'canvas stream only; DOM HUD is not composited'},
@@ -336,7 +352,7 @@ try {
     } catch { /* A crashed context may not expose a final frame. */ }
   }
   writeFileSync(join(out,'failure.json'),JSON.stringify({label,date:new Date().toISOString(),
-    error:error instanceof Error?error.stack:String(error),errors,warnings,assetReadiness,allowLegacyGoat,
+    error:error instanceof Error?error.stack:String(error),errors,warnings,assetReadiness,allowLegacyGoat,angleBackend,
     pendingRequests:[...network.values()]},null,2)+'\n');
   throw error;
 } finally {
