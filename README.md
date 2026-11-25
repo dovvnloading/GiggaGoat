@@ -7,6 +7,11 @@ Billy Isle, and grow GIGGA by causing stylish chaos. See [docs/DESIGN.md](docs/D
 
 Look for animated roadside vignettes around Billy Isle, from the Hoofington breakfast bell to the keeper's signal lantern. Get close and bleat (E / gamepad X) to trigger a little scene and earn Cud Coins on your first discovery. You can revisit for another reaction after a short cooldown; discoveries persist with your normal save. They are optional and stay out of active gigs and party modes.
 
+## Living Billy Isle roadmap
+
+Track the living-world work, district backlog, milestone acceptance criteria and adversarial quality gates in
+[docs/art/LIVING_WORLD_ROADMAP.md](docs/art/LIVING_WORLD_ROADMAP.md). Follow-up implementation PRs should reference its task IDs and link actual gameplay and profiling evidence.
+
 ## Develop
 
 ```bash
