@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { BreakableRegistry, DynamicBodyBudget } from '../chaos';
-import { PhysicsWorld, V } from '../physics';
+import { applyExplosion, PhysicsWorld, sub, V } from '../physics';
 import { generateIsland, type ColliderBuild, type IslandData, type PropDescriptor } from '../world';
 import { Game } from './Game';
 import { MARKET_CRATE_ID, MARKET_FRUIT_LIMIT, MarketScene } from './MarketScene';
@@ -171,6 +171,21 @@ describe('finite reactive market scene (LW-106)', () => {
     expect(scene.items.map(item => ({ ...item.body!.translation() }))).toEqual(positions);
   });
 
+  it('does not impart latent explosion impulses to disabled fruit', async () => {
+    const { scene, physics } = await market();
+    expect(scene.disrupt(MARKET_CRATE_ID, V(1, 0, 0), 1, 0)).toBe(true);
+    const fruit = scene.items[0]!.body!;
+    scene.setEnabled(false);
+    const before = { ...fruit.linvel() };
+    const center = { ...fruit.translation() };
+    const onlyFruit = (body: typeof fruit) => body.handle !== fruit.handle;
+    expect(applyExplosion(physics, center, 2, 15, onlyFruit)).toEqual([]);
+    expect(fruit.linvel()).toEqual(before);
+    scene.setEnabled(true);
+    expect(applyExplosion(physics, center, 2, 15, onlyFruit)).toHaveLength(1);
+    expect(fruit.linvel().y).toBeGreaterThan(before.y);
+  });
+
   it('omits a missing crate and tears down bodies, budget entries and listeners idempotently', async () => {
     const empty = await market(12, false);
     expect(empty.scene.items).toHaveLength(0);
@@ -185,6 +200,94 @@ describe('finite reactive market scene (LW-106)', () => {
     expect(scene.listeners.size).toBe(0);
     expect(crate.isValid()).toBe(true);
     expect(scene.disrupt(MARKET_CRATE_ID, V(1, 0, 0), 1, 1)).toBe(false);
+  });
+
+  it('moves spilled fruit through real bleat input without scoring, while ordinary prop knocks still score', async () => {
+    const game = await Game.create({ seed: 'billy-isle', resolution: 65 });
+    try {
+      // Isolate the physical target high above scenery so unrelated crate hits
+      // and discovery rewards cannot hide a fruit-specific scoring regression.
+      game.teleport(V(0, 200, 0), 0);
+      expect(game.market.disrupt(MARKET_CRATE_ID, V(1, 0, 0), 1, game.physics.time)).toBe(true);
+      const fruit = game.market.items[0]!.body!;
+      const placeNearGoat = (body: typeof fruit): void => {
+        const p = game.goat.torso.translation();
+        body.setTranslation(V(p.x + .65 * game.goat.size, p.y, p.z), true);
+        body.setLinvel(V(), true);
+      };
+      placeNearGoat(fruit);
+      // Two existing trick types make a third (knockback) capable of advancing
+      // both the growth meter and combo challenge, not just raw style score.
+      game.rules.awardStyle({ type: 'flip' });
+      game.rules.awardStyle({ type: 'airtime' });
+      const before = game.exportProgress();
+      const knocked: number[] = [];
+      const scored: string[] = [];
+      game.goat.events.on(event => {
+        if (event.type === 'knockedBody' && event.impulse > 2.5) knocked.push(event.bodyHandle);
+      });
+      game.rules.events.on('style:scored', event => scored.push(event.trick));
+      game.step({ bleat: true });
+      expect(knocked).toContain(fruit.handle);
+      expect(scored).not.toContain('knockback');
+      const after = game.exportProgress();
+      expect(after.gameplay.style.score).toBe(before.gameplay.style.score);
+      expect(after.gameplay.style.meter).toBe(before.gameplay.style.meter);
+      expect(after.gameplay.style.combo).toEqual(before.gameplay.style.combo);
+      expect(after.gameplay.challenges).toEqual(before.gameplay.challenges);
+      expect(after.gameplay.wallet).toEqual(before.gameplay.wallet);
+      expect(after.happenings).toEqual(before.happenings);
+
+      // Positive control: after the cooldown, an ordinary dynamic prop in
+      // exactly the same range still receives the normal progression event.
+      for (let tick = 0; tick < 65; tick++) game.step();
+      const box = game.physics.createBox(V(0, 200, 0), V(.1, .1, .1));
+      placeNearGoat(box);
+      game.step({ bleat: true });
+      expect(knocked).toContain(box.handle);
+      expect(scored).toContain('knockback');
+      expect(game.rules.style.score).toBeGreaterThan(after.gameplay.style.score);
+    } finally { game.dispose(); }
+  });
+
+  it('does not reward fruit tethers and releases them before an excluded-mode solve', async () => {
+    const game = await Game.create({ seed: 'billy-isle', resolution: 65 });
+    try {
+      game.teleport(V(0, 200, 0), 0);
+      for (let tick = 0; tick < 35; tick++) game.step();
+      expect(game.market.disrupt(MARKET_CRATE_ID, V(1, 0, 0), 1, game.physics.time)).toBe(true);
+      const fruit = game.market.items[0]!.body!;
+      const origin = game.goat.interactions.tongueOrigin;
+      fruit.setTranslation(V(origin.x + 2, origin.y, origin.z), true);
+      fruit.setLinvel(game.goat.head.linvel(), true);
+      game.step(); // Update the real Rapier query broadphase before attaching.
+      const attach = (): void => {
+        expect(game.goat.interactions.attachTongue(
+          sub(fruit.translation(), game.goat.interactions.tongueOrigin))).toBe(true);
+        expect(game.goat.interactions.tongueBody?.handle).toBe(fruit.handle);
+      };
+      const scored: string[] = [];
+      game.rules.events.on('style:scored', event => scored.push(event.trick));
+      const progress = game.exportProgress();
+      attach();
+      game.goat.torso.setLinvel(V(5, 0, 0), true);
+      game.goat.interactions.detachTongue('released', false);
+      expect(scored).not.toContain('tongue-swing');
+
+      attach();
+      let safeBeforeSolve = false;
+      game.physics.onBeforeStep(() => {
+        safeBeforeSolve = !game.goat.interactions.isTongueAttached &&
+          game.market.items.every(item => !item.body!.isEnabled());
+      });
+      game.step({ toggleBuild: true });
+      expect(game.buildMode).toBe(true);
+      expect(safeBeforeSolve).toBe(true);
+      expect(scored).not.toContain('tongue-swing');
+      expect(scored).not.toContain('knockback');
+      expect(game.exportProgress().gameplay.challenges).toEqual(progress.gameplay.challenges);
+      expect(game.exportProgress().gameplay.wallet).toEqual(progress.gameplay.wallet);
+    } finally { game.dispose(); }
   });
 
   it('does not pay or alter saved progression through repeated accepted scene disruptions', async () => {

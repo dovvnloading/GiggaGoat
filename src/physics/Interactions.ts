@@ -20,7 +20,7 @@ export function applyExplosion(world: PhysicsWorld, center: Vec3, radius: number
   if (!(radius > 0) || !(impulse > 0)) return [];
   const affected: KnockedBody[] = [];
   world.raw.forEachRigidBody(body => {
-    if (!body.isDynamic() || ignore?.(body)) return;
+    if (!body.isEnabled() || !body.isDynamic() || ignore?.(body)) return;
     const delta = sub(body.translation(),center);
     const d = length(delta);
     if (d >= radius) return;

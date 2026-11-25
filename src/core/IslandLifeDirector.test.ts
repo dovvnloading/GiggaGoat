@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { generateIsland, isAmbientSegmentSafe, type IslandData } from '../world';
 import { IslandLifeDirector, type IslandLifeContext } from './IslandLifeDirector';
 
@@ -54,6 +54,34 @@ describe('IslandLifeDirector', () => {
     expect(life.stats.acceptedEvents).toBe(2);
     expect(life.react('bleat', { ...p, y: p.y + 20 }, 9)).toBe(0);
     life.dispose();
+  });
+
+  it('waits instead of following its old itinerary when no safe retreat exists, then recovers', () => {
+    const life = new IslandLifeDirector(island);
+    try {
+      advance(life, 0, 12);
+      const actor = life.residents.find(state => state.activity === 'walk' && state.speed > .1);
+      expect(actor).toBeDefined();
+      const resident = actor!, at = { ...resident.position }, distance = resident.distanceTravelled;
+      const nav = life.plan.navigation, walkable = nav.walkableAt;
+      // A local pocket preserves planted support and small movement steps but
+      // excludes every candidate in the 2–6 metre retreat search.
+      const pocket = vi.spyOn(nav, 'walkableAt').mockImplementation((x, z, margin) =>
+        Math.hypot(x - at.x, z - at.z) < 1.8 * nav.scale && walkable(x, z, margin));
+      try {
+        expect(life.react('headbutt', at, 12)).toBeGreaterThan(0);
+        expect(resident.activity).toBe('startle');
+        advance(life, 12, 16);
+        expect(resident.position).toEqual(at);
+        expect(resident.distanceTravelled).toBe(distance);
+        expect(resident.speed).toBe(0);
+        expect(resident.activity).toBe('startle');
+      } finally { pocket.mockRestore(); }
+      advance(life, 16, 36);
+      expect(resident.reactionUntil).toBeLessThan(36);
+      expect(resident.distanceTravelled).toBeGreaterThan(distance);
+      expect(isAmbientSegmentSafe(nav, resident.position, resident.position)).toBe(true);
+    } finally { life.dispose(); }
   });
 
   it('walks to shelter through rain and night transitions, with no position jumps or clock rewinds', () => {

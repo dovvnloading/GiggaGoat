@@ -34,7 +34,7 @@ import { HAY_HAUL_TAG_RADIUS } from '../gigs';
 import { GigSession } from './GigSession';
 import { IslandHappenings, placeIslandHappenings } from './IslandHappenings';
 import { IslandLifeDirector } from './IslandLifeDirector';
-import { MarketScene, MARKET_CRATE_ID } from './MarketScene';
+import { MarketScene, MARKET_CRATE_ID, MARKET_FRUIT_BODY_TAG } from './MarketScene';
 import { PartySession } from './PartySession';
 import type { GameProgress } from './Persistence';
 import { findStockBaleSeat, isLegacyStockBale } from './HoofingtonStock';
@@ -173,6 +173,7 @@ export class Game {
   private climbMetres = 0;
   private climbRunMetres = 0;
   private lastTongueTime = 0;
+  private marketFruitTether = false;
   private lastActionTime = -Infinity;
   private lastStyle = new Map<string, number>();
   private readonly buildOrigin: Vec3;
@@ -829,7 +830,10 @@ export class Game {
   step(intent: PlayerIntent = {}): void { this.advance(FIXED_DT, intent); }
 
   private beforeTick(dt: number): void {
-    this.market.setEnabled(this.ambientLifeEnabled);
+    const ambientEnabled = this.ambientLifeEnabled;
+    // Do not carry a cosmetic tether into a mode that disables its target.
+    if (!ambientEnabled && this.marketFruitTether) this.goat.interactions.detachTongue('replaced', false);
+    this.market.setEnabled(ambientEnabled);
     const intent = { ...this.intent };
     for (const button of EDGE_BUTTONS) {
       const state = this.buttons[button];
@@ -1344,14 +1348,25 @@ export class Game {
         }
         this.climbRunMetres = 0;
         break;
-      case 'tongueDetach':
-        if (this.physics.time - this.lastTongueTime > .5 &&
+      case 'tongueAttach':
+        this.marketFruitTether = this.physics.bodyData(event.bodyHandle)?.data === MARKET_FRUIT_BODY_TAG;
+        break;
+      case 'tongueDetach': {
+        // Remember the attachment classification even if cleanup removed the body
+        // before the detach event. Fruit may move, but it is not a reward anchor.
+        const cosmetic = this.marketFruitTether;
+        this.marketFruitTether = false;
+        if (!cosmetic && this.physics.time - this.lastTongueTime > .5 &&
           Math.hypot(this.goat.torso.linvel().x, this.goat.torso.linvel().z) > 3) {
           this.award('tongue-swing', 1);
         }
         break;
+      }
       case 'knockedBody':
-        if (event.impulse > 2.5) this.award('knockback', Math.min(2, event.impulse / 20));
+        // Physical knock events still reach audio/VFX and retain their impulses.
+        // Only the player's progression side effect is excluded for fruit.
+        if (event.impulse > 2.5 && this.physics.bodyData(event.bodyHandle)?.data !== MARKET_FRUIT_BODY_TAG)
+          this.award('knockback', Math.min(2, event.impulse / 20));
         break;
       case 'impact': this.rules.abilities.applyImpact(Math.min(24, event.impulse / this.goat.mass * 2)); break;
       default: break;

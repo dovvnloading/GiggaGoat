@@ -44,6 +44,11 @@ function turn(state: AmbientResidentState, target: number, dt: number, rate = 2.
   state.yaw = Math.atan2(Math.sin(state.yaw), Math.cos(state.yaw));
   return Math.abs(turnDelta(state.yaw, target));
 }
+/** A straight retreat must not initially head toward the incident, even if its
+ * endpoint would eventually be farther away. This also constrains yield detours. */
+function movesTowardIncident(source: Vec2, from: Vec2, to: Vec2): boolean {
+  return (from.x - source.x) * (to.x - from.x) + (from.z - source.z) * (to.z - from.z) < 0;
+}
 function pointSegmentDistance(point: Vec2, a: Vec2, b: Vec2): number {
   const dx = b.x - a.x, dz = b.z - a.z, squared = dx * dx + dz * dz;
   const t = squared ? Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.z - a.z) * dz) / squared)) : 0;
@@ -185,22 +190,27 @@ export class IslandLifeDirector {
 
   private prepareFlee(actor: Resident): void {
     const nav = this.plan.navigation, at = actor.state.position, source = actor.lookAt;
+    // Discard the ordinary itinerary even if no valid escape exists. It may
+    // point directly toward the source of the alarm.
+    actor.route = []; actor.routeIndex = 0; actor.detour = undefined;
+    actor.yieldUntil = -Infinity;
     let target: number | undefined, best = -Infinity;
     const sourceDistance = Math.hypot(at.x - source.x, at.z - source.z);
     for (const node of nav.nodes) {
       const distance = Math.hypot(node.position.x - at.x, node.position.z - at.z);
       if (distance < 2 * nav.scale || distance > 6 * nav.scale) continue;
       const away = Math.hypot(node.position.x - source.x, node.position.z - source.z) - sourceDistance;
-      if (away < 1.5 * nav.scale) continue;
+      if (away < 1.5 * nav.scale || movesTowardIncident(source, at, node.position)) continue;
       const score = away - distance * .3;
       if (score > best && isAmbientSegmentSafe(nav, at, node.position)) { best = score; target = node.id; }
     }
-    if (target !== undefined) { actor.route = [target]; actor.routeIndex = 0; actor.detour = undefined; }
+    if (target !== undefined) actor.route = [target];
     actor.fleePrepared = true;
   }
 
   private yieldAway(actor: Resident, obstacle: Vec3, time: number): void {
-    if (time < actor.nextYield) return;
+    if (time < actor.nextYield || (actor.reactionKind &&
+      (actor.reactionKind === 'bleat' || actor.routeIndex >= actor.route.length))) return;
     actor.detour = undefined;
     const nav = this.plan.navigation, p = actor.state.position;
     const dx = p.x - obstacle.x, dz = p.z - obstacle.z, distance = Math.hypot(dx, dz) || 1;
@@ -213,7 +223,8 @@ export class IslandLifeDirector {
       const x = p.x + sx * 1.25 * nav.scale, z = p.z + sz * 1.25 * nav.scale;
       const target = { x, y: nav.surfaceAt(x, z), z };
       const nextId = actor.route[actor.routeIndex];
-      if (!isAmbientSegmentSafe(nav, p, target) ||
+      if ((actor.reactionKind && movesTowardIncident(actor.lookAt, p, target)) ||
+        !isAmbientSegmentSafe(nav, p, target) ||
         this.blockingResident(index, target) !== undefined ||
         (nextId !== undefined && !isAmbientSegmentSafe(nav, target, nav.nodes[nextId]!.position))) continue;
       if (nextId === undefined && actor.route.length) actor.routeIndex = actor.route.length - 1;
@@ -269,7 +280,14 @@ export class IslandLifeDirector {
     for (let index = 0; index < this.actors.length; index++) {
       const actor = this.actors[index]!, state = actor.state, def = actor.definition;
       if (!context.enabled) { state.speed = 0; state.activity = 'idle'; continue; }
-      if (justEnabled) { actor.reactionKind = undefined; state.reactionUntil = -Infinity; actor.dwellUntil = context.time + def.phase; }
+      if (justEnabled) {
+        if (actor.reactionKind) {
+          actor.route = []; actor.routeIndex = 0; actor.detour = undefined;
+          actor.reroute = true;
+        }
+        actor.reactionKind = undefined; state.reactionUntil = -Infinity;
+        actor.dwellUntil = context.time + def.phase;
+      }
       const phase = ((context.phase % 1) + 1) % 1;
       const routine: Routine = this.sheltered ? 'shelter' :
         phase < .27 + def.phase * .025 || phase > .73 + def.phase * .04 ? 'night' : 'day';
@@ -280,6 +298,7 @@ export class IslandLifeDirector {
       }
       if (actor.reactionKind && context.time >= state.reactionUntil) {
         actor.reactionKind = undefined; actor.detour = undefined;
+        actor.route = []; actor.routeIndex = 0;
         actor.reroute = true;
         actor.dwellUntil = context.time;
       }
@@ -292,6 +311,14 @@ export class IslandLifeDirector {
           continue;
         }
         if (!actor.fleePrepared) this.prepareFlee(actor);
+        // No retreat, an invalidated route, or arrival at the retreat waypoint:
+        // stay alert until recovery, never select a normal station mid-alarm.
+        if (actor.routeIndex >= actor.route.length) {
+          actor.detour = undefined;
+          state.speed = 0; state.activity = 'startle';
+          turn(state, Math.atan2(actor.lookAt.x - state.position.x, actor.lookAt.z - state.position.z), seconds);
+          continue;
+        }
       }
       const player = context.player;
       const nearPlayer = Math.abs(player.position.y - state.position.y) < state.height + scale &&
@@ -317,13 +344,19 @@ export class IslandLifeDirector {
       }
       const target = actor.detour ?? (nextId !== undefined ? nav.nodes[nextId]!.position : undefined);
       if (!target || context.time < actor.yieldUntil) { state.speed = 0; continue; }
+      // A dynamic detour can change the approach to an otherwise safe waypoint.
+      // If the next segment would close on the incident, wait until recovery.
+      if (actor.reactionKind && movesTowardIncident(actor.lookAt, state.position, target)) {
+        actor.route = []; actor.routeIndex = 0; actor.detour = undefined;
+        state.speed = 0; state.activity = 'startle'; continue;
+      }
       const dx = target.x - state.position.x, dz = target.z - state.position.z, distance = Math.hypot(dx, dz);
       if (distance <= .025 * scale) {
         if (actor.detour) { actor.detour = undefined; actor.yieldUntil = context.time + 1.2; }
         else actor.routeIndex++;
         if (actor.routeIndex >= actor.route.length) {
           state.speed = 0; actor.dwellUntil = context.time + def.dwell * (.8 + def.phase * .4);
-          state.activity = this.stationActivity(actor);
+          state.activity = actor.reactionKind ? 'startle' : this.stationActivity(actor);
         }
         continue;
       }

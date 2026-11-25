@@ -88,4 +88,8 @@ The supported GitHub Actions runner provides the browser checks and capture arti
 4. Exercise alternate seeds and all supported sizes, giant/kid goat proximity, rain/night/tide, pause/background/resume, reload, build mode, gigs and party matches in the browser.
 5. Complete seated café service and any approved art refinements before claiming all of LW-105. Continue landscape composition, traffic, expanded wildlife, moving solid landmarks and other district routines through their existing roadmap tasks.
 
+### Follow-up code review corrections
+
+The source review of [`f4abd8d`](https://github.com/dovvnloading/GiggaGoat/pull/330#pullrequestreview-6063507012) found direct fruit knockback scoring and fallback to ordinary destinations during a failed resident retreat. The corrective changes keep real fruit impulses and audio events but exclude fruit-specific knockback and tongue-swing rewards, release fruit tethers before suppressed-mode solves, and ignore disabled bodies in explosion impulses. Residents clear stale routes on alarm, wait if no safe away route exists, avoid retreat segments that approach the incident, and replan on recovery. Added regression coverage exercises real player bleat input, ordinary-prop scoring as a positive control, disabled-body explosions, real fruit tongue attachment/release, mode-entry tether removal and a blocked retreat. Results from the earlier revision above are historical, not verification of the corrective commit; the new revision must pass the full CI/evidence jobs independently.
+
 No task is marked accepted merely because its implementation appears in this PR. Q01/Q09 independent approval and Q07 reference-device performance remain open until their evidence is recorded.

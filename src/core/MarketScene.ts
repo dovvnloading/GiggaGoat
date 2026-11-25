@@ -5,6 +5,8 @@ import type { DynamicBodyBudget } from '../chaos';
 
 export const MARKET_CRATE_ID = 'downtown-market-produce-crate';
 export const MARKET_FRUIT_LIMIT = 6;
+/** Body metadata discriminator for direct cosmetic-only interaction rewards. */
+export const MARKET_FRUIT_BODY_TAG = 'fruit';
 export interface MarketFruit {
   id: string;
   model: 'apple' | 'orange';
@@ -83,7 +85,7 @@ export class MarketScene {
         .setMass(.22).setFriction(.7).setRestitution(.26)
         .setCollisionGroups(collisionGroups('prop'))
         .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS), body);
-      this.physics.registerBody(body, { kind:'prop', owner:item.id, data:'fruit' });
+      this.physics.registerBody(body, { kind:'prop', owner:item.id, data:MARKET_FRUIT_BODY_TAG });
       // This scene owns hidden cleanup; ordinary budget sleepers retain their old policy.
       if (!this.budget.admit(body, {cleanupWhenSleeping:false})) {
         this.physics.removeBody(body); continue;
