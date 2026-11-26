@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { BOARD_CYCLE_TICKS, GigCatalog, type GigConfig } from '../gigs';
 import { add, forward, mul, RAPIER, V } from '../physics';
-import { generateIsland, heightAt } from '../world';
+import { heightAt } from '../world';
 import { HOOFINGTON_HAUL_BALE_PREFIX } from '../world/hoofington-entrances';
 import { Game } from './Game';
 import { hayHaulGuidance } from './GigPresentation';
@@ -140,9 +140,15 @@ describe('Hay Haul assigned bales', () => {
       game.dispose();
     }
   });
+});
 
-  it('replaces an in-flight loss and retains legitimate deliveries and score when resuming new or old saves', async () => {
+describe('Hay Haul save resumption', () => {
+  const saveFormats = ['current', 'previous', 'legacy'] as const;
+  let saves: Record<typeof saveFormats[number], GameProgress>;
+
+  beforeAll(async () => {
     const game = await Game.create(options);
+    const island = game.island;
     let snapshot: GameProgress;
     try {
       const { offer, config } = mediumHayHaul(game);
@@ -182,7 +188,6 @@ describe('Hay Haul assigned bales', () => {
       game.dispose();
     }
 
-    const island = generateIsland({ ...options, seed: 'billy-isle' });
     const pastCatalog = new GigCatalog({ ...island, props: island.props.filter(prop =>
       !prop.id.startsWith(HOOFINGTON_HAUL_BALE_PREFIX)) }, island.seed);
     const previous: GameProgress = structuredClone(snapshot);
@@ -213,41 +218,44 @@ describe('Hay Haul assigned bales', () => {
     if (oldRun.objective.kind !== 'deliver') throw new Error('Expected delivery objective');
     oldRun.objective = { ...oldRun.objective, label: 'Bales inside the barn', destination: oldDrop };
     legacy.gigBodies = [];
+    saves = { current: snapshot, previous, legacy };
+  });
 
-    for (const [progress, expected] of [[snapshot, snapshot], [previous, previous], [legacy, previous]] as const) {
-      const resumed = await Game.create({ ...options, progress });
-      try {
-        const run = resumed.gigs.active!;
-        expect(run).toEqual(expected.gigs.run);
-        const config = hayHaulConfig(run.setup.config);
-        const [first, second, ...remaining] = config.bales;
-        const received = resumed.colliders.bodies.get(first!.id)!;
-        expect(received.isEnabled()).toBe(false);
-        expect(received.translation().z).toBeGreaterThan(config.barn.z + config.radius);
-        const savedBale = progress.gigBodies.find(body => body.id === second!.id);
-        const pending = resumed.colliders.bodies.get(second!.id)!;
-        expect(pending.translation().x).toBeCloseTo(savedBale?.position.x ?? second!.start.x);
-        if (savedBale) {
-          expect(pending.translation()).toEqual(savedBale.position);
-          expect(pending.rotation()).toEqual(savedBale.rotation);
-          expect(pending.linvel()).toEqual(savedBale.velocity);
-        }
-        expect(run.objective).toMatchObject({ kind: 'deliver', done: 1, required: 4 });
-        const wallet = resumed.rules.wallet.coins;
-        resumed.step();
-        expect(resumed.gigs.active?.objective).toMatchObject({ kind: 'deliver', done: 1 });
-        placeAtDrop(resumed, second!.id, 1);
-        expect(resumed.gigs.active?.objective).toMatchObject({ kind: 'deliver', done: 2 });
-        for (const [index, { id }] of remaining.entries()) {
-          tag(resumed, id);
-          placeAtDrop(resumed, id, index + 2);
-          expect(resumed.gigs.active?.objective).toMatchObject({ kind: 'deliver', done: index + 3 });
-        }
-        expect(resumed.gigs.active?.status).toBe('completed');
-        expect(resumed.rules.wallet.coins - wallet).toBe(resumed.gigs.active?.payout);
-      } finally {
-        resumed.dispose();
+  it.each(saveFormats)('retains deliveries and score when resuming a %s save', async format => {
+    const progress = saves[format];
+    const expected = format === 'legacy' ? saves.previous : progress;
+    const resumed = await Game.create({ ...options, progress });
+    try {
+      const run = resumed.gigs.active!;
+      expect(run).toEqual(expected.gigs.run);
+      const config = hayHaulConfig(run.setup.config);
+      const [first, second, ...remaining] = config.bales;
+      const received = resumed.colliders.bodies.get(first!.id)!;
+      expect(received.isEnabled()).toBe(false);
+      expect(received.translation().z).toBeGreaterThan(config.barn.z + config.radius);
+      const savedBale = progress.gigBodies.find(body => body.id === second!.id);
+      const pending = resumed.colliders.bodies.get(second!.id)!;
+      expect(pending.translation().x).toBeCloseTo(savedBale?.position.x ?? second!.start.x);
+      if (savedBale) {
+        expect(pending.translation()).toEqual(savedBale.position);
+        expect(pending.rotation()).toEqual(savedBale.rotation);
+        expect(pending.linvel()).toEqual(savedBale.velocity);
       }
+      expect(run.objective).toMatchObject({ kind: 'deliver', done: 1, required: 4 });
+      const wallet = resumed.rules.wallet.coins;
+      resumed.step();
+      expect(resumed.gigs.active?.objective).toMatchObject({ kind: 'deliver', done: 1 });
+      placeAtDrop(resumed, second!.id, 1);
+      expect(resumed.gigs.active?.objective).toMatchObject({ kind: 'deliver', done: 2 });
+      for (const [index, { id }] of remaining.entries()) {
+        tag(resumed, id);
+        placeAtDrop(resumed, id, index + 2);
+        expect(resumed.gigs.active?.objective).toMatchObject({ kind: 'deliver', done: index + 3 });
+      }
+      expect(resumed.gigs.active?.status).toBe('completed');
+      expect(resumed.rules.wallet.coins - wallet).toBe(resumed.gigs.active?.payout);
+    } finally {
+      resumed.dispose();
     }
   });
 });
