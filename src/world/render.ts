@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { buildDowntownLifeVisuals } from './visual-downtown-life';
 import type { Biome, IslandData, PropKind, Vec2, Vec3 } from './types';
 import { BIOMES } from './types';
 import { clamp, smoothstep } from './random';
@@ -37,6 +38,7 @@ import { pinesFireflies } from './pines-fireflies';
 import { weatherSurface } from './weather-surfaces';
 import { districtSetVisuals } from './visual-district-sets';
 import { buildSkyVisuals, skyUniforms, type LightingPreset } from './visual-sky';
+import { createWindUniforms } from './visual-wind';
 
 export { isDowntownRoadOverlay, isHoofingtonTrailOverlay } from './road-ribbons';
 
@@ -508,6 +510,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const segments = Math.max(4, Math.floor(options.chunkSegments ?? 32));
   const capeLighting = makeCapeLighting(island);
   const sky = buildSkyVisuals();
+  const wind = createWindUniforms(island.seed);
   const chunks = buildTerrain(island, segments, capeLighting, sky.atmosphere);
   for (const chunk of chunks) group.add(chunk.mesh);
   const finish = buildDistrictGround(island);
@@ -527,7 +530,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   // Coalesce unchanged ground decals to keep the extra zebra mesh within the draw budget.
   const ground = buildGroundDetails(island, 192, finish.applyMap);
   group.add(ground, buildPavementDetails(island, ground, streets, roads));
-  group.add(buildMeadowScatter(island, sky.atmosphere, finish.pavedAt));
+  group.add(buildMeadowScatter(island, sky.atmosphere, finish.pavedAt, wind));
   const verges = buildVergeVisuals(island, finish.pavedAt);
   group.add(verges.group);
   const groundStory = buildGroundStory(island, finish.pavedAt);
@@ -573,12 +576,14 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     return Math.hypot(at.x - chunk.mesh.position.x, at.z - chunk.mesh.position.z) <= chunk.sphere.radius + radius;
   })).map(chunk => ({ geometry: chunk.low, x: chunk.mesh.position.x, z: chunk.mesh.position.z }));
   const distantPinesGround = pinesGround.length ? meshSurfaceHeight(pinesGround, island.size / 600) : undefined;
-  const props = buildPropVisuals(instancedProps, options.propChunkSize ?? 96, scenery, replacedProps, distantPinesGround);
+  const props = buildPropVisuals(instancedProps, options.propChunkSize ?? 96, scenery, replacedProps, distantPinesGround, wind);
   group.add(props.group);
   const hoofington = buildHoofingtonVisuals(scenery, props.group);
   group.add(hoofington.group);
   const downtown = buildDowntownVisuals(scenery, props.group);
   group.add(downtown.group);
+  const downtownLife = buildDowntownLifeVisuals(island);
+  group.add(downtownLife.group);
   group.add(waterVisuals.inland, waterVisuals.sea, waterVisuals.mountain);
   const harborLife = buildHarborLife(island);
   group.add(harborLife.group);
@@ -664,7 +669,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   function update(time: number): void {
     elapsed = Number.isFinite(time) ? Math.max(0, time) : elapsed;
     waterVisuals.update(elapsed, tide);
-    props.update(elapsed);
+    props.update(elapsed, rain);
     hoofington.updateAnimals(elapsed);
     dam.update(elapsed);
   }
@@ -691,6 +696,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     groundStory.update(pos, frustum);
     pollinators.update(elapsed, tide, daylight, rain, pos, frustum);
     harborLife.update(elapsed, tide, daylight, rain, pos, frustum);
+    downtownLife.update(elapsed, daylight, rain, pos);
     dam.updateCulling(pos);
     lighthouse.updateCulling(pos);
     if (kitSets.update(pos)) shadowCastersChanged = true;
@@ -699,7 +705,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
         lighthouse.isFallbackHidden(mesh)))
       shadowCastersChanged = true;
     if (hoofington.updateCulling(pos, frustum)) shadowCastersChanged = true;
-    if (downtown.updateCulling(pos, frustum)) shadowCastersChanged = true;
+    if (downtown.updateCulling(pos, frustum, daylight)) shadowCastersChanged = true;
     if (environmentLod.updateCulling(camera, pos, frustum)) shadowCastersChanged = true;
     if (props.consumeShadowChange()) shadowCastersChanged = true;
     if (hoofington.consumeShadowChange()) shadowCastersChanged = true;
@@ -712,11 +718,13 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     kitSets.dispose();
     beds.dispose();
     harborLife.dispose();
+    pollinators.dispose();
     environmentLod.dispose();
     props.dispose();
     boardwalkRails?.mesh.dispose();
     hoofington.dispose();
     downtown.dispose();
+    downtownLife.dispose();
     dam.dispose();
     lighthouse.dispose();
     const geometries = new Set<THREE.BufferGeometry>();

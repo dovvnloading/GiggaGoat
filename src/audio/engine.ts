@@ -99,7 +99,8 @@ interface Voice {
 }
 function audibleDistance(sound: SoundId, metres: number): number {
   // Close Foley falls away rapidly after the third-person camera's normal follow distance.
-  const scale = sound.startsWith('footstep-') || sound === 'climb' || sound === 'domino' ? 7 :
+  const scale = sound.startsWith('footstep-') || sound === 'climb' || sound === 'domino' ||
+    sound === 'ambient-resident' || sound === 'ambient-fountain' || sound === 'market-rustle' ? 7 :
     sound === 'splash' || sound === 'landing' || sound.startsWith('tongue-') ? 4 : 1;
   return metres + Math.max(0, metres - 8) * (scale - 1);
 }

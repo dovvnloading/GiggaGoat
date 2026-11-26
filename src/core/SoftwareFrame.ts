@@ -14,6 +14,10 @@ export interface SoftwareTexture {
 
 interface ScreenVertex { x: number; y: number; iz: number; uz: number; vz: number; opacity: number; r: number; g: number; b: number }
 
+// Identical coverage for overlapping triangles at a pixel keeps a dithered
+// surface in the opaque depth pass, including when only one skin mesh fades.
+const DITHER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+
 export function pixel(r: number, g: number, b: number): number {
   return (255 << 24) | (b << 16) | (g << 8) | r;
 }
@@ -45,14 +49,14 @@ export class SoftwareFrame {
   }
 
   triangle(a: ClipVertex, b: ClipVertex, c: ClipVertex, near: number, colour: number,
-    texture: SoftwareTexture | undefined, side: number, bias: number): void {
+    texture: SoftwareTexture | undefined, side: number, bias: number, hashOpacity = 1): void {
     if ((a.w < near && b.w < near && c.w < near) ||
         (a.x < -a.w && b.x < -b.w && c.x < -c.w) ||
         (a.x > a.w && b.x > b.w && c.x > c.w) ||
         (a.y < -a.w && b.y < -b.w && c.y < -c.w) ||
         (a.y > a.w && b.y > b.w && c.y > c.w)) return;
     if (a.w >= near && b.w >= near && c.w >= near) {
-      this.draw(a, b, c, colour, texture, side, bias);
+      this.draw(a, b, c, colour, texture, side, bias, hashOpacity);
       return;
     }
     let count = 0, previous = c;
@@ -85,7 +89,7 @@ export class SoftwareFrame {
       previous = current;
     }
     for (let i = 1; i < count - 1; i++) {
-      this.draw(this.clipped[0]!, this.clipped[i]!, this.clipped[i + 1]!, colour, texture, side, bias);
+      this.draw(this.clipped[0]!, this.clipped[i]!, this.clipped[i + 1]!, colour, texture, side, bias, hashOpacity);
     }
   }
 
@@ -109,7 +113,7 @@ export class SoftwareFrame {
   }
 
   private draw(a: ClipVertex, b: ClipVertex, c: ClipVertex, colour: number,
-    texture: SoftwareTexture | undefined, side: number, bias: number): void {
+    texture: SoftwareTexture | undefined, side: number, bias: number, hashOpacity: number): void {
     let top = a.screen ?? this.project(a, this.screen[0]!);
     let middle = b.screen ?? this.project(b, this.screen[1]!);
     let bottom = c.screen ?? this.project(c, this.screen[2]!);
@@ -152,6 +156,7 @@ export class SoftwareFrame {
     const { width, height } = this.image;
     const endY = Math.min(height, Math.ceil(bottom.y - .5));
     const red = colour & 255, green = colour >>> 8 & 255, blue = colour >>> 16 & 255;
+    const ditherLimit = hashOpacity * 16 - .5;
     for (let y = Math.max(0, Math.ceil(top.y - .5)); y < endY; y++) {
       const sy = y + .5;
       const t = (sy - top.y) / fullHeight;
@@ -164,8 +169,17 @@ export class SoftwareFrame {
       let iz = top.iz + (bottom.iz - top.iz) * t + offset * dz;
       let i = y * width + first;
       const endIndex = y * width + last;
+      const ditherRow = (y & 3) * 4;
+      const rowStart = y * width;
       if (!texture) {
         const depths = this.depth, pixels = this.pixels, step = dz * bias;
+        if (hashOpacity < 1 && !coverage && !smooth) {
+          for (let depth = iz * bias; i < endIndex; i++, depth += step) {
+            if (depth <= depths[i]! || DITHER[ditherRow + ((i - rowStart) & 3)]! > ditherLimit) continue;
+            depths[i] = depth; pixels[i] = colour;
+          }
+          continue;
+        }
         if (coverage) {
           let alphaZ = top.opacity + (bottom.opacity - top.opacity) * t + offset * da;
           for (; i < endIndex; i++, iz += dz, alphaZ += da) {
@@ -198,6 +212,7 @@ export class SoftwareFrame {
       for (; i < endIndex; i++, iz += dz, uz += du, vz += dv, alphaZ += da) {
         const depth = iz * bias;
         if (depth <= this.depth[i]!) continue;
+        if (hashOpacity < 1 && DITHER[ditherRow + ((i - rowStart) & 3)]! > ditherLimit) continue;
         let u = uz / iz, v = vz / iz;
         const tu = Math.floor(u), tv = Math.floor(v);
         u = texture.repeatU ? u - tu : Math.min(1, Math.max(0, u));

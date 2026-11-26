@@ -11,8 +11,11 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --project unit",
     "test:watch": "vitest --project unit",
-    "ci": "npm run typecheck && npm run test && npm run test:chrome && npm run build",
-    "test:chrome": "vitest run --project chrome"
+    "ci": "npm run typecheck && npm run test:living-world-qa && npm run test && npm run test:chrome && npm run build",
+    "test:chrome": "vitest run --project chrome",
+    "capture:living-world": "node scripts/capture-living-world.mjs",
+    "qa:living-world": "node scripts/serve-living-world-acceptance.mjs",
+    "test:living-world-qa": "node --check scripts/serve-living-world-acceptance.mjs && node --check scripts/living-world-acceptance.mjs && node --test scripts/living-world-acceptance-metrics.test.mjs"
   },
   "engines": {
     "node": ">=22.12.0"

@@ -3,6 +3,8 @@ import { SeededRandom } from './random';
 import { capeSurface } from './lighthouse-access';
 import { isPointInsideProps } from './layouts';
 import type { IslandData, PoiId, Vec3 } from './types';
+import { ambientFlightActivity, ambientInRange, sampleEnvironmentWind } from './environment-wind';
+import { applyAmbientDistanceFade } from './visual-wind';
 
 export interface PollinatorFlight {
   district: PoiId;
@@ -78,10 +80,28 @@ export function buildPollinators(island: IslandData) {
   const group = new THREE.Group();
   group.name = 'daytime-pollinators';
   const flights = planPollinators(island);
-  if (!flights.length) return { group, update() {} };
+  if (!flights.length) return { group, update() {}, dispose() {} };
   const scale = island.size / 600;
   const geometry = wingGeometry();
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  applyAmbientDistanceFade(material, 42 * scale, 55 * scale);
+  const tideUniform = { value: island.seaLevel };
+  const distanceShader = material.onBeforeCompile;
+  material.onBeforeCompile = (shader, renderer) => {
+    distanceShader.call(material, shader, renderer);
+    shader.uniforms['uPollinatorTide'] = tideUniform;
+    shader.vertexShader = shader.vertexShader.replace('#include <common>',
+      '#include <common>\nvarying float vPollinatorHeight;')
+      .replace('#include <project_vertex>', `#include <project_vertex>
+        vec4 pollinatorWorld = modelMatrix * instanceMatrix * vec4(transformed, 1.0);
+        vPollinatorHeight = pollinatorWorld.y;`);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>',
+      '#include <common>\nuniform float uPollinatorTide;\nvarying float vPollinatorHeight;')
+      .replace('#include <alphahash_fragment>',
+        `diffuseColor.a *= smoothstep(uPollinatorTide + ${(scale * .9).toFixed(4)},
+          uPollinatorTide + ${(scale * 1.5).toFixed(4)}, vPollinatorHeight);\n#include <alphahash_fragment>`);
+  };
+  material.customProgramCacheKey = () => 'ambient-pollinator-v1-' + scale;
   const entries = habitats.flatMap(district => {
     const local = flights.filter(f => f.district === district);
     if (!local.length) return [];
@@ -91,24 +111,33 @@ export function buildPollinators(island: IslandData) {
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.count = 0; mesh.visible = false;
     group.add(mesh);
-    return [{ mesh, flights: local }];
+    return [{ mesh, flights: local.map(flight => ({ flight, inRange: false })) }];
   });
   const dummy = new THREE.Object3D(), yaw = new THREE.Quaternion(), flap = new THREE.Quaternion();
   const yAxis = new THREE.Vector3(0, 1, 0), zAxis = new THREE.Vector3(0, 0, 1);
   const bounds = new THREE.Sphere(), tint = new THREE.Color();
+  const wind = sampleEnvironmentWind(0, island.seed);
   return {
     group,
     update(time: number, tide: number, daylight: number, rain: number, camera: THREE.Vector3, frustum: THREE.Frustum) {
+      const activity = ambientFlightActivity(daylight, rain, 'pollinator');
+      material.opacity = activity;
+      tideUniform.value = tide;
       for (const entry of entries) {
         let count = 0;
-        if (daylight > .42 && rain < .48) for (const f of entry.flights) {
+        if (activity > .001) for (const state of entry.flights) {
+          const f = state.flight;
           if (f.center.y < tide + .6 * scale) continue;
           bounds.center.set(f.center.x, f.center.y, f.center.z);
           bounds.radius = f.radius + .7 * scale;
-          if (bounds.center.distanceTo(camera) > 55 * scale || !frustum.intersectsSphere(bounds)) continue;
+          state.inRange = ambientInRange(bounds.center.distanceTo(camera) - bounds.radius,
+            state.inRange, 55 * scale, 4 * scale);
+          if (!state.inRange || !frustum.intersectsSphere(bounds)) continue;
           const a = time * 2 * Math.PI / f.period + f.phase;
-          const x = f.center.x + Math.cos(a) * f.radius;
-          const z = f.center.z + Math.sin(a) * f.radius * .8;
+          sampleEnvironmentWind(time, island.seed, rain, f.center.x, f.center.z, wind);
+          // Small wind loading remains inside the existing clearance margin.
+          const x = f.center.x + Math.cos(a) * f.radius + wind.x * .04 * scale;
+          const z = f.center.z + Math.sin(a) * f.radius * .8 + wind.z * .04 * scale;
           const y = f.center.y + .24 * scale * Math.sin(a * 2 + f.phase);
           const heading = Math.atan2(-Math.sin(a), .8 * Math.cos(a));
           const wingAngle = .15 + .93 * (.5 + .5 * Math.sin(time * 32 + f.phase * 3));
@@ -125,6 +154,9 @@ export function buildPollinators(island: IslandData) {
         entry.mesh.instanceMatrix.needsUpdate = true;
         if (entry.mesh.instanceColor) entry.mesh.instanceColor.needsUpdate = true;
       }
+    },
+    dispose() {
+      for (const entry of entries) entry.mesh.dispose();
     },
   };
 }

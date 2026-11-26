@@ -5,6 +5,7 @@ import { finitePositive } from './internal';
 interface Managed {
   handle: number;
   sleepingFor: number;
+  cleanupWhenSleeping: boolean;
 }
 /**
  * Opt-in cap for spawned dynamic props. Reclaims long-sleeping bodies instead of
@@ -23,11 +24,12 @@ export class DynamicBodyBudget {
   get count(): number { return this.managed.size; }
   get available(): number { return Math.max(0, this.maxDynamic - this.count); }
   /** Returns false without mutating the body if the budget is exhausted. */
-  admit(body: RigidBody): boolean {
+  admit(body: RigidBody, options: { cleanupWhenSleeping?: boolean } = {}): boolean {
     if (!body.isDynamic()) throw new Error('Only dynamic bodies count against the budget');
     if (this.managed.has(body.handle)) return true;
     if (!this.available) return false;
-    this.managed.set(body.handle, {handle:body.handle,sleepingFor:0});
+    this.managed.set(body.handle, {handle:body.handle,sleepingFor:0,
+      cleanupWhenSleeping: options.cleanupWhenSleeping ?? true});
     return true;
   }
   release(body: RigidBody): void { this.managed.delete(body.handle); }
@@ -43,7 +45,7 @@ export class DynamicBodyBudget {
       const body = this.physics.raw.getRigidBody(handle);
       if (!body || !body.isValid()) { this.managed.delete(handle); continue; }
       item.sleepingFor = body.isSleeping() ? item.sleepingFor + dt : 0;
-      if (item.sleepingFor >= this.sleepCleanupSeconds) {
+      if (item.cleanupWhenSleeping && item.sleepingFor >= this.sleepCleanupSeconds) {
         this.physics.removeBody(body);
         this.managed.delete(handle);
       }

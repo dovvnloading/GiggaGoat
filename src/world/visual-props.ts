@@ -13,6 +13,9 @@ import type { IslandData } from './types';
 import { WORLD_LOD, completelyOccluded, isSmallWorldModel,
   simplifiedWorldGeometry } from './lod';
 import { propFinish, paintPropFinish } from './material-detail';
+import { sampleEnvironmentWind } from './environment-wind';
+import { applyWindShader, createWindUniforms, prepareWindGeometry, updateWindUniforms,
+  type WindUniforms } from './visual-wind';
 
 export interface PropBatch {
   sphere: THREE.Sphere;
@@ -22,7 +25,7 @@ export interface PropBatch {
 export interface PropVisuals {
   group: THREE.Group;
   batches: PropBatch[];
-  update(time: number): void;
+  update(time: number, rain?: number): void;
   /** Compact real visible instances into cached near/far library geometry. */
   updateCulling(position: THREE.Vector3, frustum: THREE.Frustum, maxDistance: number,
     hidden: (mesh: THREE.InstancedMesh) => boolean): boolean;
@@ -153,7 +156,8 @@ function poseSummitLandmark(prop: PropDescriptor, art: THREE.Object3D): void {
 
 /** Spatially batched instancing; LOD/culling works without per-object draw calls. */
 export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 96,
-  island?: IslandData, replacedPropIds?: ReadonlySet<string>, distantPinesGround?: TerrainHeight): PropVisuals {
+  island?: IslandData, replacedPropIds?: ReadonlySet<string>, distantPinesGround?: TerrainHeight,
+  sharedWind?: WindUniforms): PropVisuals {
   const group = new THREE.Group();
   group.name = 'handcrafted-props';
   // A full-detail far batch uses the near mesh. Preserve existing far-name
@@ -183,7 +187,9 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
   }
   const geometries = new Map<PropKind, THREE.BufferGeometry>();
   const materials = new Map<PropKind, THREE.MeshToonMaterial>();
-  const windUniforms: Array<{ value: number }> = [];
+  const windUniforms = sharedWind ?? createWindUniforms(island?.seed ?? 'billy-isle');
+  const windSample = sampleEnvironmentWind(0, island?.seed ?? 'billy-isle');
+  const windDepthMaterials = new Map<PropKind, THREE.MeshDepthMaterial>();
   interface Job {
     kind: PropKind;
     entries: PropDescriptor[];
@@ -220,6 +226,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
         geometry.translate(0, -.02, 0);
       }
       geometries.set(kind, geometry);
+      if (sways(kind)) prepareWindGeometry(geometry, kind);
     }
     let material = materials.get(kind);
     if (!material) {
@@ -235,19 +242,10 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
         material.onBeforeCompile = shader => paintPierBoards(shader, island.size / 600);
       } else if (sways(kind)) {
         material.onBeforeCompile = shader => {
-          const wind = { value: 0 };
-          windUniforms.push(wind);
-          shader.uniforms['uWorldWind'] = wind;
-          shader.vertexShader = shader.vertexShader.replace('#include <common>',
-            '#include <common>\nuniform float uWorldWind;');
-          shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>',
-            '#include <begin_vertex>\n#ifdef USE_INSTANCING\n' +
-            'float sway = sin(uWorldWind * 1.7 + instanceMatrix[3][0] * 0.113 + ' +
-            'instanceMatrix[3][2] * 0.087);\n' +
-            'transformed.x += sway * max(0.0, position.y + 0.25) * 0.025;\n' +
-            'transformed.z += cos(uWorldWind * 1.26 + instanceMatrix[3][0] * 0.07) * ' +
-            'max(0.0, position.y + 0.25) * 0.015;\n#endif');
+          shader.uniforms['uWorldWind'] = windUniforms.uWorldWind;
+          applyWindShader(shader, windUniforms);
         };
+        material.customProgramCacheKey = () => 'island-wind-v1';
       }
       const finish = propFinish(kind);
       if (finish && island) paintPropFinish(material, finish, island.size / 600);
@@ -257,6 +255,13 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     mesh.name = 'props-' + kind;
     mesh.castShadow = SHADOW_KINDS.has(kind);
     mesh.receiveShadow = SHADOW_KINDS.has(kind);
+    if (sways(kind) && mesh.castShadow) {
+      const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+      depth.onBeforeCompile = shader => applyWindShader(shader, windUniforms);
+      depth.customProgramCacheKey = () => 'island-wind-depth-v1';
+      mesh.customDepthMaterial = depth;
+      windDepthMaterials.set(kind, depth);
+    }
     mesh.frustumCulled = true;
     const switchback = entries.some(prop => prop.id.startsWith(CRANE_SWITCHBACK_PREFIX));
     const switchbackSpan = switchback ? geometry.boundingBox!.getSize(new THREE.Vector3()) : null;
@@ -285,6 +290,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     const stiltPose = island && kind === 'deck-stilts'
       ? setPinesStiltMorphs(mesh, entries, island, distantPinesGround, replacedPropIds) : undefined;
     mesh.computeBoundingSphere();
+    if (sways(kind) && mesh.boundingSphere)
+      mesh.boundingSphere.radius += Math.max(...entries.map(entry => entry.size.y)) * .055;
     group.add(mesh);
     const drawn: THREE.InstancedMesh[] = [mesh];
     const batch: PropBatch = {
@@ -342,12 +349,14 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
         }
         if (disposed) { geometry.dispose(); break; }
         fitPlantGeometry(geometry, job.kind);
+        prepareWindGeometry(geometry, job.kind);
         const draw = new THREE.InstancedMesh(geometry, job.mesh.material, slots.length);
         draw.name = 'habitat-' + model;
         draw.count = 0;
         draw.frustumCulled = false;
         draw.castShadow = job.mesh.castShadow;
         draw.receiveShadow = job.mesh.receiveShadow;
+        draw.customDepthMaterial = job.mesh.customDepthMaterial;
         draw.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         group.add(draw);
         job.batch.meshes.push(draw);
@@ -384,6 +393,10 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
             authoredTownFarmKinds.has(job.kind) ||
             AUTHORED_HERO_DRESSING_KINDS.has(job.kind) || job.kind === 'container'
             ? libraryGeometry : await simplifiedWorldGeometry(libraryGeometry);
+          if (sways(job.kind)) {
+            prepareWindGeometry(libraryGeometry, job.kind);
+            if (distantGeometry !== libraryGeometry) prepareWindGeometry(distantGeometry, job.kind);
+          }
           if (disposed) {
             if (distantGeometry !== libraryGeometry) distantGeometry.dispose();
             libraryGeometry.dispose();
@@ -453,6 +466,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
             material.needsUpdate = true;
           }
           job.mesh.computeBoundingSphere();
+          if (sways(job.kind) && job.mesh.boundingSphere)
+            job.mesh.boundingSphere.radius += Math.max(...job.entries.map(entry => entry.size.y)) * .055;
           job.batch.sphere.copy(job.mesh.boundingSphere ?? new THREE.Sphere());
           // Remove legacy roof/detail and outline draws only on success.
           // On errors they remain as part of the complete fallback.
@@ -480,6 +495,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
             copy.count = 0;
             copy.castShadow = job.mesh.castShadow;
             copy.receiveShadow = job.mesh.receiveShadow;
+            copy.customDepthMaterial = job.mesh.customDepthMaterial;
             copy.frustumCulled = false; // each instance is clipped below
             copy.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
             group.add(copy);
@@ -552,7 +568,10 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
   }
   return {
     group, batches,
-    update(time: number): void { for (const u of windUniforms) u.value = time; },
+    update(time: number, rain = 0): void {
+      sampleEnvironmentWind(time, island?.seed ?? 'billy-isle', rain, 0, 0, windSample);
+      updateWindUniforms(windUniforms, windSample);
+    },
     updateCulling(position, frustum, maxDistance, hidden): boolean {
       let changes = false;
       const matrix = new THREE.Matrix4();
@@ -606,7 +625,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
           const size = prop.size;
           const radius = (summitLandmark(prop)
             ? Math.hypot(el[0]!, el[1]!, el[2]!, el[4]!, el[5]!, el[6]!, el[8]!, el[9]!, el[10]!)
-            : Math.hypot(size.x, size.y, size.z)) * 0.52;
+            : Math.hypot(size.x, size.y, size.z)) * 0.52 + (sways(job.kind) ? size.y * .055 : 0);
           test.set(centre, radius);
           if (job.stiltPose) test.copy(job.mesh.geometry.boundingSphere!).applyMatrix4(matrix);
           const distance = position.distanceTo(test.center) - test.radius;
@@ -670,6 +689,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     },
     dispose(): void {
       disposed = true;
+      for (const depth of windDepthMaterials.values()) depth.dispose();
       const instances = new Set<THREE.InstancedMesh>();
       for (const job of jobs) {
         instances.add(job.mesh);

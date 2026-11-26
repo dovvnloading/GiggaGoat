@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import {
   createWorldScene, heightAt, type PropDescriptor, type WorldScene,
+  buildAmbientLifeVisuals, buildMarketFruitVisuals, islandWeather,
 } from '../world';
 import { Q, RAPIER, type Vec3 } from '../physics';
-import { islandWeather } from '../world/island-weather';
 import { IslandAtmosphere } from './IslandAtmosphere';
 import { SKY_HORIZON_COLOR } from '../world/visual-sky';
 import { DEFAULT_SETTINGS, type GameSettings } from './Persistence';
@@ -62,6 +62,8 @@ export class GameView {
   private clearFogDensity = .0016;
   private readonly toyEffects: ToyEffects;
   private readonly happeningVisuals: HappeningVisuals;
+  private readonly residents: ReturnType<typeof buildAmbientLifeVisuals>;
+  private readonly marketVisuals: ReturnType<typeof buildMarketFruitVisuals>;
   readonly camera = new THREE.PerspectiveCamera(67, 1, .07, 2200);
   readonly scene = new THREE.Scene();
   readonly world: WorldScene;
@@ -186,6 +188,9 @@ export class GameView {
     this.scene.add(this.toyEffects.root);
     this.happeningVisuals = new HappeningVisuals(game.island, game.happenings);
     this.scene.add(this.happeningVisuals.root);
+    this.residents = buildAmbientLifeVisuals(game.life.residents);
+    this.marketVisuals = buildMarketFruitVisuals(game.market.items);
+    this.scene.add(this.residents.root, this.marketVisuals.root);
     this.characters = new GameCharacters(this.scene, game);
     this.vfx = new GameVfx(this.scene, game,
       this.characters.player.root, this.characters.player.mounts.neck);
@@ -981,8 +986,8 @@ export class GameView {
       this.showingTideRoutes = showTideRoutes;
       this.world.setTideLevel(this.lastTide, showTideRoutes);
     }
-    this.world.update(this.game.physics.time);
     this.world.setDayNight(dayPhase, weather);
+    this.world.update(this.game.physics.time);
     if (this.scene.fog instanceof THREE.FogExp2) {
       this.scene.fog.density = this.clearFogDensity + weather.mist * .0062 + weather.cloud * .0009;
     }
@@ -991,6 +996,8 @@ export class GameView {
     this.updateCamera(alpha, sceneDt);
     this.updateCameraFraming(sceneDt);
     this.happeningVisuals.update(this.game.physics.time, this.camera.position, !match);
+    this.residents.update(this.game.life.residents, this.game.physics.time, this.camera.position, this.currentSettings.graphics);
+    this.marketVisuals.update(this.game.market.items, this.camera.position);
     this.atmosphere.update(weather, this.camera.position, playerPosition, this.currentSettings.graphics === 'low');
     if ('isSoftwareRenderer' in this.renderer) {
       this.renderer.setEnvironment(weather, this.world.sun.position, this.world.sun.target.position);
@@ -1049,6 +1056,8 @@ export class GameView {
     this.atmosphere.dispose();
     this.toyEffects.dispose();
     this.happeningVisuals.dispose();
+    this.residents.dispose();
+    this.marketVisuals.dispose();
     this.vfx.dispose();
     this.characters.dispose();
     this.clearGroup(this.boardMarkers);

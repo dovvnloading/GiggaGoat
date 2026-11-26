@@ -19,6 +19,7 @@ export const SOUND_IDS = [
   'tongue-shoot', 'tongue-stick', 'tongue-reel', 'tongue-snap',
   'footstep-grass', 'footstep-sand', 'footstep-wood', 'footstep-rock',
   'footstep-metal', 'footstep-water', 'jump', 'flip-whoosh', 'landing',
+  'footstep-resident', 'ambient-resident', 'ambient-fountain', 'market-rustle',
   'ragdoll-flop', 'climb', 'splash', 'crate-break', 'prop-break',
   'domino', 'soda-pop', 'trampoline', 'launch-pad', 'build-place',
   'build-snap', 'build-collapse', 'combo', 'gigga-grow', 'gigga-shrink',
@@ -113,7 +114,7 @@ export function soundPriority(sound: SoundId): number {
       sound === 'launch-pad' || sound === 'build-collapse') return 65;
   if (sound === 'bleat' || sound === 'combo' || sound === 'trampoline' ||
       sound === 'party-countdown' || sound.startsWith('ui-')) return 45;
-  if (sound.startsWith('footstep-') || sound.startsWith('ambient-')) return 12;
+  if (sound.startsWith('footstep-') || sound.startsWith('ambient-') || sound === 'market-rustle') return 12;
   return 34;
 }
 export function soundLimit(sound: SoundId): number {

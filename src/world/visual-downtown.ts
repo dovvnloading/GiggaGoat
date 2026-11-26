@@ -6,6 +6,7 @@ import { publicAssetUrl } from './public-assets';
 import { bakeLibraryGeometry, createLanternLampInstances,
   type LanternLampBatch, type HoofPlacement } from './visual-hoofington';
 import { createDistrictLod, type BakedPlacement, type DistrictLod } from './district-lod';
+import { buildDowntownStorefronts } from './visual-downtown-storefronts';
 
 /**
  * CC0-only sourced Downtown art. These are library paths, not page-relative
@@ -55,7 +56,16 @@ export const DOWNTOWN_MODELS = {
   lights: 'assets/library/custom/crane-yard/bunting.glb',
 } as const;
 export type DowntownModel = keyof typeof DOWNTOWN_MODELS;
-export type DowntownPlacement = HoofPlacement<DowntownModel>;
+export type DowntownPlacement = HoofPlacement<DowntownModel> & { storefront?: string };
+
+/** Seat contact on the shipped chair, whose back is on local -Z. The
+ * placement includes the backrest in its bounds; sit just forward of centre. */
+export function downtownChairSeat({ position, size, yaw }: DowntownPlacement): Vec3 {
+  const scale = Math.min(size.x / .75, size.y / 1.2583, size.z / .8451);
+  return { x: position.x + Math.sin(yaw) * .13 * scale,
+    y: position.y - size.y / 2 + .5 * scale,
+    z: position.z + Math.cos(yaw) * .13 * scale };
+}
 
 const FLOWER_VARIANTS = ['flowerPink', 'flowerPurple', 'flowerSunny'] as const;
 const BUSH_VARIANTS = ['bushA', 'bushB'] as const;
@@ -109,7 +119,7 @@ export interface DowntownVisuals {
   group: THREE.Group;
   isFallbackHidden(mesh: THREE.InstancedMesh): boolean;
   consumeShadowChange(): boolean;
-  updateCulling(position: THREE.Vector3, frustum: THREE.Frustum): boolean;
+  updateCulling(position: THREE.Vector3, frustum: THREE.Frustum, daylight?: number): boolean;
   dispose(): void;
 }
 
@@ -195,15 +205,18 @@ export function downtownBuildingModel(
   const { x, z } = source.transform.position;
   const dz = (z - centre.z) / scale;
   if (source.kind === 'tower') return 'highrise';
-  if (source.kind === 'shop') {
-    const row = Math.max(0, Math.min(4, Math.round(dz / 19 + 2)));
-    return SHOP_FRONTS[x < centre.x ? 0 : 1]![row]!.model;
-  }
+  if (source.kind === 'shop') return downtownShopFront(source, centre, scale).model;
   if (Math.abs(x - centre.x) >= 30 * scale) return downtownRearHouseModel(dz);
   const side = x < centre.x ? -1 : 1;
   const infill = DOWNTOWN_INFILL.find(item => item.side === side && Math.abs(item.z - dz) < .001);
   if (!infill) throw new Error('No Downtown infill model for ' + source.id);
   return infill.model;
+}
+
+function downtownShopFront(source: PropDescriptor, centre: Vec3, scale: number) {
+  const { x, z } = source.transform.position;
+  const row = Math.max(0, Math.min(4, Math.round((z - centre.z) / (scale * 19) + 2)));
+  return SHOP_FRONTS[x < centre.x ? 0 : 1]![row]!;
 }
 
 /** Reads authored placements without consuming RNG or mutating descriptors. */
@@ -233,6 +246,7 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
     if (model) plan.push({
       model, source, position, size: source.size,
       yaw: source.kind === 'bench' ? yaw + Math.PI : yaw,
+      ...(source.kind === 'shop' ? { storefront: downtownShopFront(source, centre, scale).title } : {}),
     });
   }
 
@@ -257,12 +271,15 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
     [13.5, -29.8], [13.1, -2], [13.2, 22]] as const) {
     scatter('trash', x, z, .85, 1.2, .85);
   }
-  scatter('table', -11.8, -40, 1.55, 1.15, 1.55);
-  scatter('chair', -11.7, -41.6, .82, 1.4, .82, .3);
-  scatter('chair', -12.1, -38.3, .82, 1.4, .82, -.3);
-  scatter('table', 16.5, 52.4, 1.55, 1.15, 1.55);
-  scatter('chair', 16.3, 50.85, .82, 1.4, .82, .25);
-  scatter('chair', 16.6, 53.95, .82, 1.4, .82, -.4);
+  for (const { table: [x, z], chairs } of [
+    { table: [-11.8, -40], chairs: [[-11.7, -41.6], [-12.1, -38.3]] },
+    { table: [16.5, 52.4], chairs: [[16.3, 50.85], [16.6, 53.95]] },
+  ] as const) {
+    scatter('table', x, z, 1.55, 1.15, 1.55);
+    for (const [seatX, seatZ] of chairs) {
+      scatter('chair', seatX, seatZ, .82, 1.4, .82, Math.atan2(x - seatX, z - seatZ));
+    }
+  }
   for (const [x, z] of [[-13.05,-33], [-12.9, 14.2], [-13.1, 30],
     [12.9, -25.5], [13, -6.3], [12.9, 32.5]] as const) {
     scatter(BUSH_VARIANTS[bushIndex++ % BUSH_VARIANTS.length]!, x, z, 2, 1.55, 1.8);
@@ -302,6 +319,20 @@ function disposeModels(models: ReadonlyMap<DowntownModel, THREE.Group>): void {
   geometries.forEach(g => g.dispose());
   materials.forEach(m => m.dispose());
   textures.forEach(t => t.dispose());
+}
+
+function fallbackChair(): THREE.Group {
+  const chair = new THREE.Group();
+  const wood = new THREE.MeshStandardMaterial({ color: 0x99684d });
+  const part = (x: number, y: number, z: number, w: number, h: number, d: number) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wood);
+    mesh.position.set(x, y, z);
+    chair.add(mesh);
+  };
+  part(0, .4, 0, .65, .2, .65);
+  for (const x of [-.319, .319]) for (const z of [-.319, .319]) part(x, .16, z, .112, .32, .112);
+  part(0, .825, -.38755, .75, .8666, .1651);
+  return chair;
 }
 
 /** Suppress only loaded replacements; other POIs and failed loads keep fallbacks. */
@@ -356,9 +387,12 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
   group.userData['ready'] = typeof document === 'undefined';
   group.userData['loadedModels'] = 0;
   const fullyHidden = new Set<PropKind>();
+  const city = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
+  const scale = island.size / 600;
   let disposed = false, shadowChanged = false;
   let districtLod: DistrictLod | undefined;
   let lanterns: LanternLampBatch | null = null;
+  let storefronts: ReturnType<typeof buildDowntownStorefronts> | undefined;
   if (typeof document !== 'undefined') {
     const plan = makeDowntownPlacements(island);
     const required = new Set(plan.map(p => p.model));
@@ -366,7 +400,12 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
     const load = (id: DowntownModel): Promise<[DowntownModel, THREE.Group]> =>
       new Promise((resolve, reject) => {
         loader.load(publicAssetUrl(DOWNTOWN_MODELS[id]),
-          gltf => resolve([id, gltf.scene]), undefined, reject);
+          gltf => resolve([id, gltf.scene]), undefined, error => {
+            if (id !== 'chair') { reject(error); return; }
+            // Seats retain their measured support if the small library GLTF
+            // cannot load. Both renderers use the same fitted fallback.
+            resolve([id, fallbackChair()]);
+          });
       });
     void Promise.allSettled([...required].map(load)).then(async results => {
       const models = new Map<DowntownModel, THREE.Group>();
@@ -394,6 +433,8 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
           if (disposed) { lod.dispose(); return; }
           districtLod = lod;
         }
+        storefronts = buildDowntownStorefronts(staticPlan, models);
+        group.add(storefronts.group);
         suppressOldArt(island, oldProps, lanterns ? visible : staticPlan, new Set(models.keys()), fullyHidden);
         shadowChanged = true;
       } catch (error) {
@@ -414,7 +455,12 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
     consumeShadowChange(): boolean {
       const changed = shadowChanged; shadowChanged = false; return changed;
     },
-    updateCulling(position, frustum): boolean {
+    updateCulling(position, frustum, daylight = 1): boolean {
+      if (storefronts) {
+        const limit = (storefronts.group.visible ? 235 : 215) * scale;
+        storefronts.group.visible = Math.hypot(position.x - city.x, position.z - city.z) < limit;
+        if (storefronts.group.visible) storefronts.setDaylight(daylight);
+      }
       const districtChanged = districtLod?.updateCulling(position, frustum) ?? false;
       return (lanterns?.updateCulling(position, frustum) ?? false) || districtChanged;
     },

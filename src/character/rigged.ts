@@ -78,8 +78,9 @@ export function clipForAction(action: CharacterAction | 'jump'): GoatClip {
  * also works on GitHub Pages with the project's Vite base: './'.
  */
 export function goatPublicAssetUrl(filename: string): string {
-  const root = import.meta.env.DEV
-    ? new URL('/', import.meta.url)
-    : new URL('../', import.meta.url);
+  // Keep this intentional directory URL dynamic: Vite's asset transform treats
+  // a literal new URL('/', import.meta.url) as a filesystem asset in dev.
+  const rootPath = import.meta.env.DEV ? '/' : '../';
+  const root = new URL(rootPath, import.meta.url);
   return new URL('assets/characters/goat/' + filename, root).href;
 }

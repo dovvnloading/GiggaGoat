@@ -149,6 +149,25 @@ export class ProceduralSynth {
         t(0, 490, .13, .25, 'triangle', 95);
         n(0, .16, .27, 2900, 'highpass');
         break;
+      case 'footstep-resident':
+        // A soft shoe contact; residents never reuse the goat's hard hoof recording.
+        n(0, .075, .07, 1100, 'lowpass');
+        t(.005, 155, .055, .025, 'sine', 95);
+        break;
+      case 'ambient-resident':
+        // Nonverbal breath/clothing response, with no synthetic words or goat bleat.
+        n(0, .20, .04, 720, 'bandpass');
+        n(.14, .12, .025, 1150, 'bandpass');
+        break;
+      case 'market-rustle':
+        n(0, .24, .13, 1200, 'bandpass');
+        t(.015, 140, .11, .08, 'triangle', 70);
+        n(.17, .17, .06, 650, 'lowpass');
+        break;
+      case 'ambient-fountain':
+        n(0, 1.35, .055, 1300, 'lowpass');
+        n(.22, .7, .025, 2300, 'bandpass');
+        break;
       case 'footstep-grass':
         n(0, .095, .17, 520, 'lowpass');
         n(.014, .07, .075, 2200, 'highpass');

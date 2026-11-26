@@ -19,6 +19,8 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Typecheck
         run: npm run typecheck
+      - name: Test (living-world QA helpers)
+        run: npm run test:living-world-qa
       - name: Test (unit)
         run: npm test
       - name: Test (headless Chrome, serial)
@@ -41,6 +43,60 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
+
+  living-world-evidence:
+    if: github.event_name == 'pull_request' && (github.event.pull_request.number == 330 || contains(github.event.pull_request.labels.*.name, 'living-world-evidence'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - name: Check out the recorded pre-implementation baseline
+        uses: actions/checkout@v4
+        with:
+          ref: 92001c7ec3f851be8468590b237833e0d0e007f8
+          path: .living-world-baseline
+      - name: Capture recorded baseline
+        run: |
+          ln -s ../node_modules .living-world-baseline/node_modules
+          npm run capture:living-world -- --root .living-world-baseline --out .living-world-captures/before --label before --samples 12 --allow-legacy-goat
+      - name: Capture implemented game in matching views
+        if: always()
+        run: npm run capture:living-world -- --out .living-world-captures/after --label after --samples 12
+      - name: Upload raw profiles and matching views
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: living-world-evidence
+          path: .living-world-captures/
+          include-hidden-files: true
+          if-no-files-found: warn
+
+  living-world-walkthrough:
+    if: github.event_name == 'pull_request' && (github.event.pull_request.number == 330 || contains(github.event.pull_request.labels.*.name, 'living-world-evidence'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - name: Record production software fallback traversal and audio
+        run: npm run capture:living-world -- --out .living-world-captures/tour --label software-walkthrough --software-renderer --tour-only --tour 100 --tour-quality low --tour-width 640 --tour-height 360 --require-tour-route
+      - name: Upload continuous video and capture diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: living-world-walkthrough
+          path: .living-world-captures/tour/
+          include-hidden-files: true
+          if-no-files-found: warn
 
   deploy:
     needs: ci

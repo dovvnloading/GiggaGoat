@@ -13,6 +13,7 @@ import { makeLocalStreets } from './roads';
 import { CRANE_YARD_PLAN } from './crane-yard';
 import { loadGroundedKitGeometry } from './library-props';
 import { TOON_RAMP } from './visual-props';
+import { applyWindShader, prepareWindGeometry, type WindUniforms } from './visual-wind';
 
 const GRASS_CLUMP_PATH = 'assets/library/custom/hoofington-props/grass-clump.glb';
 
@@ -30,7 +31,7 @@ interface Sprig {
  * No extra rigid bodies are created for tiny cosmetic details.
  */
 export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof skyUniforms>,
-  pavedAt?: (x: number, z: number) => boolean): THREE.Group {
+  pavedAt?: (x: number, z: number) => boolean, wind?: WindUniforms): THREE.Group {
   const group = new THREE.Group();
   group.name = 'island-meadow-and-wildflowers';
   const rng = new SeededRandom(String(island.seed) + ':storybook-meadow');
@@ -149,7 +150,11 @@ export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof s
   const axis = new THREE.Vector3(0, 1, 0);
   function instances(geometry: THREE.BufferGeometry, samples: Sprig[],
     name: string, material: THREE.MeshToonMaterial, clumps = false): THREE.InstancedMesh {
-    if (sky) material.onBeforeCompile = shader => {
+    prepareWindGeometry(geometry, 'meadow');
+    if (wind) {
+      material.onBeforeCompile = shader => applyWindShader(shader, wind);
+      material.customProgramCacheKey = () => 'island-wind-meadow-v1';
+    } else if (sky) material.onBeforeCompile = shader => {
       shader.uniforms['uWind'] = sky.uWind;
       shader.uniforms['uCover'] = sky.uCover;
       shader.vertexShader = shader.vertexShader.replace('#include <common>',
@@ -194,6 +199,7 @@ export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof s
     (grassMesh.material as THREE.Material).addEventListener('dispose', () => { disposed = true; });
     void loadGroundedKitGeometry(GRASS_CLUMP_PATH, loader).then(clump => {
       if (disposed) { clump.dispose(); return; }
+      prepareWindGeometry(clump, 'meadow');
       grassMesh.geometry = clump;
       grassMesh.instanceMatrix.needsUpdate = true;
       grassMesh.computeBoundingSphere();
@@ -206,6 +212,7 @@ export function buildMeadowScatter(island: IslandData, sky?: ReturnType<typeof s
       paintNatureKit(geometry);
       const h = geometry.boundingBox!.max.y - geometry.boundingBox!.min.y;
       geometry.scale(.74 / h, .74 / h, .74 / h);
+      prepareWindGeometry(geometry, 'meadow');
       flowersMesh.geometry = geometry;
       flowersMesh.computeBoundingSphere();
       blossom.dispose();
