@@ -82,6 +82,24 @@ describe('shipped resident art and grounded animation', () => {
     } finally { first.dispose(); second.dispose(); }
   });
 
+  it.each(['male-b', 'female-a', 'female-b'] as const)(
+    'anchors the native %s seated pelvis to the furniture support', async model => {
+      const resident = state({ model, activity: 'sit', speed: 0 });
+      resident.seat = { anchor: { position: { ...resident.position, y: resident.position.y + .5 },
+        floor: resident.position, chair: 'test-chair' }, progress: 1 };
+      const rig = createResidentRig(await load(model), resident);
+      try {
+        const hip = rig.root.getObjectByName('torso')!.getWorldPosition(new THREE.Vector3());
+        expect(hip.x).toBeCloseTo(resident.position.x, 6);
+        expect(hip.z).toBeCloseTo(resident.position.z, 6);
+        expect(hip.y - resident.seat.anchor.position.y).toBeGreaterThan(.24);
+        expect(hip.y - resident.seat.anchor.position.y).toBeLessThan(.38);
+        resident.seat.progress = 0;
+        rig.update(resident, 1);
+        expect(new THREE.Box3().setFromObject(rig.root, true).min.y).toBeCloseTo(resident.position.y, 2);
+      } finally { rig.dispose(); }
+    });
+
   it('does not dispose shared model resources when a single resident is released', async () => {
     const asset = await load('worker'), rig = createResidentRig(asset, state({ model: 'worker' }));
     const skin = rig.root.getObjectByName('body-mesh') as THREE.SkinnedMesh;
@@ -133,7 +151,7 @@ describe('resident presentation lifecycle and quality', () => {
       } finally { visuals.dispose(); }
     });
 
-  it('holds near-camera hysteresis independently from far range and respects body height', async () => {
+  it('fades screen-filling foreground before hiding, independently from far range', async () => {
     const asset = await load('male-a'), resident = state({ yaw: 0, height: 2.2 });
     const visuals = buildAmbientLifeVisuals([resident], { loadAsset: async () => asset });
     await visuals.ready;
@@ -141,18 +159,26 @@ describe('resident presentation lifecycle and quality', () => {
       const actor = visuals.root.getObjectByName('resident-' + resident.id)!;
       const bounds = new THREE.Box3().setFromObject(actor, true);
       const camera = bounds.getCenter(new THREE.Vector3());
+      const skin = actor.getObjectByName('body-mesh') as THREE.SkinnedMesh;
+      const original = skin.material as THREE.Material;
       let time = 0;
-      const visibleAtClearance = (heights: number) => {
+      const sample = (heights: number) => {
         camera.x = bounds.max.x + resident.height * heights;
         visuals.update([resident], ++time, camera);
-        return actor.visible;
+        return actor.visible ? (skin.material as THREE.Material).opacity : 0;
       };
-      expect(visibleAtClearance(.75)).toBe(true);
-      expect(visibleAtClearance(.2)).toBe(false);
-      expect(visibleAtClearance(.45)).toBe(false);
-      expect(visibleAtClearance(.75)).toBe(true);
-      expect(visibleAtClearance(.45)).toBe(true);
-      expect(visibleAtClearance(.2)).toBe(false);
+      expect(sample(2)).toBe(1);
+      expect(skin.material).toBe(original);
+      const foreground = sample(1.25);
+      const close = sample(.72);
+      expect(foreground).toBeLessThan(1);
+      expect(close).toBeGreaterThan(0);
+      expect(close).toBeLessThan(foreground);
+      expect(skin.material).not.toBe(original);
+      expect(original.opacity).toBe(1);
+      expect(sample(.2)).toBe(0);
+      expect(sample(2)).toBe(1);
+      expect(skin.material).toBe(original);
       // Looking from well above a tall actor should not hide it merely
       // because the camera and feet share the same horizontal position.
       camera.set(resident.position.x, resident.position.y + resident.height * 2, resident.position.z);

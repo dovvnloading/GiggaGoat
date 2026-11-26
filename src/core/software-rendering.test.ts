@@ -89,6 +89,22 @@ describe('software 3D rendering', () => {
     expect(new Set(frame.pixels.subarray(48 * 64 + 16, 48 * 64 + 48)).size).toBeGreaterThan(20);
   });
 
+  it('leaves holes in both colour and depth on a faded foreground mesh', () => {
+    const frame = new SoftwareFrame(imageData(16, 16));
+    const vertex = (x: number, y: number, depth: number) => ({ x: x * depth, y: y * depth, w: depth, u: 0, v: 0 });
+    const fill = (depth: number, color: number, opacity = 1) => {
+      const a = vertex(-1, -1, depth), b = vertex(1, -1, depth), c = vertex(1, 1, depth), d = vertex(-1, 1, depth);
+      frame.triangle(a, b, c, .1, color, undefined, THREE.DoubleSide, 1, opacity);
+      frame.triangle(a, c, d, .1, color, undefined, THREE.DoubleSide, 1, opacity);
+    };
+    frame.clear(0, 0);
+    const near = pixel(255, 0, 0) >>> 0, far = pixel(0, 255, 0) >>> 0;
+    fill(1, near, .5);
+    fill(2, far);
+    expect(frame.pixels.filter(color => color === near)).toHaveLength(128);
+    expect(frame.pixels.filter(color => color === far)).toHaveLength(128);
+  });
+
   it('blends untextured wake coverage when the software SIMD raster is active', async () => {
     const bytes = await readFile(new URL('./software-raster.wasm', import.meta.url));
     const memory = new WebAssembly.Memory({ initial: 1 });

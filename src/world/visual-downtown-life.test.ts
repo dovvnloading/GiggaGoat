@@ -5,7 +5,8 @@ import { expect, it } from 'vitest';
 import { generateIsland } from './island';
 import { bakeLibraryGeometry } from './visual-hoofington';
 import { makeDowntownPlacements, DOWNTOWN_MODELS } from './visual-downtown';
-import { buildDowntownLifeVisuals, downtownLifeAnchors, downtownWindowGeometry } from './visual-downtown-life';
+import { buildDowntownLifeVisuals, downtownLifeAnchors } from './visual-downtown-life';
+import { downtownWindowGeometry } from './visual-downtown-storefronts';
 
 it('anchors jets inside the fitted fountain and cups on the fitted table tops', () => {
   const island = generateIsland({ seed: 'billy-isle', resolution: 65 });

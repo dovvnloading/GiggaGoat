@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import type { IslandData, Vec3 } from './types';
-import { DOWNTOWN_MODELS, makeDowntownPlacements, type DowntownPlacement } from './visual-downtown';
+import { DOWNTOWN_MODELS, makeDowntownPlacements } from './visual-downtown';
 import { bakeLibraryGeometry } from './visual-hoofington';
 import { fitLibraryModel } from './library-fit';
 import { publicAssetUrl } from './public-assets';
@@ -36,51 +36,6 @@ export function downtownLifeAnchors(island: IslandData): DowntownLifeAnchors {
   return { fountain, tables };
 }
 
-/**
- * Copy only the named, authored ShopGlass triangles, with exactly the same
- * .96/.98 fit as the district baker. Frames, signs, doors and paint stay intact.
- */
-export function downtownWindowGeometry(
-  placements: readonly DowntownPlacement[], sources: ReadonlyMap<string, THREE.Group>,
-): THREE.BufferGeometry | null {
-  const coordinates: number[] = [];
-  const vertex = new THREE.Vector3(), local = new THREE.Vector3();
-  const rotation = new THREE.Quaternion();
-  for (const place of placements) {
-    if (place.source?.kind !== 'shop') continue;
-    const model = sources.get(place.model);
-    if (!model) continue;
-    model.updateMatrixWorld(true);
-    const bounds = new THREE.Box3().setFromObject(model), span = bounds.getSize(new THREE.Vector3());
-    if (Math.min(span.x, span.y, span.z) < .0001) continue;
-    rotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), place.yaw);
-    model.traverse(node => {
-      if (!(node instanceof THREE.Mesh)) return;
-      const materials = Array.isArray(node.material) ? node.material : [node.material];
-      const geometry = node.geometry, positions = geometry.getAttribute('position'), indices = geometry.index;
-      const groups = geometry.groups.length ? geometry.groups : [{ start: 0,
-        count: indices?.count ?? positions.count, materialIndex: 0 }];
-      for (const part of groups) {
-        if (materials[part.materialIndex ?? 0]?.name !== 'ShopGlass') continue;
-        for (let i = part.start; i < part.start + part.count; i++) {
-          const index = indices ? indices.getX(i) : i;
-          vertex.fromBufferAttribute(positions, index).applyMatrix4(node.matrixWorld);
-          local.set(((vertex.x - bounds.min.x) / span.x - .5) * place.size.x * .96,
-            ((vertex.y - bounds.min.y) / span.y - .5) * place.size.y * .98,
-            ((vertex.z - bounds.min.z) / span.z - .5) * place.size.z * .96).applyQuaternion(rotation);
-          coordinates.push(local.x + place.position.x, local.y + place.position.y, local.z + place.position.z);
-        }
-      }
-    });
-  }
-  if (!coordinates.length) return null;
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(coordinates, 3));
-  geometry.computeVertexNormals();
-  geometry.computeBoundingSphere();
-  return geometry;
-}
-
 function disposeSource(asset: GLTF): void {
   const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>();
   const textures = new Set<THREE.Texture>();
@@ -101,18 +56,16 @@ export function buildDowntownLifeVisuals(island: IslandData) {
   const group = new THREE.Group();
   group.name = 'downtown-fountain-and-service';
   group.userData['ready'] = typeof document === 'undefined';
-  const anchors = downtownLifeAnchors(island), plan = makeDowntownPlacements(island);
+  const anchors = downtownLifeAnchors(island);
   const centre = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
   const scale = island.size / 600;
   let disposed = false, cupsReady = false;
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
-  const loaded: GLTF[] = [];
-  const windowMaterial = new THREE.MeshBasicMaterial({ color: 0xffce87, transparent: true,
-    opacity: 0, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
-  materials.add(windowMaterial);
   const fountainCount = anchors.fountain ? 96 : 0;
-  const steamCount = anchors.tables.length * 12;
+  const servings = anchors.tables.flatMap(table => [-1, 1].map(side =>
+    ({ ...table.position, z: table.position.z + side * .37 * scale })));
+  const steamCount = servings.length * 6;
   const count = fountainCount + steamCount;
   const positions = new Float32Array(count * 3), colours = new Float32Array(count * 3);
   const sizes = new Float32Array(count), opacity = new Float32Array(count);
@@ -170,47 +123,25 @@ void main() {
 
   if (typeof document !== 'undefined') {
     const loader = new GLTFLoader();
-    const required = [...new Set(plan.filter(p => p.source?.kind === 'shop').map(p => p.model))];
-    const windowLoads = required.map(async model => {
-      const asset = await loader.loadAsync(publicAssetUrl(DOWNTOWN_MODELS[model]));
-      if (disposed) { disposeSource(asset); return null; }
-      loaded.push(asset);
-      return [model, asset.scene] as const;
-    });
-    const cupLoad = loader.loadAsync(publicAssetUrl(CUP)).then(asset => {
-      if (disposed) { disposeSource(asset); return; }
-      loaded.push(asset);
-      const coffeePlan = anchors.tables.map(table => ({ model: 'coffee', yaw: .3,
-        size: { x: .20 * scale, y: .17 * scale, z: .20 * scale },
-        position: { x: table.position.x, y: table.position.y + .085 * scale, z: table.position.z } }));
-      const geometry = bakeLibraryGeometry(coffeePlan, new Map([['coffee', asset.scene]]), undefined, { coffee: CUP });
-      if (!geometry) return;
-      const material = new THREE.MeshToonMaterial({ vertexColors: true });
-      geometries.add(geometry); materials.add(material);
-      const cups = new THREE.Mesh(geometry, material);
-      cups.name = 'cafe-coffee-service';
-      cups.receiveShadow = true;
-      group.add(cups);
-      cupsReady = true;
+    void loader.loadAsync(publicAssetUrl(CUP)).then(asset => {
+      try {
+        if (disposed) return;
+        const coffeePlan = servings.map(point => ({ model: 'coffee', yaw: .3,
+          size: { x: .24 * scale, y: .17 * scale, z: .24 * scale },
+          position: { ...point, y: point.y + .085 * scale } }));
+        const geometry = bakeLibraryGeometry(coffeePlan, new Map([['coffee', asset.scene]]), undefined, { coffee: CUP });
+        if (!geometry) return;
+        const material = new THREE.MeshToonMaterial({ vertexColors: true });
+        geometries.add(geometry); materials.add(material);
+        const cups = new THREE.Mesh(geometry, material);
+        cups.name = 'cafe-coffee-service';
+        cups.receiveShadow = true;
+        group.add(cups);
+        cupsReady = true;
+      } finally { disposeSource(asset); }
     }).catch(error => {
       if (!disposed) console.warn('Cafe service art unavailable:', error);
-    });
-    void Promise.allSettled(windowLoads).then(results => {
-      if (disposed) return;
-      const sources = new Map<string, THREE.Group>();
-      for (const result of results) if (result.status === 'fulfilled' && result.value) sources.set(...result.value);
-      const geometry = downtownWindowGeometry(plan, sources);
-      if (geometry) {
-        geometries.add(geometry);
-        const windows = new THREE.Mesh(geometry, windowMaterial);
-        windows.name = 'occupied-shopfront-windows';
-        group.add(windows);
-      }
-    }).then(() => cupLoad).catch(error => {
-      if (!disposed) console.warn('Downtown service detail unavailable:', error);
     }).finally(() => {
-      for (const asset of loaded) disposeSource(asset);
-      loaded.length = 0;
       group.userData['ready'] = true;
     });
   }
@@ -223,7 +154,6 @@ void main() {
       const distance = Math.hypot(camera.x - centre.x, camera.z - centre.z);
       group.visible = distance < (group.visible ? 235 : 215) * scale;
       if (!group.visible) return;
-      windowMaterial.opacity = .68 * (1 - THREE.MathUtils.smoothstep(daylight, .15, .6));
       particlesMaterial.uniforms['brightness']!.value = .34 + .66 * daylight;
       sampleEnvironmentWind(time, island.seed, rain, centre.x, centre.z, wind);
       if (anchors.fountain) {
@@ -252,15 +182,15 @@ void main() {
         ripples.instanceMatrix.needsUpdate = true;
         if (ripples.instanceColor) ripples.instanceColor.needsUpdate = true;
       }
-      for (let t = 0; t < anchors.tables.length; t++) {
-        const table = anchors.tables[t]!;
-        for (let j = 0; j < 12; j++) {
-          const i = fountainCount + t * 12 + j;
-          const phase = (time * .32 + j / 12 + t * .37) % 1;
+      for (let t = 0; t < servings.length; t++) {
+        const cup = servings[t]!;
+        for (let j = 0; j < 6; j++) {
+          const i = fountainCount + t * 6 + j;
+          const phase = (time * .32 + j / 6 + t * .37) % 1;
           const curl = Math.sin(phase * 5 + t * 2.7) * .035 * scale;
-          positions[i * 3] = table.position.x + curl + wind.x * phase * .025;
-          positions[i * 3 + 1] = table.position.y + (.13 + phase * .65) * scale;
-          positions[i * 3 + 2] = table.position.z + wind.z * phase * .025;
+          positions[i * 3] = cup.x + curl + wind.x * phase * .025;
+          positions[i * 3 + 1] = cup.y + (.13 + phase * .65) * scale;
+          positions[i * 3 + 2] = cup.z + wind.z * phase * .025;
           opacity[i] = cupsReady ? Math.sin(phase * Math.PI) * .19 * (.35 + .65 * daylight) : 0;
         }
       }
@@ -270,8 +200,6 @@ void main() {
     dispose(): void {
       if (disposed) return;
       disposed = true;
-      for (const asset of loaded) disposeSource(asset);
-      loaded.length = 0;
       for (const geometry of geometries) geometry.dispose();
       for (const material of materials) material.dispose();
       ripples.dispose();

@@ -133,12 +133,18 @@ export function createResidentRig(asset: GLTF, initial: AmbientResidentState) {
   cameraBounds.max.multiplyScalar(scale);
   cameraBounds.expandByScalar(initial.height * .05);
   model.scale.setScalar(scale);
-  model.position.y = -bounds.min.y * scale;
+  const modelGround = -bounds.min.y * scale;
+  model.position.y = modelGround;
+  const hip = model.getObjectByName('torso');
   root.add(model);
   const skeletons = new Set<THREE.Skeleton>();
   const probes: SoleProbe[] = [];
+  const skins: { mesh: THREE.SkinnedMesh; original: THREE.Material | THREE.Material[];
+    faded?: THREE.Material | THREE.Material[] }[] = [];
+  const fadeMaterials = new Map<THREE.Material, THREE.Material>();
   model.traverse(node => {
     if (!(node instanceof THREE.SkinnedMesh)) return;
+    skins.push({ mesh: node, original: node.material });
     skeletons.add(node.skeleton);
     for (const material of Array.isArray(node.material) ? node.material : [node.material]) {
       if (!fadedMaterials.has(material)) {
@@ -166,7 +172,7 @@ export function createResidentRig(asset: GLTF, initial: AmbientResidentState) {
   });
   const point = new THREE.Vector3();
   let previousTime = NaN, shotStart = 0, previousActivity = initial.activity;
-  let disposed = false, cameraHidden = false;
+  let disposed = false;
   const weights = Object.fromEntries(CLIPS.map(name => [name, name === 'idle' ? 1 : 0])) as Record<Clip, number>;
 
   function update(state: AmbientResidentState, time: number, animate = true): void {
@@ -184,10 +190,12 @@ export function createResidentRig(asset: GLTF, initial: AmbientResidentState) {
     const moving = selected === 'walk' || selected === 'sprint';
     const moveWeight = moving ? Math.min(1, Math.max(0, state.speed) / .22) : 0;
     const blend = 1 - Math.exp(-dt * 9);
+    const sit = state.seat ? THREE.MathUtils.smoothstep(state.seat.progress, .15, .93) : 0;
     for (const name of CLIPS) {
       const action = actions[name];
       const desired = name === selected ? (moving ? moveWeight : 1) : name === 'idle' && moving ? 1 - moveWeight : 0;
-      weights[name] += (desired - weights[name]) * blend;
+      if (state.seat) weights[name] = name === 'sit' ? sit : name === 'idle' ? 1 - sit : 0;
+      else weights[name] += (desired - weights[name]) * blend;
       action.setEffectiveWeight(weights[name]);
       const duration = action.getClip().duration;
       if (name === 'walk' || name === 'sprint') {
@@ -202,36 +210,74 @@ export function createResidentRig(asset: GLTF, initial: AmbientResidentState) {
     // Absolute clip phases survive culling, pause, frame-rate changes and quality
     // switches. Advancing a render-time mixer would desynchronise them from gait.
     mixer.update(0);
+    model.position.set(0, modelGround, 0);
     root.updateMatrixWorld(true);
     let bottom = Infinity;
-    for (const probe of probes) {
-      probe.mesh.getVertexPosition(probe.index, point).applyMatrix4(probe.mesh.matrixWorld);
-      bottom = Math.min(bottom, point.y);
+    if (sit < 1) {
+      for (const probe of probes) {
+        probe.mesh.getVertexPosition(probe.index, point).applyMatrix4(probe.mesh.matrixWorld);
+        bottom = Math.min(bottom, point.y);
+      }
     }
-    if (Number.isFinite(bottom) && state.activity !== 'sit') {
-      model.position.y += state.position.y - bottom;
-      root.updateMatrixWorld(true);
+    const groundCorrection = Number.isFinite(bottom) ? state.position.y - bottom : 0;
+    let seatCorrection = groundCorrection;
+    if (hip && state.seat && sit > 0) {
+      hip.getWorldPosition(point);
+      // The native folded legs sit 0.118 model units below this joint.
+      seatCorrection = state.seat.anchor.position.y + .118 * scale - point.y;
+      const dx = state.position.x - point.x, dz = state.position.z - point.z;
+      model.position.x = (dx * Math.cos(state.yaw) - dz * Math.sin(state.yaw)) * sit;
+      model.position.z = (dx * Math.sin(state.yaw) + dz * Math.cos(state.yaw)) * sit;
     }
+    model.position.y += THREE.MathUtils.lerp(groundCorrection, seatCorrection, sit);
+    root.updateMatrixWorld(true);
   }
   update(initial, 0);
+
+  const fadedMaterial = (source: THREE.Material): THREE.Material => {
+    let material = fadeMaterials.get(source);
+    if (!material) {
+      material = source.clone();
+      // Smooth near transparency avoids filling the screen with alpha-hash
+      // noise. The software renderer uses depth-preserving dither for this pass.
+      material.alphaHash = false;
+      material.transparent = true;
+      material.depthWrite = false;
+      material.userData['cameraFade'] = true;
+      fadeMaterials.set(source, material);
+    }
+    return material;
+  };
   return {
     root,
     update,
-    cameraVisible(state: AmbientResidentState, camera: THREE.Vector3): boolean {
-      // Rotate the camera into the body's local box. The extra exit clearance
-      // avoids flicker as a resident or the follow camera skirts its boundary.
+    updateCameraOpacity(state: AmbientResidentState, camera: THREE.Vector3): number {
+      // Begin the fade before the head fills the foreground. Box distance also
+      // accounts for elevated cameras without fading a person far below them.
       const dx = camera.x - state.position.x, dz = camera.z - state.position.z;
       const cos = Math.cos(state.yaw), sin = Math.sin(state.yaw);
       point.set(cos * dx - sin * dz, camera.y - state.position.y, sin * dx + cos * dz);
-      const clearance = initial.height * (cameraHidden ? .5 : .35);
-      cameraHidden = cameraBounds.distanceToPoint(point) < clearance;
-      return !cameraHidden;
+      const clearance = cameraBounds.distanceToPoint(point) / state.height;
+      const opacity = THREE.MathUtils.smoothstep(clearance, .42, 1.7);
+      for (const skin of skins) {
+        if (opacity === 1 || opacity === 0) {
+          skin.mesh.material = skin.original;
+        } else {
+          skin.faded ??= Array.isArray(skin.original) ? skin.original.map(fadedMaterial) : fadedMaterial(skin.original);
+          skin.mesh.material = skin.faded;
+        }
+      }
+      if (opacity > 0 && opacity < 1) {
+        for (const [source, fading] of fadeMaterials) fading.opacity = source.opacity * opacity;
+      }
+      return opacity;
     },
     dispose(): void {
       if (disposed) return;
       disposed = true;
       mixer.stopAllAction();
       mixer.uncacheRoot(model);
+      for (const material of fadeMaterials.values()) material.dispose();
       for (const skeleton of skeletons) skeleton.dispose();
       root.removeFromParent();
     },
@@ -320,7 +366,8 @@ export function buildAmbientLifeVisuals(
         if (withinRange) inRange.add(state.id); else inRange.delete(state.id);
         // Object visibility is honored by both production renderers. Keep
         // this per-actor rule independent of pooled materials and far LOD.
-        rig.root.visible = withinRange && rig.cameraVisible(state, camera);
+        const cameraOpacity = withinRange ? rig.updateCameraOpacity(state, camera) : 0;
+        rig.root.visible = cameraOpacity > 0;
         const near = distance2 < 38 * 38;
         // A nearby hidden actor still observes reaction transitions and gait;
         // restoring its mesh must not restart a gesture or reveal a stale pose.
@@ -332,7 +379,7 @@ export function buildAmbientLifeVisuals(
         }
         if (!rig.root.visible) continue;
         visibleCount++;
-        if (distance2 > 100 * 100) continue;
+        if (distance2 > 100 * 100 || cameraOpacity < .2) continue;
         shadow.position.set(state.position.x, state.position.y + .018, state.position.z);
         shadow.rotation.y = state.yaw;
         shadow.scale.set(state.radius * 1.25, 1, state.radius * .92);

@@ -100,6 +100,8 @@ describe('living world in the real fixed-tick game', () => {
       expect(game.market.activeBodies).toBe(6);
       react.mockClear();
       const beforeParty = positions();
+      const residentsBeforeParty = game.life.residents.map(actor => ({ position: { ...actor.position },
+        seat: actor.seat?.progress }));
       game.party.start('rising-tide', 3, 'easy', { countdownTicks: 0 });
       expect(game.market.items.every(item => item.body!.isEnabled())).toBe(true);
       game.step({ bleat: true });
@@ -107,7 +109,9 @@ describe('living world in the real fixed-tick game', () => {
       expect(positions()).toEqual(beforeParty);
       expect(acceptedBleats).toBe(2);
       expect(react).not.toHaveBeenCalled();
-      expect(game.life.residents.every(actor => actor.activity === 'idle' && actor.speed === 0)).toBe(true);
+      expect(game.life.residents.map(actor => ({ position: actor.position, seat: actor.seat?.progress })))
+        .toEqual(residentsBeforeParty);
+      expect(game.life.residents.every(actor => actor.activity === (actor.seat ? 'sit' : 'idle') && actor.speed === 0)).toBe(true);
       expect(game.market.activeBodies).toBe(6);
 
       game.party.returnToFreeRoam();

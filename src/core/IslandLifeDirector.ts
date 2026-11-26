@@ -55,6 +55,13 @@ function pointSegmentDistance(point: Vec2, a: Vec2, b: Vec2): number {
   return Math.hypot(a.x + dx * t - point.x, a.z + dz * t - point.z);
 }
 
+function blocksMovement(point: Vec2, from: Vec2, to: Vec2, clearance: number): boolean {
+  const distance = Math.hypot(point.x - from.x, point.z - from.z);
+  // A resident already beside an obstacle is allowed to move out of it.
+  return !(distance < clearance && Math.hypot(point.x - to.x, point.z - to.z) > distance + 1e-7) &&
+    pointSegmentDistance(point, from, to) < clearance;
+}
+
 /** Fixed-simulation-time, bounded ambient activity. This class owns neither
  * Rapier bodies, currencies, save state, input sampling nor render resources. */
 export class IslandLifeDirector {
@@ -175,7 +182,9 @@ export class IslandLifeDirector {
       if (!found) { actor.dwellUntil = time + 1.3; return false; }
     }
     if (!this.routeTo(actor, station)) { actor.dwellUntil = time + .2; return false; }
-    actor.reroute = false; return true;
+    actor.reroute = false;
+    if (this.plan.stations[station]?.seat && actor.routeIndex >= actor.route.length) this.arrive(actor, time);
+    return true;
   }
 
   private stationActivity(actor: Resident): AmbientActivity {
@@ -186,6 +195,64 @@ export class IslandLifeDirector {
     if (station.kind === 'delivery') return actor.definition.role === 'delivery' ? 'work' : 'look';
     if (station.kind === 'shop') return 'shop';
     return 'idle';
+  }
+
+  private arrive(actor: Resident, time: number): void {
+    const seatedVisit = this.plan.stations[actor.station]?.seat && !actor.reactionKind;
+    const dwell = actor.definition.dwell * (.8 + actor.definition.phase * .4);
+    actor.dwellUntil = time + (seatedVisit ? 12 + dwell : dwell);
+    actor.state.speed = 0;
+    actor.state.activity = actor.reactionKind ? 'startle' : this.stationActivity(actor);
+  }
+
+  private blockingObstacle(state: AmbientResidentState, next: Vec3,
+    obstacles: IslandLifeContext['obstacles']): IslandLifeObstacle | undefined {
+    const scale = this.plan.navigation.scale;
+    for (const obstacle of obstacles ?? []) {
+      const halfHeight = (obstacle.height ?? scale) / 2;
+      if (obstacle.position.y + halfHeight >= next.y + .15 * scale &&
+        obstacle.position.y - halfHeight <= next.y + state.height &&
+        blocksMovement(obstacle.position, state.position, next, obstacle.radius + state.radius + .15 * scale)) return obstacle;
+    }
+    return undefined;
+  }
+
+  private updateSeat(actor: Resident, index: number, context: IslandLifeContext, dt: number): boolean {
+    const { state } = actor;
+    const station = this.plan.stations[actor.station], seat = station?.seat;
+    if (!seat || !station) return false;
+    const nav = this.plan.navigation, approach = nav.nodes[station.node]!.position;
+    const stay = actor.routine === 'day' && !actor.reroute && !actor.reactionKind &&
+      context.time < actor.dwellUntil && seat.floor.y > context.tideLevel + .22 * nav.scale;
+    if (!state.seat && (!stay || actor.detour || actor.routeIndex < actor.route.length ||
+      Math.hypot(state.position.x - approach.x, state.position.z - approach.z) > .05 * nav.scale)) return false;
+
+    state.speed = 0;
+    if (turn(state, station.yaw, dt) > .14 && !state.seat) return true;
+    const progress = state.seat?.progress ?? 0;
+    const nextProgress = Math.max(0, Math.min(1, progress + (stay ? dt : -dt) / 1.15));
+    if (nextProgress === progress) return true;
+    const t = nextProgress * nextProgress * (3 - 2 * nextProgress);
+    const next = this.proposed;
+    next.x = approach.x + (seat.floor.x - approach.x) * t;
+    next.z = approach.z + (seat.floor.z - approach.z) * t;
+    next.y = nav.surfaceAt(next.x, next.z);
+    const player = context.player;
+    if (this.blockingResident(index, next) !== undefined || this.blockingObstacle(state, next, context.obstacles) ||
+      (Math.abs(player.position.y - next.y) < state.height + nav.scale &&
+        blocksMovement(player.position, state.position, next, player.radius + state.radius + .1 * nav.scale))) return true;
+
+    Object.assign(state.position, next);
+    if (nextProgress > 0) {
+      state.seat ??= { anchor: seat, progress: 0 };
+      state.seat.progress = nextProgress;
+      state.activity = 'sit';
+    } else {
+      delete state.seat;
+      state.activity = actor.reactionKind === 'bleat' ? (actor.definition.phase > .38 ? 'wave' : 'look') :
+        actor.reactionKind ? 'startle' : 'idle';
+    }
+    return true;
   }
 
   private prepareFlee(actor: Resident): void {
@@ -255,7 +322,8 @@ export class IslandLifeDirector {
       actor.state.reactionUntil = time + (kind === 'bleat' ? 2.8 : 4.8) + actor.definition.phase;
       actor.cooldownUntil = time + 8 + actor.definition.phase * 4;
       actor.lookAt.x = position.x; actor.lookAt.y = position.y; actor.lookAt.z = position.z;
-      actor.state.activity = kind === 'bleat' ? (actor.definition.phase > .38 ? 'wave' : 'look') : 'startle';
+      if (!actor.state.seat)
+        actor.state.activity = kind === 'bleat' ? (actor.definition.phase > .38 ? 'wave' : 'look') : 'startle';
       actor.state.speed = 0;
     }
     return candidates.length;
@@ -279,7 +347,7 @@ export class IslandLifeDirector {
     this.fillGrid();
     for (let index = 0; index < this.actors.length; index++) {
       const actor = this.actors[index]!, state = actor.state, def = actor.definition;
-      if (!context.enabled) { state.speed = 0; state.activity = 'idle'; continue; }
+      if (!context.enabled) { state.speed = 0; state.activity = state.seat ? 'sit' : 'idle'; continue; }
       if (justEnabled) {
         if (actor.reactionKind) {
           actor.route = []; actor.routeIndex = 0; actor.detour = undefined;
@@ -302,6 +370,7 @@ export class IslandLifeDirector {
         actor.reroute = true;
         actor.dwellUntil = context.time;
       }
+      if (this.updateSeat(actor, index, context, seconds)) continue;
       if (actor.reroute && !actor.reactionKind && this.routingBudget > 0 && context.time >= actor.dwellUntil)
         this.nextDestination(actor, context.time);
       if (actor.reactionKind) {
@@ -355,8 +424,7 @@ export class IslandLifeDirector {
         if (actor.detour) { actor.detour = undefined; actor.yieldUntil = context.time + 1.2; }
         else actor.routeIndex++;
         if (actor.routeIndex >= actor.route.length) {
-          state.speed = 0; actor.dwellUntil = context.time + def.dwell * (.8 + def.phase * .4);
-          state.activity = actor.reactionKind ? 'startle' : this.stationActivity(actor);
+          this.arrive(actor, context.time);
         }
         continue;
       }
@@ -378,25 +446,12 @@ export class IslandLifeDirector {
         actor.dwellUntil = context.time + .5; continue;
       }
       const playerSafe = player.radius + state.radius + .1 * scale;
-      const oldPlayerDistance = Math.hypot(player.position.x - state.position.x, player.position.z - state.position.z);
-      const newPlayerDistance = Math.hypot(player.position.x - next.x, player.position.z - next.z);
       const playerBlocks = Math.abs(player.position.y - next.y) < state.height + scale &&
-        !(oldPlayerDistance < playerSafe && newPlayerDistance > oldPlayerDistance + 1e-7) &&
-        pointSegmentDistance(player.position, state.position, next) < playerSafe;
-      let dynamicBlocks = false;
-      for (const obstacle of context.obstacles ?? []) {
-        if (obstacle.position.y + (obstacle.height ?? scale) / 2 < next.y + .15 * scale ||
-          obstacle.position.y - (obstacle.height ?? scale) / 2 > next.y + state.height) continue;
-        const safe = obstacle.radius + state.radius + .15 * scale;
-        const oldDistance = Math.hypot(obstacle.position.x - state.position.x, obstacle.position.z - state.position.z);
-        const newDistance = Math.hypot(obstacle.position.x - next.x, obstacle.position.z - next.z);
-        if (oldDistance < safe && newDistance > oldDistance + 1e-7) continue;
-        if (pointSegmentDistance(obstacle.position, state.position, next) < safe) {
-          dynamicBlocks = true; this.yieldAway(actor, obstacle.position, context.time); break;
-        }
-      }
+        blocksMovement(player.position, state.position, next, playerSafe);
+      const obstacle = this.blockingObstacle(state, next, context.obstacles);
+      if (obstacle) this.yieldAway(actor, obstacle.position, context.time);
       const other = this.blockingResident(index, next);
-      if (other !== undefined || playerBlocks || dynamicBlocks) {
+      if (other !== undefined || playerBlocks || obstacle) {
         state.speed = 0; state.activity = flee ? 'startle' : 'look';
         if (playerBlocks) this.yieldAway(actor, player.position, context.time);
         else if (other !== undefined) {

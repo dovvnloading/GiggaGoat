@@ -173,6 +173,7 @@ try {
       {id:'spawn',camera:{...view.camera.position},target:game.goat.torso.translation()},
       {id:'downtown-street',camera:at(7,40,2.2),target:at(8,-20,2)},
       {id:'downtown-fountain',camera:at(-7,-49,3.1),target:at(-21,-54,1.1)},
+      {id:'downtown-cafe',camera:at(-6.8,-39.2,2.1),target:at(-11.7,-40,1.03)},
       {id:'downtown-market',camera:at(10,61,4.5),target:at(24,55,.8)},
       {id:'downtown-rooftop',camera:at(-17,18,14),target:at(7,35,0)},
       ...ART_BOOKMARKS.filter(p=>p.district).map(p=>({...p,id:'approach-'+p.district}))];
@@ -186,6 +187,7 @@ try {
   let readinessReportedAt = 0;
   await until(async () => {
     assetReadiness = await evaluate(`(()=>{const c=window.__livingCapture,pending=[],groups=[],residents=c.view.residents?.stats?.();
+      const frontage=c.view.scene.getObjectByName('downtown-shop-signs-and-displays');
       c.view.scene.traverse(o=>{if('ready' in o.userData||'libraryReady' in o.userData){
         groups.push({name:o.name,type:o.type,ready:o.userData.ready,libraryReady:o.userData.libraryReady,
           loadedModels:o.userData.loadedModels,failedAssets:o.userData.failedAssets,
@@ -195,7 +197,8 @@ try {
       if(c.view.characters.player.isReady===false&&!${allowLegacyGoat})pending.push('animated player goat');
       if(residents&&(residents.loaded!==residents.logical||residents.failedModels.length))pending.push('authored resident rigs');
       return {pending,groups,goatReady:c.view.characters.player.isReady,
-        goatVariant:c.view.characters.player.variant,residents};})()`);
+        goatVariant:c.view.characters.player.variant,residents,
+        storefrontPanels:(frontage?.geometry.index?.count??0)/6};})()`);
     if (assetReadiness.residents?.failedModels.length)
       throw new Error('Required resident models failed: ' + assetReadiness.residents.failedModels.join(', '));
     if (assetReadiness.pending.length && Date.now() - readinessReportedAt > 15000) {
@@ -222,7 +225,7 @@ try {
       return {times,p50Ms:p(.5),p95Ms:p(.95),p99Ms:p(.99),drawCalls:c.renderer.info.render.calls,
         triangles:c.renderer.info.render.triangles,textures:c.renderer.info.memory.textures,
         geometries:c.renderer.info.memory.geometries,bodies:c.game.bodyCount,
-        residents:c.game.life?.residents.length||0,residentStates:c.game.life?.residents.map(r=>({id:r.id,position:r.position,activity:r.activity})),
+        residents:c.game.life?.residents.length||0,residentStates:c.game.life?.residents.map(r=>({id:r.id,position:r.position,activity:r.activity,seat:r.seat})),
         pixelRatio:c.renderer.getPixelRatio(),width:c.renderer.domElement.width,height:c.renderer.domElement.height,
         gpu:ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):'software',time:c.game.physics.time};})()`);
     const screenshotStarted=performance.now();

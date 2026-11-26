@@ -224,7 +224,7 @@ export class SoftwareGameRenderer {
   }
 
   private paint(mesh: THREE.Mesh, material: Surface): Paint | undefined {
-    if (!material.visible || material.opacity < .12) return;
+    if (!material.visible || material.opacity < (material.userData['cameraFade'] ? .03 : .12)) return;
     let colour = material.color ?? this.white;
     if (material instanceof THREE.ShaderMaterial) {
       if (!/sea|river|reservoir|plunge-pool|terrace-water/.test(mesh.name)) return;
@@ -351,9 +351,10 @@ export class SoftwareGameRenderer {
     const textured = uv && paints.some(p => p?.texture);
     const mirrored = matrix.determinant() < 0;
     const common = paints.length === 1 ? paints[0] : undefined;
-    // The SIMD raster writes opaque pixels. Blended meshes need the scalar
-    // path to interpolate coverage and retain the water or terrain beneath.
-    const batch = common && !textured && !coverage && this.raster?.accepts(data.sources.length, data.materials.length)
+    // The SIMD raster writes every covered pixel. Both blended surfaces and
+    // alpha-hashed fades need the scalar path to retain the scene behind them.
+    const batch = common && !textured && !coverage && !common.material.userData['cameraFade'] &&
+      this.raster?.accepts(data.sources.length, data.materials.length)
       ? this.raster : undefined;
     const staticBatch = skinned ? undefined : batch;
     const halfWidth = this.frame!.image.width * .5, halfHeight = this.frame!.image.height * .5;
@@ -443,7 +444,8 @@ export class SoftwareGameRenderer {
           this.channel(base.b * tint.b * (vertex ? vertex[k + 2]! : 1), shade));
       }
       this.frame!.triangle(a, b, c, this.near, colour, uv ? paint.texture : undefined,
-        side, paint.material.polygonOffset ? 1.00005 : 1);
+        side, paint.material.polygonOffset ? 1.00005 : 1,
+        paint.material.userData['cameraFade'] ? paint.material.opacity : 1);
     }
   }
 

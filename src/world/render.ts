@@ -705,7 +705,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
         lighthouse.isFallbackHidden(mesh)))
       shadowCastersChanged = true;
     if (hoofington.updateCulling(pos, frustum)) shadowCastersChanged = true;
-    if (downtown.updateCulling(pos, frustum)) shadowCastersChanged = true;
+    if (downtown.updateCulling(pos, frustum, daylight)) shadowCastersChanged = true;
     if (environmentLod.updateCulling(camera, pos, frustum)) shadowCastersChanged = true;
     if (props.consumeShadowChange()) shadowCastersChanged = true;
     if (hoofington.consumeShadowChange()) shadowCastersChanged = true;

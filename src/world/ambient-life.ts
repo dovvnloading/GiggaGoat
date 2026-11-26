@@ -1,16 +1,23 @@
 import { SeededRandom } from './random';
-import { createAmbientNavigation, nearestAmbientNode, type AmbientNavigation } from './ambient-navigation';
+import { createAmbientNavigation, isAmbientSegmentSafe, nearestAmbientNode, type AmbientNavigation } from './ambient-navigation';
+import { downtownChairSeat, makeDowntownPlacements } from './visual-downtown';
 import type { IslandData, Vec2, Vec3 } from './types';
 
 export type AmbientResidentModel = 'male-a' | 'male-b' | 'female-a' | 'female-b' | 'worker';
 export type AmbientResidentRole = 'vendor' | 'shopper' | 'cafe-guest' | 'delivery' | 'walker';
 export type AmbientActivity = 'walk' | 'idle' | 'work' | 'shop' | 'shelter' | 'sit' | 'look' | 'wave' | 'startle' | 'flee';
 export type AmbientStationKind = 'market' | 'cafe' | 'fountain' | 'delivery' | 'shop' | 'shelter';
+export interface AmbientSeat {
+  readonly position: Vec3;
+  readonly floor: Vec3;
+  readonly chair: string;
+}
 export interface AmbientStation {
   readonly id: string;
   readonly kind: AmbientStationKind;
   readonly node: number;
   readonly yaw: number;
+  readonly seat?: AmbientSeat;
 }
 export interface AmbientResidentDefinition {
   readonly id: string;
@@ -29,7 +36,7 @@ export interface AmbientResidentState {
   id: string;
   role: AmbientResidentRole;
   model: AmbientResidentModel;
-  /** Feet, not the mesh centre. Stable objects are shared with the visual adapter. */
+  /** Ground position, with the actual seat support supplied separately. */
   position: Vec3;
   yaw: number;
   speed: number;
@@ -39,6 +46,7 @@ export interface AmbientResidentState {
   reactionUntil: number;
   height: number;
   radius: number;
+  seat?: { anchor: AmbientSeat; progress: number };
 }
 
 /** One authored walk or sprint cycle covers two steps, in metres at this height. */
@@ -103,19 +111,45 @@ export function createAmbientLifePlan(island: IslandData, excludedPositions: rea
         -side * Math.PI / 2, 1.4);
     }
   }
+
+  // Each seat gets a swept entry from the side. Only the assigned chair is
+  // excluded from this final step, so the table, scenery and other chairs
+  // still block it. Normal walking paths keep the entire furniture footprint.
+  let seatNumber = 0;
+  for (const [index, placement] of makeDowntownPlacements(island).entries()) {
+    if (placement.model !== 'chair') continue;
+    const id = `cafe-seat-${++seatNumber}`, chair = `art:chair:${index}`;
+    const position = downtownChairSeat(placement);
+    const floor = { ...position, y: navigation.surfaceAt(position.x, position.z) };
+    const access = { ...navigation, blockers: navigation.blockers.filter(blocker => blocker.id !== chair) };
+    const forwardX = Math.sin(placement.yaw), forwardZ = Math.cos(placement.yaw);
+    const candidates = navigation.nodes.flatMap(node => {
+      const dx = node.position.x - floor.x, dz = node.position.z - floor.z;
+      const distance = Math.hypot(dx, dz);
+      return distance > 1.65 * scale || Math.abs(dx * forwardX + dz * forwardZ) > distance * .62
+        ? [] : [{ node, distance }];
+    }).sort((a, b) => a.distance - b.distance);
+    const approach = candidates.find(({ node }) => node.neighbors.length &&
+      !stations.some(s => s.node === node.id) && isAmbientSegmentSafe(access, node.position, floor));
+    if (approach) stations.push({ id, kind: 'cafe', node: approach.node.id, yaw: placement.yaw,
+      seat: { position, floor, chair } });
+  }
   const homes = stations.map((station, i) => ({ station, i })).filter(s => s.station.kind === 'shelter');
   const residents: AmbientResidentDefinition[] = [];
   const occupied: Vec3[] = [];
   const reservedHomes = new Set<number>();
+  const reservedSeats = new Set<number>();
   for (const [index, cast] of CAST.entries()) {
     if (reservedHomes.size >= homes.length) break;
     const preferred = stations.map((station, i) => ({ station, i })).filter(s =>
       ROLE_STATIONS[cast.role].includes(s.station.kind) && s.station.kind !== 'shelter' &&
+      (!s.station.seat || cast.role === 'cafe-guest') &&
       homes.some(h => !reservedHomes.has(h.i) && navigation.nodes[h.station.node]!.component === navigation.nodes[s.station.node]!.component));
     if (preferred.length < 2) continue;
     const rotation = rng.int(0, preferred.length);
     const ordered = [...preferred.slice(rotation), ...preferred.slice(0, rotation)].map(s => s.i);
-    const firstStation = stations[ordered[index % ordered.length]!]!;
+    const seat = ordered.find(i => stations[i]!.seat && !reservedSeats.has(i));
+    const firstStation = stations[seat ?? ordered[index % ordered.length]!]!;
     const component = navigation.nodes[firstStation.node]!.component;
     const itinerary = ordered.filter(i => navigation.nodes[stations[i]!.node]!.component === component);
     if (itinerary.length < 2) continue;
@@ -135,6 +169,11 @@ export function createAmbientLifePlan(island: IslandData, excludedPositions: rea
     })[0];
     if (!home) continue;
     reservedHomes.add(home.i);
+    if (seat !== undefined) {
+      reservedSeats.add(seat);
+      itinerary.splice(itinerary.indexOf(seat), 1);
+      itinerary.unshift(seat);
+    }
     occupied.push(initial.position);
     residents.push({ id: 'downtown-resident-' + String(index + 1).padStart(2, '0'), ...cast,
       height: rng.range(1.70, 1.88) * scale, radius: .35 * scale,

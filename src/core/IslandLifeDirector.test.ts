@@ -23,8 +23,11 @@ describe('IslandLifeDirector', () => {
       expect(a.residents).toEqual(b.residents);
       for (let i = 0; i < a.residents.length; i++) {
         const actor = a.residents[i]!;
-        expect(actor.position.y).toBeCloseTo(a.plan.navigation.surfaceAt(actor.position.x, actor.position.z), 7);
-        expect(isAmbientSegmentSafe(a.plan.navigation, actor.position, actor.position)).toBe(true);
+        const navigation = a.plan.navigation;
+        expect(actor.position.y).toBeCloseTo(navigation.surfaceAt(actor.position.x, actor.position.z), 7);
+        const clearance = actor.seat ? { ...navigation,
+          blockers: navigation.blockers.filter(blocker => blocker.id !== actor.seat!.anchor.chair) } : navigation;
+        expect(isAmbientSegmentSafe(clearance, actor.position, actor.position)).toBe(true);
         for (let j = i + 1; j < a.residents.length; j++) {
           const other = a.residents[j]!;
           expect(Math.hypot(actor.position.x - other.position.x, actor.position.z - other.position.z))
@@ -36,6 +39,29 @@ describe('IslandLifeDirector', () => {
     expect(a.residents.map(s => s.position)).not.toEqual(originalPositions);
     expect(new Set(a.residents.map(s => s.phase)).size).toBe(a.residents.length);
     a.dispose(); b.dispose();
+  });
+
+  it('reserves fitted café seats, preserves the pose in build mode, and stands before leaving', () => {
+    const life = new IslandLifeDirector(island);
+    try {
+      advance(life, 0, 16);
+      const guests = life.residents.filter(actor => actor.seat?.progress === 1);
+      expect(guests.length).toBeGreaterThanOrEqual(2);
+      expect(new Set(guests.map(actor => actor.seat!.anchor.chair)).size).toBe(guests.length);
+      for (const actor of guests) {
+        expect(actor.role).toBe('cafe-guest');
+        expect(actor.activity).toBe('sit');
+        expect(actor.position).toEqual(actor.seat!.anchor.floor);
+        expect(actor.seat!.anchor.position.y - actor.position.y).toBeCloseTo(.5, 1);
+      }
+      const seated = structuredClone(guests);
+      advance(life, 16, 17, { enabled: false });
+      expect(guests).toEqual(seated);
+      advance(life, 17, 17.5, { rain: 1 });
+      expect(guests.every(actor => actor.seat!.progress > 0 && actor.seat!.progress < 1)).toBe(true);
+      advance(life, 17.5, 20, { rain: 1 });
+      expect(guests.every(actor => !actor.seat && actor.activity !== 'sit')).toBe(true);
+    } finally { life.dispose(); }
   });
 
   it('caps/coalesces accepted events, prioritizes danger and recovers without queued storms', () => {
