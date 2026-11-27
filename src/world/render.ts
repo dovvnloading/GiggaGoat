@@ -670,7 +670,6 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     elapsed = Number.isFinite(time) ? Math.max(0, time) : elapsed;
     waterVisuals.update(elapsed, tide);
     props.update(elapsed, rain);
-    hoofington.updateAnimals(elapsed);
     dam.update(elapsed);
   }
   function updateCulling(camera: THREE.Camera): boolean {
