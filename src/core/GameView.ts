@@ -987,7 +987,8 @@ export class GameView {
       this.world.setTideLevel(this.lastTide, showTideRoutes);
     }
     this.world.setDayNight(dayPhase, weather);
-    this.world.update(this.game.physics.time);
+    const ambientPlayer = !this.paused && !this.titleCamera && this.game.ambientLifeEnabled ? playerPosition : undefined;
+    this.world.update(this.game.physics.time, ambientPlayer);
     if (this.scene.fog instanceof THREE.FogExp2) {
       this.scene.fog.density = this.clearFogDensity + weather.mist * .0062 + weather.cloud * .0009;
     }
