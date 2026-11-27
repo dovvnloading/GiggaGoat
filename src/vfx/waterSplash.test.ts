@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import {
   WATER_DROPLET_COUNT, makeWaterSplashBurst, sampleWaterDroplet, sampleWaterSplash,
@@ -76,6 +76,30 @@ describe('water splash motion math (independent of Three.js and WebGL)', () => {
 });
 
 describe('water splash Three.js lifecycle', () => {
+  it('uses the same ripple art for each contact and releases it with the pool', async () => {
+    vi.stubGlobal('document', { createElementNS: () => ({}) });
+    const art = new THREE.Texture<HTMLImageElement>();
+    const released = vi.spyOn(art, 'dispose');
+    const loader = vi.spyOn(THREE.TextureLoader.prototype, 'loadAsync').mockResolvedValue(art);
+    const splash = createWaterSplash({ capacity: 2, rippleArtUrl: '/water-ring.png' });
+    try {
+      const halo = (slot: number) => splash.group.children[slot]!.children[0]!.children[0] as
+        THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+      expect(halo(0).material.map).toBeInstanceOf(THREE.DataTexture);
+      expect(loader).toHaveBeenCalledWith('/water-ring.png');
+      await vi.waitFor(() => expect(halo(0).material.map).toBe(art));
+      expect(halo(1).material.map).toBe(art);
+      expect(halo(1).scale.y).toBeGreaterThan(halo(1).scale.x);
+      splash.emit({ x: 0, y: 0, z: 0 }, 6, 1);
+      expect(splash.activeCount).toBe(1);
+    } finally {
+      splash.dispose();
+      loader.mockRestore();
+      vi.unstubAllGlobals();
+    }
+    expect(released).toHaveBeenCalledTimes(1);
+  });
+
   it('uses a bounded and reusable scene-graph pool and disposes its own resources', () => {
     const scene = new THREE.Scene();
     const splash = createWaterSplash({ capacity: 2 });

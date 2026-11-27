@@ -11,6 +11,7 @@ import {
 } from '../vfx';
 import type { Game } from './Game';
 import { rotate, V } from '../physics/math';
+import { ISLAND_ART_PATH, publicAssetUrl } from '../world/public-assets';
 
 /** Testable cosmetic sinks. The production factories allocate every bounded pool only once. */
 export interface GameVfxEffects {
@@ -31,7 +32,8 @@ export function createGameVfxEffects(): GameVfxEffects {
     dust: createRunningDustPuffs({ seed: 42, capacity: 128 }),
     landing: createLandingImpactRing({ capacity: 8 }),
     headbutt: createHeadbuttImpactStars({ capacity: 8 }),
-    water: createWaterSplash({ capacity: 8 }),
+    water: createWaterSplash({ capacity: 8, rippleArtUrl: publicAssetUrl(
+      ISLAND_ART_PATH + 'sprites/creek-and-surf-effects/broken-foam-rings.png') }),
     crate: createCrateBreakDebris({ capacity: 6 }),
     trampoline: createTrampolineBoing({ capacity: 4, effectsOnly: true }),
     launch: createLaunchPadBurst({ capacity: 4, effectsOnly: true }),

@@ -16,3 +16,5 @@ export function publicAssetUrl(
       : pagePath.slice(0, pagePath.lastIndexOf('/') + 1);
   return root.replace(/\/?$/, '/') + assetPath.replace(/^\/+/, '');
 }
+
+export const ISLAND_ART_PATH = 'assets/generated/billy-isle/';

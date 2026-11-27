@@ -50,6 +50,38 @@ it('publishes a complete set together, fades it in, and releases it outside the 
   } finally { library.dispose(); }
 });
 
+it.each([true, false])('keeps all four layers when a generated swatch loads or falls back (%s)', async (available) => {
+  const ctx = { save: vi.fn(), restore: vi.fn(), translate: vi.fn(), scale: vi.fn(), drawImage: vi.fn() };
+  const canvas = { width: 1, height: 1, getContext: () => ctx };
+  vi.stubGlobal('document', { createElementNS: () => ({}), createElement: () => canvas });
+  const tile = (size: number) => new THREE.Texture({ width: size, height: size } as HTMLImageElement);
+  vi.spyOn(THREE.TextureLoader.prototype, 'load').mockReturnValue(tile(768));
+  const paint = tile(512);
+  const loader = vi.spyOn(THREE.TextureLoader.prototype, 'loadAsync').mockImplementation(async (url) => {
+    if (url.endsWith('pine-needle-duff.webp')) {
+      if (!available) throw new Error('swatch unavailable');
+      return paint;
+    }
+    return tile(768);
+  });
+  const library = districtMaterials(), material = new THREE.MeshBasicMaterial();
+  try {
+    library.applyMap(material, 'whispering-pines');
+    library.distance('whispering-pines', 40);
+    library.update();
+    const layers = groundLayers.get(material.map!)!;
+    await vi.waitFor(() => expect(layers.maps).toHaveLength(4));
+    expect(loader.mock.calls.some(([url]) => url.endsWith('whispering-pines-b.webp'))).toBe(!available);
+    if (available) {
+      expect(layers.maps?.[1]).toBe(paint);
+      expect(paint.image).toBe(canvas);
+      expect(canvas.width).toBe(768);
+      expect(ctx.drawImage).toHaveBeenCalledTimes(4);
+      expect(ctx.scale.mock.calls).toEqual([[1, 1], [-1, 1], [1, -1], [-1, -1]]);
+    }
+  } finally { library.dispose(); }
+});
+
 it('selects all four interiors and tapers into the fifth material at the shoulder', () => {
   const rgba = (n: number) => Uint8ClampedArray.of(n, n, n, 255);
   const surface: SoftwareTexture = { width: 1, height: 1, flipY: false, repeatU: true, repeatV: true,
