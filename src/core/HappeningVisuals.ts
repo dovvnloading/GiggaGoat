@@ -3,7 +3,7 @@ import { gridSample } from '../world/terrain';
 import type { IslandData, Vec3 } from '../world/types';
 import { IslandHappenings, type HappeningSite } from './IslandHappenings';
 
-type Shape = 'box' | 'cylinder' | 'cone' | 'ball' | 'ring';
+type Shape = 'box' | 'cylinder' | 'cone' | 'ball' | 'ring' | 'bun' | 'icing';
 const WOOD = 0x8e5735, DARK = 0x344756, CREAM = 0xffeac0, METAL = 0x7896a1;
 const GOLD = 0xe4ad45, RED = 0xd9554b, GREEN = 0x6d9b51;
 
@@ -16,6 +16,12 @@ export class HappeningVisuals {
     cylinder: new THREE.CylinderGeometry(.5, .5, 1, 10),
     cone: new THREE.ConeGeometry(.5, 1, 10),
     ball: new THREE.SphereGeometry(.5, 8, 6),
+    bun: new THREE.SphereGeometry(.5, 18, 10),
+    icing: new THREE.TubeGeometry(new THREE.CatmullRomCurve3(Array.from({ length: 42 }, (_, i) => {
+      const u = i / 41, angle = u * Math.PI * 4.4, radius = .025 + u * .216;
+      return new THREE.Vector3(radius * Math.cos(angle), .17 * Math.sqrt(1 - (radius / .29) ** 2),
+        radius * Math.sin(angle));
+    })), 44, .02, 6, false),
     ring: new THREE.TorusGeometry(.5, .055, 5, 20),
   };
   private readonly materials = new Map<string, THREE.Material>();
@@ -101,6 +107,19 @@ export class HappeningVisuals {
     group.position.set(site.position.x, site.position.y, site.position.z);
     group.rotation.y = site.yaw;
     group.scale.setScalar(site.scale);
+    if (site.definition.id === 'honey-rolls') {
+      this.bakeryRolls = Array.from({ length: 3 }, () => {
+        const bun = new THREE.Group();
+        bun.name = 'honey-roll';
+        bun.scale.setScalar(site.scale);
+        this.mesh(bun, 'bun', 0xd78a43, 0,0,0, .61,.34,.57);
+        this.mesh(bun, 'icing', 0xffe0a8, 0,.012,0, 1,1,1);
+        bun.visible = false;
+        this.root.add(bun);
+        return bun;
+      });
+      return;
+    }
     const main = this.anchor(group, site), color = site.definition.color;
     const side = (x: number, z: number) => this.anchor(group, site, x, z);
     let spin: (time: number, energy: number) => void = () => {};
@@ -242,7 +261,14 @@ export class HappeningVisuals {
     this.scenes.push({ site, group, spin, spark, bursts });
   }
 
-  update(time: number, camera: Vec3, enabled: boolean): void {
+  private bakeryRolls: THREE.Group[] = [];
+
+  update(time: number, camera: Vec3, enabled: boolean, bakeryEnabled = enabled): void {
+    const batch = this.happenings.bakery;
+    if (batch) this.bakeryRolls.forEach((roll, index) => {
+      roll.visible = bakeryEnabled && batch.roll(index, time, roll.position);
+      if (roll.visible) roll.rotation.y = batch.site.yaw + index * .8;
+    });
     for (const { site, group, spin, spark, bursts } of this.scenes) {
       group.visible = enabled && group.position.distanceToSquared(camera) < (70 * site.scale) ** 2;
       if (!group.visible) continue;

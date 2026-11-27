@@ -11,7 +11,7 @@ Eleven Kenney commercial buildings (CC0), the island's single building family, p
 
 | File | Kenney | Facade | Awning | Suggested shop (painting) |
 |---|---|---|---|---|
-| shop-h-pink.glb | h | pink #e8919f | red/white | Baakery |
+| shop-h-pink.glb | h | pink #e8919f | red/white | EAP'S Bakery |
 | shop-k-lavender.glb | k | lavender #b9a6e0 | purple/white | Kid Arcade |
 | shop-d-mint.glb | d | mint #9fdcc4 | green/white | Cinema / Chew-Chew |
 | shop-e-peach.glb | e | peach #f6c39a | orange/white | Cafe |

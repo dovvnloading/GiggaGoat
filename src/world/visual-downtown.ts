@@ -7,6 +7,7 @@ import { publicAssetUrl } from './public-assets';
 import { bakeLibraryGeometry, createLanternLampInstances,
   type LanternLampBatch, type HoofPlacement } from './visual-hoofington';
 import { createDistrictLod, type BakedPlacement, type DistrictLod } from './district-lod';
+import { BAKERY_NAME } from './bakery-sign';
 import { buildDowntownStorefronts } from './visual-downtown-storefronts';
 
 /**
@@ -133,7 +134,7 @@ export const SHOP_FRONTS: readonly (readonly {
     { model: 'cinema', title: 'GOATFLIX' },
     { model: 'boutique', title: 'BOUTIQUE' },
     { model: 'arcade', title: 'KID ARCADE' },
-    { model: 'bakery', title: 'BAAKERY' },
+    { model: 'bakery', title: BAKERY_NAME },
   ],
   // Warm cream shop, green market and teal cafe along the right pavement.
   [
@@ -214,7 +215,7 @@ export function downtownBuildingModel(
   return infill.model;
 }
 
-function downtownShopFront(source: PropDescriptor, centre: Vec3, scale: number) {
+export function downtownShopFront(source: PropDescriptor, centre: Vec3, scale: number) {
   const { x, z } = source.transform.position;
   const row = Math.max(0, Math.min(4, Math.round((z - centre.z) / (scale * 19) + 2)));
   return SHOP_FRONTS[x < centre.x ? 0 : 1]![row]!;
