@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { blendPeriod, blendSize, groundBlendField } from './ground-blend';
-import { publicAssetUrl } from './public-assets';
+import { ISLAND_ART_PATH, publicAssetUrl } from './public-assets';
 import type { PoiId } from './types';
 
 type FinishMaterial = THREE.MeshLambertMaterial | THREE.MeshToonMaterial | THREE.MeshBasicMaterial;
@@ -14,6 +14,37 @@ interface Layers {
 
 export const groundLayers = new WeakMap<THREE.Texture, Layers>();
 const suffixes = ['-a', '-b', '-c', '-edge'] as const;
+const trailArt: Partial<Record<PoiId, string>> = {
+  hoofington: 'hoofington-surfaces/packed-garden-soil.webp',
+  'baa-ardwalk': 'baa-ardwalk-surfaces/golden-shell-sand.webp',
+  'crane-yard': 'crane-yard-dam-surfaces/warm-cast-concrete.webp',
+  'downtown-bleatsville': 'downtown-surfaces/honey-plaza-pavers.webp',
+  'whispering-pines': 'whispering-pines-surfaces/pine-needle-duff.webp',
+  'old-lighthouse': 'cape-summit-surfaces/sea-grass-dune-soil.webp',
+};
+
+/** Match opposite edges for both renderers using a reflected copy of the swatch. */
+function mirrorIntoTile(texture: THREE.Texture, zone: PoiId): void {
+  const image = texture.image as HTMLImageElement | undefined;
+  if (!image || typeof document.createElement !== 'function') return;
+  const canvas = document.createElement('canvas');
+  // Match the baked 768px ground layers for software mip blending.
+  const half = 384;
+  canvas.width = canvas.height = half * 2;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  // Keep the honey pavers within the tones of the surrounding stonework.
+  if (zone === 'downtown-bleatsville') ctx.filter = 'saturate(.64) brightness(.92)';
+  for (const y of [0, 1]) for (const x of [0, 1]) {
+    ctx.save();
+    ctx.translate(x * canvas.width, y * canvas.height);
+    ctx.scale(x ? -1 : 1, y ? -1 : 1);
+    ctx.drawImage(image, 0, 0, half, half);
+    ctx.restore();
+  }
+  texture.image = canvas;
+  texture.needsUpdate = true;
+}
 
 function prepare(texture: THREE.Texture) {
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -115,8 +146,19 @@ export function districtMaterials() {
     const maps: THREE.Texture[] = [];
     try {
       for (const suffix of suffixes) {
-        const url = publicAssetUrl('assets/terrain/' + zone + suffix + '.webp');
-        maps.push(prepare(await loader.loadAsync(url)));
+        const swatch = suffix === '-b' ? trailArt[zone] : undefined;
+        let variant: THREE.Texture | undefined;
+        if (swatch) {
+          try {
+            variant = await loader.loadAsync(publicAssetUrl(ISLAND_ART_PATH + 'surfaces/' + swatch));
+            if (!disposed && entry.wanted) mirrorIntoTile(variant, zone);
+          } catch {
+            variant?.dispose();
+            variant = undefined;
+          }
+          if (disposed || !entry.wanted) { variant?.dispose(); return; }
+        }
+        maps.push(prepare(variant ?? await loader.loadAsync(publicAssetUrl('assets/terrain/' + zone + suffix + '.webp'))));
         if (disposed || !entry.wanted) return;
       }
       entry.layers.maps = maps as GroundLayers;

@@ -8,6 +8,8 @@ import {
 export interface WaterSplashOptions {
   /** Maximum overlapping splashes; the oldest slot is recycled when full. */
   capacity?: number;
+  /** Optional authored surface ripple. The pool owns the loaded texture. */
+  rippleArtUrl?: string;
 }
 
 type FlatMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
@@ -151,7 +153,7 @@ function flatMaterial(color: number, map?: THREE.Texture): THREE.MeshBasicMateri
 
 /** Standalone, cosmetic WATER SPLASH matching approved panel four.
  * `emit(surfacePosition, entrySpeed, relativeMass)` accepts Vector3 or {x,y,z}.
- * No renderer, physics, DOM, canvas, image loads or per-frame GPU allocation.
+ * The fallback ripple is generated locally. Slots are allocated once.
  */
 export class WaterSplash {
   readonly group = new THREE.Group();
@@ -164,6 +166,7 @@ export class WaterSplash {
   private readonly crownGeometry = makeCrownGeometry(false);
   private readonly innerCrownGeometry = makeCrownGeometry(true);
   private readonly slots: WaterSlot[] = [];
+  private rippleArt: THREE.Texture | undefined;
   private nextSlot = 0;
   private disposed = false;
 
@@ -228,6 +231,19 @@ export class WaterSplash {
         root, ripple, halo, outerRing, innerRing, foam, crown, jets, innerJets,
         droplets, burst: null, age: 0,
       });
+    }
+    if (options.rippleArtUrl && typeof document !== 'undefined' && typeof document.createElementNS === 'function') {
+      void new THREE.TextureLoader().loadAsync(options.rippleArtUrl).then(texture => {
+        if (this.disposed) { texture.dispose(); return; }
+        texture.colorSpace = THREE.SRGBColorSpace;
+        this.rippleArt = texture;
+        for (const slot of this.slots) {
+          slot.halo.material.map = texture;
+          slot.halo.material.needsUpdate = true;
+          // The painted ring is shallow in the source art. Open it up to rest on the water.
+          slot.halo.scale.set(1.25, 1.75, 1);
+        }
+      }, () => { /* The locally generated halo is already live. */ });
     }
   }
 
@@ -319,6 +335,7 @@ export class WaterSplash {
       slot.root.removeFromParent();
     }
     this.rippleTexture.dispose();
+    this.rippleArt?.dispose();
     this.dropletTexture.dispose();
     this.planeGeometry.dispose();
     this.outerRingGeometry.dispose();

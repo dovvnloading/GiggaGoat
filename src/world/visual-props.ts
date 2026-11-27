@@ -13,6 +13,7 @@ import type { IslandData } from './types';
 import { WORLD_LOD, completelyOccluded, isSmallWorldModel,
   simplifiedWorldGeometry } from './lod';
 import { propFinish, paintPropFinish } from './material-detail';
+import { ISLAND_ART_PATH, publicAssetUrl } from './public-assets';
 import { sampleEnvironmentWind } from './environment-wind';
 import { applyWindShader, createWindUniforms, prepareWindGeometry, updateWindUniforms,
   type WindUniforms } from './visual-wind';
@@ -100,8 +101,11 @@ const authoredBaaardwalkPaintedKinds = new Set<PropKind>([
   'ferris-wheel', 'trampoline', 'bumper',
 ]);
 
-function paintPierBoards(shader: THREE.WebGLProgramParametersWithUniforms, scale: number): void {
+function paintPierBoards(shader: THREE.WebGLProgramParametersWithUniforms, scale: number,
+  grain: { texture: { value: THREE.Texture | null }; ready: { value: boolean } }): void {
   shader.uniforms['uPierScale'] = { value: scale };
+  shader.uniforms['uPierGrain'] = grain.texture;
+  shader.uniforms['uPierGrainReady'] = grain.ready;
   shader.vertexShader = shader.vertexShader.replace('#include <common>',
     '#include <common>\nuniform float uPierScale;\nvarying vec3 vPierBoard;')
     .replace('#include <begin_vertex>', `#include <begin_vertex>
@@ -109,16 +113,26 @@ function paintPierBoards(shader: THREE.WebGLProgramParametersWithUniforms, scale
   // The baked deck has continuous strips. Offset the end joints per strip and
   // filter them out as their world-space footprint drops under a pixel.
   shader.fragmentShader = shader.fragmentShader.replace('#include <common>',
-    '#include <common>\nvarying vec3 vPierBoard;')
+    '#include <common>\nvarying vec3 vPierBoard;\nuniform sampler2D uPierGrain;\nuniform bool uPierGrainReady;')
     .replace('#include <color_fragment>', `#include <color_fragment>
-      float boardRow = floor(vPierBoard.x / 0.01815);
+      float plank = vPierBoard.x / 0.01815;
+      float boardRow = floor(plank);
       float boardRun = (vPierBoard.y + mod(boardRow, 4.0) * 1.1) / 4.4;
       float jointDistance = abs(fract(boardRun + 0.5) - 0.5) * 4.4;
       float footprint = fwidth(vPierBoard.y);
       float detail = (1.0 - smoothstep(0.075, 0.45, footprint)) * smoothstep(0.75, 0.95, vPierBoard.z);
       float joint = 1.0 - smoothstep(0.018, 0.050 + footprint * 0.35, jointDistance);
       float tone = fract(boardRow * 0.317 + floor(boardRun) * 0.618) - 0.5;
-      diffuseColor.rgb *= 1.0 + detail * (tone * 0.14 - joint * 0.42);`);
+      float paintedGrain = 0.0;
+      if (uPierGrainReady && detail > 0.004) {
+        // Sample within a painted strip so the wood grain follows the
+        // modeled boards and their staggered joints.
+        vec2 grainUV = vec2(vPierBoard.y / 4.4 + mod(boardRow, 7.0) * 0.17,
+          0.9 + fract(plank) * 0.075);
+        vec3 wood = texture2D(uPierGrain, grainUV).rgb;
+        paintedGrain = clamp(dot(wood, vec3(0.28, 0.59, 0.13)) - 0.29, -0.22, 0.22) * 0.73;
+      }
+      diffuseColor.rgb *= 1.0 + detail * (tone * 0.14 - joint * 0.42 + paintedGrain);`);
 }
 
 /** Low-poly Blender town/farm models retain their native paint at every LOD. */
@@ -190,6 +204,10 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
   const windUniforms = sharedWind ?? createWindUniforms(island?.seed ?? 'billy-isle');
   const windSample = sampleEnvironmentWind(0, island?.seed ?? 'billy-isle');
   const windDepthMaterials = new Map<PropKind, THREE.MeshDepthMaterial>();
+  const pierGrain = { texture: { value: null as THREE.Texture | null }, ready: { value: false } };
+  const boardwalk = buckets.has('pier') && typeof document !== 'undefined' &&
+    typeof document.createElementNS === 'function' ? island?.pois.find(p => p.id === 'baa-ardwalk') : undefined;
+  let pierGrainRequested = false;
   interface Job {
     kind: PropKind;
     entries: PropDescriptor[];
@@ -239,7 +257,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
         fog: true,
       });
       if (kind === 'pier' && island) {
-        material.onBeforeCompile = shader => paintPierBoards(shader, island.size / 600);
+        material.onBeforeCompile = shader => paintPierBoards(shader, island.size / 600, pierGrain);
       } else if (sways(kind)) {
         material.onBeforeCompile = shader => {
           shader.uniforms['uWorldWind'] = windUniforms.uWorldWind;
@@ -574,6 +592,19 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       updateWindUniforms(windUniforms, windSample);
     },
     updateCulling(position, frustum, maxDistance, hidden): boolean {
+      if (!disposed && boardwalk && !pierGrainRequested &&
+        Math.hypot(position.x - boardwalk.center.x, position.z - boardwalk.center.z) < (island?.size ?? 600) * .20) {
+        pierGrainRequested = true;
+        const file = ISLAND_ART_PATH + 'surfaces/baa-ardwalk-surfaces/caramel-pier-planks.webp';
+        void new THREE.TextureLoader().loadAsync(publicAssetUrl(file)).then(texture => {
+          if (disposed) { texture.dispose(); return; }
+          texture.colorSpace = THREE.SRGBColorSpace;
+          texture.wrapS = THREE.MirroredRepeatWrapping;
+          texture.anisotropy = 4;
+          pierGrain.texture.value = texture;
+          pierGrain.ready.value = true;
+        }, () => { /* Keep the modeled boards usable with the fallback paint. */ });
+      }
       let changes = false;
       const matrix = new THREE.Matrix4();
       const centre = new THREE.Vector3();
@@ -690,6 +721,9 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     },
     dispose(): void {
       disposed = true;
+      pierGrain.texture.value?.dispose();
+      pierGrain.texture.value = null;
+      pierGrain.ready.value = false;
       for (const depth of windDepthMaterials.values()) depth.dispose();
       const instances = new Set<THREE.InstancedMesh>();
       for (const job of jobs) {
