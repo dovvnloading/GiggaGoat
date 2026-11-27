@@ -280,7 +280,10 @@ export class GameAudio {
 
     // These are the sole drain sites for audio. Do not read latestEvents (which
     // only retains the last catch-up tick), or drain a queue again this frame.
+    const ride=this.game.travel?.active;
+    const vehicle=ride ? this.game.travel.craft[ride] : null;
     this.audio.updateFrame({
+      vehicle: vehicle ? {kind:vehicle.kind,speed:vehicle.speed,lift:vehicle.vertical} : undefined,
       dt, camera,
       environment: weather && {
         rain: weather.rain, wet: weather.wet, sheltered,

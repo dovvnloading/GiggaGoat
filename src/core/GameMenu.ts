@@ -15,7 +15,9 @@ import titleArt from '../../docs/art/hifi/07_key_art.png?url';
 import { TOYS } from './Toybox';
 import toyIcons from './assets/toybox.webp?url';
 
-type Screen = 'toybox' | 'title' | 'playing' | 'pause' | 'party' | 'party-confirm' | 'settings' |
+import { RIDES, rideIds, type Ride } from './IslandTravel';
+
+type Screen = 'travel' | 'toybox' | 'title' | 'playing' | 'pause' | 'party' | 'party-confirm' | 'settings' |
   'board' | 'gig-results' | 'party-results';
 const CSS = `
 /* The frame, stat cards, tabs and action buttons are nine-sliced sprite PNGs.
@@ -39,6 +41,7 @@ const CSS = `
 .gg-shell h2{font-size:clamp(27px,5vw,43px);line-height:1.05;color:#ffdc40;
   margin:7px 0 13px;letter-spacing:-.6px;text-shadow:2px 3px #673884}
 .gg-shell p{margin:7px 0 15px;font-size:14px;line-height:1.44;color:#fff0e6}
+.gg-shell .gg-travel-options>div{display:grid;justify-items:stretch;text-align:center;gap:2px}.gg-shell .gg-travel-options small{font-size:.78em}
 .gg-shell .gg-options{display:grid;gap:7px}
 .gg-toy-catalog{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .gg-toy-card{display:grid;grid-template-columns:46px 1fr;align-items:center;gap:8px;padding:7px;text-align:left;color:#fff1d6;font:inherit;cursor:pointer;border:1px solid #8862a2;border-radius:9px;background:#33204c}
@@ -487,9 +490,25 @@ export class GameMenu {
     this.audio?.playMenuCue('ui-back');
     this.setScreen('pause');
   }
+  private travelReturn: 'title' | 'pause' = 'title';
   private action(key: string, mouseClick = false): void {
     if (key !== 'back' && key !== 'pause') this.audio?.playMenuCue('ui-confirm');
-    if (key === 'toybox' && this.game.toys?.available) {
+    if (key === 'travel' && this.game.travelAvailable) {
+      this.travelReturn=this.screen==='title'?'title':'pause';
+      this.setScreen('travel');
+      return;
+    }
+    if (key === 'return-station' && this.game.travel?.active) {
+      this.game.leaveRide(true);this.view.alignCameraForPlay();this.resume(mouseClick);return;
+    }
+    if (this.screen==='travel' && key.startsWith('ride-')) {
+      const id=key.slice(5) as Ride;
+      if(rideIds.includes(id) && this.game.boardRide(id)){
+        this.view.alignCameraForPlay();this.resume(mouseClick);
+      }
+      return;
+    }
+    if (key === 'toybox' && !this.game.travel?.active && this.game.toys?.available) {
       this.setScreen('toybox', '[data-action="toy-' + this.game.toys.index + '"]');
       return;
     }
@@ -512,6 +531,7 @@ export class GameMenu {
     }
     else if (key === 'pause') this.pause();
     else if (key === 'title') {
+      if(this.game.travel?.active)this.game.leaveRide(true);
       this.game.party.returnToFreeRoam();
       this.game.gigs.abandon();
       this.save();
@@ -577,6 +597,7 @@ export class GameMenu {
     this.root.querySelector('.gg-shell-panel')?.prepend(message);
   }
   private back(mouseClick = false): void {
+    if (this.screen === 'travel') { this.setScreen(this.travelReturn,'[data-action="travel"]'); return; }
     if (this.screen === 'title') return;
     if (this.screen === 'party-results') {
       this.action('leave-party', mouseClick);
@@ -604,7 +625,7 @@ export class GameMenu {
       return;
     }
     if (this.screen === 'playing') {
-      if (event.code === 'KeyT' && this.game.toys?.available && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      if (event.code === 'KeyT' && !this.game.travel?.active && this.game.toys?.available && !event.ctrlKey && !event.metaKey && !event.altKey) {
         event.preventDefault(); this.action('toybox'); return;
       }
       if (event.code === 'KeyP' && !this.game.party.match) {
@@ -750,6 +771,11 @@ export class GameMenu {
   }
   private interact(): boolean {
     if (this.screen !== 'playing') return false;
+    if(this.game.travel?.active){this.game.leaveRide();return true;}
+    if(this.game.travelAvailable){
+      const station=this.game.travel.station(this.game.goat.torso.translation());
+      if(station && this.game.boardRide(station,true))return true;
+    }
     const poi = this.game.gigs.nearBoard();
     if (!poi) return false;
     this.boardPoi = poi;
@@ -840,7 +866,7 @@ export class GameMenu {
         <p>Explore Billy Isle, wreak havoc, and take on gigs.</p>
         <div class="gg-options">${menuButton('play','▶ PLAY · FREE ROAM',true)}
           ${menuButton('party','⚡ PARTY MODES')}
-          ${menuButton('settings','⚙ SETTINGS')}</div>
+          ${menuButton('settings','⚙ SETTINGS')}${this.game.travelAvailable ? menuButton('travel','ISLAND TRAVEL') : ''}</div>
         ${progress.length ? `<p class="gg-title-progress">
           ${coins > 0 ? hudSpriteImage(HUD_SPRITES.cudCoin, '') : ''}${progress.join(' · ')}</p>` : ''}
         <section class="gg-quick-start" aria-labelledby="gg-quick-start">
@@ -1106,7 +1132,8 @@ export class GameMenu {
           ${weatherCaption(islandWeather(this.game.physics.time))} · ${this.game.rules.wallet.coins} CUD COINS</p>
          <div class="gg-options">${menuButton('resume','▶ RESUME',true)}
          ${this.game.gigs.active?.status === 'running' ? menuButton('abandon-gig','✕ ABANDON GIG') : ''}
-         ${this.game.toys?.available ? menuButton('toybox','TOY BOX') : ''}
+         ${this.game.travel?.active ? menuButton('return-station','RETURN TO STATION') : this.game.travelAvailable ? menuButton('travel','ISLAND TRAVEL') : ''}
+         ${this.game.toys?.available && !this.game.travel?.active ? menuButton('toybox','TOY BOX') : ''}
          ${this.game.party.match ? '' : menuButton('party','⚡ PARTY MODES')}
          ${!this.game.party.match && !this.game.rules.unlocks.isUnlocked('glide') &&
            this.game.rules.wallet.coins >= TUNING.progression.unlockCosts.glide ?
@@ -1118,6 +1145,9 @@ export class GameMenu {
           `<button class="gg-toy-card" data-action="toy-${i}" aria-pressed="${this.game.toys.index===i}">
           <i aria-hidden="true" style="background-position:${(i%3)*50}% ${Math.floor(i/3)*100}%"></i>
           <span><strong>${toy.name}</strong><small>${toy.hint}</small></span></button>`).join('')}</div>` :
+      this.screen === 'travel' ? `<h2>ISLAND TRAVEL</h2><p>Choose a departure to board in Free Roam.</p>
+        <div class="gg-options gg-travel-options">${rideIds.map(id=>`<div>${menuButton('ride-'+id,RIDES[id].name+' · '+RIDES[id].port)}<small>${RIDES[id].hint}</small></div>`).join('')}
+        ${menuButton('back','← BACK')}</div>` :
       this.screen === 'party' ? this.partyBody() :
       this.screen === 'party-confirm' ? this.partyConfirmBody() :
       this.screen === 'settings' ? this.settingsBody() :

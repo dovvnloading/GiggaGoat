@@ -22,6 +22,8 @@ import { BuildPlacementGhost } from './BuildPlacementGhost';
 import { CAMERA_TARGET_HEIGHT, PLAY_CAMERA_PITCH, SPAWN_CAMERA_PITCH, SPAWN_CAMERA_YAW_OFFSET,
   goatCameraLookAhead, goatCameraOffset, goatCameraVerticalOffset, goatOrbitOffset,
   goatViewDirection } from './GoatCamera';
+import type { Ride } from './IslandTravel';
+import { TravelVisuals } from './TravelVisuals';
 import { GameHud, type FramePerformance } from './GameHud';
 import { createSplashDiveMarkers, createSummitTrailMarker, hayHaulGuidance, type HayHaulGuidance } from './GigPresentation';
 import { MowDownPresentation } from './MowDownPresentation';
@@ -61,6 +63,9 @@ export class GameView {
   private readonly atmosphere: IslandAtmosphere;
   private clearFogDensity = .0016;
   private readonly toyEffects: ToyEffects;
+  private cameraRide: Ride | null = null;
+  private lastCraftHeading = 0;
+  private readonly vehicles: TravelVisuals;
   private readonly happeningVisuals: HappeningVisuals;
   private readonly residents: ReturnType<typeof buildAmbientLifeVisuals>;
   private readonly marketVisuals: ReturnType<typeof buildMarketFruitVisuals>;
@@ -184,6 +189,8 @@ export class GameView {
       game.goat.locomotion.heading + SPAWN_CAMERA_YAW_OFFSET);
     this.input.pitch = SPAWN_CAMERA_PITCH;
     this.hud = new GameHud(host);
+    this.vehicles = new TravelVisuals(game.travel,game.island);
+    this.scene.add(this.vehicles.root);
     this.toyEffects = new ToyEffects(game.toys);
     this.scene.add(this.toyEffects.root);
     this.happeningVisuals = new HappeningVisuals(game.island, game.happenings);
@@ -836,6 +843,33 @@ export class GameView {
   }
 
   private updateCamera(alpha: number, dt: number): void {
+    const ride = this.game.travel?.active;
+    if (ride) {
+      const craft = this.game.travel.craft[ride];
+      const p = craft.position;
+      if (this.cameraRide !== ride) {
+        this.cameraRide = ride;
+        this.input.yaw = craft.heading + (ride === 'tram' ? .72 : .28);
+        this.input.pitch = PLAY_CAMERA_PITCH;
+      } else {
+        this.input.yaw += craft.heading - this.lastCraftHeading;
+      }
+      this.lastCraftHeading = craft.heading;
+      const yaw = this.input.yaw;
+      const radius = { boat: 8, plane: 12.5, balloon: 16, tram: 9 }[ride];
+      const pitch = Math.max(-.17, Math.min(1.36, this.input.pitch + .2));
+      const reach = radius * Math.cos(pitch);
+      const aim = ride === 'balloon' ? 4.1 : 1.15;
+      this.cameraOffset.set(p.x - Math.sin(yaw) * reach, p.y + aim + radius * Math.sin(pitch),
+        p.z + Math.cos(yaw) * reach);
+      this.cameraOffset.y = Math.max(this.cameraOffset.y, this.game.water.seaLevel + .55,
+        heightAt(this.game.island, this.cameraOffset.x, this.cameraOffset.z) + 1.1);
+      if (this.camera.position.distanceToSquared(this.cameraOffset) > 38 ** 2) this.camera.position.copy(this.cameraOffset);
+      else this.camera.position.lerp(this.cameraOffset, lerpAlpha(7, dt));
+      this.camera.lookAt(p.x + Math.sin(yaw), p.y + aim, p.z - Math.cos(yaw));
+      return;
+    }
+    this.cameraRide = null;
     const pose = this.game.physics.getInterpolatedTransform(this.game.goat.torso, alpha);
     const size = this.game.rules.style.scale;
     const { yaw, pitch } = this.input;
@@ -995,6 +1029,7 @@ export class GameView {
     if (this.scene.fog) this.scene.fog.color.copy(this.world.fogColor);
     this.renderer.setClearColor(this.world.fogColor);
     this.updateCamera(alpha, sceneDt);
+    this.vehicles.update(this.game.physics.time,this.camera.position);
     this.updateCameraFraming(sceneDt);
     this.happeningVisuals.update(this.game.physics.time, this.camera.position, !match, this.game.ambientLifeEnabled);
     this.residents.update(this.game.life.residents, this.game.physics.time, this.camera.position, this.currentSettings.graphics);
@@ -1056,6 +1091,7 @@ export class GameView {
     this.buildGhost.dispose();
     this.atmosphere.dispose();
     this.toyEffects.dispose();
+    this.vehicles.dispose();
     this.happeningVisuals.dispose();
     this.residents.dispose();
     this.marketVisuals.dispose();
