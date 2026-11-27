@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { IslandData, PropDescriptor, PropKind, Vec3 } from './types';
 import { gridSample } from './terrain';
-import { treeArtCenterY } from './visual-tree-grounding';
+import { roundOakArtCenterY, treeArtCenterY } from './visual-tree-grounding';
 import { smoothstep } from './random';
 import { publicAssetUrl } from './public-assets';
 import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
@@ -86,10 +86,11 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
   const scale = island.size / 600;
   const plan: HoofPlacement[] = [];
   let flowerIndex = 0, bushIndex = 0, oakIndex = 0;
-  const treeCenterY = (model: HoofModel, position: Vec3, height: number): number | undefined => {
-    if (model !== 'pine' && !OAK_VARIANTS.some(variant => variant === model)) return undefined;
+  const treeCenterY = (model: HoofModel, position: Vec3, size: Vec3): number | undefined => {
     // The native pine uses a uniform fit with its full floor at -0.50.
-    return treeArtCenterY(island, position, height, model === 'pine' ? -.50 : -.49);
+    if (model === 'pine') return treeArtCenterY(island, position, size.y, -.50);
+    if (OAK_VARIANTS.some(variant => variant === model)) return roundOakArtCenterY(island, position, size);
+    return undefined;
   };
 
 
@@ -126,7 +127,7 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
     }
     if (model) plan.push({
       model, source: prop, position: prop.transform.position,
-      treeCenterY: treeCenterY(model, prop.transform.position, prop.size.y),
+      treeCenterY: treeCenterY(model, prop.transform.position, prop.size),
       size: prop.size,
       // The blue cottage's low door is on the model's -Z side.
       yaw: prop.transform.rotationY + (prop.kind === 'bench' || model === 'cottage' ? Math.PI : 0),
@@ -139,9 +140,9 @@ export function makeHoofingtonPlacements(island: IslandData): HoofPlacement[] {
     const x = farm.x + dx * scale, z = farm.z + dz * scale;
     const h = height * scale;
     const position = { x, y: gridSample(island, x, z) + h / 2, z };
+    const size = { x: width * scale, y: h, z: depth * scale };
     plan.push({
-      model, position, treeCenterY: treeCenterY(model, position, h),
-      size: { x: width * scale, y: h, z: depth * scale }, yaw,
+      model, position, size, yaw, treeCenterY: treeCenterY(model, position, size),
     });
   }
 

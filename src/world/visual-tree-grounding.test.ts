@@ -5,12 +5,13 @@ import { expect, it, vi } from 'vitest';
 import { Game } from '../core/Game';
 import { createWorldScene, hashIsland } from './index';
 import { PROP_LIBRARY_MODELS } from './library-props';
+import { makeDowntownPlacements } from './visual-downtown';
 import { bakeHoofingtonGeometry, HOOFINGTON_MODELS, makeHoofingtonPlacements } from './visual-hoofington';
 import { buildPropVisuals } from './visual-props';
-import { treeArtCenterY } from './visual-tree-grounding';
+import { roundOakArtCenterY, treeArtCenterY } from './visual-tree-grounding';
 import type { PropDescriptor } from './types';
 
-it('seats the real Hoofington and Pines tree soles against their original terrain', async () => {
+it('seats the real Hoofington, Downtown and Pines tree soles against their terrain', async () => {
   const game = await Game.create({ seed: 'billy-isle', resolution: 193 });
   const { island } = game;
   const originalHash = hashIsland(island);
@@ -23,18 +24,19 @@ it('seats the real Hoofington and Pines tree soles against their original terrai
   };
   const matrix = new THREE.Matrix4();
   const checkSole = (geometry: THREE.BufferGeometry, x: number, z: number,
-    pose?: THREE.Matrix4, fallback = false) => {
+    options: { pose?: THREE.Matrix4; fallback?: boolean; roundOak?: boolean } = {}) => {
     const positions = geometry.getAttribute('position');
     const foot: THREE.Vector3[] = [];
     let bottom = Infinity;
     for (let i = 0; i < positions.count; i++) {
       const p = new THREE.Vector3().fromBufferAttribute(positions, i);
-      if (pose) p.applyMatrix4(pose);
+      if (options.pose) p.applyMatrix4(options.pose);
       bottom = Math.min(bottom, p.y);
-      if (Math.hypot(p.x - x, p.z - z) < .9) foot.push(p);
+      if (options.roundOak || Math.hypot(p.x - x, p.z - z) < .9) foot.push(p);
     }
     const clearance = bottom - terrain(x, z);
-    if (fallback) expect(clearance).toBeLessThan(.02);
+    if (options.fallback) expect(clearance).toBeLessThan(.02);
+    else if (options.roundOak) expect(clearance).toBeLessThanOrEqual(-.0999);
     else expect(clearance).toBeCloseTo(-.10, 4);
     const gaps = foot.filter(p => p.y <= bottom + .03).map(p => p.y - terrain(p.x, p.z));
     expect(gaps.length).toBeGreaterThan(0);
@@ -68,18 +70,43 @@ it('seats the real Hoofington and Pines tree soles against their original terrai
       const fallback = world.group.getObjectByName('props-' + prop.kind) as THREE.InstancedMesh;
       fallback.getMatrixAt(island.props.filter(entry => entry.kind === prop.kind).indexOf(prop), matrix);
       expect(matrix.elements[13]).toBeCloseTo(position.y, 4);
-      checkSole(fallback.geometry, position.x, position.z, matrix, true);
+      checkSole(fallback.geometry, position.x, position.z, { pose: matrix, fallback: true });
     }
 
     const oaks = new Map(await Promise.all((['oakA', 'oakB', 'oakC'] as const).map(async model =>
       [model, await load(HOOFINGTON_MODELS[model])] as const)));
-    const placements = makeHoofingtonPlacements(island).filter(entry => entry.model.startsWith('oak'));
+    for (const oak of oaks.values()) {
+      let bark: THREE.BufferGeometry | undefined;
+      oak.traverse(object => {
+        if (object instanceof THREE.Mesh && !Array.isArray(object.material) && object.material.name === 'Bark')
+          bark = object.geometry;
+      });
+      const positions = bark!.getAttribute('position');
+      const vertices = Array.from({ length: positions.count }, (_, i) =>
+        new THREE.Vector3().fromBufferAttribute(positions, i));
+      const bottom = Math.min(...vertices.map(vertex => vertex.y));
+      const tips = vertices.filter(vertex => Math.hypot(vertex.x, vertex.z) > .58);
+      expect(new Set(tips.map(tip => tip.toArray().join(','))).size).toBe(3);
+      expect(Math.max(...tips.map(tip => tip.y))).toBeCloseTo(bottom, 5);
+      expect(vertices.some(vertex => vertex.y === bottom &&
+        Math.hypot(vertex.x, vertex.z) > .33 && Math.hypot(vertex.x, vertex.z) < .36)).toBe(true);
+
+      const bounds = new THREE.Box3().setFromObject(oak);
+      const size = bounds.getSize(new THREE.Vector3()), centre = bounds.getCenter(new THREE.Vector3());
+      for (const vertex of vertices.filter(vertex => vertex.y <= .21)) {
+        expect(Math.hypot((vertex.x - centre.x) * .98 / size.x,
+          (vertex.z - centre.z) * .98 / size.z)).toBeLessThan(.20);
+      }
+    }
+    const placements = [...makeHoofingtonPlacements(island), ...makeDowntownPlacements(island)]
+      .flatMap(entry => entry.model === 'oakA' || entry.model === 'oakB' || entry.model === 'oakC'
+        ? [{ ...entry, model: entry.model }] : []);
     expect(new Set(placements.map(entry => entry.model)).size).toBe(3);
-    expect(placements.length).toBeGreaterThanOrEqual(6);
+    expect(placements.length).toBeGreaterThanOrEqual(12);
     for (const placement of placements) {
       const { x, z } = placement.position;
       const geometry = bakeHoofingtonGeometry([placement], oaks)!;
-      try { checkSole(geometry, x, z); } finally { geometry.dispose(); }
+      try { checkSole(geometry, x, z, { roundOak: true }); } finally { geometry.dispose(); }
     }
 
     const pine = await load(PROP_LIBRARY_MODELS['tree-pine']);
@@ -106,7 +133,8 @@ it('seats the real Hoofington and Pines tree soles against their original terrai
           p.transform.position.z - matrix.elements[14]) < .001)!;
         expect(visited.has(tree.id)).toBe(false);
         visited.add(tree.id);
-        checkSole(draw.geometry, tree.transform.position.x, tree.transform.position.z, matrix);
+        checkSole(draw.geometry, tree.transform.position.x, tree.transform.position.z,
+          { pose: matrix, roundOak: draw.name === 'render-near-tree-oak' });
       }
       expect(visited.size).toBe(trees.length);
     }
@@ -140,4 +168,14 @@ it('uses the rendered diagonal while retaining raised tree anchors', () => {
   // Bilinear ground is 1.5m here and the rendered b-c diagonal is 3m.
   expect(treeArtCenterY(terrain, anchor, 10, -.49)).toBeCloseTo(7.8);
   expect(treeArtCenterY(terrain, { ...anchor, y: 10.5 }, 10, -.49)).toBe(10.5);
+});
+
+it('seats the oak sole on the downhill side of its footprint', () => {
+  const terrain = { size: 600, resolution: 2, heights: new Float32Array([0, 150, 0, 150]) };
+  const size = { x: 10, y: 10, z: 8 };
+  const anchor = { x: 0, y: 80, z: 0 };
+  const centre = roundOakArtCenterY(terrain, anchor, size);
+  // Two metres downhill on the quarter-grade slope drops the soil by half a metre.
+  expect(centre - .49 * size.y).toBeCloseTo(74.4);
+  expect(roundOakArtCenterY(terrain, { ...anchor, y: 83 }, size)).toBe(83);
 });

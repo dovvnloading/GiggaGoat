@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { isTerrainTreeAnchor, treeArtCenterY } from './visual-tree-grounding';
+import { isTerrainTreeAnchor, roundOakArtCenterY, treeArtCenterY } from './visual-tree-grounding';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { fitPlantGeometry, plantKitBatches } from './plant-palette';
 import { loadGroundedKitGeometry, loadLibraryPropGeometry, PROP_LIBRARY_MODELS } from './library-props';
@@ -423,9 +423,10 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
           } else if (island && (job.kind === 'tree-oak' || job.kind === 'tree-pine')) {
             const base = libraryGeometry.boundingBox!.min.y;
             job.adjustments = job.entries.map(prop => {
+              if (prop.body.type !== 'static') return new THREE.Matrix4();
               const anchor = prop.transform.position;
-              const y = prop.body.type === 'static'
-                ? treeArtCenterY(island, anchor, prop.size.y, base) : anchor.y;
+              const y = prop.kind === 'tree-oak' ? roundOakArtCenterY(island, anchor, prop.size) :
+                treeArtCenterY(island, anchor, prop.size.y, base);
               return new THREE.Matrix4().makeTranslation(0, (y - anchor.y) / prop.size.y, 0);
             });
           } else if (job.kind === 'ramp' && job.entries.some(prop => prop.id.startsWith('downtown-bleatsville-ramp-'))) {
