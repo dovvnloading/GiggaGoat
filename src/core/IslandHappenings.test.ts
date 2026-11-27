@@ -73,10 +73,38 @@ describe('living island encounters', () => {
     // Keep a floor on useful coverage without forcing unsafe locations on steep terrain.
     expect(sites.length).toBeGreaterThanOrEqual(4);
     expect(new Set(sites.map(p => p.definition.id)).size).toBe(sites.length);
+    expect(sites.some(p => p.definition.id === 'honey-rolls')).toBe(true);
     for (const p of sites) {
-      expect(happeningGround(island, p.position)).toBe(p.position.y);
+      if (p.definition.id === 'honey-rolls') {
+        // This event uses the actual service window rather than a freestanding verge.
+        const shop = island.props.find(prop => prop.kind === 'shop' && prop.poiId === p.definition.district &&
+          Math.abs(prop.transform.position.z - p.position.z) < .01 && prop.transform.position.x < p.position.x &&
+          Math.abs(p.position.x - prop.transform.position.x - prop.size.z / 2 - 1.05 * p.scale) < .01);
+        expect(shop).toBeDefined();
+      } else expect(happeningGround(island, p.position)).toBe(p.position.y);
     }
     expect([island.props.length, island.colliders.length, island.roads.length]).toEqual(before);
+  });
+
+  it('launches three edible rolls, tracks individual pickups and persists the discovery', () => {
+    const bakery = { ...site, definition: HAPPENING_DEFINITIONS.find(d => d.id === 'honey-rolls')! };
+    const life = new IslandHappenings([bakery]);
+    const batch = life.bakery!;
+    const point = { ...player };
+    expect(batch.roll(0, 0, point)).toBe(false);
+    expect(life.bleat(player, 3)).toBe(20);
+    expect(batch.roll(2, 3.2, point)).toBe(false);
+    for (const i of [0, 1, 2]) {
+      expect(batch.roll(i, 6, point)).toBe(true);
+      expect(batch.collect({ ...point, y: point.y + 8 }, 6)).toBe(0);
+      expect(batch.collect(point, 6)).toBe(1);
+      expect(batch.roll(i, 6, point)).toBe(false);
+    }
+    expect(life.message(player, 6)?.detail).toContain('3/3 ROLLS');
+    expect(batch.active(14)).toBe(false);
+    expect(life.bleat(player, 16)).toBe(0);
+    expect(batch.count).toBe(0);
+    expect(new IslandHappenings([bakery], life.snapshot()).bleat(player, 0)).toBe(0);
   });
 
   it('animates nearby vignettes, hides distant or party scenes and disposes resources', () => {

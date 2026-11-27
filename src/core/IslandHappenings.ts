@@ -1,6 +1,10 @@
 import { biomeAt, gridSample, segmentProjection } from '../world/terrain';
 import type { IslandData, PoiId, Transform, Vec2, Vec3 } from '../world/types';
 
+import { BAKERY_NAME } from '../world/bakery-sign';
+import { downtownShopFront } from '../world/visual-downtown';
+import { BakeryBatch } from './BakeryBatch';
+
 export const HAPPENING_DEFINITIONS = [
   { id: 'breakfast-bell', district: 'hoofington', title: 'Breakfast bell',
     hint: 'Someone left the farm bell out. Give it a baa!', response: 'Breakfast call! The whole farm heard that.', color: 0xeaa84b, reward: 15 },
@@ -18,6 +22,8 @@ export const HAPPENING_DEFINITIONS = [
     hint: 'The old inspection gauge is suspiciously quiet.', response: 'Inspection complete: approximately baa-rilliant.', color: 0x60cbd0, reward: 20 },
   { id: 'signal-home', district: 'old-lighthouse', title: 'Signal home',
     hint: 'A keeper left a signal lantern on the headland.', response: 'All clear! A light for the boats coming home.', color: 0xffca70, reward: 20 },
+  { id: 'honey-rolls', district: 'downtown-bleatsville', title: BAKERY_NAME,
+    hint: 'Bleat at the window for a batch of hot honey rolls.', response: 'Fresh from the oven!', color: 0xffb35d, reward: 20 },
 ] as const satisfies readonly { id: string; district: PoiId; title: string; hint: string; response: string; color: number; reward: number }[];
 
 export type HappeningDefinition = typeof HAPPENING_DEFINITIONS[number];
@@ -77,6 +83,17 @@ export function placeIslandHappenings(island: IslandData, boards: readonly Vec2[
   for (const definition of HAPPENING_DEFINITIONS) {
     const poi = island.pois.find(p => p.id === definition.district);
     if (!poi) continue;
+    if (definition.id === 'honey-rolls') {
+      const shop = island.props.find(p => p.kind === 'shop' && p.poiId === poi.id &&
+        downtownShopFront(p, poi.center, scale).title === BAKERY_NAME);
+      if (shop) {
+        const { position, rotationY: yaw } = shop.transform;
+        const offset = shop.size.z / 2 + 1.05 * scale;
+        const x = position.x + Math.sin(yaw) * offset, z = position.z + Math.cos(yaw) * offset;
+        result.push({ definition, yaw, scale, position: { x, y: gridSample(island, x, z), z } });
+      }
+      continue;
+    }
     const candidates: Array<Vec2 & { yaw: number; score: number }> = [];
     for (const road of island.roads) {
       for (let i = 1; i < road.points.length; i++) {
@@ -120,7 +137,11 @@ export class IslandHappenings {
   private readonly activated = new Map<HappeningId, number>();
   private last: { site: HappeningSite; time: number; reward: number } | undefined;
 
-  constructor(readonly sites: readonly HappeningSite[], saved?: unknown) {
+  readonly bakery?: BakeryBatch;
+
+  constructor(readonly sites: readonly HappeningSite[], saved?: unknown, ground?: (x: number, z: number) => number) {
+    const bakery = sites.find(site => site.definition.id === 'honey-rolls');
+    if (bakery) this.bakery = new BakeryBatch(bakery, ground);
     if (Array.isArray(saved)) for (const definition of HAPPENING_DEFINITIONS) {
       if (saved.includes(definition.id)) this.completed.add(definition.id);
     }
@@ -147,6 +168,7 @@ export class IslandHappenings {
     const site = this.nearest(position, HAPPENING_REACH);
     if (!site || time - (this.activated.get(site.definition.id) ?? -Infinity) < REPLAY_SECONDS) return 0;
     const reward = this.discovered(site) ? 0 : site.definition.reward;
+    if (site.definition.id === 'honey-rolls') this.bakery?.launch(time);
     this.completed.add(site.definition.id);
     this.activated.set(site.definition.id, time);
     this.last = { site, time, reward };
@@ -161,6 +183,12 @@ export class IslandHappenings {
   }
 
   message(position: Vec3, time: number): HappeningMessage | undefined {
+    const batch = this.bakery;
+    if (batch?.active(time) && this.nearest(position, 14) === batch.site) {
+      return { title: BAKERY_NAME, task: batch.count === 3 ? 'Every bun accounted for!' : 'Catch the honey rolls!',
+        detail: batch.count + '/3 ROLLS · +25 STAMINA EACH' +
+          (this.last?.site === batch.site && this.last.reward ? ' · +20 CUD COINS' : '') };
+    }
     if (this.last && time - this.last.time < RESPONSE_SECONDS && time >= this.last.time) {
       const { site, reward } = this.last;
       return { title: site.definition.title, task: site.definition.response,

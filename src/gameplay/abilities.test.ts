@@ -23,6 +23,15 @@ describe('GoatAbilities', () => {
     run(goat, 300, {});
     expect(goat.stamina).toBe(100);
   });
+  it('restores stamina for each honey roll up to the usual maximum', () => {
+    const goat = new GoatAbilities(new EventBus());
+    run(goat, 240, { sprint: true });
+    const before = goat.stamina;
+    goat.eatHoneyRolls(1);
+    expect(goat.stamina).toBeCloseTo(before + 25);
+    goat.eatHoneyRolls(2);
+    expect(goat.stamina).toBe(TUNING.stamina.max);
+  });
   it('climb requires contact, air, stamina, and a climb-capable size', () => {
     const goat = new GoatAbilities(new EventBus());
     expect(goat.update(STEP, { climb: true }, ground).setClimb).toBe(false);

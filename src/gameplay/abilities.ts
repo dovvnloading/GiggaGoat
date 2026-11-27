@@ -109,6 +109,10 @@ export class GoatAbilities {
     if (wasKnockedDown) this.bus.emit('balance:recovered', { balance: s.balance });
   }
 
+  eatHoneyRolls(count: number): void {
+    this.state.stamina = Math.min(TUNING.stamina.max, this.state.stamina + 25 * count);
+  }
+
   applyImpact(damage: number): void {
     nonNegative(damage, 'impact');
     const s = this.state;

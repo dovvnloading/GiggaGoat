@@ -357,7 +357,7 @@ export class Game {
     }
     this.party = new PartySession(this);
     this.happenings = new IslandHappenings(placeIslandHappenings(island,
-      this.gigs.boards.map(board => board.position)), options.progress?.happenings);
+      this.gigs.boards.map(board => board.position)), options.progress?.happenings, (x, z) => heightAt(island, x, z));
     this.life = new IslandLifeDirector(island, this.gigs.boards.map(board => board.position));
     this.market = new MarketScene(physics, island, colliders, this.budget);
     const town = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
@@ -1305,6 +1305,11 @@ export class Game {
     const player = this.goat.torso.translation();
     const enabled = this.ambientLifeEnabled;
     this.market.update(this.physics.time, player, enabled, this.water.seaLevel);
+    const batch = this.happenings.bakery;
+    if (enabled && batch?.active(this.physics.time)) {
+      const rolls = batch.collect(this.happeningPosition(), this.physics.time);
+      if (rolls) this.rules.abilities.eatHoneyRolls(rolls);
+    }
     let count = 0;
     const append = (body: RigidBody, radius: number, height: number): void => {
       if (!body.isValid() || !body.isEnabled()) return;
