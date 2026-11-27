@@ -67,6 +67,31 @@ describe('cached world mesh LOD', () => {
       building.size, building)).toBe(false);
   });
 
+  it('keeps the painted building mesh at street level and restores it after a flight', async () => {
+    const island = generateIsland({ seed: 'skyline', resolution: 65 });
+    const high = new THREE.BoxGeometry(8, 10, 8, 12, 12, 12).toNonIndexed();
+    high.translate(0, 200, 0);
+    const vertices = high.getAttribute('position').count;
+    high.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(vertices * 3).fill(.72), 3));
+    high.setAttribute('hoofingtonFacade', new THREE.Float32BufferAttribute(new Float32Array(vertices * 4), 4));
+    const group = new THREE.Group();
+    const lod = await createDistrictLod(island, high, [{
+      placement: { model: 'pinkHome', position: { x: 0, y: 200, z: 0 }, size: { x: 8, y: 10, z: 8 }, yaw: 0 },
+      start: 0, count: vertices,
+    }], group, 'house');
+    const house = group.children[0] as THREE.Mesh;
+    const original = house.geometry;
+    const view = new THREE.Frustum(), distant = new THREE.Vector3(0, 260, 95);
+    lod.updateCulling(distant, view, true);
+    expect(triangleCount(house.geometry)).toBeLessThan(triangleCount(original));
+    expect(house.geometry.hasAttribute('hoofingtonFacade')).toBe(true);
+    lod.updateCulling(distant, view);
+    expect(house.geometry).toBe(original);
+    lod.updateCulling(new THREE.Vector3(0, 213, 4), view, true);
+    expect(house.geometry).toBe(original);
+    lod.dispose();
+  });
+
   it('swaps spatial cell geometry and hides small art past 140 m', async () => {
     const island = generateIsland({ seed: 'lod-cells', resolution: 65 });
     const part = new THREE.SphereGeometry(1, 30, 20).toNonIndexed();

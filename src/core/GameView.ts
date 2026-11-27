@@ -866,6 +866,7 @@ export class GameView {
         heightAt(this.game.island, this.cameraOffset.x, this.cameraOffset.z) + 1.1);
       if (this.camera.position.distanceToSquared(this.cameraOffset) > 38 ** 2) this.camera.position.copy(this.cameraOffset);
       else this.camera.position.lerp(this.cameraOffset, lerpAlpha(7, dt));
+      this.cameraTarget.set(p.x, p.y + aim, p.z);
       this.camera.lookAt(p.x + Math.sin(yaw), p.y + aim, p.z - Math.cos(yaw));
       return;
     }
@@ -1044,7 +1045,8 @@ export class GameView {
       this.hudTimer = 0;
       this.updateHud();
     }
-    this.world.updateCulling(this.camera);
+    const sightseeing = this.game.travel.active;
+    this.world.updateCulling(this.camera, sightseeing === 'balloon' || sightseeing === 'plane' || sightseeing === 'tram');
     this.limitDrawDistance();
     this.instancedProps.update(this.camera, range);
     this.shadowTimer += sceneDt;
