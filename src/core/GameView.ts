@@ -1045,8 +1045,7 @@ export class GameView {
       this.hudTimer = 0;
       this.updateHud();
     }
-    const sightseeing = this.game.travel.active;
-    this.world.updateCulling(this.camera, sightseeing === 'balloon' || sightseeing === 'plane' || sightseeing === 'tram');
+    this.world.updateCulling(this.camera, !!this.game.travel.active);
     this.limitDrawDistance();
     this.instancedProps.update(this.camera, range);
     this.shadowTimer += sceneDt;
