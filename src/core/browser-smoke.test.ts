@@ -797,8 +797,13 @@ describe.skipIf(!process.env['BROWSER_SMOKE'])('production game Chrome runtime s
         'live player on the minimap');
       const marker = 'document.querySelector("[data-player]").getAttribute("transform").split(" rotate")[0]';
       const before = await page.evaluate<string>(marker);
-      await page.hold('KeyW', 1100);
-      await page.waitFor(marker + ' !== ' + JSON.stringify(before), 'player movement without WebGL');
+      // Software rendering may span a whole synthetic tap on a busy runner.
+      await page.key('KeyW', 'keyDown');
+      try {
+        await page.waitFor(marker + ' !== ' + JSON.stringify(before), 'player movement without WebGL');
+      } finally {
+        await page.key('KeyW', 'keyUp');
+      }
     } catch (error) {
       failure = error;
     } finally {

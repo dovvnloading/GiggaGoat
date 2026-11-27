@@ -23,9 +23,8 @@ export interface BakedPlacement<Model extends string> {
 
 // Limit the deviation in world metres. From the travel camera the allowed error
 // projects to roughly one pixel; vertex paint and the original normals survive.
-async function skylineGeometry(source: THREE.BufferGeometry): Promise<THREE.BufferGeometry> {
+function skylineGeometry(source: THREE.BufferGeometry): THREE.BufferGeometry {
   if (!MeshoptSimplifier.supported) return source;
-  await MeshoptSimplifier.ready;
   const mesh = mergeVertices(source, 1e-4);
   const positions = mesh.getAttribute('position').array as Float32Array;
   const paint = mesh.getAttribute('color').array as Float32Array;
@@ -102,7 +101,7 @@ export async function createDistrictLod<Model extends string>(
     low: THREE.BufferGeometry;
     sphere: THREE.Sphere;
     small: boolean;
-    skyline: THREE.BufferGeometry;
+    skyline?: THREE.BufferGeometry;
   }> = [];
   // Largest (usually architectural) cell keeps the historical QA mesh name.
   const ordered = [...cells.values()].sort((a, b) =>
@@ -139,16 +138,19 @@ export async function createDistrictLod<Model extends string>(
     mesh.receiveShadow = true;
     mesh.frustumCulled = false; // the whole spatial cell is culled below
     group.add(mesh);
-    const skyline = cell.keepSilhouette ? await skylineGeometry(high) : low;
+    const skyline = cell.keepSilhouette ? undefined : low;
     entries.push({ mesh, high, low, skyline, sphere: high.boundingSphere!.clone(),
       small: cell.small });
   }
   baked.dispose();
+  let simplifierReady = false;
+  if (MeshoptSimplifier.supported) void MeshoptSimplifier.ready.then(() => { simplifierReady = true; });
   let disposed = false;
   return {
     updateCulling(position, frustum, sightseeing = false): boolean {
       if (disposed) return false;
       let changed = false;
+      let preparedCell = false;
       for (const entry of entries) {
         const dist = position.distanceTo(entry.sphere.center);
         const visible = frustum.intersectsSphere(entry.sphere) &&
@@ -157,7 +159,12 @@ export async function createDistrictLod<Model extends string>(
             WORLD_LOD.smallPropDistance);
         const far = dist > WORLD_LOD.detailedDistance;
         const skyline = sightseeing && dist - entry.sphere.radius > 54;
-        const geometry = skyline ? entry.skyline : far ? entry.low : entry.high;
+        // Build at most one visible skyline cell per district per frame while riding.
+        if (visible && skyline && !entry.skyline && !preparedCell && simplifierReady) {
+          entry.skyline = skylineGeometry(entry.high);
+          preparedCell = true;
+        }
+        const geometry = skyline && entry.skyline ? entry.skyline : far ? entry.low : entry.high;
         if (entry.mesh.castShadow && (entry.mesh.visible !== visible ||
             entry.mesh.geometry !== geometry)) changed = true;
         entry.mesh.visible = visible;
@@ -169,7 +176,7 @@ export async function createDistrictLod<Model extends string>(
       if (disposed) return;
       disposed = true;
       for (const entry of entries) {
-        if (entry.skyline !== entry.high && entry.skyline !== entry.low) entry.skyline.dispose();
+        if (entry.skyline && entry.skyline !== entry.high && entry.skyline !== entry.low) entry.skyline.dispose();
         entry.high.dispose();
         if (entry.low !== entry.high) entry.low.dispose();
         (entry.mesh.material as THREE.Material).dispose();
