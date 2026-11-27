@@ -9,6 +9,7 @@ import { capeSurface } from './lighthouse-access';
 import { isPointInsideProps } from './layouts';
 import { makeLocalStreets } from './roads';
 import { segmentProjection } from './terrain';
+import { triangleCount } from './lod';
 
 describe('district micro-dressing and daytime life', () => {
   it('places bounded, deterministic detail outside traffic and physical props', () => {
@@ -175,7 +176,19 @@ describe('district micro-dressing and daytime life', () => {
       expect(scene.group.getObjectByName('lived-in-ground-story')).toBeDefined();
       expect(scene.group.getObjectByName('daytime-pollinators')).toBeDefined();
       expect(scene.group.getObjectByName('garden-spinners')).toBeDefined();
-      expect(scene.group.getObjectByName('garden-flowers')).toBeDefined();
+      const flowers = scene.group.getObjectByName('garden-flowers')!;
+      expect(flowers).toBeDefined();
+      const farm = island.pois.find(poi => poi.id === 'hoofington')!.center;
+      const camera = new THREE.PerspectiveCamera(64, 16 / 9, .25, 4000);
+      camera.position.set(farm.x, farm.y + 5, farm.z + 37);
+      camera.lookAt(farm.x, farm.y, farm.z);
+      scene.updateCulling(camera);
+      const batches = flowers.children.filter((object): object is THREE.InstancedMesh =>
+        object instanceof THREE.InstancedMesh && object.visible && object.count > 0);
+      expect(batches.length).toBeGreaterThan(0);
+      expect(batches.every(mesh => mesh.name.startsWith('environment-lod-far-'))).toBe(true);
+      expect(batches.reduce((cost, batch) => cost + triangleCount(batch.geometry) * batch.count, 0))
+        .toBeLessThan(4_000);
     } finally { scene.dispose(); }
   });
 });

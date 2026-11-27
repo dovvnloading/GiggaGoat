@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import type { EnvironmentLodOverride } from './environment-lod';
 import type { GardenPatch } from './insect-habitats';
 import { capeSurface } from './lighthouse-access';
 import { SeededRandom } from './random';
@@ -22,13 +23,24 @@ function solidColor(mesh: THREE.BufferGeometry, hex: number): THREE.BufferGeomet
 }
 
 /** Paint a rounded cross-section into each petal and leaf, including its central fold. */
-function flowerGeometry(palette: typeof palettes[number]): THREE.BufferGeometry {
+function flowerGeometry(palette: typeof palettes[number], detailed: boolean): THREE.BufferGeometry {
   const positions: number[] = [], colors: number[] = [], indices: number[] = [];
   const paint = new THREE.Color();
   const panel = (origin: THREE.Vector3, angle: number, length: number, width: number, rise: number,
     curl: number, rootHex: number, tipHex: number): void => {
     const first = positions.length / 3, c = Math.cos(angle), s = Math.sin(angle);
     const root = new THREE.Color(rootHex), tip = new THREE.Color(tipHex);
+    if (!detailed) {
+      for (const [t, side] of [[0, 0], [.62, 1], [1, 0], [.62, -1]] as const) {
+        const along = length * t, across = width * side;
+        positions.push(origin.x + c * along - s * across, origin.y + rise * t + curl * .5 * Math.abs(side),
+          origin.z + s * along + c * across);
+        paint.copy(root).lerp(tip, .25 + .69 * t);
+        colors.push(paint.r, paint.g, paint.b);
+      }
+      indices.push(first, first + 1, first + 3, first + 1, first + 2, first + 3);
+      return;
+    }
     for (let row = 0; row <= 5; row++) {
       const t = row / 5, arc = Math.sin(Math.PI * t);
       const span = width * (.12 * (1 - t) + .88 * arc ** .8);
@@ -60,13 +72,15 @@ function flowerGeometry(palette: typeof palettes[number]): THREE.BufferGeometry 
   surfaces.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   surfaces.setIndex(indices);
   surfaces.computeVertexNormals();
-  const stalk = new THREE.CylinderGeometry(.023, .034, .917, 7, 4).translate(0, .4585, 0);
+  const stalk = new THREE.CylinderGeometry(.023, .034, .917, detailed ? 7 : 4, detailed ? 4 : 1, !detailed)
+    .translate(0, .4585, 0);
   const stemPositions = stalk.getAttribute('position');
   for (let i = 0; i < stemPositions.count; i++) {
     stemPositions.setX(i, stemPositions.getX(i) + .144 * stemPositions.getY(i) ** 2);
   }
   stalk.computeVertexNormals();
-  const heart = new THREE.SphereGeometry(1, 10, 5).scale(.104, .057, .104).translate(.115, .912, 0);
+  const heart = new THREE.SphereGeometry(1, detailed ? 10 : 5, detailed ? 5 : 3)
+    .scale(.104, .057, .104).translate(.115, .912, 0);
   const pieces = [surfaces, solidColor(stalk, 0x557744), solidColor(heart, palette.center)];
   const flower = mergeGeometries(pieces)!;
   for (const mesh of pieces) mesh.dispose();
@@ -106,7 +120,8 @@ function soilGeometry(island: IslandData, garden: GardenPatch): THREE.BufferGeom
 export function buildPocketFlowers(island: IslandData, gardens: readonly GardenPatch[], wind: WindUniforms) {
   const group = new THREE.Group();
   group.name = 'garden-flowers';
-  if (!gardens.length) return { group, dispose() {} };
+  const lod = new Map<THREE.InstancedMesh, EnvironmentLodOverride>();
+  if (!gardens.length) return { group, lod, dispose() {} };
   const scale = island.size / 600;
   const blooms = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   blooms.onBeforeCompile = shader => applyWindShader(shader, wind);
@@ -114,10 +129,11 @@ export function buildPocketFlowers(island: IslandData, gardens: readonly GardenP
   const soil = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, depthWrite: false,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   const batches = palettes.map(palette => {
-    const mesh = new THREE.InstancedMesh(flowerGeometry(palette), blooms, gardens.length * 6);
+    const mesh = new THREE.InstancedMesh(flowerGeometry(palette, true), blooms, gardens.length * 6);
     mesh.name = 'planted-pocket-' + palette.name;
     mesh.count = 0;
     mesh.receiveShadow = true;
+    lod.set(mesh, { geometry: flowerGeometry(palette, false), detailDistance: 16 * scale, maxDistance: 54 * scale });
     group.add(mesh);
     return mesh;
   });
@@ -141,5 +157,10 @@ export function buildPocketFlowers(island: IslandData, gardens: readonly GardenP
     }
   }
   for (const mesh of batches) mesh.computeBoundingSphere();
-  return { group, dispose() { for (const mesh of batches) mesh.dispose(); } };
+  return { group, lod, dispose() {
+    for (const [mesh, far] of lod) {
+      mesh.dispose();
+      far.geometry.dispose();
+    }
+  } };
 }

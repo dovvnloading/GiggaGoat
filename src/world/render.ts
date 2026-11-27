@@ -627,7 +627,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(new THREE.AmbientLight(0xb5d4eb, 0.15));
   const frustum = new THREE.Frustum(), matrix = new THREE.Matrix4();
   const cullingDistance = options.cullingDistance ?? island.size * 1.4;
-  const environmentLod = createEnvironmentLod(group);
+  const environmentLod = createEnvironmentLod(group, flowers.lod);
   let tide = island.seaLevel;
   let elapsed = 0;
   let playerPosition: Vec3 | undefined;
