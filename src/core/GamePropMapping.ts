@@ -37,10 +37,11 @@ export function createBoardLibraryProp(factory: PropFactory): THREE.Group {
 }
 
 export function createSurfaceLibraryProp(factory: PropFactory,
-  marker: Pick<SurfaceMarker, 'kind' | 'halfExtents' | 'artAtGround'>): THREE.Group {
+  marker: Pick<SurfaceMarker, 'kind' | 'halfExtents' | 'farmSpringboard'>): THREE.Group {
+  if (marker.farmSpringboard) return factory.createFarmSpringboard(marker.halfExtents);
   return marker.kind === 'trampoline'
     ? factory.createTrampoline(marker.halfExtents)
-    : factory.createLaunchPad(marker.halfExtents, marker.artAtGround);
+    : factory.createLaunchPad(marker.halfExtents);
 }
 
 export function createSpawnLibraryProp(factory: PropFactory,

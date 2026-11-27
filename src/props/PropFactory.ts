@@ -449,6 +449,31 @@ export class PropFactory {
     return root;
   }
 
+  createFarmSpringboard(halfExtents: Size3): THREE.Group {
+    const size = getSurfaceFootprint(halfExtents);
+    const root = this.root('farm-springboard', size, true);
+    const base = -halfExtents.y;
+    // Two oak sleepers seat the sprung deck. The launch edge faces local -Z.
+    for (const side of [-1, 1]) {
+      this.box(root, { x: .22, y: .19, z: size.z }, 'woodDark', side * (halfExtents.x - .25), base + .095, 0);
+      this.box(root, { x: .13, y: .13, z: size.z - .14 }, 'iron',
+        side * (halfExtents.x - .25), base + .235, 0);
+    }
+    const step = size.z / 8;
+    for (let i = 0; i < 8; i++) {
+      const z = (i - 3.5) * step;
+      this.box(root, { x: size.x, y: .18, z: step - .019 },
+        i % 3 === 0 ? 'woodDark' : 'wood', 0, halfExtents.y - .09, z);
+    }
+    for (const side of [-1, 1]) {
+      const stripe = this.box(root, { x: .16, y: .012, z: 1.13 }, 'paper',
+        side * .34, halfExtents.y + .006, -.46);
+      stripe.rotation.y = side * .65;
+    }
+    root.userData.assetStatus = 'ready';
+    return root;
+  }
+
   createTrampoline(halfExtents: Size3 = SURFACE_HALF_EXTENTS): THREE.Group {
     return this.springPad('trampoline', halfExtents);
   }
