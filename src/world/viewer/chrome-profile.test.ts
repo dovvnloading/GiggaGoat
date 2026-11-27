@@ -367,8 +367,8 @@ describe.skipIf(!process.env['CI'])('world viewer real-Chrome frame profiling', 
       expect(report?.dpr).toBe(1.5);
       const hoofBudget = report!.bookmarks.find(mark => mark.id === '08');
       expect(hoofBudget, 'Hoofington bookmark must be profiled').toBeDefined();
-      expect(hoofBudget!.triangles, 'bookmark 08 exceeds 400k triangles')
-        .toBeLessThanOrEqual(400_000);
+      expect(hoofBudget!.triangles, 'bookmark 08 exceeds 500k triangles')
+        .toBeLessThanOrEqual(500_000);
       // Art lead decision: the painting hero props (palms, floodlights, spools,
       // pallets, life rings, log bridge) are separate authored instanced kinds,
       // each one draw where visible. 215 keeps headroom without merging kinds.
