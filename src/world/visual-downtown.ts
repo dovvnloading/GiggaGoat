@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { IslandData, PropDescriptor, PropKind, Vec3 } from './types';
 import { gridSample } from './terrain';
+import { roundOakArtCenterY } from './visual-tree-grounding';
 import { publicAssetUrl } from './public-assets';
 import { bakeLibraryGeometry, createLanternLampInstances,
   type LanternLampBatch, type HoofPlacement } from './visual-hoofington';
@@ -257,9 +258,11 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
     if (SCENERY_MODELS.has(model) &&
         isInsideDowntownInfillFootprint(island, x, z)) return;
     const h = sy * scale;
+    const position = { x, y: y ?? gridSample(island, x, z) + h / 2, z };
+    const size = { x: sx * scale, y: h, z: sz * scale };
     plan.push({
-      model, position: { x, y: y ?? gridSample(island, x, z) + h / 2, z },
-      size: { x: sx * scale, y: h, z: sz * scale },
+      model, position, size,
+      treeCenterY: OAK_VARIANTS.some(variant => model === variant) ? roundOakArtCenterY(island, position, size) : undefined,
       yaw, ...(wall === undefined ? {} : { wall }),
     });
   }

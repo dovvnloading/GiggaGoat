@@ -10,13 +10,8 @@ export function isTerrainTreeAnchor(terrain: Terrain, position: Vec3, height: nu
     <= .25 * terrain.size / 600;
 }
 
-/** Seat the tree's rendered sole against the full-detail terrain triangles. */
-export function treeArtCenterY(terrain: Terrain, position: Vec3, height: number,
-  unitBottom: number): number {
+function renderedSurfaceAt(terrain: Terrain, x: number, z: number): number {
   const { resolution: n, size, heights } = terrain;
-  const scale = size / 600;
-  const { x, y, z } = position;
-  if (!isTerrainTreeAnchor(terrain, position, height)) return y;
   const gx = clamp((x / size + .5) * (n - 1), 0, n - 1);
   const gz = clamp((z / size + .5) * (n - 1), 0, n - 1);
   const ix = Math.min(Math.floor(gx), n - 2), iz = Math.min(Math.floor(gz), n - 2);
@@ -25,7 +20,27 @@ export function treeArtCenterY(terrain: Terrain, position: Vec3, height: number,
   const c = heights[gridIndex(n, ix, iz + 1)]!, d = heights[gridIndex(n, ix + 1, iz + 1)]!;
   // The rendered cell uses the b-c diagonal. Bilinear placement is kept for
   // the existing collider and may differ on a sloped cell.
-  const surface = u + v <= 1 ? a + u * (b - a) + v * (c - a) :
+  return u + v <= 1 ? a + u * (b - a) + v * (c - a) :
     d + (1 - u) * (c - d) + (1 - v) * (b - d);
-  return surface - unitBottom * height - .10 * scale;
+}
+
+/** Seat the tree's rendered sole against the full-detail terrain triangles. */
+export function treeArtCenterY(terrain: Terrain, position: Vec3, height: number,
+  unitBottom: number, footingRadius = 0): number {
+  if (!isTerrainTreeAnchor(terrain, position, height)) return position.y;
+  const { x, z } = position;
+  let surface = renderedSurfaceAt(terrain, x, z);
+  if (footingRadius > 0) {
+    const offsets = [-footingRadius, 0, footingRadius];
+    for (const dx of offsets) for (const dz of offsets) {
+      if (dx || dz) surface = Math.min(surface, renderedSurfaceAt(terrain, x + dx, z + dz));
+    }
+  }
+  return surface - unitBottom * height - .10 * terrain.size / 600;
+}
+
+export function roundOakArtCenterY(terrain: Terrain, position: Vec3, size: Vec3): number {
+  // Include the downhill side so the flared trunk and root tips meet the soil.
+  // All three fitted round-oak bases fit within this fraction of the crown box.
+  return treeArtCenterY(terrain, position, size.y, -.49, .20 * Math.max(size.x, size.z));
 }
