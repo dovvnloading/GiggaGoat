@@ -57,7 +57,7 @@ export const DOWNTOWN_MODELS = {
   lights: 'assets/library/custom/crane-yard/bunting.glb',
 } as const;
 export type DowntownModel = keyof typeof DOWNTOWN_MODELS;
-export type DowntownPlacement = HoofPlacement<DowntownModel> & { storefront?: string };
+export type DowntownPlacement = HoofPlacement<DowntownModel>;
 
 /** Seat contact on the shipped chair, whose back is on local -Z. The
  * placement includes the backrest in its bounds; sit just forward of centre. */

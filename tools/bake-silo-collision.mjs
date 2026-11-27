@@ -3,9 +3,11 @@ import { Box3, Mesh, Vector3 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // Keep the static world available synchronously, before the district art loads.
-// Re-run with node tools/bake-silo-collision.mjs when the shipped silo changes.
-const source = new URL('../public/assets/library/custom/hoofington-props/climbable-silo.glb', import.meta.url);
-const target = new URL('../src/world/silo-collision.json', import.meta.url);
+// Pass --lookout to bake the ranger tower in its rendered 98% fit.
+const lookout = process.argv.includes('--lookout');
+const model = lookout ? 'pines/lookout' : 'hoofington-props/climbable-silo';
+const source = new URL(`../public/assets/library/custom/${model}.glb`, import.meta.url);
+const target = new URL(lookout ? '../src/world/lookout-collision.json' : '../src/world/silo-collision.json', import.meta.url);
 const bytes = await readFile(source);
 const { scene } = await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, '');
 scene.updateMatrixWorld(true);
@@ -22,7 +24,7 @@ scene.traverse(mesh => {
   for (let i = 0; i < count; i++) {
     const vertex = index ? index.getX(i) : i;
     point.fromBufferAttribute(vertices, vertex).applyMatrix4(mesh.matrixWorld).sub(center).divide(span);
-    const coords = [point.x, point.y, point.z].map(n => Math.round(n * units));
+    const coords = [point.x, point.y, point.z].map(n => Math.round(n * units * (lookout ? .98 : 1)));
     const key = coords.join(',');
     let id = indexByPosition.get(key);
     if (id === undefined) {

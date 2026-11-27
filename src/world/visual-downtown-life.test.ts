@@ -74,3 +74,38 @@ it('lights only authored glass triangles at exactly the district baker coordinat
     expect(downtownWindowGeometry(placements, new Map())).toBeNull();
   } finally { windows.dispose(); baked.dispose(); }
 });
+
+it('selects the interior and lit panes for the active tenant of a shared shell', () => {
+  const [shop] = makeDowntownPlacements(generateIsland({ seed: 'billy-isle', resolution: 65 }))
+    .filter(p => p.storefront === 'ICE CREAM');
+  const root = new THREE.Group();
+  const glass = new THREE.MeshBasicMaterial();
+  glass.name = 'ShopGlass';
+  const placements = ['ICE CREAM', 'HAY MART', undefined];
+  for (const [index, title] of placements.entries()) {
+    const interior = new THREE.Group();
+    interior.userData.storefrontUse = title ?? 'residence';
+    interior.position.x = index * 5;
+    interior.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), glass));
+    root.add(interior);
+  }
+  const models = new Map([['market' as const, root]]);
+  const centres = placements.map(storefront => {
+    const place = { ...shop!, model: 'market' as const, yaw: 0, storefront };
+    const walls = bakeLibraryGeometry([place], models, undefined, DOWNTOWN_MODELS)!;
+    const windows = downtownWindowGeometry([place], models)!;
+    for (const geometry of [walls, windows]) {
+      expect(geometry.getAttribute('position').count).toBe(36);
+      geometry.computeBoundingBox();
+    }
+    expect(windows.boundingBox!.min.x).toBeCloseTo(walls.boundingBox!.min.x, 4);
+    const x = walls.boundingBox!.min.x;
+    walls.dispose();
+    windows.dispose();
+    return x;
+  });
+  expect(centres[0]).toBeLessThan(centres[1]!);
+  expect(centres[1]).toBeLessThan(centres[2]!);
+  root.traverse(node => { if (node instanceof THREE.Mesh) node.geometry.dispose(); });
+  glass.dispose();
+});

@@ -5,7 +5,7 @@ import { gridSample } from './terrain';
 import { roundOakArtCenterY, treeArtCenterY } from './visual-tree-grounding';
 import { smoothstep } from './random';
 import { publicAssetUrl } from './public-assets';
-import { fitLibraryModel, isAuthoredLibraryAsset } from './library-fit';
+import { fitLibraryModel, isAuthoredLibraryAsset, libraryPlacementBounds } from './library-fit';
 import { createDistrictLod, type BakedPlacement, type DistrictLod } from './district-lod';
 import { WORLD_LOD, simplifiedWorldGeometry } from './lod';
 import { downtownFinish } from './material-detail';
@@ -62,6 +62,8 @@ export interface HoofPlacement<Model extends string = HoofModel> {
   position: Vec3;
   size: Vec3;
   yaw: number;
+  /** Selects the active shop interior when one shell serves multiple addresses. */
+  storefront?: string;
   /** Optional legacy overrides; Blender-painted Hoofington props never use these. */
   wall?: number;
   roof?: number;
@@ -69,6 +71,12 @@ export interface HoofPlacement<Model extends string = HoofModel> {
   treeCenterY?: number;
   /** Original descriptor/collider is retained; only its old art is hidden. */
   source?: PropDescriptor;
+}
+
+/** GLTFLoader attaches a multi-material node's extras to its parent group. */
+export function matchesStorefront(node: THREE.Object3D, title?: string): boolean {
+  const use = node.userData.storefrontUse ?? node.parent?.userData.storefrontUse;
+  return use === undefined || use === (title ?? 'residence');
 }
 
 export interface HoofingtonVisuals {
@@ -255,7 +263,7 @@ export function bakeLibraryGeometry<Model extends string>(
     const root = models.get(placement.model);
     if (!root) continue;
     root.updateMatrixWorld(true);
-    const bounds = new THREE.Box3().setFromObject(root);
+    const bounds = libraryPlacementBounds(root);
     if (bounds.isEmpty()) continue;
     const span = bounds.getSize(new THREE.Vector3());
     if (Math.min(span.x, span.y, span.z) <= 0.00001) continue;
@@ -278,7 +286,7 @@ export function bakeLibraryGeometry<Model extends string>(
       ? null : roof.setHex(placement.roof).clone();
     quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), placement.yaw + fit.yaw);
     root.traverse(object => {
-      if (!(object instanceof THREE.Mesh)) return;
+      if (!(object instanceof THREE.Mesh) || !matchesStorefront(object, placement.storefront)) return;
       const mesh = object;
       const plasterShell = paintedVillageHouse && mesh.name.startsWith('building-type-');
       const positions = mesh.geometry.getAttribute('position');

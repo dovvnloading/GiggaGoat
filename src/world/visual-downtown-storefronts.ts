@@ -1,24 +1,26 @@
 import * as THREE from 'three';
-import { ISLAND_ART_PATH, publicAssetUrl } from './public-assets';
+import { libraryPlacementBounds } from './library-fit';
+import { matchesStorefront } from './visual-hoofington';
 import type { DowntownPlacement } from './visual-downtown';
 
-const STOREFRONT_PALETTE: Record<string, readonly [trim: string, sign: string, ink: string, display: string]> = {
-  'CAFE': ['#af553c', '#fff1ce', '#542e33', '#dd8a5b'],
-  'GOATFLIX': ['#dd5873', '#332840', '#fff2da', '#87c5bd'],
-  'BOUTIQUE': ['#b88c52', '#fff1dc', '#633958', '#e6a6b4'],
-  'KID ARCADE': ['#b66cf1', '#46265e', '#fff3a5', '#b18cf9'],
-  'BAAKERY': ['#ce5860', '#fff0d1', '#703632', '#f0b36c'],
-  'FLOWERS': ['#71995d', '#fff1db', '#3e683f', '#e793a9'],
-  'BOOKS': ['#7093aa', '#f8dd97', '#344a5d', '#d17b66'],
-  'ICE CREAM': ['#e58090', '#fff3e6', '#75426b', '#9cd5cc'],
-  'HAY MART': ['#a9b764', '#37684c', '#fff0bd', '#e8bd59'],
-  'HOOF & CO': ['#56a48b', '#fff3d7', '#325751', '#e0a485'],
+type Lettering = readonly [paper: string, ink: string, face: string];
+const signs: Record<string, Lettering> = {
+  BAAKERY: ['#f7e4c6', '#813e42', 'Georgia'],
+  CAFE: ['#355651', '#f6e7bd', 'Georgia'],
+  GOATFLIX: ['#743c4d', '#ffe6ac', 'sans-serif'],
+  BOUTIQUE: ['#efdfc9', '#47676c', 'Georgia'],
+  'KID ARCADE': ['#46394e', '#f3d98e', 'monospace'],
+  FLOWERS: ['#e3dfba', '#475f4e', 'Georgia'],
+  BOOKS: ['#3e5964', '#f9e7c2', 'Georgia'],
+  'ICE CREAM': ['#f5dece', '#864e62', 'Georgia'],
+  'HAY MART': ['#576445', '#f7e5af', 'sans-serif'],
+  'HOOF & CO': ['#e6cda8', '#624d48', 'Georgia'],
 };
 
 /** Match the district baker's axis-by-axis fit for authored shop models. */
 function facadeTransform(place: DowntownPlacement, model: THREE.Group) {
   model.updateMatrixWorld(true);
-  const bounds = new THREE.Box3().setFromObject(model), size = bounds.getSize(new THREE.Vector3());
+  const bounds = libraryPlacementBounds(model), size = bounds.getSize(new THREE.Vector3());
   const center = bounds.getCenter(new THREE.Vector3());
   if (Math.min(size.x, size.y, size.z) < .0001) return null;
   const scale = new THREE.Vector3(place.size.x * .96 / size.x,
@@ -27,16 +29,17 @@ function facadeTransform(place: DowntownPlacement, model: THREE.Group) {
   return (vertex: THREE.Vector3) => vertex.sub(center).multiply(scale).applyQuaternion(rotate).add(place.position);
 }
 
-function visitFacade(model: THREE.Group, name: string, visit: (point: THREE.Vector3) => void): void {
+function visitFacade(model: THREE.Group, title: string | undefined, name: string, visit: (point: THREE.Vector3) => void): void {
   const point = new THREE.Vector3();
   model.traverse(node => {
-    if (!(node instanceof THREE.Mesh)) return;
+    if (!(node instanceof THREE.Mesh) || !matchesStorefront(node, title)) return;
     const materials = Array.isArray(node.material) ? node.material : [node.material];
     const geometry = node.geometry, positions = geometry.getAttribute('position'), indices = geometry.index;
     const groups = geometry.groups.length ? geometry.groups : [{ start: 0,
       count: indices?.count ?? positions.count, materialIndex: 0 }];
     for (const part of groups) {
-      if (materials[part.materialIndex ?? 0]?.name !== name) continue;
+      const material = materials[part.materialIndex ?? 0] ?? materials[0];
+      if (material?.name !== name) continue;
       for (let i = part.start; i < part.start + part.count; i++) {
         visit(point.fromBufferAttribute(positions, indices ? indices.getX(i) : i).applyMatrix4(node.matrixWorld));
       }
@@ -54,7 +57,7 @@ export function downtownWindowGeometry(
     if (!model) continue;
     const world = facadeTransform(place, model);
     if (!world) continue;
-    visitFacade(model, 'ShopGlass', point => {
+    visitFacade(model, place.storefront, 'ShopGlass', point => {
       const vertex = world(point);
       coordinates.push(vertex.x, vertex.y, vertex.z);
     });
@@ -69,179 +72,54 @@ export function downtownWindowGeometry(
   return geometry;
 }
 
-const TILE_W = 256, TILE_H = 96, COLUMNS = 4, ROWS = 5, INSET = 5;
-const SHELF_Y = 72;
-// Cell indices in the four-column frontage atlas.
-const tradeEmblems: Partial<Record<string, number>> = {
-  CAFE: 0, BAAKERY: 1, FLOWERS: 2, 'KID ARCADE': 3, 'HOOF & CO': 4,
-};
-// The second number is the bottom of the silhouette in the 256px source.
-const displayArt = {
-  croissants: [5, 214],
-  espresso: [6, 241],
-  peonies: [7, 241],
-  popcorn: [8, 240],
-  boxes: [9, 222],
-  knitwear: [10, 227],
-  preserves: [11, 207],
-} as const;
-type DisplayGood = keyof typeof displayArt;
-const windowGoods: Partial<Record<string, readonly (DisplayGood | null)[]>> = {
-  CAFE: [null, 'espresso', null, null],
-  BAAKERY: [null, 'croissants', 'preserves', null],
-  FLOWERS: [null, 'peonies', null, null],
-  GOATFLIX: [null, 'popcorn', null, null],
-  BOUTIQUE: [null, 'knitwear', null, 'boxes'],
-  'HOOF & CO': ['boxes', null, 'knitwear', null],
-  'HAY MART': [null, 'preserves', null, null],
-};
-interface Panel { title: string; window: boolean; bounds: THREE.Box3; world: (vertex: THREE.Vector3) => THREE.Vector3 }
+const TILE_W = 512, TILE_H = 80, COLUMNS = 2, INSET = 3;
 
-function storefrontPanels(placements: readonly DowntownPlacement[], sources: ReadonlyMap<string, THREE.Group>): Panel[] {
+interface Panel {
+  title: string;
+  bounds: THREE.Box3;
+  world: (vertex: THREE.Vector3) => THREE.Vector3;
+}
+
+function buildSigns(placements: readonly DowntownPlacement[], sources: ReadonlyMap<string, THREE.Group>) {
   const panels: Panel[] = [];
   for (const place of placements) {
-    const title = place.storefront;
-    const model = sources.get(place.model);
-    if (!title || !STOREFRONT_PALETTE[title] || !model) continue;
+    const title = place.storefront, model = sources.get(place.model);
+    if (!title || !signs[title] || !model) continue;
     const world = facadeTransform(place, model);
     if (!world) continue;
-    for (const window of [false, true]) {
-      const bounds = new THREE.Box3();
-      visitFacade(model, window ? 'ShopGlass' : 'SignBoard', point => { bounds.expandByPoint(point); });
-      if (bounds.isEmpty()) continue;
-      if (window) {
-        // Dress the lower window, leaving the upper panes and frames in place.
-        bounds.min.x += .006;
-        bounds.max.x -= .006;
-        bounds.min.y += .004;
-        bounds.max.y = THREE.MathUtils.lerp(bounds.min.y, bounds.max.y, .61);
-      } else {
-        const centerX = (bounds.max.x + bounds.min.x) / 2;
-        const halfWidth = Math.min((bounds.max.x - bounds.min.x) * .49,
-          (bounds.max.y - bounds.min.y) * (title.length * .31 + 1.1));
-        bounds.min.x = centerX - halfWidth;
-        bounds.max.x = centerX + halfWidth;
-      }
-      bounds.max.z += .0018;
-      panels.push({ title, window, bounds, world });
-    }
+    const bounds = new THREE.Box3();
+    visitFacade(model, title, 'SignBoard', point => bounds.expandByPoint(point));
+    if (bounds.isEmpty()) continue;
+    bounds.max.z += .0008;
+    panels.push({ title, bounds, world });
   }
-  return panels;
-}
-
-function drawArt(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, cell: number,
-  x: number, y: number, width: number, height: number): void {
-  const size = atlas.width / COLUMNS;
-  ctx.drawImage(atlas, cell % COLUMNS * size, Math.floor(cell / COLUMNS) * size, size, size, x, y, width, height);
-}
-
-function drawWindow(ctx: CanvasRenderingContext2D, title: string, trim: string, accent: string,
-  displays?: HTMLImageElement): void {
-  const glass = ctx.createLinearGradient(0, 0, 0, TILE_H);
-  glass.addColorStop(0, '#485a67'); glass.addColorStop(1, '#283b48');
-  ctx.fillStyle = glass;
-  ctx.fillRect(0, 0, TILE_W, TILE_H);
-  ctx.fillStyle = '#8594a0';
-  ctx.fillRect(6, 11, TILE_W - 12, 3);
-  const goods = displays && windowGoods[title];
-  for (let bay = 0; bay < 4; bay++) {
-    const x = bay * 64 + 32;
-    ctx.fillStyle = accent;
-    ctx.strokeStyle = accent;
-    ctx.lineWidth = 4;
-    if (displays && goods) {
-      const good = goods[bay];
-      if (good) {
-        const [cell, bottom] = displayArt[good], size = 57;
-        drawArt(ctx, displays, cell, x - size / 2, SHELF_Y - size * bottom / 256, size, size);
-      }
-      ctx.fillStyle = 'rgba(179, 216, 229, .10)';
-      ctx.beginPath();
-      ctx.moveTo(x + 17, 17); ctx.lineTo(x + 30, 17);
-      ctx.lineTo(x + 12, SHELF_Y); ctx.lineTo(x + 3, SHELF_Y);
-      ctx.closePath(); ctx.fill();
-    } else if (title === 'BOOKS') {
-      for (let book = 0; book < 4; book++) ctx.fillRect(x - 17 + book * 9, 40 + (book % 2) * 7, 7, 30 - (book % 2) * 7);
-    } else if (title === 'GOATFLIX' || title === 'KID ARCADE') {
-      ctx.fillRect(x - 18, 33, 36, 36);
-      ctx.fillStyle = '#39364c';
-      ctx.fillRect(x - 13, 38, 26, 18);
-      ctx.fillStyle = '#fff0c3';
-      ctx.fillRect(x - 8, 59, 16, 3);
-    } else if (title === 'BOUTIQUE' || title === 'HOOF & CO') {
-      ctx.beginPath();
-      ctx.moveTo(x - 8, 33); ctx.lineTo(x - 22, 46); ctx.lineTo(x - 15, 57);
-      ctx.lineTo(x - 10, 53); ctx.lineTo(x - 10, 69); ctx.lineTo(x + 10, 69);
-      ctx.lineTo(x + 10, 53); ctx.lineTo(x + 15, 57); ctx.lineTo(x + 22, 46);
-      ctx.lineTo(x + 8, 33); ctx.closePath(); ctx.fill();
-    } else if (title === 'CAFE' || title === 'ICE CREAM') {
-      ctx.beginPath();
-      ctx.roundRect(x - 15, 45, 25, 21, 5); ctx.fill();
-      ctx.strokeRect(x + 10, 48, 7, 10);
-      ctx.fillRect(x - 20, 67, 35, 3);
-    } else if (title === 'FLOWERS') {
-      ctx.fillStyle = '#82a66a';
-      ctx.fillRect(x - 2, 42, 4, 17);
-      ctx.fillStyle = accent;
-      for (const [dx, dy] of [[-5, 0], [5, 0], [0, -5], [0, 5]]) {
-        ctx.beginPath(); ctx.ellipse(x + dx!, 38 + dy!, 5, 5, 0, 0, Math.PI * 2); ctx.fill();
-      }
-      ctx.fillStyle = '#bb745a'; ctx.fillRect(x - 9, 56, 18, 14);
-    } else {
-      for (let item = 0; item < 3; item++) {
-        ctx.beginPath();
-        ctx.ellipse(x - 13 + item * 12, 60 - (item % 2) * 7,
-          title === 'BAAKERY' ? 10 : 7, 8, .25, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-    ctx.fillStyle = '#aeb8bb';
-    ctx.fillRect(bay * 64, 1, 3, TILE_H - 1);
-  }
-  ctx.fillStyle = trim;
-  ctx.fillRect(0, SHELF_Y, TILE_W, 10);
-  ctx.fillStyle = '#c8b5a0';
-  ctx.fillRect(0, SHELF_Y, TILE_W, 3);
-}
-
-function drawFrontage(ctx: CanvasRenderingContext2D, panels: readonly Panel[], atlas?: HTMLImageElement): void {
-  for (const [index, { title, window }] of panels.entries()) {
-    const [trim, sign, ink, display] = STOREFRONT_PALETTE[title]!;
-    const x = (index % COLUMNS) * TILE_W, y = Math.floor(index / COLUMNS) * TILE_H;
-    ctx.save();
-    ctx.translate(x, y);
-    if (window) drawWindow(ctx, title, trim, display, atlas);
-    else {
-      ctx.fillStyle = trim; ctx.fillRect(0, 0, TILE_W, TILE_H);
-      ctx.fillStyle = sign; ctx.fillRect(10, 10, TILE_W - 20, TILE_H - 20);
-      ctx.strokeStyle = trim; ctx.lineWidth = 2;
-      ctx.strokeRect(15, 15, TILE_W - 30, TILE_H - 30);
-      const cell = tradeEmblems[title];
-      const emblem = atlas && cell !== undefined;
-      if (emblem) drawArt(ctx, atlas, cell, 27, 18, 60, 60);
-      ctx.fillStyle = ink;
-      ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
-      ctx.font = '900 49px sans-serif';
-      ctx.fillText(title, emblem ? 158 : TILE_W / 2, TILE_H / 2 + 2, emblem ? 142 : TILE_W - 48);
-      ctx.fillStyle = trim;
-      ctx.fillRect(20, TILE_H / 2 - 2, 5, 5);
-      ctx.fillRect(TILE_W - 25, TILE_H / 2 - 2, 5, 5);
-    }
-    ctx.restore();
-  }
-}
-
-/** One small atlas and one draw for signs and displays on the existing facades. */
-function buildFrontage(placements: readonly DowntownPlacement[], sources: ReadonlyMap<string, THREE.Group>) {
-  const panels = storefrontPanels(placements, sources);
   if (!panels.length) return null;
   const canvas = document.createElement('canvas');
-  canvas.width = TILE_W * COLUMNS; canvas.height = TILE_H * ROWS;
+  canvas.width = TILE_W * COLUMNS;
+  canvas.height = TILE_H * Math.ceil(panels.length / COLUMNS);
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
   const positions: number[] = [], uv: number[] = [], indices: number[] = [];
-  for (const [index, { bounds, world }] of panels.entries()) {
+  for (const [index, { title, bounds, world }] of panels.entries()) {
     const x = (index % COLUMNS) * TILE_W, y = Math.floor(index / COLUMNS) * TILE_H;
+    const [paper, ink, face] = signs[title]!;
+    ctx.fillStyle = paper;
+    ctx.fillRect(x, y, TILE_W, TILE_H);
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = 1.6;
+    ctx.strokeRect(x + 10, y + 8, TILE_W - 20, TILE_H - 16);
+    ctx.fillStyle = ink;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold 54px ${face}`;
+    const aspect = (bounds.max.x - bounds.min.x) / (bounds.max.y - bounds.min.y);
+    ctx.save();
+    ctx.translate(x + TILE_W / 2, y + TILE_H / 2 + 2);
+    const width = ctx.measureText(title).width;
+    const scale = Math.min((TILE_W - 84) / width, TILE_W / (TILE_H * aspect) * 1.27);
+    ctx.scale(scale, 1);
+    ctx.fillText(title, 0, 0);
+    ctx.restore();
     for (const [u, v] of [[0, 0], [1, 0], [1, 1], [0, 1]] as const) {
       const point = world(new THREE.Vector3(THREE.MathUtils.lerp(bounds.min.x, bounds.max.x, u),
         THREE.MathUtils.lerp(bounds.min.y, bounds.max.y, v), bounds.max.z));
@@ -256,32 +134,20 @@ function buildFrontage(placements: readonly DowntownPlacement[], sources: Readon
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   geometry.setIndex(indices);
-  drawFrontage(ctx, panels);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
   const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ map: texture }));
   mesh.name = 'downtown-shop-signs-and-displays';
-  let requested = false, disposed = false;
-  texture.addEventListener('dispose', () => { disposed = true; });
-  return { mesh, loadArtwork(): void {
-    if (requested || disposed) return;
-    requested = true;
-    const loader = new THREE.ImageLoader();
-    void loader.loadAsync(publicAssetUrl(ISLAND_ART_PATH + 'atlases/downtown-frontage.webp')).then(atlas => {
-      if (disposed) return;
-      drawFrontage(ctx, panels, atlas);
-      texture.needsUpdate = true;
-    }, () => { /* The original signage is already drawn. */ });
-  } };
+  return mesh;
 }
 
 export function buildDowntownStorefronts(
   placements: readonly DowntownPlacement[], sources: ReadonlyMap<string, THREE.Group>,
 ) {
   const group = new THREE.Group();
-  const frontage = buildFrontage(placements, sources);
-  if (frontage) group.add(frontage.mesh);
+  const lettering = buildSigns(placements, sources);
+  if (lettering) group.add(lettering);
   const glass = downtownWindowGeometry(placements, sources);
   const paint = glass ? new THREE.MeshBasicMaterial({ color: 0xffce87, transparent: true, vertexColors: true,
     depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }) : undefined;
@@ -293,10 +159,7 @@ export function buildDowntownStorefronts(
   return {
     group,
     setDaylight(daylight: number): void {
-      if (frontage) {
-        frontage.loadArtwork();
-        frontage.mesh.material.color.setScalar(.55 + daylight * .45);
-      }
+      if (lettering) lettering.material.color.setScalar(.55 + daylight * .45);
       if (!paint) return;
       paint.opacity = .68 * (1 - THREE.MathUtils.smoothstep(daylight, .15, .6));
       paint.visible = paint.opacity > .005;
