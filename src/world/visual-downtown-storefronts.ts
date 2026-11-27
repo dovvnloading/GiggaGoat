@@ -3,9 +3,10 @@ import { libraryPlacementBounds } from './library-fit';
 import { matchesStorefront } from './visual-hoofington';
 import type { DowntownPlacement } from './visual-downtown';
 
+import { BAKERY_NAME, bakeryBlade, paintBakeryMarquee } from './bakery-sign';
+
 type Lettering = readonly [paper: string, ink: string, face: string];
 const signs: Record<string, Lettering> = {
-  BAAKERY: ['#f7e4c6', '#813e42', 'Georgia'],
   CAFE: ['#355651', '#f6e7bd', 'Georgia'],
   GOATFLIX: ['#743c4d', '#ffe6ac', 'sans-serif'],
   BOUTIQUE: ['#efdfc9', '#47676c', 'Georgia'],
@@ -80,11 +81,11 @@ interface Panel {
   world: (vertex: THREE.Vector3) => THREE.Vector3;
 }
 
-function buildSigns(placements: readonly DowntownPlacement[], sources: ReadonlyMap<string, THREE.Group>) {
+function buildSigns(group: THREE.Group, placements: readonly DowntownPlacement[], sources: ReadonlyMap<string, THREE.Group>) {
   const panels: Panel[] = [];
   for (const place of placements) {
     const title = place.storefront, model = sources.get(place.model);
-    if (!title || !signs[title] || !model) continue;
+    if (!title || (!signs[title] && title !== BAKERY_NAME) || !model) continue;
     const world = facadeTransform(place, model);
     if (!world) continue;
     const bounds = new THREE.Box3();
@@ -102,24 +103,29 @@ function buildSigns(placements: readonly DowntownPlacement[], sources: ReadonlyM
   const positions: number[] = [], uv: number[] = [], indices: number[] = [];
   for (const [index, { title, bounds, world }] of panels.entries()) {
     const x = (index % COLUMNS) * TILE_W, y = Math.floor(index / COLUMNS) * TILE_H;
-    const [paper, ink, face] = signs[title]!;
-    ctx.fillStyle = paper;
-    ctx.fillRect(x, y, TILE_W, TILE_H);
-    ctx.strokeStyle = ink;
-    ctx.lineWidth = 1.6;
-    ctx.strokeRect(x + 10, y + 8, TILE_W - 20, TILE_H - 16);
-    ctx.fillStyle = ink;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = `bold 54px ${face}`;
-    const aspect = (bounds.max.x - bounds.min.x) / (bounds.max.y - bounds.min.y);
-    ctx.save();
-    ctx.translate(x + TILE_W / 2, y + TILE_H / 2 + 2);
-    const width = ctx.measureText(title).width;
-    const scale = Math.min((TILE_W - 84) / width, TILE_W / (TILE_H * aspect) * 1.27);
-    ctx.scale(scale, 1);
-    ctx.fillText(title, 0, 0);
-    ctx.restore();
+    if (title === BAKERY_NAME) {
+      paintBakeryMarquee(ctx, x, y, TILE_W, TILE_H);
+      group.add(bakeryBlade(bounds, world));
+    } else {
+      const [paper, ink, face] = signs[title]!;
+      ctx.fillStyle = paper;
+      ctx.fillRect(x, y, TILE_W, TILE_H);
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(x + 10, y + 8, TILE_W - 20, TILE_H - 16);
+      ctx.fillStyle = ink;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `bold 54px ${face}`;
+      const aspect = (bounds.max.x - bounds.min.x) / (bounds.max.y - bounds.min.y);
+      ctx.save();
+      ctx.translate(x + TILE_W / 2, y + TILE_H / 2 + 2);
+      const width = ctx.measureText(title).width;
+      const scale = Math.min((TILE_W - 84) / width, TILE_W / (TILE_H * aspect) * 1.27);
+      ctx.scale(scale, 1);
+      ctx.fillText(title, 0, 0);
+      ctx.restore();
+    }
     for (const [u, v] of [[0, 0], [1, 0], [1, 1], [0, 1]] as const) {
       const point = world(new THREE.Vector3(THREE.MathUtils.lerp(bounds.min.x, bounds.max.x, u),
         THREE.MathUtils.lerp(bounds.min.y, bounds.max.y, v), bounds.max.z));
@@ -137,7 +143,17 @@ function buildSigns(placements: readonly DowntownPlacement[], sources: ReadonlyM
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
-  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ map: texture }));
+  const ordinary = new THREE.MeshBasicMaterial({ map: texture });
+  const neon = new THREE.MeshBasicMaterial({ map: texture, toneMapped: false });
+  const bakery = panels.findIndex(panel => panel.title === BAKERY_NAME);
+  if (bakery < 0) geometry.addGroup(0, indices.length, 0);
+  else {
+    if (bakery > 0) geometry.addGroup(0, bakery * 6, 0);
+    geometry.addGroup(bakery * 6, 6, 1);
+    const next = (bakery + 1) * 6;
+    if (next < indices.length) geometry.addGroup(next, indices.length - next, 0);
+  }
+  const mesh = new THREE.Mesh(geometry, [ordinary, neon]);
   mesh.name = 'downtown-shop-signs-and-displays';
   return mesh;
 }
@@ -146,7 +162,7 @@ export function buildDowntownStorefronts(
   placements: readonly DowntownPlacement[], sources: ReadonlyMap<string, THREE.Group>,
 ) {
   const group = new THREE.Group();
-  const lettering = buildSigns(placements, sources);
+  const lettering = buildSigns(group, placements, sources);
   if (lettering) group.add(lettering);
   const glass = downtownWindowGeometry(placements, sources);
   const paint = glass ? new THREE.MeshBasicMaterial({ color: 0xffce87, transparent: true, vertexColors: true,
@@ -159,7 +175,7 @@ export function buildDowntownStorefronts(
   return {
     group,
     setDaylight(daylight: number): void {
-      if (lettering) lettering.material.color.setScalar(.55 + daylight * .45);
+      if (lettering) lettering.material[0]!.color.setScalar(.55 + daylight * .45);
       if (!paint) return;
       paint.opacity = .68 * (1 - THREE.MathUtils.smoothstep(daylight, .15, .6));
       paint.visible = paint.opacity > .005;

@@ -996,7 +996,7 @@ export class GameView {
     this.renderer.setClearColor(this.world.fogColor);
     this.updateCamera(alpha, sceneDt);
     this.updateCameraFraming(sceneDt);
-    this.happeningVisuals.update(this.game.physics.time, this.camera.position, !match);
+    this.happeningVisuals.update(this.game.physics.time, this.camera.position, !match, this.game.ambientLifeEnabled);
     this.residents.update(this.game.life.residents, this.game.physics.time, this.camera.position, this.currentSettings.graphics);
     this.marketVisuals.update(this.game.market.items, this.camera.position);
     this.atmosphere.update(weather, this.camera.position, playerPosition, this.currentSettings.graphics === 'low');
