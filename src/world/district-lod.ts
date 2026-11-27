@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { MeshoptSimplifier } from 'meshoptimizer';
 import type { IslandData } from './types';
 import type { HoofPlacement } from './visual-hoofington';
 import { BUILDING_RAMP, TOON_RAMP } from './visual-props';
@@ -9,7 +11,7 @@ import {
 } from './lod';
 
 export interface DistrictLod {
-  updateCulling(position: THREE.Vector3, frustum: THREE.Frustum): boolean;
+  updateCulling(position: THREE.Vector3, frustum: THREE.Frustum, sightseeing?: boolean): boolean;
   dispose(): void;
 }
 
@@ -17,6 +19,24 @@ export interface BakedPlacement<Model extends string> {
   placement: HoofPlacement<Model>;
   start: number;
   count: number;
+}
+
+// Limit the deviation in world metres. From the travel camera the allowed error
+// projects to roughly one pixel; vertex paint and the original normals survive.
+function skylineGeometry(source: THREE.BufferGeometry): THREE.BufferGeometry {
+  if (!MeshoptSimplifier.supported) return source;
+  const mesh = mergeVertices(source, 1e-4);
+  const positions = mesh.getAttribute('position').array as Float32Array;
+  const paint = mesh.getAttribute('color').array as Float32Array;
+  const indices = Uint32Array.from(mesh.index!.array);
+  const [reduced] = MeshoptSimplifier.simplifyWithAttributes(indices, positions, 3, paint, 3,
+    [.35, .35, .35], null, Math.floor(indices.length / 12) * 3, .17, ['ErrorAbsolute', 'Permissive']);
+  if (reduced.length >= indices.length) {
+    mesh.dispose();
+    return source;
+  }
+  mesh.setIndex(new THREE.BufferAttribute(reduced, 1));
+  return mesh;
 }
 
 interface Cell<Model extends string> {
@@ -81,6 +101,7 @@ export async function createDistrictLod<Model extends string>(
     low: THREE.BufferGeometry;
     sphere: THREE.Sphere;
     small: boolean;
+    skyline?: THREE.BufferGeometry;
   }> = [];
   // Largest (usually architectural) cell keeps the historical QA mesh name.
   const ordered = [...cells.values()].sort((a, b) =>
@@ -117,15 +138,19 @@ export async function createDistrictLod<Model extends string>(
     mesh.receiveShadow = true;
     mesh.frustumCulled = false; // the whole spatial cell is culled below
     group.add(mesh);
-    entries.push({ mesh, high, low, sphere: high.boundingSphere!.clone(),
+    const skyline = cell.keepSilhouette ? undefined : low;
+    entries.push({ mesh, high, low, skyline, sphere: high.boundingSphere!.clone(),
       small: cell.small });
   }
   baked.dispose();
+  let simplifierReady = false;
+  if (MeshoptSimplifier.supported) void MeshoptSimplifier.ready.then(() => { simplifierReady = true; });
   let disposed = false;
   return {
-    updateCulling(position, frustum): boolean {
+    updateCulling(position, frustum, sightseeing = false): boolean {
       if (disposed) return false;
       let changed = false;
+      let preparedCell = false;
       for (const entry of entries) {
         const dist = position.distanceTo(entry.sphere.center);
         const visible = frustum.intersectsSphere(entry.sphere) &&
@@ -133,7 +158,13 @@ export async function createDistrictLod<Model extends string>(
           (!entry.small || dist - Math.min(entry.sphere.radius, 12) <
             WORLD_LOD.smallPropDistance);
         const far = dist > WORLD_LOD.detailedDistance;
-        const geometry = far ? entry.low : entry.high;
+        const skyline = sightseeing && dist - entry.sphere.radius > 54;
+        // Build at most one visible skyline cell per district per frame while riding.
+        if (visible && skyline && !entry.skyline && !preparedCell && simplifierReady) {
+          entry.skyline = skylineGeometry(entry.high);
+          preparedCell = true;
+        }
+        const geometry = skyline && entry.skyline ? entry.skyline : far ? entry.low : entry.high;
         if (entry.mesh.castShadow && (entry.mesh.visible !== visible ||
             entry.mesh.geometry !== geometry)) changed = true;
         entry.mesh.visible = visible;
@@ -145,6 +176,7 @@ export async function createDistrictLod<Model extends string>(
       if (disposed) return;
       disposed = true;
       for (const entry of entries) {
+        if (entry.skyline && entry.skyline !== entry.high && entry.skyline !== entry.low) entry.skyline.dispose();
         entry.high.dispose();
         if (entry.low !== entry.high) entry.low.dispose();
         (entry.mesh.material as THREE.Material).dispose();

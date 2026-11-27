@@ -1,3 +1,4 @@
+import { IslandTravel, type Ride } from './IslandTravel';
 import { Toybox } from './Toybox';
 import type { RigidBody, ColliderDesc, Shape } from '@dimforge/rapier3d-compat';
 import {
@@ -135,6 +136,9 @@ function sceneryAudioMaterial(prop: PropDescriptor | undefined): SceneryAudioMat
 export class Game {
   readonly physics: PhysicsWorld;
   readonly island: IslandData;
+  readonly travel: IslandTravel;
+  private aboardPose: Array<{ body: RigidBody; offset: Vec3; rotation: ReturnType<RigidBody['rotation']> }> = [];
+  private embarkHeading = 0;
   readonly colliders: ColliderBuild;
   readonly rules: GameSimulation;
   readonly goat: GoatRagdoll;
@@ -205,6 +209,7 @@ export class Game {
   private constructor(physics: PhysicsWorld, island: IslandData, colliders: ColliderBuild, options: GameOptions) {
     this.physics = physics;
     this.island = island;
+    this.travel = new IslandTravel(island);
     this.colliders = colliders;
     this.craneCenter = island.pois.find(poi => poi.id === 'crane-yard')!.center;
     const noClimbGuardPrefixes = [DAM_FRONT_GUARD.prefix, DAM_BACK_GUARD.prefix,
@@ -788,6 +793,7 @@ export class Game {
     if (!Number.isFinite(seconds) || seconds < 0) {
       throw new RangeError('frameSeconds must be a finite, non-negative number');
     }
+    if (this.travel.active && (this.party.match || this.gigs.active?.status === 'running')) this.leaveRide(true);
     this.intent = intent;
     // The renderer can sample both edges before physics advances. Keep their
     // order so the ability state machine sees every press and its release.
@@ -802,6 +808,7 @@ export class Game {
       }
       state.sampled = pressed;
     }
+    if (this.travel.active) return this.physics.step(seconds);
     if (intent.toggleBuild) this.buildMode = !this.buildMode;
     if (intent.buildPiece) this.buildPiece = intent.buildPiece;
     if (intent.placeBuild && this.buildMode) this.placeBuild();
@@ -840,6 +847,11 @@ export class Game {
         if (button === 'flingTongue') intent.tongue = transition.tongue;
       }
       intent[button] = state.applied;
+    }
+    if (this.travel.active) {
+      this.travel.tick(dt,intent,this.water.seaLevel,this.physics.time);
+      this.moveRider();
+      return;
     }
     if (this.pendingSize !== null && this.goat.size !== this.pendingSize) {
       this.water.untrack(this.goat.torso);
@@ -1281,9 +1293,9 @@ export class Game {
       p.y < -35 || p.y > 500 || !Number.isFinite(p.y);
     const offshore = heightAt(this.island, Math.max(-this.island.size/2, Math.min(this.island.size/2, p.x)),
       Math.max(-this.island.size/2, Math.min(this.island.size/2, p.z))) < this.water.seaLevel - .3;
-    const swimming = offshore && p.y < this.water.seaLevel + 2.1 * g.size;
+    const swimming = !this.travel.active && offshore && p.y < this.water.seaLevel + 2.1 * g.size;
     this.drownSeconds = swimming ? this.drownSeconds + dt : 0;
-    if (out || (!this.party.match && this.drownSeconds > 2.5)) this.respawn();
+    if ((!this.travel.active && out) || (!this.party.match && this.drownSeconds > 2.5)) this.respawn();
     for (const [handle, piece] of this.fallingPieces) {
       if (!this.physics.raw.getRigidBody(handle) || this.physics.time - piece.born > 14 ||
           piece.body.translation().y < -25) {
@@ -1298,7 +1310,7 @@ export class Game {
   }
 
   get ambientLifeEnabled(): boolean {
-    return !this.party.match && this.gigs.active?.status !== 'running' && !this.pendingGigResult && !this.buildMode;
+    return !this.travel.active && !this.party.match && this.gigs.active?.status !== 'running' && !this.pendingGigResult && !this.buildMode;
   }
 
   private updateIslandLife(dt: number): void {
@@ -1403,8 +1415,61 @@ export class Game {
     return poi?.name ?? 'Billy Isle';
   }
 
+  get travelAvailable(): boolean {
+    return !this.party.match && this.gigs.active?.status !== 'running' && !this.pendingGigResult && !this.buildMode;
+  }
+
+  boardRide(id: Ride, atStation = false): boolean {
+    if (!this.travelAvailable || this.travel.active) return false;
+    const feet = this.happeningPosition();
+    if (atStation && this.travel.station(feet) !== id) return false;
+    this.travel.board(id, atStation ? feet : undefined);
+    const heading = this.travel.craft[id].heading;
+    // Align the entire rig once, preserving its joints while the vehicle carries it.
+    this.positionGoat(this.travel.seat(), -heading);
+    this.embarkHeading = heading;
+    const center = this.goat.torso.translation();
+    this.aboardPose = this.goat.bodies.map(body => ({
+      body, offset: sub(body.translation(),center), rotation: body.rotation(),
+    }));
+    this.water.untrack(this.goat.torso);
+    for (const {body} of this.aboardPose) body.setEnabled(false);
+    return true;
+  }
+
+  private moveRider(): void {
+    const id = this.travel.active!;
+    const heading = this.travel.craft[id].heading;
+    const rotation = yawQuaternion(this.embarkHeading-heading);
+    const seat = this.travel.seat();
+    seat.y += .92*this.goat.size;
+    for(const pose of this.aboardPose){
+      pose.body.setTranslation(add(seat,rotate(rotation,pose.offset)),false);
+      pose.body.setRotation(multiplyRotation(rotation,pose.rotation),false);
+    }
+    this.goat.locomotion.heading=heading;
+  }
+
+  leaveRide(returnHome = false): boolean {
+    const id=this.travel.active;
+    if(!id)return false;
+    const heading=this.travel.craft[id].heading;
+    const exit=this.travel.exit(this.water.seaLevel,this.physics.time,returnHome);
+    if(!exit)return false;
+    for(const {body} of this.aboardPose)body.setEnabled(true);
+    this.aboardPose=[];
+    this.positionGoat(exit,-heading);
+    this.water.track(this.goat.torso,{buoyancyScale:.7,paddleSpeed:2.6});
+    return true;
+  }
+
   /** Reposition a whole linked ragdoll without destroying its joints. Also used by rescue. */
   teleport(position: Vec3, uprightHeading?: number): void {
+    if(this.travel.active)this.leaveRide(true);
+    this.positionGoat(position,uprightHeading);
+  }
+
+  private positionGoat(position: Vec3, uprightHeading?: number): void {
     this.goat.locomotion.leaveTraversal();
     this.goat.interactions.detachTongue('replaced');
     const current = this.goat.torso.translation();

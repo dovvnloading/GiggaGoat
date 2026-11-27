@@ -75,7 +75,7 @@ export interface WorldScene {
   /** Animate scenery with elapsed seconds. A nearby player can disturb insects. */
   update(time: number, player?: Vec3): void;
   /** Frustum/terrain LOD; true when camera culling changed shadow-caster visibility. */
-  updateCulling(camera: THREE.Camera): boolean;
+  updateCulling(camera: THREE.Camera, sightseeing?: boolean): boolean;
   dispose(): void;
 }
 export type { LightingPreset } from './visual-sky';
@@ -679,7 +679,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     props.update(elapsed, rain);
     dam.update(elapsed);
   }
-  function updateCulling(camera: THREE.Camera): boolean {
+  function updateCulling(camera: THREE.Camera, sightseeing = false): boolean {
     camera.updateMatrixWorld();
     matrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     frustum.setFromProjectionMatrix(matrix);
@@ -689,7 +689,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
       const dist = chunk.sphere.center.distanceTo(pos);
       chunk.mesh.visible = dist < cullingDistance + chunk.sphere.radius &&
         frustum.intersectsSphere(chunk.sphere);
-      const lod = dist > island.size * 0.45 ? chunk.low : chunk.high;
+      const lod = dist > island.size * (sightseeing ? .22 : .45) ? chunk.low : chunk.high;
       if (chunk.mesh.geometry !== lod) chunk.mesh.geometry = lod;
     }
     const railBounds = boardwalkRails?.mesh.boundingSphere;
@@ -711,8 +711,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
       mesh => hoofington.isFallbackHidden(mesh) || downtown.isFallbackHidden(mesh) ||
         lighthouse.isFallbackHidden(mesh)))
       shadowCastersChanged = true;
-    if (hoofington.updateCulling(pos, frustum)) shadowCastersChanged = true;
-    if (downtown.updateCulling(pos, frustum, daylight)) shadowCastersChanged = true;
+    if (hoofington.updateCulling(pos, frustum, sightseeing)) shadowCastersChanged = true;
+    if (downtown.updateCulling(pos, frustum, daylight, sightseeing)) shadowCastersChanged = true;
     if (environmentLod.updateCulling(camera, pos, frustum)) shadowCastersChanged = true;
     if (props.consumeShadowChange()) shadowCastersChanged = true;
     if (hoofington.consumeShadowChange()) shadowCastersChanged = true;

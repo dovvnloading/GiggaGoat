@@ -1,3 +1,4 @@
+import { RIDES } from './IslandTravel';
 import type { Game } from './Game';
 import type { PlacementFailure, Validation } from '../gameplay';
 import type { Vec3 } from '../world';
@@ -559,6 +560,7 @@ export class GameHud {
   private inputDevice: InputDevice = 'keyboard-mouse';
   private readonly debug: HTMLElement;
   private readonly wallet: HTMLElement;
+  private readonly gigHeader: HTMLElement;
   private readonly gigCard: HTMLElement;
   private readonly gigCheckbox: HTMLElement;
   private gigLayoutKey = '';
@@ -621,7 +623,7 @@ export class GameHud {
       '<div class="gg-map-location"><strong data-place>HOOFINGTON</strong></div></section>' +
       '<section class="gg-gig-card" data-sprite="' + HUD_SPRITES.gigCard +
       '" data-gig-card aria-label="Current gig">' +
-      '<div class="gg-gig-header">CURRENT GIG</div>' +
+      '<div class="gg-gig-header" data-gig-header>CURRENT GIG</div>' +
       '<span class="gg-gig-checkbox-mask" aria-hidden="true"></span>' +
       '<span class="gg-gig-checkbox" data-gig-checkbox aria-hidden="true" hidden></span>' +
       '<div class="gg-gig-paper"><h2 class="gg-gig-title" data-gig-title>YOUR NEXT GIG</h2>' +
@@ -693,6 +695,7 @@ export class GameHud {
     };
     this.hint = get('hint'); this.hintKey = get('hint-key'); this.hintCopy = get('hint-copy');
     this.debug = get('debug'); this.wallet = get('wallet');
+    this.gigHeader = get('gig-header');
     this.gigCard = get('gig-card'); this.gigCheckbox = get('gig-checkbox');
     this.gigTitle = get('gig-title'); this.gigTask = get('gig-task');
     this.gigDetail = get('gig-detail'); this.board = get('board-hint'); this.boardKey = get('board-key');
@@ -817,7 +820,7 @@ export class GameHud {
     lookHintNeeded = true): void {
     const rules = game.rules;
     const toys = game.toys;
-    this.toyInfo.hidden = !toys?.available || game.buildMode;
+    this.toyInfo.hidden = !toys?.available || game.buildMode || !!game.travel?.active;
     this.toyHint.hidden = this.toyInfo.hidden || game.physics.time >= toys.messageUntil;
     if (!this.toyInfo.hidden) {
       const pad = device === 'gamepad';
@@ -839,6 +842,12 @@ export class GameHud {
       (device === 'gamepad' ? 'Press right stick to lift' : 'R · Lift crate') :
       stackLiftCue === 'moving' ? 'Lifting crate' :
         stackLiftCue === 'clear' ? 'Step clear of the pad' : undefined;
+    const ride=game.travel?.active;
+    const station=!ride && game.travelAvailable ? game.travel.station(game.goat.torso.translation()) : null;
+    const route = ride ? { title: RIDES[ride].name, task: game.travel.controls(device === 'gamepad', game.physics.time),
+      detail: game.travel.instruments() } : undefined;
+    this.gigHeader.textContent = ride ? 'ISLAND TRAVEL' : 'CURRENT GIG';
+    this.gigCard.setAttribute('aria-label', ride ? 'Travel instruments' : 'Current gig');
     const state = deriveHudState({
       tier: rules.style.tier, meter: rules.style.meter, score: rules.style.score,
       combo: rules.style.combo, stamina: carryStamina ?? rules.abilities.stamina,
@@ -846,7 +855,7 @@ export class GameHud {
       inventory, buildMode: game.buildMode,
       buildPiece: game.buildPiece, ragdoll: game.goat.isRagdoll,
       location: game.location, coins: rules.wallet.coins, boardInRange,
-      happening: game.happeningMessage,
+      happening: route ?? game.happeningMessage,
       partyTitle: game.party.match ? game.party.title : undefined,
       gig: run ? {
         title: run.setup.info.title, status: run.status, objective: run.objective,
@@ -914,8 +923,11 @@ export class GameHud {
       fitGigCardText(this.gigCard);
       this.gigLayoutKey = gigLayoutKey;
     }
-    this.board.hidden = !boardInRange;
-    this.setPointerLockHint(pointerLocked, boardInRange, device, pointerLockUnavailable, runningGig, lookHintNeeded);
+    this.board.hidden = !(station || ride || boardInRange);
+    const prompt=this.board.querySelector('.gg-prompt-copy');
+    const label=ride?'DISEMBARK':station?'BOARD '+RIDES[station].name.toUpperCase():'GOAT GIGS';
+    if(prompt && prompt.textContent!==label)prompt.textContent=label;
+    this.setPointerLockHint(pointerLocked, boardInRange, device, pointerLockUnavailable, runningGig, lookHintNeeded && !ride);
     this.debug.hidden = !debugVisible;
     if (debugVisible) this.debug.textContent = 'F3 · PERFORMANCE\n' +
       'FPS: ' + (perf?.fps ?? fps).toFixed(0) + '\n' +

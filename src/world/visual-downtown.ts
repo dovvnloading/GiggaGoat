@@ -121,7 +121,7 @@ export interface DowntownVisuals {
   group: THREE.Group;
   isFallbackHidden(mesh: THREE.InstancedMesh): boolean;
   consumeShadowChange(): boolean;
-  updateCulling(position: THREE.Vector3, frustum: THREE.Frustum, daylight?: number): boolean;
+  updateCulling(position: THREE.Vector3, frustum: THREE.Frustum, daylight?: number, sightseeing?: boolean): boolean;
   dispose(): void;
 }
 
@@ -459,13 +459,13 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
     consumeShadowChange(): boolean {
       const changed = shadowChanged; shadowChanged = false; return changed;
     },
-    updateCulling(position, frustum, daylight = 1): boolean {
+    updateCulling(position, frustum, daylight = 1, sightseeing = false): boolean {
       if (storefronts) {
         const limit = (storefronts.group.visible ? 235 : 215) * scale;
         storefronts.group.visible = Math.hypot(position.x - city.x, position.z - city.z) < limit;
         if (storefronts.group.visible) storefronts.setDaylight(daylight);
       }
-      const districtChanged = districtLod?.updateCulling(position, frustum) ?? false;
+      const districtChanged = districtLod?.updateCulling(position, frustum, sightseeing) ?? false;
       return (lanterns?.updateCulling(position, frustum) ?? false) || districtChanged;
     },
     dispose(): void {

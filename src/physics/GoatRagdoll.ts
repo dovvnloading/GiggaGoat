@@ -71,6 +71,7 @@ export class GoatRagdoll {
     this.locomotion.heading = -(options.yaw ?? 0);
     this.interactions = new GoatInteractions(this);
     this.detachBefore = this.world.onBeforeStep(dt => {
+      if (!this.torso.isEnabled()) return;
       this.hasStepped = true;
       this.locomotion.update(dt);
       this.balance.update(dt);
@@ -85,7 +86,7 @@ export class GoatRagdoll {
         Math.abs(velocity.y) < 2 * Math.sqrt(this.size) &&
         Math.hypot(velocity.x, velocity.z) <= walkSpeed * 1.05;
     });
-    this.detachAfter = this.world.onAfterStep(dt => { this.locomotion.afterStep(dt); });
+    this.detachAfter = this.world.onAfterStep(dt => { if (this.torso.isEnabled()) this.locomotion.afterStep(dt); });
     this.detachContact = this.world.onContact(contact => { this.handleContact(contact); });
   }
   get torso(): RigidBody { return this.getPart('torso'); }

@@ -56,6 +56,7 @@ export interface AudioFrame {
   camera?: CameraAudioPose;
   habitat?: Habitat;
   environment?: EnvironmentMix;
+  vehicle?: {kind: 'boat' | 'plane' | 'tram' | 'balloon'; speed: number; lift: number};
   /** Input-only one-shots (charge start, UI or explicit jump) in the same frame call. */
   cues?: readonly AudioCue[];
   /** Partial updates preserve prior music state. Meters are normalized by the adapter. */
@@ -312,6 +313,7 @@ export class AudioEngine {
   setMenuAudio(enabled: boolean): void {
     if (enabled === this.menuOnly) return;
     this.menuOnly = enabled;
+    if(enabled)this.stopVehicle();
     if (enabled && !this.resultTail) this.voiceManager?.stopWorldVoices();
     this.applySettings();
   }
@@ -439,7 +441,48 @@ export class AudioEngine {
   }
 
   /** One invocation per rendering frame, with each lane's drained events since last frame. */
+  private vehicleVoice?: {kind: string; source: OscillatorNode | AudioBufferSourceNode; gain: GainNode; filter: BiquadFilterNode};
+
+  private stopVehicle(): void {
+    const voice=this.vehicleVoice;
+    if(!voice || !this.context)return;
+    this.vehicleVoice=undefined;
+    const now=this.context.currentTime;
+    voice.gain.gain.setTargetAtTime(0,now,.025);
+    voice.source.onended=()=>{voice.source.disconnect();voice.gain.disconnect();voice.filter.disconnect();};
+    voice.source.stop(now+.14);
+  }
+
+  private soundVehicle(vehicle: AudioFrame['vehicle']): void {
+    if(!vehicle || this.menuOnly || this.resultTail){this.stopVehicle();return;}
+    const ctx=this.context;
+    if(!ctx || !this.buses)return;
+    if(this.vehicleVoice?.kind!==vehicle.kind){
+      this.stopVehicle();
+      const filter=ctx.createBiquadFilter(),gain=ctx.createGain();
+      filter.type='lowpass';gain.gain.value=0;
+      let source: OscillatorNode | AudioBufferSourceNode;
+      if(vehicle.kind==='balloon'){
+        const noise=ctx.createBuffer(1,ctx.sampleRate,ctx.sampleRate),data=noise.getChannelData(0);
+        let seed=421;
+        for(let i=0;i<data.length;i++){seed=(Math.imul(1664525,seed)+1013904223)>>>0;data[i]=seed/2147483648-1;}
+        const burner=ctx.createBufferSource();burner.buffer=noise;burner.loop=true;source=burner;
+      }else{
+        const engine=ctx.createOscillator();engine.type=vehicle.kind==='tram'?'triangle':'sawtooth';source=engine;
+      }
+      source.connect(filter);filter.connect(gain);gain.connect(this.buses.sfx);source.start();
+      this.vehicleVoice={kind:vehicle.kind,source,gain,filter};
+    }
+    const voice=this.vehicleVoice,now=ctx.currentTime,speed=Math.abs(vehicle.speed);
+    if('frequency' in voice.source)voice.source.frequency.setTargetAtTime(
+      vehicle.kind==='tram'?93:vehicle.kind==='plane'?48+speed*2.8:34+speed*3.3,now,.12);
+    voice.filter.frequency.setTargetAtTime(vehicle.kind==='balloon'?590:180+speed*9,now,.14);
+    const level=vehicle.kind==='balloon'?Math.max(0,vehicle.lift)*.033:vehicle.kind==='tram'?(speed>0?.036:0):.039+speed*.0008;
+    voice.gain.gain.setTargetAtTime(level,now,.10);
+  }
+
   updateFrame(frame: AudioFrame): void {
+    this.soundVehicle(frame.vehicle);
     if (this.disposed) return;
     if (!Number.isFinite(frame.dt) || frame.dt < 0) throw new RangeError('Audio frame dt must be nonnegative');
     this.elapsed += Math.min(frame.dt, .25);
@@ -541,6 +584,7 @@ export class AudioEngine {
   }
 
   dispose(): void {
+    this.stopVehicle();
     if (this.disposed) return;
     this.disposed = true;
     for (const unbind of [...this.unbinders]) unbind();
