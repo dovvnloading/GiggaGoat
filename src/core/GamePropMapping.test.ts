@@ -33,7 +33,7 @@ describe('GameView factory prop mapping', () => {
     const f = factory();
     try {
       const halfExtents = { x: 2.1, y: .23, z: 2.1 };
-      const root = createSurfaceLibraryProp(f, { kind: 'launch', halfExtents, artAtGround: true });
+      const root = createSurfaceLibraryProp(f, { kind: 'launch', halfExtents, farmSpringboard: true });
       const bounds = new THREE.Box3().setFromObject(root);
       expect(bounds.min.y).toBeCloseTo(-halfExtents.y, 3);
       expect(bounds.max.y).toBeGreaterThan(halfExtents.y);

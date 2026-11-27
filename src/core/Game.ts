@@ -86,7 +86,7 @@ export interface SurfaceMarker {
   halfExtents: Vec3;
   direction?: Vec3;
   hasWorldArt?: true;
-  artAtGround?: true;
+  farmSpringboard?: true;
 }
 export interface FallingPiece { body: RigidBody; type: PieceType; born: number }
 export interface GameOptions { seed?: string | number; resolution?: number; progress?: GameProgress }
@@ -591,30 +591,26 @@ export class Game {
   }
 
   private makePlaySurfaces(): void {
-    const farm = this.island.pois.find(p => p.id === 'hoofington')!;
-    const place = (kind: SurfaceMarker['kind'], x: number, z: number,
-      yard?: { direction: Vec3 }): void => {
+    const addLauncher = (x: number, z: number, direction: Vec3, farmSpringboard = false): void => {
       const ground = heightAt(this.island, x, z);
       const halfExtents = V(2.1, .23, 2.1);
       const pos = V(x, ground + .22, z);
-      if (yard) {
+      if (farmSpringboard) {
         const ray = new RAPIER.Ray(V(x, ground + 1, z), V(0, -1, 0));
         const hit = this.colliders.terrain.castRay(ray, 2, false);
         pos.y = (hit >= 0 ? ray.origin.y - hit : ground) + halfExtents.y;
       }
-      const direction = yard?.direction ?? (kind === 'launch' ? V(.2, .93, -.3) : V(0, 1, 0));
-      const id = kind === 'trampoline'
-        ? this.surfaces.createTrampoline({ position: pos, halfExtents, bounceSpeed: 13 })
-        : this.surfaces.createLaunchPad({ position: pos, halfExtents,
-          direction, launchSpeed: 15 });
-      this.surfaceMarkers.push({ id, kind, position: pos, halfExtents, direction,
-        ...(yard ? { artAtGround: true } : {}) });
+      const id = this.surfaces.createLaunchPad({ position: pos, halfExtents, direction, launchSpeed: 15 });
+      this.surfaceMarkers.push({ id, kind: 'launch', position: pos, halfExtents, direction,
+        ...(farmSpringboard ? { farmSpringboard: true } : {}) });
     };
-    place('trampoline', farm.center.x + 11, farm.center.z + 2);
-    // The lawn beyond the east sidewalk has a clear landing to the north.
-    place('launch', farm.center.x + 9.5, farm.center.z - 4, { direction: V(0, .93, -.34) });
+    const yard = this.island.props.find(prop => prop.poiId === 'hoofington' && prop.kind === 'trampoline');
+    if (yard) {
+      const { x, z } = yard.transform.position;
+      addLauncher(x + yard.size.x / 2 + 5 * this.island.size / 600, z, V(0, .93, -.34), true);
+    }
     const boardwalk = this.island.pois.find(p => p.id === 'baa-ardwalk')!;
-    place('launch', boardwalk.center.x + 6, boardwalk.center.z + 12);
+    addLauncher(boardwalk.center.x + 6, boardwalk.center.z + 12, V(.2, .93, -.3));
     for (const prop of this.island.props) {
       if (prop.kind !== 'trampoline' || (prop.poiId !== 'hoofington' && prop.poiId !== 'baa-ardwalk')) continue;
       const position = prop.transform.position;

@@ -42,31 +42,23 @@ it.each(['billy-isle', 'hoofington-geometry', 'full-loop-core-test'])(
         expect(touching, site.id).toEqual([]);
       }
 
-      const lamp = game.colliders.props.get('detail-hoofington-lamp-8')!;
       const farm = game.island.pois.find(poi => poi.id === 'hoofington')!.center;
       const markers = game.surfaceMarkers.filter(marker =>
         Math.hypot(marker.position.x - farm.x, marker.position.z - farm.z) < 20);
-      expect(markers.map(marker => marker.kind)).toEqual(['trampoline', 'launch']);
-      for (const marker of markers) {
-        const { x, y, z } = marker.halfExtents;
-        const footprint = new RAPIER.Cuboid(x + .5, y, z + .5);
-        expect(lamp.intersectsShape(footprint, marker.position, { x: 0, y: 0, z: 0, w: 1 }))
-          .toBe(false);
-      }
+      expect(markers).toHaveLength(0);
     } finally {
       game.dispose();
     }
   });
 
-it('bounces the goat on both Hoofington trampolines without duplicating the yard support', async () => {
+it('bounces the goat on the authored play-yard trampoline with a single solid support', async () => {
   const game = await Game.create();
   try {
-    const farm = game.island.pois.find(poi => poi.id === 'hoofington')!.center;
     const yard = game.surfaceMarkers.find(marker => marker.id === 'detail-hoofington-trampoline-3')!;
-    const roadside = game.surfaceMarkers.find(marker => marker.kind === 'trampoline' &&
-      Math.hypot(marker.position.x - farm.x, marker.position.z - farm.z) < 20)!;
     expect(yard).toMatchObject({ kind: 'trampoline', hasWorldArt: true });
-    expect(roadside.hasWorldArt).toBeUndefined();
+    const launcher = game.surfaceMarkers.find(marker => marker.farmSpringboard)!;
+    expect(launcher.position.z).toBeCloseTo(yard.position.z);
+    expect(launcher.position.x - yard.position.x).toBeGreaterThan(yard.halfExtents.x + launcher.halfExtents.x);
 
     const support = game.colliders.props.get(yard.id)!;
     const coincidentSolids: number[] = [];
@@ -79,27 +71,25 @@ it('bounces the goat on both Hoofington trampolines without duplicating the yard
     });
     expect(coincidentSolids).toEqual([support.handle]);
 
-    for (const surface of [roadside, yard]) {
-      const { position, halfExtents } = surface;
-      game.teleport(V(position.x, position.y + halfExtents.y + 1.1, position.z));
-      const hits: number[] = [];
-      const stop = game.surfaces.events.on(event => {
-        if (event.type === 'bounce' && event.surfaceId === surface.id &&
-          game.goat.ownsBody(event.bodyHandle)) {
-          expect(event.bodyHandle).toBe(game.goat.torso.handle);
-          hits.push(event.time);
-        }
-      });
-      let peak = 0;
-      try {
-        for (let tick = 0; tick < 80; tick++) {
-          game.step();
-          peak = Math.max(peak, game.goat.torso.linvel().y);
-        }
-      } finally { stop(); }
-      expect(hits, surface.id).toHaveLength(1);
-      expect(peak, surface.id).toBeGreaterThan(11);
-    }
+    const { position, halfExtents } = yard;
+    game.teleport(V(position.x, position.y + halfExtents.y + 1.1, position.z));
+    const hits: number[] = [];
+    const stop = game.surfaces.events.on(event => {
+      if (event.type === 'bounce' && event.surfaceId === yard.id &&
+        game.goat.ownsBody(event.bodyHandle)) {
+        expect(event.bodyHandle).toBe(game.goat.torso.handle);
+        hits.push(event.time);
+      }
+    });
+    let peak = 0;
+    try {
+      for (let tick = 0; tick < 80; tick++) {
+        game.step();
+        peak = Math.max(peak, game.goat.torso.linvel().y);
+      }
+    } finally { stop(); }
+    expect(hits, yard.id).toHaveLength(1);
+    expect(peak, yard.id).toBeGreaterThan(11);
     expect(game.respawns).toBe(0);
   } finally {
     game.dispose();

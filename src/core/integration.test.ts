@@ -773,11 +773,11 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
     } finally { game.dispose(); }
   });
 
-  it('keeps the Hoofington street clear and launches a goat from the adjacent lawn', async () => {
+  it('keeps the Hoofington street clear and launches a goat from the pasture springboard', async () => {
     const game = await Game.create();
     try {
       const farm = game.island.pois.find(p => p.id === 'hoofington')!.center;
-      const pad = game.surfaceMarkers.find(surface => surface.kind === 'launch')!;
+      const pad = game.surfaceMarkers.find(surface => surface.farmSpringboard)!;
       expect(pad.position.x - pad.halfExtents.x).toBeGreaterThan(farm.x + 6.7);
       const ground = game.colliders.terrain.castRay(
         new RAPIER.Ray(V(pad.position.x, pad.position.y + 2, pad.position.z), V(0, -1, 0)), 4, false);
@@ -797,9 +797,9 @@ describe('First playable — real Billy Isle with Rapier, gameplay and chaos', (
       walkTo(game, { x: lane, z: farm.z - 4 });
       expect(launched).toHaveLength(0);
 
-      // Cross the sidewalk into the lawn and approach the pad along its arrow.
+      // Approach the springboard from within the play yard.
       const southEdge = pad.position.z + pad.halfExtents.z + 1;
-      walkTo(game, { x: lane, z: southEdge });
+      standAt(game, pad.position.x + 1.5, southEdge + .8);
       walkTo(game, { x: pad.position.x, z: southEdge });
       game.step({ moveZ: 1, cameraYaw: 0, jump: true });
       for (let i = 0; i < 105 && torsoLaunches.length === 0; i++)
