@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { libraryPlacementBounds } from './library-fit';
 import { matchesStorefront } from './visual-hoofington';
 import type { DowntownPlacement } from './visual-downtown';
 
@@ -19,7 +20,7 @@ const signs: Record<string, Lettering> = {
 /** Match the district baker's axis-by-axis fit for authored shop models. */
 function facadeTransform(place: DowntownPlacement, model: THREE.Group) {
   model.updateMatrixWorld(true);
-  const bounds = new THREE.Box3().setFromObject(model), size = bounds.getSize(new THREE.Vector3());
+  const bounds = libraryPlacementBounds(model), size = bounds.getSize(new THREE.Vector3());
   const center = bounds.getCenter(new THREE.Vector3());
   if (Math.min(size.x, size.y, size.z) < .0001) return null;
   const scale = new THREE.Vector3(place.size.x * .96 / size.x,
@@ -37,7 +38,8 @@ function visitFacade(model: THREE.Group, title: string | undefined, name: string
     const groups = geometry.groups.length ? geometry.groups : [{ start: 0,
       count: indices?.count ?? positions.count, materialIndex: 0 }];
     for (const part of groups) {
-      if (materials[part.materialIndex ?? 0]?.name !== name) continue;
+      const material = materials[part.materialIndex ?? 0] ?? materials[0];
+      if (material?.name !== name) continue;
       for (let i = part.start; i < part.start + part.count; i++) {
         visit(point.fromBufferAttribute(positions, indices ? indices.getX(i) : i).applyMatrix4(node.matrixWorld));
       }

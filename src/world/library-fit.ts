@@ -1,5 +1,18 @@
 import * as THREE from 'three';
 
+/**
+ * Shop anchors were measured on the original shell. A balcony or sign can
+ * project beyond it without shifting the roof, street entrance or night glass.
+ */
+export function libraryPlacementBounds(root: THREE.Object3D): THREE.Box3 {
+  const frame: readonly number[] | undefined = root.userData.placementBounds;
+  if (frame?.length === 6) {
+    return new THREE.Box3(new THREE.Vector3().fromArray(frame),
+      new THREE.Vector3().fromArray(frame, 3));
+  }
+  return new THREE.Box3().setFromObject(root);
+}
+
 /** Custom and USDCraft models are authored to their collider/anchor envelopes. */
 export function isAuthoredLibraryAsset(path: string): boolean {
   return path.startsWith('assets/library/custom/') ||
