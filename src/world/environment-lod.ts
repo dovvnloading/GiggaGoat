@@ -1,6 +1,12 @@
 import * as THREE from 'three';
 import { WORLD_LOD, simplifiedWorldGeometry } from './lod';
 
+export interface EnvironmentLodOverride {
+  geometry: THREE.BufferGeometry;
+  detailDistance: number;
+  maxDistance: number;
+}
+
 /**
  * Distant scenery has several independently-instanced GLTF batches outside
  * the descriptor prop renderer (Dam pine forests, lighthouse stones, meadow
@@ -12,7 +18,8 @@ import { WORLD_LOD, simplifiedWorldGeometry } from './lod';
  * No source model, texture or placement is changed, and each mesh geometry is
  * simplified at most once, off the frame update path.
  */
-export function createEnvironmentLod(group: THREE.Group): {
+export function createEnvironmentLod(group: THREE.Group,
+  overrides?: ReadonlyMap<THREE.InstancedMesh, EnvironmentLodOverride>): {
   updateCulling(camera: THREE.Camera, position: THREE.Vector3,
     frustum: THREE.Frustum): boolean;
   dispose(): void;
@@ -26,7 +33,8 @@ export function createEnvironmentLod(group: THREE.Group): {
     low?: THREE.BufferGeometry;
     nearIndices: number[];
     farIndices: number[];
-    small: boolean;
+    detailDistance: number;
+    maxDistance: number;
   }
   const entries: Entry[] = [];
   const registered = new Set<THREE.InstancedMesh>();
@@ -49,6 +57,7 @@ export function createEnvironmentLod(group: THREE.Group): {
     registered.add(source);
     const count = source.count;
     if (!count) return;
+    const override = overrides?.get(source);
     const small = /meadow-|planted-|gnome|shrub|wildflower|cattail|reed/.test(source.name);
     const makeBatch = (name: string): THREE.InstancedMesh => {
       const copy = new THREE.InstancedMesh(source.geometry, source.material, count);
@@ -66,7 +75,9 @@ export function createEnvironmentLod(group: THREE.Group): {
     };
     const near = makeBatch('near'), far = makeBatch('far');
     const entry: Entry = {
-      source, near, far, small,
+      source, near, far,
+      detailDistance: override?.detailDistance ?? WORLD_LOD.detailedDistance,
+      maxDistance: override?.maxDistance ?? (small ? WORLD_LOD.smallPropDistance : 900),
       matrices: new Float32Array(source.instanceMatrix.array),
       colors: source.instanceColor
         ? new Float32Array(source.instanceColor.array) : null,
@@ -74,6 +85,11 @@ export function createEnvironmentLod(group: THREE.Group): {
     };
     entries.push(entry);
     source.visible = false;
+    if (override) {
+      entry.low = override.geometry;
+      far.geometry = override.geometry;
+      return;
+    }
     void simplifiedWorldGeometry(source.geometry).then(low => {
       if (disposed) {
         if (low !== source.geometry) low.dispose();
@@ -146,12 +162,11 @@ export function createEnvironmentLod(group: THREE.Group): {
           const radius = base.radius * localMatrix.getMaxScaleOnAxis() *
             entry.source.matrixWorld.getMaxScaleOnAxis();
           const distance = position.distanceTo(centre) - radius;
-          if (distance > (entry.small ? WORLD_LOD.smallPropDistance : 900))
-            continue;
+          if (distance > entry.maxDistance) continue;
           bounds.center.copy(centre);
           bounds.radius = radius;
           if (!frustum.intersectsSphere(bounds)) continue;
-          (distance <= WORLD_LOD.detailedDistance || entry.low === high ?
+          (distance <= entry.detailDistance || entry.low === high ?
             nearIndices : farIndices).push(i);
         }
         const same = (a: number[], b: number[]): boolean =>

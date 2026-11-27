@@ -18,6 +18,9 @@ import { buildGroundDetails } from './visual-ground';
 import { buildPavementDetails } from './pavement-detail';
 import { buildGroundStory } from './visual-ground-story';
 import { buildPollinators } from './visual-pollinators';
+import { planPocketGardens } from './insect-habitats';
+import { buildGardenSpinners } from './visual-garden-spinners';
+import { buildPocketFlowers } from './visual-pocket-flowers';
 import { buildStreetDetails } from './visual-streets';
 import { buildHabitatBeds } from './habitat-beds';
 import { buildMeadowScatter } from './visual-meadow';
@@ -69,8 +72,8 @@ export interface WorldScene {
   setTideLevel(level: number, showRoutes?: boolean): void;
   /** Nearest painted cue still connected to the summit above this tide. */
   tideRouteTarget(position: Vec2): Vec3 | undefined;
-  /** Call with elapsed seconds to animate sea, waterfalls and foliage. */
-  update(time: number): void;
+  /** Animate scenery with elapsed seconds. A nearby player can disturb insects. */
+  update(time: number, player?: Vec3): void;
   /** Frustum/terrain LOD; true when camera culling changed shadow-caster visibility. */
   updateCulling(camera: THREE.Camera): boolean;
   dispose(): void;
@@ -534,10 +537,12 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const verges = buildVergeVisuals(island, finish.pavedAt);
   group.add(verges.group);
   const groundStory = buildGroundStory(island, finish.pavedAt);
-  const pollinators = buildPollinators(island);
-  group.add(groundStory.group, pollinators.group);
+  const gardens = planPocketGardens(island, finish.pavedAt);
+  const pollinators = buildPollinators(island, gardens);
+  const spinners = buildGardenSpinners(island, gardens);
+  const flowers = buildPocketFlowers(island, gardens, wind);
   const beds = buildHabitatBeds(island);
-  group.add(beds.group);
+  group.add(groundStory.group, pollinators.group, beds.group, flowers.group, spinners.group);
   const fireflies = pinesFireflies(island);
   group.add(fireflies.swarm);
   const external = options.externallyRenderedPropKinds;
@@ -622,9 +627,10 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(new THREE.AmbientLight(0xb5d4eb, 0.15));
   const frustum = new THREE.Frustum(), matrix = new THREE.Matrix4();
   const cullingDistance = options.cullingDistance ?? island.size * 1.4;
-  const environmentLod = createEnvironmentLod(group);
+  const environmentLod = createEnvironmentLod(group, flowers.lod);
   let tide = island.seaLevel;
   let elapsed = 0;
+  let playerPosition: Vec3 | undefined;
   let daylight = 1, rain = 0;
 
   const sunsetKey = new THREE.Color(0xffbc80), moonKey = new THREE.Color(0xaabdf9);
@@ -666,8 +672,9 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     dam.setWaterLevel(tide);
     tideRoutes.update(tide, showRoutes);
   }
-  function update(time: number): void {
+  function update(time: number, player?: Vec3): void {
     elapsed = Number.isFinite(time) ? Math.max(0, time) : elapsed;
+    playerPosition = player;
     waterVisuals.update(elapsed, tide);
     props.update(elapsed, rain);
     dam.update(elapsed);
@@ -693,7 +700,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     finish.update(pos);
     verges.update(pos, frustum);
     groundStory.update(pos, frustum);
-    pollinators.update(elapsed, tide, daylight, rain, pos, frustum);
+    pollinators.update(elapsed, tide, daylight, rain, pos, frustum, playerPosition);
+    spinners.update(elapsed, tide, rain, pos, frustum);
     harborLife.update(elapsed, tide, daylight, rain, pos, frustum);
     downtownLife.update(elapsed, daylight, rain, pos);
     dam.updateCulling(pos);
@@ -716,8 +724,10 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     finish.dispose();
     kitSets.dispose();
     beds.dispose();
+    flowers.dispose();
     harborLife.dispose();
     pollinators.dispose();
+    spinners.dispose();
     environmentLod.dispose();
     props.dispose();
     boardwalkRails?.mesh.dispose();

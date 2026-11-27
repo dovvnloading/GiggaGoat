@@ -3,10 +3,13 @@ import * as THREE from 'three';
 import { generateIsland, createWorldScene } from './index';
 import { buildGroundStory, planGroundStory } from './visual-ground-story';
 import { buildPollinators, planPollinators } from './visual-pollinators';
+import { planPocketGardens } from './insect-habitats';
+import { buildGardenSpinners } from './visual-garden-spinners';
 import { capeSurface } from './lighthouse-access';
 import { isPointInsideProps } from './layouts';
 import { makeLocalStreets } from './roads';
 import { segmentProjection } from './terrain';
+import { triangleCount } from './lod';
 
 describe('district micro-dressing and daytime life', () => {
   it('places bounded, deterministic detail outside traffic and physical props', () => {
@@ -76,17 +79,116 @@ describe('district micro-dressing and daytime life', () => {
       life.update(2, tide, day, rain, camera, frustum);
       expect(life.group.children.every(o => !o.visible)).toBe(true);
     }
-    const meshes = life.group.children as THREE.InstancedMesh[];
-    for (const mesh of meshes) mesh.dispose();
-    meshes[0]?.geometry.dispose();
-    (meshes[0]?.material as THREE.Material | undefined)?.dispose();
+    life.dispose();
   });
-  it('installs both visual-only systems in the actual world scene', () => {
+
+  it('seeds distinct insects above village blooms and woodland lily pools', () => {
+    for (const [seed, size] of [['billy-isle', 600], [17, 400]] as const) {
+      const island = generateIsland({ seed, size, resolution: 65 });
+      const gardens = planPocketGardens(island);
+      const plan = planPollinators(island, gardens);
+      expect(gardens.length).toBeGreaterThan(1);
+      expect(planPocketGardens(island, () => true)).toHaveLength(0);
+      const spawn = island.spawns[0]!.position;
+      expect(plan.some(flight => flight.district === 'hoofington' && flight.bloom &&
+        gardens.some(garden => garden.position.x === flight.bloom!.x && garden.position.z === flight.bloom!.z) &&
+        Math.hypot(spawn.x - flight.center.x, spawn.z - flight.center.z) < 15 * size / 600)).toBe(true);
+      expect(new Set(plan.map(flight => flight.species))).toEqual(new Set(['bee', 'butterfly', 'dragonfly']));
+      const lilyPads = island.props.filter(prop => prop.kind === 'lily-pads');
+      for (const flight of plan.filter(f => f.species === 'dragonfly')) {
+        expect(flight.district).toBe('whispering-pines');
+        expect(lilyPads.some(pad => {
+          const p = pad.transform.position;
+          return p.x === flight.center.x && p.z === flight.center.z && p.y < flight.center.y;
+        })).toBe(true);
+      }
+    }
+  });
+
+  it('scatters an insect and petals once per approach, then resumes its seeded flight', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 65 });
+    const target = planPollinators(island)[0]!;
+    const life = buildPollinators(island), idle = buildPollinators(island);
+    try {
+      const camera = new THREE.Vector3().copy(target.center);
+      const frustum = new THREE.Frustum();
+      for (const plane of frustum.planes) plane.setComponents(0, 0, 0, 1);
+      const player = { ...target.center };
+      const petals = life.group.getObjectByName('startled-flower-petals') as THREE.InstancedMesh;
+      const bodyY = (scene: typeof life) => {
+        const body = scene.group.getObjectByName('insect-bodies-' + target.species) as THREE.InstancedMesh;
+        const matrix = new THREE.Matrix4();
+        body.getMatrixAt(0, matrix);
+        return matrix.elements[13]!;
+      };
+      life.update(1, island.seaLevel, 1, 0, camera, frustum, player);
+      life.update(1.42, island.seaLevel, 1, 0, camera, frustum, player);
+      idle.update(1.42, island.seaLevel, 1, 0, camera, frustum);
+      expect(petals.count).toBe(4);
+      expect(bodyY(life) - bodyY(idle)).toBeGreaterThan(.4);
+      life.update(5, island.seaLevel, 1, 0, camera, frustum, player);
+      idle.update(5, island.seaLevel, 1, 0, camera, frustum);
+      expect(petals.count).toBe(0);
+      expect(bodyY(life)).toBe(bodyY(idle));
+      life.update(6, island.seaLevel, 1, 0, camera, frustum, { ...player, x: player.x + 4 });
+      life.update(6.5, island.seaLevel, 1, 0, camera, frustum, player);
+      life.update(6.92, island.seaLevel, 1, 0, camera, frustum, player);
+      expect(petals.count).toBe(4);
+    } finally {
+      life.dispose();
+      idle.dispose();
+    }
+  });
+
+  it('grounds the garden stakes and limits both pinwheel batches to nearby sites', () => {
+    const island = generateIsland({ seed: 'billy-isle', resolution: 65 });
+    const gardens = planPocketGardens(island);
+    const spinners = buildGardenSpinners(island, gardens);
+    try {
+      const camera = new THREE.Vector3().copy(gardens[0]!.position);
+      const frustum = new THREE.Frustum();
+      for (const plane of frustum.planes) plane.setComponents(0, 0, 0, 1);
+      const stakes = spinners.group.getObjectByName('pinwheel-stakes') as THREE.InstancedMesh;
+      const rotors = spinners.group.getObjectByName('pinwheel-rotors') as THREE.InstancedMesh;
+      const matrix = new THREE.Matrix4();
+      spinners.update(1, island.seaLevel, 0, camera, frustum);
+      expect(stakes.count).toBe(gardens.length);
+      expect(rotors.count).toBe(stakes.count);
+      stakes.getMatrixAt(0, matrix);
+      const base = new THREE.Vector3().setFromMatrixPosition(matrix);
+      expect(base.y).toBeCloseTo(capeSurface(island, base.x, base.z) - .045, 3);
+      rotors.getMatrixAt(0, matrix);
+      const before = [...matrix.elements];
+      spinners.update(2, island.seaLevel, 0, camera, frustum);
+      rotors.getMatrixAt(0, matrix);
+      expect(matrix.elements.slice(0, 12)).not.toEqual(before.slice(0, 12));
+      expect(matrix.elements.slice(12)).toEqual(before.slice(12));
+      spinners.update(3, island.seaLevel, 0, new THREE.Vector3(4000, 4000, 4000), frustum);
+      expect(rotors.count).toBe(0);
+      expect(stakes.count).toBe(0);
+    } finally { spinners.dispose(); }
+  });
+
+  it('installs the visual-only systems in the actual world scene', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 65 });
     const scene = createWorldScene(island);
     try {
       expect(scene.group.getObjectByName('lived-in-ground-story')).toBeDefined();
       expect(scene.group.getObjectByName('daytime-pollinators')).toBeDefined();
+      expect(scene.group.getObjectByName('garden-spinners')).toBeDefined();
+      const flowers = scene.group.getObjectByName('garden-flowers')!;
+      expect(flowers).toBeDefined();
+      const farm = island.pois.find(poi => poi.id === 'hoofington')!.center;
+      const camera = new THREE.PerspectiveCamera(64, 16 / 9, .25, 4000);
+      camera.position.set(farm.x, farm.y + 5, farm.z + 37);
+      camera.lookAt(farm.x, farm.y, farm.z);
+      scene.updateCulling(camera);
+      const batches = flowers.children.filter((object): object is THREE.InstancedMesh =>
+        object instanceof THREE.InstancedMesh && object.visible && object.count > 0);
+      expect(batches.length).toBeGreaterThan(0);
+      expect(batches.every(mesh => mesh.name.startsWith('environment-lod-far-'))).toBe(true);
+      expect(batches.reduce((cost, batch) => cost + triangleCount(batch.geometry) * batch.count, 0))
+        .toBeLessThan(4_000);
     } finally { scene.dispose(); }
   });
 });
