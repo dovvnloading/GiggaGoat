@@ -18,6 +18,15 @@ def play(page, url, evidence):
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
     page.on("response", lambda r: errors.append(f"{r.status} {r.url}") if r.status >= 400 else None)
+    # Exercise a player signing immediately after reload on a device still decoding audio.
+    page.add_init_script("""if (sessionStorage.getItem('postal-test-cold-audio')) {
+      sessionStorage.removeItem('postal-test-cold-audio');
+      const decoded = new Promise(resolve => { window.releasePostalAudio = resolve; });
+      const decode = AudioContext.prototype.decodeAudioData;
+      AudioContext.prototype.decodeAudioData = function(...args) {
+        return Promise.all([decode.apply(this,args), decoded]).then(([buffer]) => buffer);
+      };
+    }""")
 
     def wait(expression, timeout=35000):
         page.wait_for_function(expression, timeout=timeout)
@@ -34,7 +43,12 @@ def play(page, url, evidence):
         page.evaluate("""() => {
           window.g = session.game;
           window.postPayments = [];
-          g.rules.events.on('coins:changed', e => { if (e.reason === 'island-post') postPayments.push(e.after-e.before); });
+          g.rules.events.on('coins:changed', e => {
+            if (e.reason === 'island-post') {
+              postPayments.push(e.after-e.before);
+              window.releasePostalAudio?.();
+            }
+          });
           window.postSounds = {postmark:0,'ui-postmaster':0};
           const start = AudioBufferSourceNode.prototype.start;
           AudioBufferSourceNode.prototype.start = function(...args) {
@@ -120,6 +134,7 @@ def play(page, url, evidence):
             if i == 0:
                 wait("session.audio.recordings?.playing?.track === 'post'")
                 page.keyboard.press("Escape")
+                page.evaluate("sessionStorage.setItem('postal-test-cold-audio','1')")
                 page.reload(wait_until="commit")
                 boot()
                 assert page.evaluate("g.post.active.id === 'breakfast' && g.post.carrying")
@@ -153,7 +168,9 @@ def play(page, url, evidence):
               return {menu:document.querySelector('.gg-shell-panel')?.innerText?.slice(0,350),
                 hud:document.querySelector('[data-gig-task]')?.textContent,
                 route:g?.post.snapshot(), feet:g?.goat.torso.translation(), target:g?.post.target?.position,
-                board:g?.gigs.nearBoard(), activeRide:g?.travel.active,time:g?.physics.time};
+                board:g?.gigs.nearBoard(), activeRide:g?.travel.active,time:g?.physics.time,
+                recordings:window.postSounds, stampDecoded:window.session?.audio.recordings?.effects.has('postmark'),
+                audioState:window.session?.audio.audioContext?.state};
             }""")
             (evidence / "failure.json").write_text(json.dumps(state,indent=2), encoding="utf-8")
             print(state, flush=True)

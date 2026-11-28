@@ -40,6 +40,7 @@ const EFFECTS: Partial<Record<SoundId, RecordedEffect>> = {
 /** Use the same unlocked context, volumes, and voice limits as the synthesized mix. */
 export class RecordedAudio {
   readonly proceduralOutput: GainNode;
+  readonly uiReady: Promise<void>;
   private readonly effects = new Map<RecordedEffect, { buffer: AudioBuffer; offset: number }>();
   private foley?: AudioBuffer;
   private readonly foleyRequest = new AbortController();
@@ -58,7 +59,10 @@ export class RecordedAudio {
     this.proceduralOutput = context.createGain();
     this.proceduralOutput.gain.value = 0; // No unrelated intro while the selected track decodes.
     this.proceduralOutput.connect(output);
-    void this.decodeEffects();
+    const entries = Object.entries(assets.effects);
+    const isUi = ([name]: [string, string]) => name.startsWith('ui-') || name === 'postmark';
+    this.uiReady = Promise.all(entries.filter(isUi).map(([name, data]) => this.decodeEffect(name, data))).then(() => {});
+    void this.decodeEffects(entries.filter(entry => !isUi(entry)));
     if (assets.foley) void this.decodeFoley(assets.foley.url);
   }
 
@@ -71,23 +75,25 @@ export class RecordedAudio {
     } catch { /* The individually embedded recordings remain playable. */ }
   }
 
-  private async decodeEffects(): Promise<void> {
-    // These are small one-shots. Decode them once after the first real interaction.
-    const entries = Object.entries(this.assets.effects).sort(([a], [b]) => Number(b.startsWith('ui-')) - Number(a.startsWith('ui-')));
+  private async decodeEffects(entries: [string, string][]): Promise<void> {
     for (const [name, data] of entries) {
       if (this.disposed) break;
-      try {
-        const bytes = Uint8Array.from(atob(data), byte => byte.charCodeAt(0));
-        const buffer = await this.context.decodeAudioData(bytes.buffer);
-        // Keep the recorded attack and remove encoder padding before time-critical cues.
-        const samples = buffer.getChannelData(0);
-        const limit = Math.min(samples.length, Math.floor(buffer.sampleRate * .13));
-        let first = 0;
-        while (first < limit && Math.abs(samples[first]!) < .004) first++;
-        const offset = first === limit ? 0 : Math.max(0, first / buffer.sampleRate - .005);
-        if (!this.disposed) this.effects.set(name as RecordedEffect, { buffer, offset });
-      } catch { /* A synthesized cue is available while a recording is unavailable. */ }
+      await this.decodeEffect(name, data);
     }
+  }
+
+  private async decodeEffect(name: string, data: string): Promise<void> {
+    try {
+      const bytes = Uint8Array.from(atob(data), byte => byte.charCodeAt(0));
+      const buffer = await this.context.decodeAudioData(bytes.buffer);
+      // Keep the recorded attack and remove encoder padding before time-critical cues.
+      const samples = buffer.getChannelData(0);
+      const limit = Math.min(samples.length, Math.floor(buffer.sampleRate * .13));
+      let first = 0;
+      while (first < limit && Math.abs(samples[first]!) < .004) first++;
+      const offset = first === limit ? 0 : Math.max(0, first / buffer.sampleRate - .005);
+      if (!this.disposed) this.effects.set(name as RecordedEffect, { buffer, offset });
+    } catch { /* A synthesized cue is available while a recording is unavailable. */ }
   }
 
   render(sound: SoundId, output: AudioNode, opts: SfxOptions, selected?: RecordedEffect): SoundRender | null {

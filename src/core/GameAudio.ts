@@ -12,7 +12,7 @@ import { IslandLifeAudio } from './IslandLifeAudio';
 
 /** The narrow audio interface allows a fake AudioEngine in headless core tests. */
 export type AudioSink = Pick<AudioEngine, 'updateFrame' | 'setSettings' | 'audioContext' |
-  'beginResultAudio' | 'endResultAudio' | 'setMenuAudio' | 'clearVoices' | 'stopCue' | 'play'>;
+  'beginResultAudio' | 'endResultAudio' | 'setMenuAudio' | 'clearVoices' | 'stopCue' | 'playRecordedUi' | 'play'>;
 
 type MenuSound = Extract<SoundId, `ui-${string}`>;
 
@@ -106,6 +106,7 @@ export class GameAudio {
   private transition: Promise<void> | null = null;
   private readonly lifeAudio: IslandLifeAudio;
   private menuOpen = false;
+  private postalAudioVersion = 0;
 
   constructor(private readonly game: Game, private readonly audio: AudioSink) {
     this.lifeAudio = new IslandLifeAudio(game.island.props.filter(p => p.kind === 'fountain')
@@ -127,8 +128,7 @@ export class GameAudio {
       this.off.push(() => game.toys.listeners.delete(toySound));
     }
     this.off.push(game.rules.events.on('coins:changed', event => {
-      if (event.reason === 'island-post')
-        this.queueCue({sound:'ui-confirm', recordedEffect:'postmark', intensity:.9});
+      if (event.reason === 'island-post') this.playPostalRecording('postmark', .9);
     }));
     this.off.push(game.onMaterialAudio(this.onMaterialContact));
     for (const type of GAMEPLAY_EVENT_TYPES) {
@@ -188,12 +188,19 @@ export class GameAudio {
     this.charging = charging;
   }
 
-  playPostmaster(): void {
-    if (!this.hidden) this.audio.play('ui-confirm', {recordedEffect:'ui-postmaster'});
+  private playPostalRecording(effect: 'postmark' | 'ui-postmaster', intensity: number): void {
+    const version = this.postalAudioVersion;
+    void this.audio.playRecordedUi(effect, () => version === this.postalAudioVersion && !this.hidden, intensity);
   }
-  stopPostmaster(): void { this.audio.stopCue('ui-confirm'); }
+
+  playPostmaster(): void { this.playPostalRecording('ui-postmaster', .8); }
+  stopPostmaster(): void {
+    this.postalAudioVersion++;
+    this.audio.stopCue('ui-confirm', 'ui-postmaster');
+  }
 
   setMenuOpen(open: boolean): void {
+    if (this.menuOpen !== open) this.postalAudioVersion++;
     this.menuOpen = open;
     this.audio.setMenuAudio(open);
     this.audio.endResultAudio();
@@ -207,6 +214,7 @@ export class GameAudio {
   }
 
   setHidden(hidden: boolean): void {
+    if (hidden) this.postalAudioVersion++;
     this.hidden = hidden;
     if (hidden) {
       this.charging = false;
@@ -338,6 +346,7 @@ export class GameAudio {
   }
 
   dispose(): void {
+    this.postalAudioVersion++;
     for (const unsubscribe of this.off.splice(0)) unsubscribe();
     this.gameplay.length = 0;
     this.cues.length = 0;
