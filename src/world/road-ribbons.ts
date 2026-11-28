@@ -3,10 +3,52 @@ import type { IslandData, PropColliderDescriptor, RoadDescriptor, RoadPoint } fr
 import { DAM_EAST_ROAD, DAM_MOUNTAIN_TRAIL, DAM_PINES_BRIDGE_PREFIX, DAM_PINES_ROAD,
   damMountainTrailDirt, makeLocalStreets, MOUNTAIN_SPIRAL_TRAIL } from './roads';
 import { addSummitJunction } from './summit-junction';
+import { exposeRoadBed, gridSample, terrainFaceHeight } from './terrain';
 
 const SURFACE_LIFT = { road: .2, trail: .19 } as const;
 const PAVED_DECK_THICKNESS = .7;
 const PAVED_DECK_CLEARANCE = .07;
+
+/** Cut only dry sections where a terrain triangle breaks through the finished pavement. */
+export function uncoverPavedLanes(island: IslandData): void {
+  const scale = island.size / 600;
+  island.localStreets = makeLocalStreets(island);
+  const vegetation = new Set(['rock', 'bush', 'flower', 'grass-tuft', 'tree-pine', 'tree-oak',
+    'palm-tree', 'mushroom', 'fern', 'sign']);
+  const grounded = island.props.flatMap(prop => {
+    const position = prop.transform.position;
+    const ground = gridSample(island, position.x, position.z);
+    const seated = prop.body.type === 'static' && Math.abs(position.y - prop.size.y / 2 - ground) < .12 * scale;
+    return seated || vegetation.has(prop.kind) || prop.id.startsWith('downtown-square-') ||
+      prop.id.startsWith('downtown-market-') ? [{ position, ground }] : [];
+  });
+  for (const road of roadRibbonRuns(island,'road')) {
+    for (let i = 1; i < road.points.length; i++) {
+      const a = road.points[i-1]!, b = road.points[i]!;
+      if (a.bridge || b.bridge) continue;
+      const dx = b.x-a.x, dz = b.z-a.z, length = Math.hypot(dx,dz);
+      if (length < .01) continue;
+      const width = Math.max(road.widths?.[i-1] ?? road.width,road.widths?.[i] ?? road.width);
+      const steps = Math.ceil(length / (1.2 * scale));
+      let buried = false;
+      for (let step = 0; step <= steps && !buried; step++) {
+        const t = step/steps, cx = a.x+dx*t, cz = a.z+dz*t;
+        const grade = a.y+(b.y-a.y)*t+SURFACE_LIFT.road;
+        for (const portion of [-.47,-.25,0,.25,.47]) {
+          const offset = portion*width/length;
+          if (terrainFaceHeight(island,cx-dz*offset,cz+dx*offset) > grade-.045) {
+            buried = true;
+            break;
+          }
+        }
+      }
+      if (buried) exposeRoadBed(island,[a,b],width);
+    }
+  }
+  for (const { position, ground } of grounded) {
+    position.y += gridSample(island,position.x,position.z)-ground;
+  }
+}
 export const SUMMIT_JOIN_SEGMENTS = 8;
 export const SUMMIT_ASCENT_TRAIL = 'mt-gigga--hoofington';
 
@@ -52,10 +94,13 @@ export function isHoofingtonTrailOverlay(
 }
 
 interface RoadRibbonRun {
+  id: string;
   points: RoadPoint[];
+  carriageway?: { points: RoadPoint[]; widths?: number[] };
   width: number;
   widths?: number[];
   squareNorthStart?: boolean;
+  squareSouthEnd?: boolean;
 }
 interface RibbonSegment {
   a: RoadPoint;
@@ -72,7 +117,7 @@ function hoofingtonThroughStreet(allRoads: readonly RoadDescriptor[], scale: num
   if (!street || !north || !south) return null;
   const northEnd = street.points[0]!, southEnd = street.points.at(-1)!;
   const fromFarm = [...north.points].reverse().findIndex(point => point.z <= northEnd.z - 3 * scale);
-  const northIndex = north.points.length - 1 - fromFarm;
+  let northIndex = north.points.length - 1 - fromFarm;
   const southIndex = south.points.findIndex(point => point.z >= southEnd.z + 3 * scale);
   if (fromFarm < 0 || southIndex < 0) return null;
 
@@ -85,8 +130,8 @@ function hoofingtonThroughStreet(allRoads: readonly RoadDescriptor[], scale: num
       widths.push(width);
     }
   }
-  function taper(edge: RoadPoint, anchor: RoadPoint, width: number, inward: boolean): void {
-    for (const t of inward ? [.75, .50, .25] : [.25, .50, .75]) {
+  function taper(edge: RoadPoint, anchor: RoadPoint, width: number): void {
+    for (const t of [.25, .50, .75]) {
       const eased = t * t * (3 - 2 * t);
       points.push({
         x: THREE.MathUtils.lerp(edge.x, anchor.x, eased),
@@ -97,12 +142,43 @@ function hoofingtonThroughStreet(allRoads: readonly RoadDescriptor[], scale: num
       widths.push(THREE.MathUtils.lerp(streetWidth, width, eased));
     }
   }
+  // Start turning before the old regional spline overshoots the high street.
+  // Both full-size vehicles can then round the corner at the same time.
+  let approachLength = 0;
+  while (northIndex > 1 && approachLength < 5.2 * scale) {
+    const p = north.points[northIndex]!, previous = north.points[northIndex - 1]!;
+    if (previous.bridge || p.bridge) break;
+    approachLength += Math.hypot(p.x - previous.x, p.z - previous.z);
+    northIndex--;
+  }
   append(north.points.slice(0, northIndex + 1), north.width);
-  taper(northEnd, north.points[northIndex]!, north.width, true);
-  append(street.points, street.width);
-  taper(southEnd, south.points[southIndex]!, south.width, false);
+  const anchor = north.points[northIndex]!, incoming = north.points[Math.max(0, northIndex - 1)]!;
+  const tangent = new THREE.Vector2(anchor.x - incoming.x, anchor.z - incoming.z).normalize();
+  const handle = Math.min(5.5 * scale, .52 * Math.hypot(northEnd.x - anchor.x, northEnd.z - anchor.z));
+  const turn = new THREE.CubicBezierCurve(
+    new THREE.Vector2(anchor.x, anchor.z),
+    new THREE.Vector2(anchor.x + tangent.x * handle, anchor.z + tangent.y * handle),
+    new THREE.Vector2(northEnd.x, northEnd.z - handle),
+    new THREE.Vector2(northEnd.x, northEnd.z)
+  );
+  // Coarse terrain can put the village plot several metres above the
+  // incoming road. Cut a gradual approach into the bank up to the matching grade.
+  function addGraded(point: RoadPoint, width: number): void {
+    const previous = points.at(-1)!;
+    const rise = .16 * Math.hypot(point.x - previous.x, point.z - previous.z);
+    const y = THREE.MathUtils.clamp(point.y, previous.y - rise, previous.y + rise);
+    points.push(y === point.y ? point : { ...point, y });
+    widths.push(width);
+  }
+  for (let i = 1; i < 8; i++) {
+    const t = i / 8, p = turn.getPointAt(t);
+    addGraded({ x: p.x, z: p.y, y: THREE.MathUtils.lerp(anchor.y, northEnd.y, t), bridge: false },
+      THREE.MathUtils.lerp(north.width, street.width, t));
+  }
+  for (const p of street.points) addGraded(p, street.width);
+  taper(southEnd, south.points[southIndex]!, south.width);
   append(south.points.slice(southIndex), south.width);
-  return { run: { points, width: street.width, widths }, replaced: new Set([street.id, north.id, south.id]) };
+  return { run: { id: street.id, points, width: street.width, widths }, replaced: new Set([street.id, north.id, south.id]) };
 }
 
 /**
@@ -133,7 +209,8 @@ function downtownNorthApproach(road: RoadDescriptor, points: readonly RoadPoint[
 }
 
 export function roadRibbonRuns(island: IslandData, type: RoadDescriptor['type']): RoadRibbonRun[] {
-  const allRoads = [...island.roads, ...makeLocalStreets(island)];
+  const regional = island.roads.map(road => island.damCarriageways?.find(lane => lane.id === road.id) ?? road);
+  const allRoads = [...regional, ...makeLocalStreets(island)];
   const runs: RoadRibbonRun[] = [];
   const scale = island.size / 600;
   const downtown = allRoads.find(road => road.id === 'downtown-bleatsville-main-street');
@@ -155,14 +232,32 @@ export function roadRibbonRuns(island: IslandData, type: RoadDescriptor['type'])
       joinedDamRoad && road === damEast ? joinedDamRoad : road.points;
     const approach = road.id === MOUNTAIN_SPIRAL_TRAIL || road.id === DAM_EAST_ROAD ?
       downtownNorthApproach(road, original, downtown, scale) : null;
-    const points = approach ? [approach.point, ...original.slice(approach.rest)] : original;
+    let points = approach ? [approach.point, ...original.slice(approach.rest)] : original;
+    if (road.type === 'road' && approach && downtown) {
+      const x = downtown.points[0]!.x, z = approach.point.z;
+      approach.point.x = x;
+      approach.width = Math.min(road.width, downtown.width);
+      points = points.map(p => {
+        if (p === approach.point || z-p.z >= 14*scale || p.bridge) return p;
+        const t = Math.min(1, Math.max(0,(z-p.z)/(14*scale)));
+        return {...p, x:x+(p.x-x)*t*t*(3-2*t)};
+      });
+    }
+    // The pier approach used to end half a lane east of the southern street
+    // cap, leaving turf between the two decks. Give both lanes a flush seam.
+    const southCap = road.id === 'baa-ardwalk--downtown-bleatsville' ? downtown?.points.at(-1) : undefined;
+    if (southCap) {
+      const back = [...points].reverse().findIndex(p => p.z > southCap.z + 6 * scale);
+      if (back > 0) points = [...points.slice(0, points.length - back), southCap];
+    }
     let kept: RoadPoint[] = [];
     const finish = () => {
       if (kept.length < 2) return;
       if (approach && kept[0] === approach.point) {
-        runs.push({ points: kept, width: road.width, squareNorthStart: true,
+        runs.push({ id: road.id, points: kept, width: road.width, squareNorthStart: true,
           widths: kept.map((_, i) => i === 0 ? approach.width : road.width) });
-      } else runs.push({ points: kept, width: road.width });
+      } else runs.push({ id: road.id, points: kept, width: road.width,
+        squareSouthEnd: !!southCap && kept.at(-1) === southCap });
     };
     for (let i = 1; i < points.length; i++) {
       const a = points[i - 1]!, b = points[i]!;
@@ -177,6 +272,14 @@ export function roadRibbonRuns(island: IslandData, type: RoadDescriptor['type'])
       }
     }
     finish();
+  }
+  for (const run of runs) {
+    if (!run.points.some(p => p.stairApron)) continue;
+    // Share an uninterrupted asphalt surface with the marked pedestrian fork.
+    // The through lanes occupy the landward strip and stop short of the stair rails.
+    run.carriageway = { points: run.points, widths: run.widths };
+    run.widths = run.points.map((p, i) => (run.widths?.[i] ?? run.width) + (p.stairApron ?? 0));
+    run.points = run.points.map(p => p.stairApron ? { ...p, z: p.z + p.stairApron / 2 } : p);
   }
   return runs;
 }
@@ -260,6 +363,21 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
   crossSections: number[]; pavedBridgeDecks: PropColliderDescriptor[]; skirtVertices: number[];
 } {
   const runs = roadRibbonRuns(island, type);
+  // A pair of flat caps at an angled district boundary leaves an unpaved wedge in the outside lane.
+  const seamTangents = new Map<RoadPoint, THREE.Vector2>();
+  if (type === 'road') for (const [before, after] of [
+    ['hoofington-main-street','baa-ardwalk--downtown-bleatsville'],
+    [DAM_EAST_ROAD,'hoofington-main-street'],
+  ]) {
+    const a = runs.find(r=>r.id===before)?.points, b = runs.find(r=>r.id===after)?.points;
+    if (!a || !b) continue;
+    const end=a.at(-1)!, start=b[0]!;
+    if (Math.hypot(end.x-start.x,end.z-start.z)>1e-4) continue;
+    const prev=a.at(-2)!, next=b[1]!;
+    const tangent=new THREE.Vector2(end.x-prev.x,end.z-prev.z).normalize()
+      .add(new THREE.Vector2(next.x-start.x,next.z-start.z).normalize()).normalize();
+    seamTangents.set(end,tangent);seamTangents.set(start,tangent);
+  }
   const topOffset = SURFACE_LIFT[type];
   const positions: number[] = [];
   const indices: number[] = [];
@@ -300,7 +418,7 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
   const junctionAnchors: { x: number; z: number }[] = [];
 
   for (const run of runs) {
-    const { points, width, widths, squareNorthStart } = run;
+    const { points, width, widths, squareNorthStart, squareSouthEnd } = run;
     const side = summitSide.get(run);
     const firstVertex = positions.length / 3;
     const directions = points.slice(1).map((b, i) => {
@@ -322,13 +440,15 @@ export function roadRibbonData(island: IslandData, type: RoadDescriptor['type'],
       const tangent = incoming.clone().add(outgoing);
       if (tangent.lengthSq() < 1e-12) tangent.copy(outgoing);
       tangent.normalize();
-      const squareStart = !!squareNorthStart && i === 0;
-      if (squareStart) tangent.set(0, -1);
+      const seam = seamTangents.get(point);
+      if (seam) tangent.copy(seam);
+      const squareCap = (!!squareNorthStart && i === 0) || (!!squareSouthEnd && i === points.length - 1);
+      if (squareCap) tangent.set(0, -1);
       tangents.push(tangent);
 
       const perp = new THREE.Vector2(-tangent.y, tangent.x);
       const perpIn = new THREE.Vector2(-incoming.y, incoming.x);
-      const mitre = squareStart ? 1 : Math.min(2, 1 / Math.max(0.5, perpIn.dot(perp)));
+      const mitre = squareCap ? 1 : Math.min(2, 1 / Math.max(0.5, perpIn.dot(perp)));
       // Use the existing deck's half-metre shoulders along the bridge.
       const bridge = bridgePoints.has(point);
       const halfWidth = (widths?.[i] ?? width) / 2 + (bridge ? .5 : 0);

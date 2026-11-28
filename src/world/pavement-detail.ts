@@ -229,6 +229,8 @@ export function buildPavementDetails(
     vertexColors: true, transparent: true, depthWrite: false,
     gradientMap: TOON_RAMP, side: THREE.DoubleSide,
   });
+  // Coplanar paint has no back layer to composite beneath its front.
+  material.forceSinglePass=true;
   const add = (source: THREE.Object3D | undefined, name: string, patches: PavementPatch[]) => {
     if (!(source instanceof THREE.Mesh)) return;
     const geometry = projectPavementPatches(source.geometry, patches, .004 * scale);

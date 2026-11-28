@@ -8,9 +8,10 @@ import {
   preserveLighthouseChannel, sculptLighthouseSeaCave, sculptMountainCaveLanding, stampPlot,
 } from './terrain';
 import { districtSets, districtSetColliders } from './district-sets';
-import { fitPinesBridgeApproach, makeRoads, makeBridgeDecks, MOUNTAIN_SPIRAL_TRAIL, separateLighthouseFork } from './roads';
+import { clearDamTrafficApproach, fitPinesBridgeApproach, makeRoads, makeBridgeDecks, MOUNTAIN_SPIRAL_TRAIL, separateLighthouseFork } from './roads';
 import { makeRoadsideProps } from './roadside-stops';
 import { clearPavedRoadScenery } from './road-scenery';
+import { uncoverPavedLanes } from './road-ribbons';
 import { fitDowntownServiceRamps, populateProps, seatDowntownStock } from './layouts';
 import { dressIsland } from './dressing';
 import { makeRelics, makeSpawns } from './collectibles';
@@ -223,6 +224,8 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
     return true;
   });
   sculptDamHeadwater(island);
+  clearDamTrafficApproach(island);
+  uncoverPavedLanes(island);
   island.legacySummitLedgePositions = clearMountainLedges(island);
   clearMountainRocks(island);
   assignBiomes(island);

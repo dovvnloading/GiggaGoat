@@ -12,6 +12,7 @@ import type { SfxOptions } from './synth';
 import { AdaptiveMusic, IslandAmbience } from './music';
 import { ZoneAmbience, type EnvironmentMix, type Habitat } from './zone-ambience';
 import { RecordedAudio } from './recordings';
+import { TrafficAudio, type TrafficEmitter } from './TrafficAudio';
 import type { RecordedAssets, RecordedEffect } from './recordings';
 import { mapLaneEvent } from './events';
 import type {
@@ -59,6 +60,7 @@ export interface AudioFrame {
   habitat?: Habitat;
   environment?: EnvironmentMix;
   record?: RecordPlayback;
+  traffic?: readonly TrafficEmitter[];
   vehicle?: {kind: 'boat' | 'plane' | 'tram' | 'balloon'; speed: number; lift: number};
   /** Input-only one-shots (charge start, UI or explicit jump) in the same frame call. */
   cues?: readonly AudioCue[];
@@ -255,6 +257,7 @@ export class AudioEngine {
   private context: AudioContext | null = null;
   private voiceManager: VoiceManager | null = null;
   private recordDeck?: RecordDeck;
+  private traffic?: TrafficAudio;
   private musicBed?: GainNode;
   private musicPlayer: AdaptiveMusic | null = null;
   private recordings: RecordedAudio | null = null;
@@ -325,7 +328,7 @@ export class AudioEngine {
   setMenuAudio(enabled: boolean): void {
     if (enabled === this.menuOnly) return;
     this.menuOnly = enabled;
-    if (enabled) { this.stopVehicle(); this.recordDeck?.stop(); }
+    if (enabled) { this.stopVehicle(); this.recordDeck?.stop(); this.traffic?.stop(); }
     if (enabled && !this.resultTail) this.voiceManager?.stopWorldVoices();
     this.applySettings();
   }
@@ -342,11 +345,12 @@ export class AudioEngine {
   }
 
   /** Disconnect active one-shots so backgrounding cannot replay them on return. */
-  clearVoices(): void { this.recordDeck?.stop(); this.voiceManager?.dispose(); }
+  clearVoices(): void { this.recordDeck?.stop(); this.traffic?.stop(); this.voiceManager?.dispose(); }
 
   /** Let admitted result cues finish without continuing the live scene mix. */
   beginResultAudio(result: ResultAudioKind): number | null {
     this.recordDeck?.stop();
+    this.traffic?.stop();
     this.resultTail = true;
     this.applySettings();
     return this.context?.state === 'running'
@@ -404,6 +408,7 @@ export class AudioEngine {
     this.musicBed = ctx.createGain();
     this.musicBed.connect(buses.music);
     this.recordDeck = new RecordDeck(ctx,buses.music,this.musicBed);
+    this.traffic = new TrafficAudio(ctx,buses.ambience,buses.sfx);
     this.recordings = this.recordedAssets ? new RecordedAudio(ctx, this.recordedAssets, this.musicBed) : null;
     this.voiceManager = new VoiceManager(ctx, this.synth, buses, this.maxVoices, this.recordings ?? undefined);
     this.musicPlayer = new AdaptiveMusic(ctx, this.synth, this.recordings?.proceduralOutput ?? this.musicBed, this.seed);
@@ -511,6 +516,7 @@ export class AudioEngine {
     if (frame.camera) this.updateListener(frame.camera);
     if (this.menuOnly || this.resultTail || !this.context || this.context.state !== 'running') return;
     this.recordDeck?.update(frame.record);
+    this.traffic?.update(frame.traffic);
     const audioNow = this.context.currentTime;
     const resolve = (input: AudioCue): PlayOptions => {
       // Physics/mode events carry goat IDs. Keyed gameplay events don't, so the
@@ -608,6 +614,7 @@ export class AudioEngine {
   dispose(): void {
     this.stopVehicle();
     this.recordDeck?.dispose();
+    this.traffic?.dispose();
     this.musicBed?.disconnect();
     if (this.disposed) return;
     this.disposed = true;

@@ -43,7 +43,8 @@ export function sculptGoat(): GoatMesh {
   const root = new THREE.Group();
   root.name = 'Gigga-Goat | seven-body sculpt';
   const sphere = new THREE.SphereGeometry(1, 16, 12);
-  const owned = new Set<THREE.BufferGeometry>([sphere]);
+  const lockGeometry = new THREE.SphereGeometry(1, 10, 7);
+  const owned = new Set<THREE.BufferGeometry>([sphere, lockGeometry]);
   const ink = new THREE.MeshBasicMaterial({ color: 0x4a302b, side: THREE.BackSide });
   const skinInk = new THREE.MeshBasicMaterial({ color: 0x584037, side: THREE.BackSide });
   const materials = new Set<THREE.Material>([ink, skinInk]);
@@ -117,13 +118,17 @@ export function sculptGoat(): GoatMesh {
     parent: THREE.Object3D, xyz: Point, radii: Point, angle = 0,
     tint: THREE.Material = ivory,
   ): void => {
-    const puff = blob(parent, 'tapered fleece lock', tint, xyz, radii);
+    const puff = attach(parent, lockGeometry, tint, 'tapered fleece lock');
+    puff.position.set(...xyz);
+    puff.scale.set(...radii);
+    // The underlying chest, head and limbs already cast the coat's shadow.
+    puff.castShadow = false;
     puff.rotation.z = angle;
     const tip = attach(parent, new THREE.ConeGeometry(radii[0] * .64,
       radii[1] * 1.35, 6), tint, 'pointed wool tip');
     tip.position.set(xyz[0], xyz[1] - radii[1] * .65, xyz[2] + radii[2] * .17);
     tip.rotation.z = angle + Math.PI;
-    tip.castShadow = true;
+    tip.castShadow = false;
   };
   const parts: Record<CharacterPart, THREE.Group> = {
     torso: group(root, 'ragdoll torso'),
@@ -335,6 +340,7 @@ export function sculptGoat(): GoatMesh {
         new THREE.TorusGeometry(r, i % 4 === 0 ? .012 : .0075, 5, 12),
         i % 4 === 0 ? hornDark : hornRidge, 'horn growth ring');
       ring.position.copy(curve.getPointAt(t));
+      ring.castShadow = false;
       const tangent = curve.getTangentAt(t).normalize();
       ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent);
     }

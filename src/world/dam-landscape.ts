@@ -277,9 +277,47 @@ export function sculptDamHeadwater(island: IslandData): void {
   });
 }
 
+const roadBanks = new WeakMap<IslandData, { alignment: IslandData['damCarriageways'];
+  samples: Map<number, number>; spans: { a: RoadPoint; b: RoadPoint; half: number }[] }>();
+
+/** Clip the reservoir around the causeway and its access apron on the same
+ * triangles used for both immersion and the visible water. */
+function reservoirBank(island: IslandData, ix: number, iz: number,
+  basin: ReturnType<typeof getDamHeadwater>): number {
+  const { position, scale } = basin;
+  const x = gridCoordinate(island.size, island.resolution, ix);
+  const z = gridCoordinate(island.size, island.resolution, iz);
+  const natural = headwaterBankDistance((x - position.x) / scale, (z - position.z) / scale);
+  if (!island.damCarriageways) return natural;
+  let bank = roadBanks.get(island);
+  if (!bank || bank.alignment !== island.damCarriageways) {
+    const cell = island.size / (island.resolution - 1);
+    const roads = [...island.roads.filter(r => r.from === 'the-dam' || r.to === 'the-dam'),
+      ...island.damCarriageways];
+    const spans = roads.flatMap(road => road.points.slice(1).flatMap((b, i) => {
+      const a = road.points[i]!, half = road.width / 2 + cell * Math.SQRT1_2 + .15 * scale;
+      if (Math.max(a.x, b.x) < basin.left - half || Math.min(a.x, b.x) > basin.right + half ||
+          Math.max(a.z, b.z) < basin.rear - half || Math.min(a.z, b.z) > basin.front + half) return [];
+      return [{ a, b, half }];
+    }));
+    bank = { alignment: island.damCarriageways, spans, samples: new Map() };
+    roadBanks.set(island, bank);
+  }
+  const index = gridIndex(island.resolution, ix, iz);
+  const cached = bank.samples.get(index);
+  if (cached !== undefined) return cached;
+  let value = natural;
+  for (const { a, b, half } of bank.spans) {
+    value = Math.max(value, 4 + (half - segmentProjection({ x, z }, a, b).distance) / scale);
+  }
+  bank.samples.set(index, value);
+  return value;
+}
+
 /** Height of the actual terrain triangles under the upper reservoir. */
 export function isDamHeadwater(island: IslandData, x: number, z: number): boolean {
-  const { left, right, rear, front, level, position, scale } = getDamHeadwater(island);
+  const basin = getDamHeadwater(island);
+  const { left, right, rear, front, level } = basin;
   if (x < left || x > right || z < rear || z > front) return false;
   const { size, resolution: n, heights } = island;
   const gx = (x / size + .5) * (n - 1), gz = (z / size + .5) * (n - 1);
@@ -294,15 +332,13 @@ export function isDamHeadwater(island: IslandData, x: number, z: number): boolea
     return d + (at(ix, iz + 1) - d) * (1 - u) + (at(ix + 1, iz) - d) * (1 - v);
   };
   if (triangleSample((ix, iz) => heights[gridIndex(n, ix, iz)]!) >= level) return false;
-  return triangleSample((ix, iz) => headwaterBankDistance(
-    (gridCoordinate(size, n, ix) - position.x) / scale,
-    (gridCoordinate(size, n, iz) - position.z) / scale,
-  )) <= 4;
+  return triangleSample((ix, iz) => reservoirBank(island, ix, iz, basin)) <= 4;
 }
 
 /** Flat water polygons clipped by the same terrain planes used for immersion. */
 export function damHeadwaterSurface(island: IslandData): { positions: number[]; depths: number[] } {
-  const { left, right, rear, front, level, position, scale } = getDamHeadwater(island);
+  const basin = getDamHeadwater(island);
+  const { left, right, rear, front, level, scale } = basin;
   const { size, resolution: n, heights } = island;
   const positions: number[] = [];
   const depths: number[] = [];
@@ -310,7 +346,7 @@ export function damHeadwaterSurface(island: IslandData): { positions: number[]; 
   const vertex = (ix: number, iz: number) => {
     const x = gridCoordinate(size, n, ix), z = gridCoordinate(size, n, iz);
     return { x, z, y: heights[gridIndex(n, ix, iz)]!,
-      bank: headwaterBankDistance((x - position.x) / scale, (z - position.z) / scale) };
+      bank: reservoirBank(island, ix, iz, basin) };
   };
   type Vertex = ReturnType<typeof vertex>;
   function clip(points: Vertex[], inside: (point: Vertex) => number): Vertex[] {

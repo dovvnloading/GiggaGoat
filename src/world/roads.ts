@@ -301,7 +301,8 @@ export function makeRoads(island: IslandData, rng: SeededRandom): RoadDescriptor
  * Visual/physical through-streets within city plots, separate from the POI
  * connectivity graph. Rendering uses these same graded centreline segments.
  */
-export function makeLocalStreets(island: Pick<IslandData, 'size' | 'pois' | 'heights' | 'resolution'>): RoadDescriptor[] {
+export function makeLocalStreets(island: Pick<IslandData, 'size' | 'pois' | 'heights' | 'resolution' | 'localStreets'>): RoadDescriptor[] {
+  if (island.localStreets) return island.localStreets;
   const scale = island.size / 600;
   return (['hoofington', 'downtown-bleatsville'] as const).map(id => {
     const centre = island.pois.find(p => p.id === id)!.center;
@@ -362,6 +363,25 @@ export const DAM_EAST_ROAD = 'downtown-bleatsville--the-dam';
 export const DAM_MOUNTAIN_TRAIL = 'mt-gigga--the-dam';
 export const DAM_PINES_ROAD = 'the-dam--whispering-pines';
 export const DAM_PINES_BRIDGE_PREFIX = 'bridge-' + DAM_PINES_ROAD + '-';
+
+/** Route the through road round the landward foot of the dam stairs. Both
+ * regional roads retain a common junction and the pedestrian approach stays at the board. */
+export function clearDamTrafficApproach(island: IslandData): void {
+  const { position, scale } = getDamPlacement(island);
+  const floor = position.z - 16.3 * scale;
+  island.damCarriageways = island.roads.filter(road => road.id === DAM_PINES_ROAD || road.id === DAM_EAST_ROAD)
+    .map(road => {
+      const points = road.points.map(point => {
+        if (point.bridge || Math.abs(point.z - position.z) > 33 * scale) return point;
+        const x = (point.x - position.x) / scale;
+        if (x < -34 || x > 41) return point;
+        const taper = smoothstep(-34, -9, x) * (1 - smoothstep(14, 32, x));
+        const shift = Math.max(0, point.z - floor) * taper;
+        return shift > 0 ? { ...point, z: point.z - shift, stairApron: shift } : point;
+      });
+      return { ...road, points };
+    });
+}
 
 /** Keep the asphalt visible across the earth handoff on the forest bank. */
 export function fitPinesBridgeApproach(island: IslandData): void {

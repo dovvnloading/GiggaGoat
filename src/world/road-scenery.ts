@@ -76,7 +76,7 @@ export function clearPavedRoadScenery(island: IslandData): void {
   const stops = roadsideStops(island);
   const solid = island.props.filter(prop => prop.collidable);
   const buildings = buildingFootprints(island.props);
-  const scatter = solid.filter(prop => prop.id.startsWith('detail-island-') &&
+  const scatter = solid.filter(prop => (prop.id.startsWith('detail-island-') || prop.id.startsWith('detail-the-dam-')) &&
     prop.body.type === 'static' && prop.shape === 'cylinder' && SCATTER_KINDS.has(prop.kind));
   for (const prop of scatter) {
     const { position } = prop.transform;
@@ -89,7 +89,9 @@ export function clearPavedRoadScenery(island: IslandData): void {
       const water = riverAt(point, island.river);
       if (water.distance < water.width / 2 + 4 * scale ||
         overlapsRoad(point, radius + .3 * scale)) return false;
-      if (island.pois.some(poi =>
+      const damVerge=prop.id.startsWith('detail-the-dam-');
+      if(damVerge && point.z>island.reservoir.center.z-46*scale)return false;
+      if (island.pois.some(poi => (!damVerge || poi.id!=='the-dam') &&
         Math.hypot(point.x - poi.center.x, point.z - poi.center.z) < poi.radius * 1.25) ||
         roadsideGravelAt(stops, point.x, point.z)) return false;
       if (['tree-oak', 'tree-pine', 'bush'].includes(prop.kind) && foliageHitsBuilding({

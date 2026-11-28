@@ -100,7 +100,11 @@ export interface ReservoirDescriptor {
   radiusZ: number;
   level: number;
 }
-export interface RoadPoint extends Vec3 { bridge: boolean }
+export interface RoadPoint extends Vec3 {
+  bridge: boolean;
+  /** Additional paved shoulder leading from the Dam carriageway to its service stairs. */
+  stairApron?: number;
+}
 export interface RoadDescriptor {
   id: string;
   from: PoiId;
@@ -167,6 +171,10 @@ export interface IslandData {
   river: RiverPoint[];
   reservoir: ReservoirDescriptor;
   roads: RoadDescriptor[];
+  /** The finished town centreline grades before cutting the underlying terrain. */
+  localStreets?: RoadDescriptor[];
+  /** Finished driving alignment around the stairs. The public route graph still reaches the Dam board. */
+  damCarriageways?: RoadDescriptor[];
   props: PropDescriptor[];
   /** Bottom-aligned kit meshes and their matching physical scenery. */
   districtSets?: import('./district-sets').DistrictSet[];

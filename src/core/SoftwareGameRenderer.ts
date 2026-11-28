@@ -21,7 +21,7 @@ interface ShadedFaces {
 /** Draw the existing perspective scene when the browser cannot create a GPU context. */
 export class SoftwareGameRenderer {
   readonly isSoftwareRenderer = true;
-  readonly shadowMap = { enabled: false, type: THREE.PCFSoftShadowMap as THREE.ShadowMapType,
+  readonly shadowMap = { enabled: false, type: THREE.PCFShadowMap as THREE.ShadowMapType,
     autoUpdate: false, needsUpdate: false };
   readonly info = { render: { calls: 0, triangles: 0 }, memory: { textures: 0 } };
   outputColorSpace = THREE.SRGBColorSpace;
@@ -142,6 +142,7 @@ export class SoftwareGameRenderer {
     this.groundOverlays.length = 0;
     if (this.weather) this.air.sky(frame, camera, this.weather, horizon.getHex());
     scene.traverseVisible(object => {
+      if (!object.layers.test(camera.layers)) return;
       if (object instanceof THREE.LineSegments && object.name === 'island-rain') this.rain = object;
       if (object instanceof THREE.Mesh) {
         if (object.material.transparent && object.geometry.getAttribute('color')?.itemSize === 4) {
