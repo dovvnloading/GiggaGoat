@@ -77,8 +77,8 @@ export interface WorldScene {
   tideRouteTarget(position: Vec2): Vec3 | undefined;
   /** Animate scenery with elapsed seconds. A nearby player can disturb insects. */
   update(time: number, player?: Vec3): void;
-  /** Frustum/terrain LOD; true when camera culling changed shadow-caster visibility. */
-  updateCulling(camera: THREE.Camera, sightseeing?: boolean): boolean;
+  /** Cull scenery and select terrain detail. Returns true when shadow casters changed. */
+  updateCulling(camera: THREE.Camera, sightseeing?: boolean, terrainDetailDistance?: number): boolean;
   dispose(): void;
 }
 export type { LightingPreset } from './visual-sky';
@@ -88,6 +88,7 @@ interface Chunk {
   sphere: THREE.Sphere;
   high: THREE.BufferGeometry;
   low: THREE.BufferGeometry;
+  horizon: THREE.BufferGeometry;
 }
 const COLORS = {
   grass: new THREE.Color('#77B754'),
@@ -159,13 +160,12 @@ function roadMix(lookup: Map<string, RoadSample[]>, x: number, z: number,
 }
 function terrainGeometry(
   island: IslandData, startX: number, startZ: number, countX: number, countZ: number,
-  lodStep: number, roads: Map<string, RoadSample[]>,
+  roads: Map<string, RoadSample[]>,
 ): THREE.BufferGeometry {
   const n = island.resolution, metres = island.size / (n - 1);
   const cx = gridCoordinate(island.size, n, startX + countX / 2);
   const cz = gridCoordinate(island.size, n, startZ + countZ / 2);
   const positions: number[] = [], normals: number[] = [], colors: number[] = [];
-  const indices: number[] = [];
   const groundWeights: number[] = [];
   const color = new THREE.Color();
   const lighthouse = island.pois.find(p => p.id === 'old-lighthouse')!.center;
@@ -184,9 +184,6 @@ function terrainGeometry(
   const sample = (x: number, z: number): number =>
     island.heights[gridIndex(n, Math.max(0, Math.min(n - 1, x)),
       Math.max(0, Math.min(n - 1, z)))]!;
-  // Keep every vertex on the seam at native resolution in BOTH LODs. The old
-  // four overlapping, double-sided chunk skirts were visible as dark straight
-  // lines and produced shadow-map streaks across the landscape.
   for (let iz = 0; iz <= countZ; iz++) for (let ix = 0; ix <= countX; ix++) {
     const gx = startX + ix, gz = startZ + iz;
     const h = sample(gx, gz);
@@ -275,15 +272,42 @@ function terrainGeometry(
     colors.push(color.r, color.g, color.b);
   }
 
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setAttribute('kitGroundWeights', new THREE.Float32BufferAttribute(groundWeights, 4));
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+/** All levels share the native vertices and keep the same perimeter along neighbouring chunks. */
+function terrainLod(source: THREE.BufferGeometry, countX: number, countZ: number, lodStep: number): THREE.BufferGeometry {
+  const geometry = lodStep === 1 ? source : new THREE.BufferGeometry();
+  if (geometry !== source) {
+    for (const [name, attribute] of Object.entries(source.attributes)) geometry.setAttribute(name, attribute);
+    geometry.boundingSphere = source.boundingSphere;
+  }
+  const indices: number[] = [];
   const stride = countX + 1;
   const vertex = (x: number, z: number): number => z * stride + x;
-  for (let z = 0; z < countZ; z += lodStep) for (let x = 0; x < countX; x += lodStep) {
-    const x1 = Math.min(countX, x + lodStep);
-    const z1 = Math.min(countZ, z + lodStep);
+  // A one-cell strip has no interior vertex for a seam fan. Keep narrow chunks
+  // native and absorb a single leftover cell into its neighbour elsewhere.
+  const step = Math.min(countX, countZ) === 1 ? 1 : lodStep;
+  const divisions = (length: number) => {
+    const edges = [0];
+    for (let i = step; i < length; i += step) {
+      if (step === 1 || length - i > 1) edges.push(i);
+    }
+    return [...edges, length];
+  };
+  const xs = divisions(countX), zs = divisions(countZ);
+  for (let j = 1; j < zs.length; j++) for (let i = 1; i < xs.length; i++) {
+    const x = xs[i - 1]!, x1 = xs[i]!, z = zs[j - 1]!, z1 = zs[j]!;
     const a = vertex(x, z), b = vertex(x1, z);
     const c = vertex(x, z1), d = vertex(x1, z1);
     const touchesSeam = x === 0 || z === 0 || x1 === countX || z1 === countZ;
-    if (lodStep === 1 || !touchesSeam || x1 - x < 2 || z1 - z < 2) {
+    if (step === 1 || !touchesSeam) {
       indices.push(a, c, b, b, c, d);
       continue;
     }
@@ -303,13 +327,7 @@ function terrainGeometry(
       indices.push(centre, perimeter[i]!, perimeter[(i + 1) % perimeter.length]!);
     }
   }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geometry.setAttribute('kitGroundWeights', new THREE.Float32BufferAttribute(groundWeights, 4));
   geometry.setIndex(indices);
-  geometry.computeBoundingSphere();
   return geometry;
 }
 function buildTerrain(island: IslandData, segments: number,
@@ -404,8 +422,14 @@ diffuseColor.rgb *= 1.0 + .65 * (dot(grain, vGroundWeights) - .5);`,
       const countZ = Math.min(segments, n - 1 - startZ);
       const cx = gridCoordinate(island.size, n, startX + countX / 2);
       const cz = gridCoordinate(island.size, n, startZ + countZ / 2);
-      const high = terrainGeometry(island, startX, startZ, countX, countZ, 1, lookup);
-      const low = terrainGeometry(island, startX, startZ, countX, countZ, 2, lookup);
+      const vertices = terrainGeometry(island, startX, startZ, countX, countZ, lookup);
+      const high = terrainLod(vertices, countX, countZ, 1);
+      const low = terrainLod(vertices, countX, countZ, 2);
+      // Preserve the graded summit switchbacks and their cut banks at every distance.
+      const cellSize = island.size / (n - 1);
+      const mountainDistance = Math.hypot(Math.max(0, Math.abs(cx) - countX * cellSize / 2),
+        Math.max(0, Math.abs(cz) - countZ * cellSize / 2));
+      const horizon = mountainDistance <= 100 * island.size / 600 ? low : terrainLod(vertices, countX, countZ, 6);
       const mesh = new THREE.Mesh(high, material);
       mesh.position.set(cx, 0, cz);
       mesh.receiveShadow = true;
@@ -418,7 +442,7 @@ diffuseColor.rgb *= 1.0 + .65 * (dot(grain, vGroundWeights) - .5);`,
       const local = high.boundingSphere ?? new THREE.Sphere();
       const sphere = local.clone();
       sphere.center.add(new THREE.Vector3(cx, 0, cz));
-      chunks.push({ mesh, sphere, high, low });
+      chunks.push({ mesh, sphere, high, low, horizon });
     }
   }
   return chunks;
@@ -682,7 +706,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     props.update(elapsed, rain);
     dam.update(elapsed);
   }
-  function updateCulling(camera: THREE.Camera, sightseeing = false): boolean {
+  function updateCulling(camera: THREE.Camera, sightseeing = false, terrainDetailDistance = cullingDistance): boolean {
     camera.updateMatrixWorld();
     matrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     frustum.setFromProjectionMatrix(matrix);
@@ -690,9 +714,9 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     let shadowCastersChanged = false;
     for (const chunk of chunks) {
       const dist = chunk.sphere.center.distanceTo(pos);
-      chunk.mesh.visible = dist < cullingDistance + chunk.sphere.radius &&
-        frustum.intersectsSphere(chunk.sphere);
-      const lod = dist > island.size * (sightseeing ? .22 : .45) ? chunk.low : chunk.high;
+      chunk.mesh.visible = frustum.intersectsSphere(chunk.sphere);
+      const lod = dist > terrainDetailDistance ? chunk.horizon :
+        dist > island.size * (sightseeing ? .22 : .45) ? chunk.low : chunk.high;
       if (chunk.mesh.geometry !== lod) chunk.mesh.geometry = lod;
     }
     const railBounds = boardwalkRails?.mesh.boundingSphere;
@@ -748,7 +772,11 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
         for (const mat of mats) materials.add(mat);
       }
     });
-    for (const chunk of chunks) { geometries.add(chunk.high); geometries.add(chunk.low); }
+    for (const chunk of chunks) {
+      geometries.add(chunk.high);
+      geometries.add(chunk.low);
+      geometries.add(chunk.horizon);
+    }
     for (const g of geometries) g.dispose();
     for (const m of materials) m.dispose();
     group.removeFromParent();

@@ -61,6 +61,29 @@ describe('software 3D rendering', () => {
     renderer.dispose();
   });
 
+  it('draws the terrain horizon beyond the ordinary scenery range', () => {
+    const renderer = new SoftwareGameRenderer({} as HTMLCanvasElement, { createImageData: imageData, putImageData() {} });
+    const geometry = new THREE.PlaneGeometry(80, 45);
+    const material = new THREE.MeshBasicMaterial({ color: 0x719d62 });
+    try {
+      renderer.setSize(160, 90, false);
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(60, 16 / 9, .1, 2200);
+      camera.position.z = 405;
+      const slope = new THREE.Mesh(geometry, material);
+      scene.add(slope);
+      renderer.render(scene, camera);
+      expect(renderer.info.render.triangles).toBe(0);
+      slope.userData.terrainChunk = true;
+      renderer.render(scene, camera);
+      expect(renderer.info.render.triangles).toBe(2);
+    } finally {
+      renderer.dispose();
+      geometry.dispose();
+      material.dispose();
+    }
+  });
+
   it('keeps the shaft of a tall thin prop connected in its distant mesh', async () => {
     await MeshoptSimplifier.ready;
     const geometry = new THREE.CylinderGeometry(.045, .045, 6, 32, 8);
