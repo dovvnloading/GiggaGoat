@@ -1,3 +1,4 @@
+import { noniStorefront } from '../world/visual-downtown';
 import { describe, expect, it } from 'vitest';
 import { generateIsland } from '../world';
 import { BIOMES, type IslandData } from '../world/types';
@@ -75,7 +76,12 @@ describe('living island encounters', () => {
     expect(new Set(sites.map(p => p.definition.id)).size).toBe(sites.length);
     expect(sites.some(p => p.definition.id === 'honey-rolls')).toBe(true);
     for (const p of sites) {
-      if (p.definition.id === 'honey-rolls') {
+      if (p.definition.id === 'needle-drop') {
+        const shop = noniStorefront(island)!;
+        expect(shop).toBeDefined();
+        expect(shop.transform.position.x - p.position.x).toBeCloseTo(shop.size.z / 2 + 1.05 * p.scale);
+        expect(p.position.z).toBeCloseTo(shop.transform.position.z);
+      } else if (p.definition.id === 'honey-rolls') {
         // This event uses the actual service window rather than a freestanding verge.
         const shop = island.props.find(prop => prop.kind === 'shop' && prop.poiId === p.definition.district &&
           Math.abs(prop.transform.position.z - p.position.z) < .01 && prop.transform.position.x < p.position.x &&
@@ -105,6 +111,43 @@ describe('living island encounters', () => {
     expect(life.bleat(player, 16)).toBe(0);
     expect(batch.count).toBe(0);
     expect(new IslandHappenings([bakery], life.snapshot()).bleat(player, 0)).toBe(0);
+  });
+
+  it('flips the pressing on three distinct downbeats and credits the first encore once', () => {
+    const venue = {...site, definition: HAPPENING_DEFINITIONS.find(d => d.id === 'needle-drop')!};
+    const life = new IslandHappenings([venue]);
+    expect(life.bleat(player, 10)).toBe(0);
+    expect(life.records?.side).toBe(0);
+    expect(life.bleat(player, 10.9)).toBe(0);
+    expect(life.records?.hits).toBe(0);
+    life.bleat(player, 11.8);
+    life.bleat(player, 12.1);
+    expect(life.records?.hits).toBe(1);
+    life.bleat({...player, y: 40}, 14);
+    expect(life.records?.hits).toBe(1);
+    life.bleat(player, 14);
+    expect(life.bleat(player, 16)).toBe(35);
+    expect(life.records?.side).toBe(1);
+    expect(life.message(player, 17)?.task).toContain('Midnight Molt');
+    const replay = new IslandHappenings([venue], life.snapshot());
+    for (const time of [0,2,4,6]) expect(replay.bleat(player,time)).toBe(0);
+    expect(replay.records?.side).toBe(1);
+    expect(replay.records?.age(23)).toBeUndefined();
+  });
+
+  it('lets the sidewalk counter and nearby gig board keep separate interaction zones', async () => {
+    const { Game } = await import('./Game');
+    const game = await Game.create();
+    try {
+      const window = game.happenings.records!.site.position;
+      game.teleport({ ...window, x: window.x - 2.25, z: window.z - .65 });
+      expect(game.gigs.nearBoard()).toBe('downtown-bleatsville');
+      expect(game.atRecordCounter).toBe(true);
+      const board = game.gigs.boards.find(b => b.poiId === 'downtown-bleatsville')!;
+      game.teleport(board.position);
+      expect(game.gigs.nearBoard()).toBe(board.poiId);
+      expect(game.atRecordCounter).toBe(false);
+    } finally { game.dispose(); }
   });
 
   it('animates nearby vignettes, hides distant or party scenes and disposes resources', () => {

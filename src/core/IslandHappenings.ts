@@ -2,7 +2,8 @@ import { biomeAt, gridSample, segmentProjection } from '../world/terrain';
 import type { IslandData, PoiId, Transform, Vec2, Vec3 } from '../world/types';
 
 import { BAKERY_NAME } from '../world/bakery-sign';
-import { downtownShopFront } from '../world/visual-downtown';
+import { NoniSession, NONIS } from './NoniSession';
+import { downtownShopFront, noniStorefront } from '../world/visual-downtown';
 import { BakeryBatch } from './BakeryBatch';
 
 export const HAPPENING_DEFINITIONS = [
@@ -24,6 +25,8 @@ export const HAPPENING_DEFINITIONS = [
     hint: 'A keeper left a signal lantern on the headland.', response: 'All clear! A light for the boats coming home.', color: 0xffca70, reward: 20 },
   { id: 'honey-rolls', district: 'downtown-bleatsville', title: BAKERY_NAME,
     hint: 'Bleat at the window for a batch of hot honey rolls.', response: 'Fresh from the oven!', color: 0xffb35d, reward: 20 },
+  { id: 'needle-drop', district: 'downtown-bleatsville', title: NONIS,
+    hint: 'Bleat at the turntable to drop the needle.', response: 'Side B unlocked!', color: 0xf36379, reward: 35 },
 ] as const satisfies readonly { id: string; district: PoiId; title: string; hint: string; response: string; color: number; reward: number }[];
 
 export type HappeningDefinition = typeof HAPPENING_DEFINITIONS[number];
@@ -83,8 +86,8 @@ export function placeIslandHappenings(island: IslandData, boards: readonly Vec2[
   for (const definition of HAPPENING_DEFINITIONS) {
     const poi = island.pois.find(p => p.id === definition.district);
     if (!poi) continue;
-    if (definition.id === 'honey-rolls') {
-      const shop = island.props.find(p => p.kind === 'shop' && p.poiId === poi.id &&
+    if (definition.id === 'honey-rolls' || definition.id === 'needle-drop') {
+      const shop = definition.id === 'needle-drop' ? noniStorefront(island) : island.props.find(p => p.kind === 'shop' && p.poiId === poi.id &&
         downtownShopFront(p, poi.center, scale).title === BAKERY_NAME);
       if (shop) {
         const { position, rotationY: yaw } = shop.transform;
@@ -138,8 +141,11 @@ export class IslandHappenings {
   private last: { site: HappeningSite; time: number; reward: number } | undefined;
 
   readonly bakery?: BakeryBatch;
+  readonly records?: NoniSession;
 
   constructor(readonly sites: readonly HappeningSite[], saved?: unknown, ground?: (x: number, z: number) => number) {
+    const records = sites.find(site => site.definition.id === 'needle-drop');
+    if (records) this.records = new NoniSession(records);
     const bakery = sites.find(site => site.definition.id === 'honey-rolls');
     if (bakery) this.bakery = new BakeryBatch(bakery, ground);
     if (Array.isArray(saved)) for (const definition of HAPPENING_DEFINITIONS) {
@@ -166,7 +172,15 @@ export class IslandHappenings {
   /** A valid, accepted bleat calls this once, not once per render frame. */
   bleat(position: Vec3, time: number): number {
     const site = this.nearest(position, HAPPENING_REACH);
-    if (!site || time - (this.activated.get(site.definition.id) ?? -Infinity) < REPLAY_SECONDS) return 0;
+    if (!site) return 0;
+    if (this.records && site === this.records.site) {
+      if (!this.records.play(time)) return 0;
+      const reward = this.discovered(site) ? 0 : site.definition.reward;
+      this.completed.add(site.definition.id);
+      this.last = {site, time, reward};
+      return reward;
+    }
+    if (time - (this.activated.get(site.definition.id) ?? -Infinity) < REPLAY_SECONDS) return 0;
     const reward = this.discovered(site) ? 0 : site.definition.reward;
     if (site.definition.id === 'honey-rolls') this.bakery?.launch(time);
     this.completed.add(site.definition.id);
@@ -183,6 +197,11 @@ export class IslandHappenings {
   }
 
   message(position: Vec3, time: number): HappeningMessage | undefined {
+    const records = this.records;
+    if (records && this.nearest(position, 12) === records.site) {
+      const playing = records.message(time, this.last?.site === records.site && this.last.reward > 0);
+      if (playing) return playing;
+    }
     const batch = this.bakery;
     if (batch?.active(time) && this.nearest(position, 14) === batch.site) {
       return { title: BAKERY_NAME, task: batch.count === 3 ? 'Every bun accounted for!' : 'Catch the honey rolls!',
@@ -197,6 +216,8 @@ export class IslandHappenings {
     const site = this.nearest(position, 11);
     if (!site) return;
     const close = this.nearest(position, HAPPENING_REACH) === site;
+    if (site === records?.site) return {title: NONIS, task: site.definition.hint,
+      detail: close ? 'E / X · PLAY SIDE A' : 'APPROACH THE LISTENING COUNTER'};
     const cooling = time - (this.activated.get(site.definition.id) ?? -Infinity) < REPLAY_SECONDS;
     return { title: site.definition.title, task: site.definition.hint,
       detail: cooling ? 'LET IT SETTLE A MOMENT' : !close ? 'WANDER A LITTLE CLOSER' :

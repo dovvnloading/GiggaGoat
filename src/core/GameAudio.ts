@@ -282,7 +282,13 @@ export class GameAudio {
     // only retains the last catch-up tick), or drain a queue again this frame.
     const ride=this.game.travel?.active;
     const vehicle=ride ? this.game.travel.craft[ride] : null;
+    const records = this.game.happenings?.records;
+    const age = records?.age(this.game.physics.time);
+    const record = records && age !== undefined && this.game.ambientLifeEnabled && !this.menuOpen && !this.hidden
+      ? {side: records.side, age, gain: landmarkGain(player.position, [records.site.position], 21 * records.site.scale)}
+      : undefined;
     this.audio.updateFrame({
+      record,
       vehicle: vehicle ? {kind:vehicle.kind,speed:vehicle.speed,lift:vehicle.vertical} : undefined,
       dt, camera,
       environment: weather && {

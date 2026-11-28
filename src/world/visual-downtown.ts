@@ -215,6 +215,18 @@ export function downtownBuildingModel(
   return infill.model;
 }
 
+/** The infill on the east pavement between Ice Cream and Hay Mart. */
+export function noniStorefront(island: IslandData): PropDescriptor | undefined {
+  const city = island.pois.find(p => p.id === 'downtown-bleatsville');
+  const lot = DOWNTOWN_INFILL.find(p => p.side === 1 && p.z > 0 && p.z < 19);
+  if (!city || !lot) return;
+  const k = island.size / 600;
+  const x = city.center.x + (14.3 + DOWNTOWN_BUILDING_SIZES[lot.model].z / 2) * k;
+  return island.props.find(p => p.poiId === city.id && p.kind === 'house' &&
+    Math.abs(p.transform.position.x - x) < .01 * k &&
+    Math.abs(p.transform.position.z - city.center.z - lot.z * k) < .01 * k);
+}
+
 export function downtownShopFront(source: PropDescriptor, centre: Vec3, scale: number) {
   const { x, z } = source.transform.position;
   const row = Math.max(0, Math.min(4, Math.round((z - centre.z) / (scale * 19) + 2)));

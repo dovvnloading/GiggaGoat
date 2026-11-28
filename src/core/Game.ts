@@ -834,6 +834,7 @@ export class Game {
 
   private beforeTick(dt: number): void {
     const ambientEnabled = this.ambientLifeEnabled;
+    if (!ambientEnabled) this.happenings.records?.stop();
     // Do not carry a cosmetic tether into a mode that disables its target.
     if (!ambientEnabled && this.marketFruitTether) this.goat.interactions.detachTongue('replaced', false);
     this.market.setEnabled(ambientEnabled);
@@ -1548,6 +1549,16 @@ export class Game {
   private happeningPosition(): Vec3 {
     const p = this.goat.torso.translation();
     return { x: p.x, y: p.y - .92 * this.goat.size, z: p.z };
+  }
+
+  /** The pavement overlaps the Downtown gig-board radius. Give the listening
+   * counter the action here, while retaining the board prompt beside the board. */
+  get atRecordCounter(): boolean {
+    const site = this.happenings.records?.site;
+    if (!site || !this.ambientLifeEnabled) return false;
+    const feet = this.happeningPosition();
+    return Math.hypot(feet.x-site.position.x, feet.z-site.position.z) <= 5*site.scale &&
+      Math.abs(feet.y-site.position.y) <= 2.5*site.scale && !this.gigs.nearBoard(2*site.scale);
   }
 
   get happeningMessage() {

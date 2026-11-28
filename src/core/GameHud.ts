@@ -835,7 +835,7 @@ export class GameHud {
     const activeGig = game.gigs.active;
     const run = activeGig?.status === 'running' ? activeGig : game.pendingGigResult;
     // Enter a little inside the interaction radius to avoid blinking at its edge.
-    const boardInRange = game.gigs.nearBoard(this.board.hidden ? 8.75 : 9) !== null;
+    const boardInRange = !game.atRecordCounter && game.gigs.nearBoard(this.board.hidden ? 8.75 : 9) !== null;
     const carryStamina = carryStaminaForHud(game.party.match, 'player');
     const stackLiftCue = game.gigs.stackLiftCue;
     const stackLiftPrompt = stackLiftCue === 'ready' ?
