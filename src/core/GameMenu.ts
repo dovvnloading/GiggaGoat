@@ -826,6 +826,10 @@ export class GameMenu {
       this.postReturn = 'playing';
       this.audio?.playMenuCue('ui-confirm');
       this.setScreen('post');
+      if (this.game.postmaster?.nearby(this.game.goat.torso.translation())) {
+        this.game.postmaster.greetedAt = this.game.physics.time;
+        this.audio?.playPostmaster();
+      }
       return true;
     }
     if(this.game.travelAvailable){

@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { AdaptiveResolution } from './AdaptiveResolution';
 
 describe('adaptive resolution', () => {
+  it('keeps a healthy software frame at native resolution and adapts sustained overload at 30 Hz', () => {
+    const controller = new AdaptiveResolution('high', 1);
+    controller.configure('high', 1, 30);
+    for (let i = 0; i < 180; i++) controller.sample(1000 / 30, 23, 1 / 30);
+    expect(controller.ratio).toBe(1);
+    for (let i = 0; i < 180; i++) controller.sample(60, 42, .06);
+    expect(controller.ratio).toBe(.6);
+    for (let i = 0; i < 720; i++) controller.sample(1000 / 30, 13, 1 / 30);
+    expect(controller.ratio).toBe(1);
+  });
   it('drops gradually during sustained slow frames and respects the lower bound', () => {
     const controller = new AdaptiveResolution('high', 1);
     const changes: number[] = [];

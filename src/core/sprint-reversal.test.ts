@@ -9,6 +9,9 @@ async function measureResponse(action: Response, withReversalBraking: boolean, s
   try {
     const { goat } = game;
     if (!withReversalBraking) goat.locomotion.tuning.reversalBrakeAcceleration = 0;
+    // Reserve the flat test lane for the braking comparison. A goat reversing
+    // into the waiting post van measures a bumper impact instead of locomotion.
+    for (const vehicle of game.traffic.vehicles) vehicle.available = false;
     const centre = game.island.pois.find(poi => poi.id === 'hoofington')!.center;
     const x = centre.x - 1.8, z = centre.z - 13;
     const yaw = Math.PI;

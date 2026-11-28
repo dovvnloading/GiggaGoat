@@ -25,6 +25,8 @@ import { CAMERA_TARGET_HEIGHT, PLAY_CAMERA_PITCH, SPAWN_CAMERA_PITCH, SPAWN_CAME
   goatViewDirection } from './GoatCamera';
 import type { Ride } from './IslandTravel';
 import { TravelVisuals } from './TravelVisuals';
+import { TrafficVisuals } from '../world/visual-traffic';
+import { PostmasterVisual } from '../world/visual-postmaster';
 import { GameHud, type FramePerformance } from './GameHud';
 import { createSplashDiveMarkers, createSummitTrailMarker, hayHaulGuidance, type HayHaulGuidance } from './GigPresentation';
 import { MowDownPresentation } from './MowDownPresentation';
@@ -68,6 +70,8 @@ export class GameView {
   private cameraRide: Ride | null = null;
   private lastCraftHeading = 0;
   private readonly vehicles: TravelVisuals;
+  private readonly traffic: TrafficVisuals;
+  private readonly postmaster: PostmasterVisual;
   private readonly happeningVisuals: HappeningVisuals;
   private readonly residents: ReturnType<typeof buildAmbientLifeVisuals>;
   private readonly marketVisuals: ReturnType<typeof buildMarketFruitVisuals>;
@@ -158,7 +162,7 @@ export class GameView {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.setPixelRatio(1); // The saved graphics preset is applied by GameMenu.
     this.renderer.shadowMap.enabled = !('isSoftwareRenderer' in renderer);
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     // Colour renders at 60 Hz; only refresh the shadow pass periodically.
     this.renderer.shadowMap.autoUpdate = false;
     this.renderer.domElement.style.cssText = 'display:block;width:100%;height:100%;outline:none;touch-action:none';
@@ -197,6 +201,10 @@ export class GameView {
     this.hud = new GameHud(host);
     this.vehicles = new TravelVisuals(game.travel,game.island);
     this.scene.add(this.vehicles.root);
+    this.traffic = new TrafficVisuals(game.traffic);
+    this.scene.add(this.traffic.root);
+    this.postmaster = new PostmasterVisual(game.postmaster);
+    this.scene.add(this.postmaster.root);
     this.toyEffects = new ToyEffects(game.toys);
     this.scene.add(this.toyEffects.root);
     this.happeningVisuals = new HappeningVisuals(game.island, game.happenings);
@@ -347,32 +355,26 @@ export class GameView {
       const lighthouse = board.poiId === 'old-lighthouse';
       const craneYard = board.poiId === 'crane-yard';
       const smallBadge = mountain || craneYard;
-      const compact = board.poiId === 'hoofington' || board.poiId === 'downtown-bleatsville' ||
-        lighthouse || smallBadge;
-      if (compact) {
-        root.scale.multiplyScalar(.58);
-        // The summit notice faces the last climb from Hoofington.
-        if (!craneYard) root.rotation.y = mountain ? 2.67 : lighthouse ? Math.PI / 2 : -Math.PI / 2;
+      const roadside = board.poiId === 'the-dam' || board.poiId === 'baa-ardwalk' ||
+        board.poiId === 'whispering-pines';
+      root.scale.multiplyScalar(.58);
+      const lane = roadside && this.game.traffic.lanes[0];
+      if (lane) {
+        const index = Math.round(lane.nearest(board.position) / lane.step) % lane.poses.length;
+        const road = lane.poses[index]!;
+        root.rotation.y = Math.atan2(road.x - board.position.x, road.z - board.position.z);
+      } else if (!craneYard) {
+        root.rotation.y = mountain ? 2.67 : lighthouse ? Math.PI / 2 : -Math.PI / 2;
       }
-      const base = smallBadge || lighthouse ? 0 : .15;
+      const base = smallBadge || lighthouse || roadside ? 0 : .15;
       root.position.set(board.position.x, board.position.y + base, board.position.z);
       this.instancedProps.add(root);
       this.boardRoots.push(root);
-      if (compact && !smallBadge) continue;
+      if (!smallBadge) continue;
 
       const overlay = new THREE.Group();
       overlay.position.copy(root.position);
-      if (smallBadge) {
-        overlay.add(this.textSprite('E · GIGS', 2.4, .64, 2.9));
-      } else {
-        overlay.add(this.textSprite('E · GIGS', 4.8, 1.2, 3.4));
-        const ring = new THREE.Mesh(new THREE.RingGeometry(3.8, 4.25, 28),
-          new THREE.MeshBasicMaterial({ color: 0xffd833, side: THREE.DoubleSide,
-            transparent: true, opacity: .7 }));
-        ring.rotation.x = -Math.PI / 2;
-        ring.position.y = .09;
-        overlay.add(ring);
-      }
+      overlay.add(this.textSprite('E · GIGS', 2.4, .64, 2.9));
       this.boardMarkers.add(overlay);
     }
   }
@@ -686,7 +688,8 @@ export class GameView {
     if (this.appliedGraphics === settings.graphics) return;
     this.appliedGraphics = settings.graphics;
     const preset = GRAPHICS_PRESETS[settings.graphics];
-    const ratio = this.resolution.configure(settings.graphics, window.devicePixelRatio || 1);
+    const ratio = this.resolution.configure(settings.graphics, window.devicePixelRatio || 1,
+      'isSoftwareRenderer' in this.renderer ? 30 : 60);
     this.renderer.setPixelRatio(ratio);
     this.renderer.shadowMap.enabled = preset.shadowMapSize > 0 && !('isSoftwareRenderer' in this.renderer);
     this.world.sun.castShadow = this.renderer.shadowMap.enabled;
@@ -1065,6 +1068,9 @@ export class GameView {
     this.updateCameraFraming(sceneDt);
     this.happeningVisuals.update(this.game.physics.time, this.camera.position, !match, this.game.ambientLifeEnabled);
     this.residents.update(this.game.life.residents, this.game.physics.time, this.camera.position, this.currentSettings.graphics);
+    this.traffic.update(this.game.physics.time,alpha,this.camera.position,this.currentSettings.graphics,night);
+    this.postmaster.update(this.game.physics.time, sceneDt, this.camera.position, playerPosition,
+      !this.titleCamera && this.game.ambientLifeEnabled, this.currentSettings.graphics === 'low' || 'isSoftwareRenderer' in this.renderer);
     this.marketVisuals.update(this.game.market.items, this.camera.position);
     this.atmosphere.update(weather, this.camera.position, playerPosition, this.currentSettings.graphics === 'low');
     if ('isSoftwareRenderer' in this.renderer) {
@@ -1086,7 +1092,8 @@ export class GameView {
       this.skylineBudgetOrigin = null;
     }
     const detailScale = sceneryDetailScale(this.camera.fov, this.camera.aspect);
-    const distantView = !!this.game.travel.active || !!this.skylineBudgetOrigin || detailScale < .8;
+    const distantView = this.game.traffic.enabled || this.game.buildMode ||
+      !!this.game.travel.active || !!this.skylineBudgetOrigin || detailScale < .8;
     this.world.updateCulling(this.camera, distantView, range, detailScale);
     this.instancedProps.update(this.camera, range * detailScale);
     this.shadowTimer += sceneDt;
@@ -1112,9 +1119,7 @@ export class GameView {
     this.perfStats.triangles = info.render.triangles;
     this.perfStats.textures = info.memory.textures;
     this.perfStats.pixelRatio = this.renderer.getPixelRatio();
-    // The 60 Hz GPU controller would continuously downscale a healthy 30 Hz software frame.
-    const nextRatio = 'isSoftwareRenderer' in this.renderer ? null :
-      this.resolution.sample(elapsed * 1000, renderElapsed, elapsed, !this.paused);
+    const nextRatio = this.resolution.sample(elapsed * 1000, renderElapsed, elapsed, !this.paused);
     if (nextRatio !== null) {
       this.renderer.setPixelRatio(nextRatio);
       this.onResize();
@@ -1134,6 +1139,8 @@ export class GameView {
     this.atmosphere.dispose();
     this.toyEffects.dispose();
     this.vehicles.dispose();
+    this.traffic.dispose();
+    this.postmaster.dispose();
     this.happeningVisuals.dispose();
     this.residents.dispose();
     this.marketVisuals.dispose();

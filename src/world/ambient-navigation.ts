@@ -5,7 +5,8 @@ import { buildStreetDetails } from './visual-streets';
 import { buildGroundDetails } from './visual-ground';
 import { meshSurfaceHeight } from './visual-tide-routes';
 import { roadRibbonData } from './road-ribbons';
-import { gridIndex } from './terrain';
+import { terrainFaceHeight } from './terrain';
+export { terrainFaceHeight as ambientTerrainHeight } from './terrain';
 import kitCollision from './district-kit-collision.json';
 import type { IslandData, Vec2, Vec3 } from './types';
 
@@ -31,17 +32,6 @@ export interface AmbientNavigation {
   readonly walkableAt: (x: number, z: number, margin?: number) => boolean;
   readonly exclusions: readonly { position: Vec3; radius: number }[];
   readonly seaLevel: number;
-}
-
-/** Near terrain has triangular faces; bilinear sampling can float a foot. */
-export function ambientTerrainHeight(island: IslandData, x: number, z: number): number {
-  const n = island.resolution;
-  const gx = (x / island.size + .5) * (n - 1), gz = (z / island.size + .5) * (n - 1);
-  const ix = Math.max(0, Math.min(n - 2, Math.floor(gx))), iz = Math.max(0, Math.min(n - 2, Math.floor(gz)));
-  const u = Math.max(0, Math.min(1, gx - ix)), v = Math.max(0, Math.min(1, gz - iz));
-  const a = island.heights[gridIndex(n, ix, iz)]!, b = island.heights[gridIndex(n, ix + 1, iz)]!;
-  const c = island.heights[gridIndex(n, ix, iz + 1)]!, d = island.heights[gridIndex(n, ix + 1, iz + 1)]!;
-  return u + v <= 1 ? a + (b - a) * u + (c - a) * v : d + (c - d) * (1 - u) + (b - d) * (1 - v);
 }
 
 /** Extract the actual rendered pavement triangles once, then release temporary meshes.
@@ -77,7 +67,7 @@ function makeSurfaceSampler(island: IslandData): (x: number, z: number) => numbe
     group.clear();
   };
   dispose(streets); dispose(ground); geometries.forEach(g => g.dispose());
-  return (x, z) => Math.max(ambientTerrainHeight(island, x, z), pavedHeight(x, z));
+  return (x, z) => Math.max(terrainFaceHeight(island, x, z), pavedHeight(x, z));
 }
 
 function nearDowntown(island: IslandData, x: number, z: number, halfX: number, halfZ: number): boolean {

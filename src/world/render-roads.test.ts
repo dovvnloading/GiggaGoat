@@ -289,9 +289,13 @@ describe('IS-6 joined road/trail visual ribbons', () => {
     for (const [index, point] of asphaltTail.entries()) {
       expect(mountain.points[dirtPoints.length - 1 + index]).toBe(point);
     }
-    const paved = roadRibbonRuns(island, 'road').find(run =>
-      run.points.includes(east.points.at(-2)!) && run.points.includes(west.points[1]!))!;
-    expect(paved.points[paved.points.indexOf(east.points.at(-1)!) + 1]).toBe(west.points[1]);
+    const paved = roadRibbonRuns(island, 'road').find(run => run.id === DAM_EAST_ROAD)!;
+    const drivingEast = island.damCarriageways!.find(road => road.id === east.id)!;
+    const drivingWest = island.damCarriageways!.find(road => road.id === west.id)!;
+    const through = paved.carriageway!.points;
+    const transition = through.indexOf(drivingEast.points.at(-1)!);
+    expect(transition).toBeGreaterThan(0);
+    expect(through[transition + 1]).toBe(drivingWest.points[1]);
     const trailRun = roadRibbonRuns(island, 'trail').find(run => run.points.includes(junction))!;
     expect(trailRun.points.at(-1)).toBe(junction);
     expect(trailRun.points).not.toContain(east.points.at(-1));

@@ -112,8 +112,16 @@ def play(page, url, evidence):
         page.locator(".gg-post-cards").wait_for()
         click("back")
         wait("!session.view.paused && g.atMailbox")
+        page.evaluate("""() => {
+          const p = g.postmaster.position, x = p.x + 2.1, z = p.z + .6;
+          g.teleport({x, y:g.life.plan.navigation.surfaceAt(x,z)+.05, z});
+          session.view.alignCameraForPlay();
+        }""")
+        page.locator("[data-board-hint]").filter(has_text="TALK TO MARNIE").wait_for(timeout=65000)
+        wait("session.view.postmaster.root.visible && session.view.postmaster.street.visible")
         page.keyboard.press("e")
         page.locator(".gg-post-cards").wait_for()
+        wait("postSounds['ui-postmaster'] === 1")
         assert page.locator(".gg-post-card").count() == 8
         page.screenshot(path=evidence / "dispatches.jpg", type="jpeg", quality=88)
         wait("session.audio.recordings?.effects.has('ui-postmaster') && session.audio.recordings.effects.has('postmark')")
@@ -121,7 +129,7 @@ def play(page, url, evidence):
           .reduce((peak, sample) => Math.max(peak, Math.abs(sample)),0)""")
         assert .25 < peak < .8, peak
         click("hear-postmaster")
-        wait("postSounds['ui-postmaster'] === 1")
+        wait("postSounds['ui-postmaster'] === 2")
         routes = page.evaluate("g.post.routes.map(route=>route.id)")
         for i, route in enumerate(routes):
             if i:

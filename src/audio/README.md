@@ -15,6 +15,10 @@ Downtown Bleatsville uses Switchyard Shuffle, the Old Lighthouse uses Glasswater
 
 Each of the eight zones loads its own stereo environment. Approaching the farm barn or walking beneath the pines brings in a distinct close environment. Seven additional loops generated in ElevenLabs Sound Effects follow the island simulation. Rain changes between open ground and roof cover, then gives way to isolated drips while the ground stays wet. The pine forest adds crickets after dark, the pier adds rigging on deck, and the windmill and dam control house fade in with proximity. These recordings load on demand. A separate contact bank edits the existing ElevenLabs recordings into three variants per surface for hoofbeats, takeoffs and landings. The sound, instrument and ambience source scripts are in `tools/audio`. Browser playback starts after a user gesture.
 
+Road traffic uses three ElevenLabs recordings. The two closest engines follow their vehicles in stereo,
+and a nearby driver can answer a bleat with a short double toot. The motor and diesel loops use short
+crossfades at the splice. [Car engine](https://elevenlabs.io/sound-effects/car-sound) · [Truck engine](https://elevenlabs.io/sound-effects/engine) · [Horn](https://elevenlabs.io/sound-effects/horn)
+
 ## Minimal integration — one call per render frame
 
 ~~~ts

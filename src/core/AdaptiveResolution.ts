@@ -15,6 +15,7 @@ export class AdaptiveResolution {
   private fastSeconds = 0;
   private warmupSeconds = 0;
   private cooldownSeconds = 0;
+  private frameBudget = 1;
 
   constructor(quality: GraphicsQuality, dpr: number) {
     this.maxRatio = qualityPixelRatio(quality, dpr);
@@ -26,9 +27,11 @@ export class AdaptiveResolution {
   get maximum(): number { return this.maxRatio; }
   get minimum(): number { return this.minRatio; }
 
-  configure(quality: GraphicsQuality, dpr: number): number {
+  configure(quality: GraphicsQuality, dpr: number, targetHz: 30 | 60 = 60): number {
     this.maxRatio = qualityPixelRatio(quality, dpr);
-    this.minRatio = Math.min(this.maxRatio, GRAPHICS_PRESETS[quality].minPixelRatio);
+    this.frameBudget = 60 / targetHz;
+    const floor = targetHz === 30 ? .6 : GRAPHICS_PRESETS[quality].minPixelRatio;
+    this.minRatio = Math.min(this.maxRatio, floor);
     this.ratioValue = this.maxRatio;
     this.slowSeconds = this.fastSeconds = this.warmupSeconds = this.cooldownSeconds = 0;
     return this.ratioValue;
@@ -42,9 +45,9 @@ export class AdaptiveResolution {
     this.warmupSeconds += dt;
     if (this.warmupSeconds < 0.75) return null;
     this.cooldownSeconds = Math.max(0, this.cooldownSeconds - dt);
-    const overloaded = frameMs > 18.5 || renderMs > 15.5;
+    const overloaded = frameMs > 18.5 * this.frameBudget || renderMs > 15.5 * this.frameBudget;
     // A healthy 60 Hz display produces ~16.7 ms intervals even with GPU headroom.
-    const headroom = frameMs < 17.25 && renderMs < 9.5;
+    const headroom = frameMs < 17.25 * this.frameBudget && renderMs < 9.5 * this.frameBudget;
     this.slowSeconds = overloaded ? this.slowSeconds + dt : Math.max(0, this.slowSeconds - 2 * dt);
     this.fastSeconds = headroom ? this.fastSeconds + dt : Math.max(0, this.fastSeconds - 2 * dt);
     if (this.cooldownSeconds > 0) return null;
