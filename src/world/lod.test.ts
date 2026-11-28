@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
 import { describe, expect, it } from 'vitest';
 import { generateIsland } from './island';
 import { createDistrictLod } from './district-lod';
@@ -82,6 +83,7 @@ describe('cached world mesh LOD', () => {
     const house = group.children[0] as THREE.Mesh;
     const original = house.geometry;
     const view = new THREE.Frustum(), distant = new THREE.Vector3(0, 260, 95);
+    await MeshoptSimplifier.ready;
     lod.updateCulling(distant, view, true);
     expect(triangleCount(house.geometry)).toBeLessThan(triangleCount(original));
     expect(house.geometry.hasAttribute('hoofingtonFacade')).toBe(true);
