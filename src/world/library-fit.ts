@@ -27,11 +27,20 @@ export function fitTimberRamp(geometry: THREE.BufferGeometry): void {
   // The tops of the boards are not the extremes of the timber frame.
   // These are the tread heights at the toe and crest as a fraction of its height.
   const toe = .0548, crest = 1.0031;
-  geometry.translate(-centre.x, -bounds.min.y, -centre.z);
-  geometry.rotateY(Math.PI);
-  geometry.scale(1 / Math.max(.001, span.x), 1 / (Math.max(.001, span.y) * (crest - toe)),
-    1 / Math.max(.001, span.z));
-  geometry.translate(0, -.5 - toe / (crest - toe), 0);
+  const startY = bounds.min.y + span.y * toe;
+  const rise = Math.max(.001, span.y * (crest - toe));
+  const width = Math.max(.001, span.x), depth = Math.max(.001, span.z);
+  const vertices = geometry.getAttribute('position');
+  for (let i = 0; i < vertices.count; i++) {
+    // Turn the ramp toward +Z and keep the ends of its support beams on the roof.
+    vertices.setXYZ(i, (centre.x - vertices.getX(i)) / width,
+      Math.max(-.5, (vertices.getY(i) - startY) / rise - .5),
+      (centre.z - vertices.getZ(i)) / depth);
+  }
+  vertices.needsUpdate = true;
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
 }
 
 export interface LibraryModelFit {

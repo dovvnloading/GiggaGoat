@@ -41,7 +41,6 @@ export function kitPreview(kind: PropKind, size: Vec3): THREE.BufferGeometry {
   geo.userData.sourceKit = PROP_LIBRARY_MODELS[kind];
   if (kind === 'ramp') {
     fitTimberRamp(geo);
-    geo.computeBoundingSphere();
     return geo;
   }
   const bounds = geo.boundingBox!, span = bounds.getSize(new THREE.Vector3());
