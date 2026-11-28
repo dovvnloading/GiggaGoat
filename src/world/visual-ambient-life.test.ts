@@ -62,6 +62,32 @@ describe('shipped resident art and grounded animation', () => {
     } finally { rig.dispose(); }
   });
 
+  it('plants a walking shoe on the rendered paving beneath either foot across a curb', async () => {
+    const surfaceAt = (x: number, z: number): number => 7 + .09 * z + (x >= 4 ? .18 : 0);
+    const resident = state({ model: 'female-a', yaw: Math.PI / 2, speed: 1.3 });
+    const rig = createResidentRig(await load('female-a'), resident, surfaceAt);
+    const skin = rig.root.getObjectByName('body-mesh') as THREE.SkinnedMesh;
+    const joints = skin.geometry.getAttribute('skinIndex');
+    const shoe = Array.from({ length: joints.count }, (_, i) => i).filter(i =>
+      ['leg-left', 'leg-right'].includes(skin.skeleton.bones[joints.getX(i)]!.name));
+    const point = new THREE.Vector3();
+    try {
+      expect(shoe.length).toBeGreaterThan(0);
+      for (let frame = 0; frame <= 60; frame++) {
+        resident.distanceTravelled = frame * .04;
+        resident.position.x = 2.8 + resident.distanceTravelled;
+        resident.position.y = surfaceAt(resident.position.x, resident.position.z);
+        rig.update(resident, frame / 30);
+        let lowest = Infinity;
+        for (const index of shoe) {
+          skin.getVertexPosition(index, point).applyMatrix4(skin.matrixWorld);
+          lowest = Math.min(lowest, point.y - surfaceAt(point.x, point.z));
+        }
+        expect(Math.abs(lowest)).toBeLessThan(.005);
+      }
+    } finally { rig.dispose(); }
+  });
+
   it('uses travelled distance for gait and preserves pose across far culling', async () => {
     const asset = await load('female-a'), resident = state({ model: 'female-a' });
     const first = createResidentRig(asset, resident), second = createResidentRig(asset, resident);
