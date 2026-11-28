@@ -6,6 +6,19 @@ import sys
 from playwright.sync_api import sync_playwright
 
 
+def sample_view(page, settle=12):
+    return page.evaluate("""async settle => {
+      const frames=[];
+      for (let i=0; i<settle+24; i++) {
+        await new Promise(requestAnimationFrame);
+        if (i>=settle) frames.push(v.perfStats.triangles);
+      }
+      const sorted=[...frames].sort((a,b)=>a-b);
+      const position=g.travel.active ? g.travel.craft[g.travel.active].position : g.goat.torso.translation();
+      return {median:sorted[12],peak:sorted[23],frames,quality:v.currentSettings.graphics,position:{...position}};
+    }""", settle)
+
+
 def check_rides(page, url, evidence):
     errors, profile = [], {}
     page.on("pageerror", lambda error: errors.append(str(error)))
@@ -44,26 +57,34 @@ def check_rides(page, url, evidence):
           const p=g.travel.craft[g.travel.active].position, to=g.island.pois.find(s=>s.id===district).center;
           v.input.yaw=Math.atan2(to.x-p.x,p.z-to.z); v.input.pitch=.24;
         }""", district)
-        stats = page.evaluate("""async () => {
-          const frames=[];
-          for(let i=0;i<36;i++) {
-            await new Promise(requestAnimationFrame);
-            if(i>=12) frames.push(v.perfStats.triangles);
-          }
-          const sorted=[...frames].sort((a,b)=>a-b);
-          return {median:sorted[12],peak:sorted[23],frames,quality:v.currentSettings.graphics,
-            position:{...g.travel.craft[g.travel.active].position}};
-        }""")
+        stats = sample_view(page)
         profile[ride] = stats
         print(ride, "median", stats["median"], "peak", stats["peak"], flush=True)
         page.screenshot(path=evidence / (ride + "-view.jpg"), type="jpeg", quality=83)
         page.keyboard.press("Escape")
         click("return-station")
         page.keyboard.press("Escape")
-    (evidence / "ride-budgets.json").write_text(json.dumps({"rides":profile,"errors":errors},indent=2), encoding="utf-8")
+    # From this Downtown crossing, the camera can see the Hoofington skyline
+    # beyond the arcade. The northwest turn exceeded budget on shadow refreshes.
+    page.set_viewport_size({"width":1152,"height":680})
+    click("resume")
+    start = page.evaluate("""() => {
+      g.teleport({x:145,y:5.92,z:155},0);
+      v.alignCameraForPlay(); v.input.yaw=0; v.input.pitch=.12;
+      return g.physics.time;
+    }""")
+    page.keyboard.down("w")
+    page.wait_for_function(f"g.physics.time > {start+.75}", timeout=45000)
+    page.keyboard.up("w")
+    streets = {}
+    for name, angle in [("north",0), ("northwest",-45), ("northeast",45)]:
+        page.evaluate("degrees => {v.input.yaw=degrees*Math.PI/180}",angle)
+        streets[name] = sample_view(page,settle=24)
+        print("Downtown",name,"peak",streets[name]["peak"],flush=True)
+    (evidence / "ride-budgets.json").write_text(json.dumps({"rides":profile,"downtown":streets,"errors":errors},indent=2), encoding="utf-8")
     assert not errors, errors
-    for ride, stats in profile.items():
-        assert 1000 < stats["peak"] <= 500000, (ride, stats)
+    for view, stats in {**profile, **streets}.items():
+        assert 1000 < stats["peak"] <= 500000, (view, stats)
 
 
 if __name__ == "__main__":

@@ -85,6 +85,12 @@ describe('cached world mesh LOD', () => {
     lod.updateCulling(distant, view, true);
     expect(triangleCount(house.geometry)).toBeLessThan(triangleCount(original));
     expect(house.geometry.hasAttribute('hoofingtonFacade')).toBe(true);
+    const skyline = house.geometry;
+    lod.updateCulling(new THREE.Vector3(0, 205, 260), view, true);
+    expect(triangleCount(house.geometry)).toBeLessThan(triangleCount(skyline));
+    expect(house.geometry.hasAttribute('hoofingtonFacade')).toBe(true);
+    lod.updateCulling(distant, view, true);
+    expect(house.geometry).toBe(skyline);
     lod.updateCulling(distant, view);
     expect(house.geometry).toBe(original);
     lod.updateCulling(new THREE.Vector3(0, 213, 4), view, true);
