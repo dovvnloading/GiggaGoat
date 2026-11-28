@@ -30,6 +30,7 @@ describe('graphics presets', () => {
     const wide = sceneryDetailScale(95, 16 / 9);
     expect(wide).toBeGreaterThan(.59);
     expect(wide).toBeLessThan(.62);
-    expect(sceneryDetailScale(95, 21 / 9)).toBeCloseTo(wide * Math.sqrt(16 / 21));
+    expect(sceneryDetailScale(95, 21 / 9)).toBeCloseTo(wide * 16 / 21);
+    expect(sceneryDetailScale(60, 21 / 9)).toBeCloseTo(16 / 21);
   });
 });

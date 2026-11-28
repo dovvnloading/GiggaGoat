@@ -36,5 +36,5 @@ export function qualityPixelRatio(quality: GraphicsQuality, devicePixelRatio: nu
 /** A wider frustum makes distant props smaller while admitting more of the island. */
 export function sceneryDetailScale(verticalFov: number, aspect: number): number {
   const lens = Math.tan(DEFAULT_FIELD_OF_VIEW * Math.PI / 360) / Math.tan(verticalFov * Math.PI / 360);
-  return Math.min(1, lens * Math.min(1, Math.sqrt((16 / 9) / aspect)));
+  return Math.min(1, lens) * Math.min(1, (16 / 9) / aspect);
 }

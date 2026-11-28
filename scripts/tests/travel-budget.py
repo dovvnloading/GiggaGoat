@@ -83,17 +83,23 @@ def check_rides(page, url, evidence):
         streets[name] = sample_view(page,settle=24)
         print("Downtown",name,"peak",streets[name]["peak"],flush=True)
     # The northwest skyline also has to fit when the player opens the lens on an ultrawide display.
-    page.keyboard.press("Escape")
-    click("settings")
-    page.locator('[data-tab="video"]').click()
-    page.locator("#gg-setting-fov").press("End")
-    click("back")
     page.set_viewport_size({"width":1260,"height":540})
-    click("resume")
-    page.evaluate("v.input.yaw=-Math.PI/4")
-    page.wait_for_function("v.camera.fov>94.75", timeout=45000)
-    streets["northwest-wide"] = sample_view(page,settle=24)
-    print("Downtown wide","peak",streets["northwest-wide"]["peak"],flush=True)
+    for lens in (60, 95):
+        page.keyboard.press("Escape")
+        click("settings")
+        page.locator('[data-tab="video"]').click()
+        slider = page.locator("#gg-setting-fov")
+        slider.press("End" if lens == 95 else "Home")
+        if lens == 60:
+            for _ in range(5):
+                slider.press("ArrowRight")
+        click("back")
+        click("resume")
+        page.evaluate("v.input.yaw=-Math.PI/4")
+        page.wait_for_function("lens=>Math.abs(v.camera.fov-lens)<.15",arg=lens,timeout=45000)
+        name = f"northwest-ultrawide-{lens}"
+        streets[name] = sample_view(page,settle=24)
+        print("Downtown",name,"peak",streets[name]["peak"],flush=True)
     (evidence / "ride-budgets.json").write_text(json.dumps({"rides":profile,"downtown":streets,"errors":errors},indent=2), encoding="utf-8")
     assert not errors, errors
     for view, stats in {**profile, **streets}.items():
