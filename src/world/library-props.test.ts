@@ -878,17 +878,17 @@ describe('authored Baa-ardwalk model colours and LOD', () => {
 });
 
 describe('authored town and farm prop paint and LOD', () => {
-  it('aligns the loaded Downtown service ramp art to its uphill collision direction', async () => {
+  it('draws service and courier ramp treads uphill at either world heading', async () => {
     const bytes = readFileSync(new URL('../../public/' + PROP_LIBRARY_MODELS.ramp, import.meta.url));
     const asset = await new GLTFLoader().parseAsync(new Uint8Array(bytes).buffer, '');
     const load = vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockResolvedValue(asset);
     vi.stubGlobal('document', {});
     const descriptors = ([
-      ['downtown-bleatsville-ramp-41', -5],
-      ['unrelated-ramp', 5],
-    ] as const).map(([id, x]): PropDescriptor => ({
+      ['downtown-bleatsville-ramp-41', -5, 0],
+      ['downtown-courier-span-2', 5, Math.PI],
+    ] as const).map(([id, x, rotationY]): PropDescriptor => ({
       id, kind: 'ramp',
-      transform: { position: { x, y: 2, z: 0 }, rotationY: 0 },
+      transform: { position: { x, y: 2, z: 0 }, rotationY },
       size: { x: 4.5, y: 3, z: 9 }, body: { type: 'static' }, shape: 'convex',
       collidable: true, breakable: false, lickable: true, climbable: true,
     }));
@@ -904,10 +904,10 @@ describe('authored town and farm prop paint and LOD', () => {
         ray.ray.origin.set(x, 10, (t - .5) * 9);
         return ray.intersectObject(ramp)[0]!.point.y;
       };
-      const low = treadHeight(-5, .25), high = treadHeight(-5, .75);
-      expect(Math.abs(low - 1.25)).toBeLessThan(.16);
-      expect(Math.abs(high - 2.75)).toBeLessThan(.16);
-      expect(treadHeight(5, .25)).toBeGreaterThan(treadHeight(5, .75));
+      expect(treadHeight(-5, .25)).toBeCloseTo(1.25, 2);
+      expect(treadHeight(-5, .75)).toBeCloseTo(2.75, 2);
+      expect(treadHeight(5, .75)).toBeCloseTo(1.25, 2);
+      expect(treadHeight(5, .25)).toBeCloseTo(2.75, 2);
     } finally {
       visuals.dispose();
       load.mockRestore();

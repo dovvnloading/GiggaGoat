@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import library from './prop-kit-previews.json';
-import { fitLibraryModel } from './library-fit';
+import { fitLibraryModel, fitTimberRamp } from './library-fit';
 import { PROP_LIBRARY_MODELS } from './library-props';
 import type { PropKind, Vec3 } from './types';
 
@@ -38,6 +38,12 @@ export function kitShape(kind: keyof typeof library, nativeMetres = false): THRE
 /** Fit a model to a physical prop slot, with the same rules as its streamed art. */
 export function kitPreview(kind: PropKind, size: Vec3): THREE.BufferGeometry {
   const geo = kitShape(kind);
+  geo.userData.sourceKit = PROP_LIBRARY_MODELS[kind];
+  if (kind === 'ramp') {
+    fitTimberRamp(geo);
+    geo.computeBoundingSphere();
+    return geo;
+  }
   const bounds = geo.boundingBox!, span = bounds.getSize(new THREE.Vector3());
   const center = bounds.getCenter(new THREE.Vector3());
   geo.translate(-center.x, -bounds.min.y, -center.z);
@@ -47,6 +53,5 @@ export function kitPreview(kind: PropKind, size: Vec3): THREE.BufferGeometry {
   geo.translate(0, -.5, 0);
   geo.computeBoundingBox();
   geo.computeBoundingSphere();
-  geo.userData.sourceKit = PROP_LIBRARY_MODELS[kind];
   return geo;
 }

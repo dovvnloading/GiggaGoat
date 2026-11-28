@@ -19,6 +19,21 @@ export function isAuthoredLibraryAsset(path: string): boolean {
     path.startsWith('assets/library/usdcraft/');
 }
 
+/** Fit wooden-ramp.glb to the walkable wedge, whose crest is at local +Z. */
+export function fitTimberRamp(geometry: THREE.BufferGeometry): void {
+  const bounds = geometry.boundingBox!;
+  const span = bounds.getSize(new THREE.Vector3());
+  const centre = bounds.getCenter(new THREE.Vector3());
+  // The tops of the boards are not the extremes of the timber frame.
+  // These are the tread heights at the toe and crest as a fraction of its height.
+  const toe = .0548, crest = 1.0031;
+  geometry.translate(-centre.x, -bounds.min.y, -centre.z);
+  geometry.rotateY(Math.PI);
+  geometry.scale(1 / Math.max(.001, span.x), 1 / (Math.max(.001, span.y) * (crest - toe)),
+    1 / Math.max(.001, span.z));
+  geometry.translate(0, -.5 - toe / (crest - toe), 0);
+}
+
 export interface LibraryModelFit {
   /** Additional Y rotation in model-local space, either zero or a quarter turn. */
   yaw: number;
