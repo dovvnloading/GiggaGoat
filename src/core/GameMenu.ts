@@ -17,7 +17,11 @@ import toyIcons from './assets/toybox.webp?url';
 
 import { RIDES, rideIds, type Ride } from './IslandTravel';
 
-type Screen = 'travel' | 'toybox' | 'title' | 'playing' | 'pause' | 'party' | 'party-confirm' | 'settings' |
+import { DISPATCHES } from './IslandPost';
+import postcardSheet from './assets/island-post/postcards.webp?url';
+import postmasterPortrait from './assets/island-post/marnie.webp?url';
+
+type Screen = 'post' | 'travel' | 'toybox' | 'title' | 'playing' | 'pause' | 'party' | 'party-confirm' | 'settings' |
   'board' | 'gig-results' | 'party-results';
 const CSS = `
 /* The frame, stat cards, tabs and action buttons are nine-sliced sprite PNGs.
@@ -29,6 +33,14 @@ const CSS = `
   -webkit-font-smoothing:antialiased}
 .gg-shell *{box-sizing:border-box}
 .gg-shell [hidden]{display:none!important}
+.gg-post-head,.gg-post-actions{display:flex;gap:12px;align-items:center;justify-content:center}
+.gg-post-head img{width:70px;height:70px;object-fit:cover;border:3px solid #b3834e;border-radius:50%}
+.gg-post-head p,.gg-post-card p{margin:4px 0}
+.gg-post-cards{display:grid;gap:9px;text-align:left;margin:12px 0}
+.gg-post-card{display:grid;grid-template-columns:clamp(70px,18vw,105px) 1fr;align-items:center;gap:12px;padding:8px;background:#fff1d1;border:1px solid #c19865;border-radius:8px;color:#3d291f}
+.gg-post-card i{aspect-ratio:1;background-image:var(--postcards);background-size:400% 200%;border-radius:3px}
+.gg-post-card h3{margin:0;font-size:1.05rem}.gg-post-card p{font-size:.9rem;line-height:1.3}
+.gg-shell .gg-post-card .gg-art-button,.gg-shell .gg-post-actions .gg-art-button{width:auto;min-height:34px;font-size:.82rem}
 .gg-shell-panel{position:relative;width:min(610px,100%);max-height:calc(100dvh - 24px);
   min-width:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;
   padding:clamp(10px,2.5vw,22px) clamp(13px,3vw,26px);
@@ -456,6 +468,7 @@ export class GameMenu {
       this.game.acknowledgeGigResult();
       this.save();
     }
+    if (this.screen === 'post' && next !== 'post') this.audio?.stopPostmaster();
     this.screen = next;
     // Leaving gameplay intentionally can asynchronously release pointer lock.
     // Forget that lock before a later menu action resumes the game.
@@ -492,11 +505,28 @@ export class GameMenu {
   }
   private travelReturn: 'title' | 'pause' = 'title';
   private action(key: string, mouseClick = false): void {
+    if (key === 'hear-postmaster' && this.screen === 'post') {
+      this.audio?.stopPostmaster(); this.audio?.playPostmaster(); return;
+    }
     if (key !== 'back' && key !== 'pause') this.audio?.playMenuCue('ui-confirm');
     if (key === 'travel' && this.game.travelAvailable) {
       this.travelReturn=this.screen==='title'?'title':'pause';
       this.setScreen('travel');
       return;
+    }
+    if (this.screen === 'travel' && key === 'post') {
+      this.setScreen('post'); return;
+    }
+    if (this.screen === 'post' && key.startsWith('dispatch-') && this.game.travelAvailable) {
+      if (this.game.post.start(key.slice(9))) {
+        this.save();
+        this.view.alignCameraForPlay();
+        this.resume(mouseClick);
+      }
+      return;
+    }
+    if (this.screen === 'post' && key === 'stop-post') {
+      this.game.post.cancel(); this.save(); this.render(); return;
     }
     if (key === 'return-station' && this.game.travel?.active) {
       this.game.leaveRide(true);this.view.alignCameraForPlay();this.resume(mouseClick);return;
@@ -597,6 +627,7 @@ export class GameMenu {
     this.root.querySelector('.gg-shell-panel')?.prepend(message);
   }
   private back(mouseClick = false): void {
+    if (this.screen === 'post') { this.setScreen('travel','[data-action="post"]'); return; }
     if (this.screen === 'travel') { this.setScreen(this.travelReturn,'[data-action="travel"]'); return; }
     if (this.screen === 'title') return;
     if (this.screen === 'party-results') {
@@ -776,7 +807,7 @@ export class GameMenu {
       const station=this.game.travel.station(this.game.goat.torso.translation());
       if(station && this.game.boardRide(station,true))return true;
     }
-    if (this.game.atRecordCounter) return false; // Let the normal bleat reach the listening counter.
+    if (this.game.atPostalStop || this.game.atRecordCounter) return false; // Let the normal bleat reach the listening counter.
     const poi = this.game.gigs.nearBoard();
     if (!poi) return false;
     this.boardPoi = poi;
@@ -996,6 +1027,22 @@ export class GameMenu {
     this.audio?.playMenuCue('ui-click');
   }
 
+  private postBody(): string {
+    const post = this.game.post;
+    const cards = post.routes.map(route => {
+      const index = DISPATCHES.findIndex(card => card.id === route.id);
+      const stamped = post.stamped.has(route.id), selected = post.active?.id === route.id;
+      const action = stamped || post.active ? '' : menuButton('dispatch-' + route.id, 'Carry this dispatch');
+      return `<article class="gg-post-card"><i aria-hidden="true" style="background-position:${index%4*100/3}% ${Math.floor(index/4)*100}%"></i>
+        <div><h3>${route.title}</h3><p>${stamped ? route.reply : route.letter}</p>
+        ${stamped ? '<strong>Postmarked ✓</strong>' : selected ? '<strong>In your satchel</strong>' : action}</div></article>`;
+    }).join('');
+    return `<header class="gg-post-head"><img src="${postmasterPortrait}" alt="Marnie the pelican postmaster">
+      <div><h2>Island Post</h2><p>${post.stamped.size} / ${post.routes.length} postcards · 40 coins per delivery</p></div></header>
+      <div class="gg-post-actions">${menuButton('back','← Back')}${menuButton('hear-postmaster','Hear Marnie')}${post.active ? menuButton('stop-post','Return dispatch') : ''}</div>
+      <div class="gg-post-cards" style="--postcards:url('${postcardSheet}')">${cards}</div>`;
+  }
+
   private boardBody(): string {
     const poi = this.boardPoi;
     const district = this.game.island.pois.find(site => site.id === poi)?.name ?? nice(poi ?? '');
@@ -1146,8 +1193,10 @@ export class GameMenu {
           `<button class="gg-toy-card" data-action="toy-${i}" aria-pressed="${this.game.toys.index===i}">
           <i aria-hidden="true" style="background-position:${(i%3)*50}% ${Math.floor(i/3)*100}%"></i>
           <span><strong>${toy.name}</strong><small>${toy.hint}</small></span></button>`).join('')}</div>` :
+      this.screen === 'post' ? this.postBody() :
       this.screen === 'travel' ? `<h2>ISLAND TRAVEL</h2><p>Choose a departure to board in Free Roam.</p>
         <div class="gg-options gg-travel-options">${rideIds.map(id=>`<div>${menuButton('ride-'+id,RIDES[id].name+' · '+RIDES[id].port)}<small>${RIDES[id].hint}</small></div>`).join('')}
+        ${this.game.post?.routes.length ? menuButton('post','ISLAND POST · DISPATCHES') : ''}
         ${menuButton('back','← BACK')}</div>` :
       this.screen === 'party' ? this.partyBody() :
       this.screen === 'party-confirm' ? this.partyConfirmBody() :

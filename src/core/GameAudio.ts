@@ -126,6 +126,10 @@ export class GameAudio {
       game.toys.listeners.add(toySound);
       this.off.push(() => game.toys.listeners.delete(toySound));
     }
+    this.off.push(game.rules.events.on('coins:changed', event => {
+      if (event.reason === 'island-post')
+        this.queueCue({sound:'ui-confirm', recordedEffect:'postmark', intensity:.9});
+    }));
     this.off.push(game.onMaterialAudio(this.onMaterialContact));
     for (const type of GAMEPLAY_EVENT_TYPES) {
       this.off.push(game.rules.events.on(type, data => {
@@ -183,6 +187,11 @@ export class GameAudio {
     if (charging && !this.charging) this.queueCue({ sound: 'headbutt-charge', intensity: .35 });
     this.charging = charging;
   }
+
+  playPostmaster(): void {
+    if (!this.hidden) this.audio.play('ui-confirm', {recordedEffect:'ui-postmaster'});
+  }
+  stopPostmaster(): void { this.audio.stopCue('ui-confirm'); }
 
   setMenuOpen(open: boolean): void {
     this.menuOpen = open;
@@ -303,6 +312,7 @@ export class GameAudio {
           (p.x - player.position.x) ** 2 + (p.z - player.position.z) ** 2 < 6 ** 2) ? 'pines-understory' : undefined,
       state: {
         mode: match ? 'party' : 'free',
+        deliveringMail: this.game.post?.carrying && this.game.travelAvailable,
         combo: this.game.rules.style.combo.count,
         meter: this.game.rules.style.meter,
         tide, poi, night,

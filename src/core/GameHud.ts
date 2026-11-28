@@ -734,7 +734,8 @@ export class GameHud {
     const run = game.gigs.active;
     const contractTarget = !match && run?.status === 'running' && run.objective.kind === 'summit'
       ? run.objective.next : undefined;
-    const target = match?.mode === 'rising-tide' && match.phase !== 'results' ? tideTarget : contractTarget;
+    const postalTarget = game.travelAvailable ? game.post?.target?.position : undefined;
+    const target = match?.mode === 'rising-tide' && match.phase !== 'results' ? tideTarget : contractTarget ?? postalTarget;
     const flag = this.mapObjectives?.querySelector('[data-map-climb-target]');
     if (flag) {
       flag.setAttribute('visibility', target ? 'visible' : 'hidden');
@@ -835,7 +836,7 @@ export class GameHud {
     const activeGig = game.gigs.active;
     const run = activeGig?.status === 'running' ? activeGig : game.pendingGigResult;
     // Enter a little inside the interaction radius to avoid blinking at its edge.
-    const boardInRange = !game.atRecordCounter && game.gigs.nearBoard(this.board.hidden ? 8.75 : 9) !== null;
+    const boardInRange = !game.atPostalStop && !game.atRecordCounter && game.gigs.nearBoard(this.board.hidden ? 8.75 : 9) !== null;
     const carryStamina = carryStaminaForHud(game.party.match, 'player');
     const stackLiftCue = game.gigs.stackLiftCue;
     const stackLiftPrompt = stackLiftCue === 'ready' ?
@@ -846,7 +847,7 @@ export class GameHud {
     const station=!ride && game.travelAvailable ? game.travel.station(game.goat.torso.translation()) : null;
     const route = ride ? { title: RIDES[ride].name, task: game.travel.controls(device === 'gamepad', game.physics.time),
       detail: game.travel.instruments() } : undefined;
-    this.gigHeader.textContent = ride ? 'ISLAND TRAVEL' : 'CURRENT GIG';
+    this.gigHeader.textContent = ride ? 'ISLAND TRAVEL' : game.post?.active && game.travelAvailable ? 'ISLAND POST' : 'CURRENT GIG';
     this.gigCard.setAttribute('aria-label', ride ? 'Travel instruments' : 'Current gig');
     const state = deriveHudState({
       tier: rules.style.tier, meter: rules.style.meter, score: rules.style.score,

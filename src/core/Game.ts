@@ -1,3 +1,5 @@
+import { IslandPost } from './IslandPost';
+import type { HappeningId } from './IslandHappenings';
 import { IslandTravel, type Ride } from './IslandTravel';
 import { Toybox } from './Toybox';
 import type { RigidBody, ColliderDesc, Shape } from '@dimforge/rapier3d-compat';
@@ -149,6 +151,7 @@ export class Game {
   readonly surfaces: SurfaceSystem;
   readonly budget: DynamicBodyBudget;
   readonly gigs: GigSession;
+  readonly post: IslandPost;
   readonly happenings: IslandHappenings;
   readonly life: IslandLifeDirector;
   readonly market: MarketScene;
@@ -363,6 +366,7 @@ export class Game {
     this.party = new PartySession(this);
     this.happenings = new IslandHappenings(placeIslandHappenings(island,
       this.gigs.boards.map(board => board.position)), options.progress?.happenings, (x, z) => heightAt(island, x, z));
+    this.post = new IslandPost(this.happenings.sites, options.progress?.post);
     this.life = new IslandLifeDirector(island, this.gigs.boards.map(board => board.position));
     this.market = new MarketScene(physics, island, colliders, this.budget);
     const town = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
@@ -1255,7 +1259,7 @@ export class Game {
         if (this.ambientLifeEnabled)
           this.life.react('bleat', this.happeningPosition(), this.physics.time, .7 + g.size * .2);
         if (!this.party.match && this.gigs.active?.status !== 'running' && !this.buildMode) {
-          const reward = this.happenings.bleat(this.happeningPosition(), this.physics.time);
+          const reward = this.happenings.bleat(this.happeningPosition(), this.physics.time, this.postPerformed);
           if (reward) this.rules.wallet.credit(reward, 'island-discovery');
         }
       }
@@ -1321,7 +1325,10 @@ export class Game {
     const batch = this.happenings.bakery;
     if (enabled && batch?.active(this.physics.time)) {
       const rolls = batch.collect(this.happeningPosition(), this.physics.time);
-      if (rolls) this.rules.abilities.eatHoneyRolls(rolls);
+      if (rolls) {
+        this.rules.abilities.eatHoneyRolls(rolls);
+        if (batch.count === 3) this.postPerformed('honey-rolls');
+      }
     }
     let count = 0;
     const append = (body: RigidBody, radius: number, height: number): void => {
@@ -1561,15 +1568,33 @@ export class Game {
       Math.abs(feet.y-site.position.y) <= 2.5*site.scale && !this.gigs.nearBoard(2*site.scale);
   }
 
+  private readonly postPerformed = (id: HappeningId): void => {
+    const reward = this.post.perform(id, this.physics.time);
+    if (reward) this.rules.wallet.credit(reward, 'island-post');
+  };
+
+  get atPostalStop(): boolean {
+    const site = this.post.target;
+    if (!site || !this.travelAvailable || this.travel.active) return false;
+    const feet = this.happeningPosition();
+    return Math.hypot(feet.x - site.position.x, feet.z - site.position.z) <= 5 * site.scale &&
+      Math.abs(feet.y - site.position.y) <= 2.5 * site.scale;
+  }
+
   get happeningMessage() {
     if (this.party.match || this.gigs.active?.status === 'running' || this.pendingGigResult || this.buildMode) return;
-    return this.happenings.message(this.happeningPosition(), this.physics.time);
+    const feet = this.happeningPosition(), time = this.physics.time;
+    const post = this.post.message(feet, time);
+    const target = this.post.target?.definition.id;
+    if (this.atPostalStop && (target === 'needle-drop' || target === 'honey-rolls'))
+      return this.happenings.message(feet, time) ?? post;
+    return post ?? this.happenings.message(feet, time);
   }
 
   exportProgress(): GameProgress {
     const progress: GameProgress = { gameplay: this.rules.toJSON(), gigs: this.gigs.director.toJSON(),
       gigBodies: this.gigs.saveBodies(), acknowledgedGigAttempt: this.acknowledgedGigAttempt,
-      happenings: this.happenings.snapshot() };
+      post: this.post.snapshot(), happenings: this.happenings.snapshot() };
     const run = this.gigs.active;
     if (run?.status === 'running') {
       const { x, y, z } = this.goat.torso.translation();

@@ -1,3 +1,6 @@
+import greeting from './assets/post/marnie.mp3?inline';
+import postmark from './assets/post/postmark.mp3?inline';
+import mailboat from './assets/post/island-jazz-mailboat.ogg?url';
 import contacts from './assets/foley/contacts.json';
 import contactUrl from './assets/foley/contact-bank.wav?url';
 import party from './assets/music/last-bale-standing.mp3?url';
@@ -31,14 +34,14 @@ import type { RecordedAssets } from './recordings';
 
 export const BILLY_ISLE_RECORDINGS: RecordedAssets = {
   music: {
-    farm, town, coast, party,
+    farm, town, coast, party, post: mailboat,
     'baa-ardwalk': boardwalk,
     'crane-yard': yard,
     'whispering-pines': forest,
     'mt-gigga': summit,
     'the-dam': dam,
   },
-  effects: RECORDED_EFFECTS,
+  effects: { ...RECORDED_EFFECTS, postmark: postmark.split(',')[1]!, 'ui-postmaster': greeting.split(',')[1]! },
   foley: { url: contactUrl, contacts },
   ambience: {
     'rain-lane': laneRain,

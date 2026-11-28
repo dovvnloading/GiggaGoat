@@ -3,9 +3,9 @@ import type { AudioLocation, MusicState, SoundId } from './logic';
 import type { SfxOptions, SoundRender } from './synth';
 import type { RECORDED_EFFECTS } from './recorded-effects';
 
-export type RecordedEffect = keyof typeof RECORDED_EFFECTS;
+export type RecordedEffect = keyof typeof RECORDED_EFFECTS | 'postmark' | 'ui-postmaster';
 type Region = 'farm' | 'town' | 'coast';
-type Track = Region | AudioLocation | 'party';
+type Track = Region | AudioLocation | 'party' | 'post';
 
 interface FoleyBank {
   url: string;
@@ -14,7 +14,7 @@ interface FoleyBank {
 export interface RecordedAssets {
   foley?: FoleyBank;
   ambience?: import('./zone-ambience').AmbienceLibrary;
-  music: Readonly<Record<Region, string> & Partial<Record<AudioLocation | 'party', string>>>;
+  music: Readonly<Record<Region, string> & Partial<Record<AudioLocation | 'party' | 'post', string>>>;
   effects: Readonly<Partial<Record<RecordedEffect, string>>>;
 }
 
@@ -124,7 +124,8 @@ export class RecordedAudio {
 
   updateMusic(state: MusicState): void {
     if (this.disposed) return;
-    const freeRoamTrack = this.assets.music[state.poi] ? state.poi : TRACKS[state.poi];
+    const freeRoamTrack = state.deliveringMail && this.assets.music.post ? 'post' :
+      this.assets.music[state.poi] ? state.poi : TRACKS[state.poi];
     const next = state.mode === 'free' ? freeRoamTrack : this.assets.music.party ? 'party' : null;
     const now = this.context.currentTime;
     if (next !== this.target) {
