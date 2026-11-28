@@ -46,6 +46,8 @@ def play(page, url, evidence):
           session.view.alignCameraForPlay();
         }""")
         wait("g.atPostalStop")
+        # Repositioning skips the journey during which the normal bleat cooldown would clear.
+        wait("g.rules.abilities.toJSON().bleatTimes.length === 0")
         start = page.evaluate("g.physics.time")
         wait(f"g.physics.time > {start + .35}")
         if site == "honey-rolls":

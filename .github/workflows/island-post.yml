@@ -7,6 +7,7 @@ on:
       - 'src/audio/**'
       - 'src/world/**'
       - 'scripts/tests/island-post.*'
+      - 'scripts/tests/travel-budget.py'
       - '.github/workflows/island-post.yml'
 permissions:
   contents: read
@@ -19,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        activity: [post, travel]
+        activity: [post, travel, render]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -38,7 +39,9 @@ jobs:
         run: |
           cp .island-post-test/scripts/tests/island-post.html .island-post-test/island-post.html
           python -m http.server 4191 --bind 127.0.0.1 --directory .island-post-test > "$RUNNER_TEMP/post-server.log" 2>&1 &
-          python scripts/tests/island-post.py http://127.0.0.1:4191/island-post.html "$RUNNER_TEMP/postcards" "--$ACTIVITY"
+          script=island-post
+          if [[ "$ACTIVITY" == render ]]; then script=travel-budget; fi
+          python "scripts/tests/$script.py" http://127.0.0.1:4191/island-post.html "$RUNNER_TEMP/postcards" "--$ACTIVITY"
       - name: Save the album and test evidence
         if: always()
         uses: actions/upload-artifact@v4
