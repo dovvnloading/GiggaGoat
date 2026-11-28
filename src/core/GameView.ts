@@ -63,6 +63,7 @@ export class GameView {
   private readonly atmosphere: IslandAtmosphere;
   private clearFogDensity = .0016;
   private readonly toyEffects: ToyEffects;
+  private skylineBudgetOrigin: THREE.Vector3 | null = null;
   private cameraRide: Ride | null = null;
   private lastCraftHeading = 0;
   private readonly vehicles: TravelVisuals;
@@ -1045,7 +1046,16 @@ export class GameView {
       this.hudTimer = 0;
       this.updateHud();
     }
-    this.world.updateCulling(this.camera, !!this.game.travel.active);
+    // A street or pier can see as much distant architecture as the floatplane.
+    // Reuse its distant meshes when a natural view crosses the island budget.
+    const triangles = this.perfStats.triangles;
+    if (triangles > 500_000) {
+      (this.skylineBudgetOrigin ??= new THREE.Vector3()).copy(this.camera.position);
+    } else if (triangles < 340_000 && this.skylineBudgetOrigin &&
+        this.skylineBudgetOrigin.distanceToSquared(this.camera.position) > 45 ** 2) {
+      this.skylineBudgetOrigin = null;
+    }
+    this.world.updateCulling(this.camera, !!this.game.travel.active || !!this.skylineBudgetOrigin);
     this.limitDrawDistance();
     this.instancedProps.update(this.camera, range);
     this.shadowTimer += sceneDt;
