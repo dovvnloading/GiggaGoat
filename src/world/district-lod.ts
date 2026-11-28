@@ -30,7 +30,7 @@ function skylineGeometry(source: THREE.BufferGeometry): THREE.BufferGeometry {
   const paint = mesh.getAttribute('color').array as Float32Array;
   const indices = Uint32Array.from(mesh.index!.array);
   const [reduced] = MeshoptSimplifier.simplifyWithAttributes(indices, positions, 3, paint, 3,
-    [.35, .35, .35], null, Math.floor(indices.length / 12) * 3, .17, ['ErrorAbsolute', 'Permissive']);
+    [.35, .35, .35], null, Math.floor(indices.length / 12) * 3, .10, ['ErrorAbsolute', 'Permissive']);
   if (reduced.length >= indices.length) {
     mesh.dispose();
     return source;
@@ -120,6 +120,7 @@ export async function createDistrictLod<Model extends string>(
       }
       high.setAttribute(name, new THREE.BufferAttribute(buffer, itemSize));
     }
+    high.computeBoundingBox();
     high.computeBoundingSphere();
     high.userData.preserveSilhouette = cell.keepSilhouette;
     const low = cell.keepSilhouette ? high : await simplifiedWorldGeometry(high);
@@ -158,12 +159,15 @@ export async function createDistrictLod<Model extends string>(
           (!entry.small || dist - Math.min(entry.sphere.radius, 12) <
             WORLD_LOD.smallPropDistance);
         const far = dist > WORLD_LOD.detailedDistance;
-        const skyline = sightseeing && dist - entry.sphere.radius > 54;
-        // Build at most one visible skyline cell per district per frame while riding.
-        if (visible && skyline && !entry.skyline && !preparedCell && simplifierReady) {
+        // The loose sphere often encloses the street outside a long or tall cell.
+        // Measure to the closest point of the painted buildings' actual bounds.
+        const skyline = sightseeing && entry.high.boundingBox!.distanceToPoint(position) > 25;
+        // Prepare one visible cell per district per frame. The same silhouette serves the shadow map.
+        if (visible && sightseeing && !entry.skyline && !preparedCell && simplifierReady) {
           entry.skyline = skylineGeometry(entry.high);
           preparedCell = true;
         }
+        entry.mesh.userData.shadowSilhouette = sightseeing ? entry.skyline : undefined;
         const geometry = skyline && entry.skyline ? entry.skyline : far ? entry.low : entry.high;
         if (entry.mesh.castShadow && (entry.mesh.visible !== visible ||
             entry.mesh.geometry !== geometry)) changed = true;

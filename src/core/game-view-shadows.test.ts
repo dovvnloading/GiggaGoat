@@ -8,6 +8,7 @@ function selectCasters(group: THREE.Group, graphics: 'medium' | 'high' = 'high')
   const view = Object.create(GameView.prototype) as GameView;
   Object.assign(view, {
     world: { group },
+    shadowSilhouettes: new THREE.Group(),
     currentSettings: { graphics },
     cameraTarget: new THREE.Vector3(),
     shadowDefaults: new WeakMap<THREE.Mesh, boolean>(),
@@ -19,6 +20,31 @@ function selectCasters(group: THREE.Group, graphics: 'medium' | 'high' = 'high')
 }
 
 describe('GameView shadow caster selection', () => {
+  it('keeps the painted facade in the color pass and reuses its silhouette in the depth pass', () => {
+    const group = new THREE.Group();
+    const building = new THREE.Mesh(new THREE.BoxGeometry(3,5,3,6,6,6));
+    const silhouette = new THREE.BoxGeometry(3,5,3);
+    building.userData.shadowSilhouette = silhouette;
+    building.castShadow = true;
+    group.add(building);
+    const proxies = new THREE.Group();
+    const view = Object.assign(Object.create(GameView.prototype), {
+      world: { group }, currentSettings: {graphics:'high'}, cameraTarget:new THREE.Vector3(),
+      shadowDefaults:new WeakMap(), shadowSilhouettes:proxies,
+    });
+    view.refreshShadowCasters();
+    expect(building.castShadow).toBe(false);
+    expect(building.geometry).not.toBe(silhouette);
+    expect((proxies.children[0] as THREE.Mesh).geometry).toBe(silhouette);
+    expect(proxies.children[0]!.layers.isEnabled(0)).toBe(false);
+    expect(proxies.children[0]!.layers.isEnabled(1)).toBe(true);
+    delete building.userData.shadowSilhouette;
+    view.refreshShadowCasters();
+    expect(building.castShadow).toBe(true);
+    expect(proxies.children[0]!.visible).toBe(false);
+    building.geometry.dispose(); silhouette.dispose(); building.material.dispose();
+  });
+
   it('selects a merged district cell whose distant centre still overlaps the player', () => {
     const group = new THREE.Group();
     group.position.x = 100; // both mesh origins are too distant under the old check

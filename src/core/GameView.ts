@@ -105,6 +105,7 @@ export class GameView {
   private readonly activeBuildIds = new Set<number>();
   private readonly activeDebrisIds = new Set<number>();
   private readonly changedPropMeshes = new Set<THREE.InstancedMesh>();
+  private readonly shadowSilhouettes = new THREE.Group();
   private readonly shadowDefaults = new WeakMap<THREE.Mesh, boolean>();
   private readonly resolution = new AdaptiveResolution('high', 1);
   private appliedGraphics: GraphicsQuality | null = null;
@@ -171,7 +172,9 @@ export class GameView {
       externallyRenderedPropKinds: WORLD_LIBRARY_KINDS,
     });
     this.atmosphere = new IslandAtmosphere(game);
-    this.scene.add(this.world.group, this.atmosphere.group);
+    this.scene.add(this.world.group, this.atmosphere.group, this.shadowSilhouettes);
+    // Layer 1 is drawn by the sun's shadow camera only.
+    this.world.sun.shadow.camera.layers.enable(1);
     if (this.scene.fog) this.scene.fog.color.copy(this.world.fogColor);
     this.renderer.setClearColor(this.world.fogColor);
     this.world.sun.castShadow = this.renderer.shadowMap.enabled;
@@ -751,9 +754,29 @@ export class GameView {
       const dist = worldBounds.center.distanceTo(this.cameraTarget) - worldBounds.radius;
       if (dist <= preset.shadowDistance) candidates.push({ mesh: object, dist });
     });
+    for (const proxy of this.shadowSilhouettes.children) proxy.visible = false;
+    let used = 0;
     candidates.sort((a, b) => a.dist - b.dist);
     for (let i = 0; i < Math.min(candidates.length, preset.maxShadowCasters); i++) {
-      candidates[i]!.mesh.castShadow = true;
+      const { mesh } = candidates[i]!;
+      const silhouette = mesh.userData.shadowSilhouette as THREE.BufferGeometry | undefined;
+      if (!silhouette || silhouette === mesh.geometry) {
+        mesh.castShadow = true;
+        continue;
+      }
+      let proxy = this.shadowSilhouettes.children[used++] as THREE.Mesh | undefined;
+      if (!proxy) {
+        proxy = new THREE.Mesh(silhouette,mesh.material);
+        proxy.layers.set(1);
+        proxy.castShadow = true;
+        proxy.matrixAutoUpdate = false;
+        this.shadowSilhouettes.add(proxy);
+      }
+      proxy.visible = true;
+      proxy.geometry = silhouette;
+      proxy.material = mesh.material;
+      proxy.matrix.copy(mesh.matrixWorld);
+      proxy.matrixWorldNeedsUpdate = true;
     }
   }
 
@@ -959,9 +982,7 @@ export class GameView {
       this.camera.fov = nextFov;
       this.camera.updateProjectionMatrix();
     }
-    this.world.sun.position.setLength(145).add(this.cameraTarget);
-    this.world.sun.target.position.copy(this.cameraTarget);
-    this.world.sun.target.updateMatrixWorld();
+
   }
 
   private frame(timestamp: number): void {
@@ -1031,6 +1052,9 @@ export class GameView {
     if (this.scene.fog) this.scene.fog.color.copy(this.world.fogColor);
     this.renderer.setClearColor(this.world.fogColor);
     this.updateCamera(alpha, sceneDt);
+    this.world.sun.position.setLength(145).add(this.cameraTarget);
+    this.world.sun.target.position.copy(this.cameraTarget);
+    this.world.sun.target.updateMatrixWorld();
     this.vehicles.update(this.game.physics.time,this.camera.position);
     this.updateCameraFraming(sceneDt);
     this.happeningVisuals.update(this.game.physics.time, this.camera.position, !match, this.game.ambientLifeEnabled);
