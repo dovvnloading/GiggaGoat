@@ -67,13 +67,13 @@ export class IslandPost {
 
   message(at: Vec3, time: number): HappeningMessage | undefined {
     if (this.receipt && time < this.receipt.until)
-      return { title: this.receipt.title, task: 'Postcard stamped', detail: '+40 CUD COINS · ISLAND POST' };
+      return { source: 'island-post', title: this.receipt.title, task: 'Postcard stamped', detail: '+40 CUD COINS · ISLAND POST' };
     const site = this.target;
     if (!site || !this.active) return;
     const x = site.position.x - at.x, z = site.position.z - at.z;
     const meters = Math.round(Math.hypot(x, z));
     const bearing = ['N','NE','E','SE','S','SW','W','NW'][(Math.round(Math.atan2(x,-z)/(Math.PI/4))+8)%8];
-    return { title: this.active.title, task: (this.carrying ? 'Deliver to ' : 'Collect at ') + site.definition.title,
+    return { source: 'island-post', title: this.active.title, task: (this.carrying ? 'Deliver to ' : 'Collect at ') + site.definition.title,
       detail: meters > 5 * site.scale ? bearing + ' · ' + meters + ' M' :
         site.definition.id === 'honey-rolls' ? 'COLLECT THREE HONEY ROLLS' :
         site.definition.id === 'needle-drop' ? 'PLAY THE B-SIDE' : 'E / X · BLEAT TO SIGN' };

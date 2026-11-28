@@ -37,7 +37,12 @@ export interface HappeningSite {
   yaw: number;
   scale: number;
 }
-export interface HappeningMessage { title: string; task: string; detail: string }
+export interface HappeningMessage {
+  title: string;
+  task: string;
+  detail: string;
+  source?: 'island-post';
+}
 export const HAPPENING_REACH = 5;
 const RESPONSE_SECONDS = 5;
 const REPLAY_SECONDS = 12;

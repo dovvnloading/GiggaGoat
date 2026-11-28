@@ -341,6 +341,14 @@ if __name__ == "__main__":
         browser = pw.chromium.launch(channel="chrome", args=["--autoplay-policy=no-user-gesture-required", "--disable-webgl"])
         try:
             run = public_smoke if "--public" in sys.argv[3:] else travel_trials if "--travel" in sys.argv[3:] else play
-            run(browser.new_page(viewport={"width":800,"height":540}), sys.argv[1], evidence)
+            page = browser.new_page(viewport={"width":800,"height":540})
+            try:
+                run(page, sys.argv[1], evidence)
+            except Exception:
+                if run is public_smoke:
+                    visible = page.locator("body").inner_text()
+                    (evidence / "public-failure.txt").write_text(visible, encoding="utf-8")
+                    page.screenshot(path=evidence / "public-failure.jpg", type="jpeg")
+                raise
         finally:
             browser.close()

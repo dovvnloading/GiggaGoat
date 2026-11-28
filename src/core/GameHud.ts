@@ -1,4 +1,5 @@
 import { RIDES } from './IslandTravel';
+import type { HappeningMessage } from './IslandHappenings';
 import type { Game } from './Game';
 import type { PlacementFailure, Validation } from '../gameplay';
 import type { Vec3 } from '../world';
@@ -853,9 +854,10 @@ export class GameHud {
     const instruments = ride ? game.travel.instruments() : '';
     const route = ride ? game.travel.trials?.message(instruments) ?? { title: RIDES[ride].name,
       task: game.travel.controls(device === 'gamepad', game.physics.time), detail: instruments } : undefined;
-    const happening = route ?? game.happeningMessage;
-    this.gigHeader.textContent = ride ? 'ISLAND TRAVEL' : game.post?.active && game.travelAvailable ? 'ISLAND POST' : 'CURRENT GIG';
-    this.gigCard.setAttribute('aria-label', ride ? 'Travel instruments' : 'Current gig');
+    const happening: HappeningMessage | undefined = route ?? game.happeningMessage;
+    const postal = happening?.source === 'island-post';
+    this.gigHeader.textContent = ride ? 'ISLAND TRAVEL' : postal ? 'ISLAND POST' : 'CURRENT GIG';
+    this.gigCard.setAttribute('aria-label', ride ? 'Travel instruments' : postal ? 'Island Post dispatch' : 'Current gig');
     const state = deriveHudState({
       tier: rules.style.tier, meter: rules.style.meter, score: rules.style.score,
       combo: rules.style.combo, stamina: carryStamina ?? rules.abilities.stamina,

@@ -1606,8 +1606,10 @@ export class Game {
     const feet = this.happeningPosition(), time = this.physics.time;
     const post = this.post.message(feet, time);
     const target = this.post.target?.definition.id;
-    if (this.atPostalStop && (target === 'needle-drop' || target === 'honey-rolls'))
-      return this.happenings.message(feet, time) ?? post;
+    if (post && this.atPostalStop && (target === 'needle-drop' || target === 'honey-rolls')) {
+      const counter = this.happenings.message(feet, time);
+      if (counter) return { ...counter, source: post.source };
+    }
     return post ?? this.happenings.message(feet, time);
   }
 
