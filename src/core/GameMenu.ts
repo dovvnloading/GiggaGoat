@@ -506,6 +506,7 @@ export class GameMenu {
     this.setScreen('pause');
   }
   private travelReturn: 'title' | 'pause' = 'title';
+  private postReturn: 'travel' | 'playing' = 'travel';
   private action(key: string, mouseClick = false): void {
     if (key === 'hear-postmaster' && this.screen === 'post') {
       this.audio?.stopPostmaster(); this.audio?.playPostmaster(); return;
@@ -517,6 +518,7 @@ export class GameMenu {
       return;
     }
     if (this.screen === 'travel' && key === 'post') {
+      this.postReturn = 'travel';
       this.setScreen('post'); return;
     }
     if (this.screen === 'travel' && key === 'trials') { this.setScreen('trials'); return; }
@@ -639,7 +641,11 @@ export class GameMenu {
   }
   private back(mouseClick = false): void {
     if (this.screen === 'trials') { this.setScreen('travel','[data-action="trials"]'); return; }
-    if (this.screen === 'post') { this.setScreen('travel','[data-action="post"]'); return; }
+    if (this.screen === 'post') {
+      if (this.postReturn === 'playing') this.resume(mouseClick);
+      else this.setScreen('travel','[data-action="post"]');
+      return;
+    }
     if (this.screen === 'travel') { this.setScreen(this.travelReturn,'[data-action="travel"]'); return; }
     if (this.screen === 'title') return;
     if (this.screen === 'party-results') {
@@ -816,6 +822,12 @@ export class GameMenu {
     if (this.screen !== 'playing') return false;
     if(this.game.travel?.active){this.game.leaveRide();return true;}
     if (this.game.atPostalStop || this.game.atRecordCounter) return false;
+    if (this.game.atMailbox) {
+      this.postReturn = 'playing';
+      this.audio?.playMenuCue('ui-confirm');
+      this.setScreen('post');
+      return true;
+    }
     if(this.game.travelAvailable){
       const station=this.game.travel.station(this.game.goat.torso.translation());
       if(station && this.game.boardRide(station,true))return true;

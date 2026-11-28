@@ -375,35 +375,39 @@ export class IslandTravel {
     return this.trials.tick(c, dt, groundBelow, sea);
   }
 
+  private landing(c: Craft, sea: number): Vec3 | string {
+    const p = c.position;
+    if (c.kind === 'tram') {
+      if (this.cableT === 0) return c.stop;
+      if (this.cableT === 1) return this.summit;
+      return 'Step out when the cabin reaches a platform';
+    }
+    if (Math.abs(c.speed) > 8 || p.y > Math.max(gridSample(this.island, p.x, p.z), sea) + 2.4)
+      return 'Slow down and land to get out · Pause for station return';
+    if (distance(p, c.home) < 11 && Math.abs(p.y - c.home.y) < 3) return c.stop;
+    for (const r of [2.8, 4.5, 7, 10]) {
+      for (let i = 0; i < 16; i++) {
+        const a = c.heading + (i * Math.PI) / 8;
+        const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+        const y = gridSample(this.island, x, z);
+        if (y > sea + .22 && Math.abs(y - p.y) < 2.8 && this.top(x, z, .7) < y + .25) return {x,y,z};
+      }
+    }
+    return 'Bring the craft closer to a dry shore';
+  }
+
+  canDisembark(sea: number): boolean {
+    return this.active !== null && typeof this.landing(this.craft[this.active], sea) !== 'string';
+  }
+
   exit(sea: number, time: number, returnHome = false): Vec3 | null {
     if (!this.active) return null;
-    const c = this.craft[this.active],
-      p = c.position;
-    let exit: Vec3 | undefined;
-    if (returnHome) exit = c.stop;
-    else if (c.kind === 'tram') {
-      if (this.cableT === 0 || this.cableT === 1) exit = this.cableT ? this.summit : c.stop;
-      else this.say('Step out when the cabin reaches a platform', time);
-    } else if (Math.abs(c.speed) > 8 || p.y > Math.max(gridSample(this.island, p.x, p.z), sea) + 2.4) {
-      this.say('Slow down and land to get out · Pause for station return', time);
-    } else if (distance(p, c.home) < 11 && Math.abs(p.y - c.home.y) < 3) exit = c.stop;
-    else {
-      for (const r of [2.8, 4.5, 7, 10]) {
-        for (let i = 0; i < 16; i++) {
-          const a = c.heading + (i * Math.PI) / 8,
-            x = p.x + Math.cos(a) * r,
-            z = p.z + Math.sin(a) * r,
-            y = gridSample(this.island, x, z);
-          if (y > sea + 0.22 && Math.abs(y - p.y) < 2.8 && this.top(x, z, 0.7) < y + 0.25) {
-            exit = { x, y, z };
-            break;
-          }
-        }
-        if (exit) break;
-      }
-      if (!exit) this.say('Bring the craft closer to a dry shore', time);
+    const c = this.craft[this.active];
+    const exit = returnHome ? c.stop : this.landing(c, sea);
+    if (typeof exit === 'string') {
+      this.say(exit, time);
+      return null;
     }
-    if (!exit) return null;
     this.trials.clear();
     this.active = null;
     this.note = '';

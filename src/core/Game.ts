@@ -153,6 +153,7 @@ export class Game {
   readonly budget: DynamicBodyBudget;
   readonly gigs: GigSession;
   readonly post: IslandPost;
+  private readonly mailboxes: Vec3[];
   readonly happenings: IslandHappenings;
   readonly life: IslandLifeDirector;
   readonly market: MarketScene;
@@ -368,6 +369,10 @@ export class Game {
     this.happenings = new IslandHappenings(placeIslandHappenings(island,
       this.gigs.boards.map(board => board.position)), options.progress?.happenings, (x, z) => heightAt(island, x, z));
     this.post = new IslandPost(this.happenings.sites, options.progress?.post);
+    this.mailboxes = island.props.filter(prop => prop.kind === 'mailbox').map(prop => {
+      const { x, y, z } = prop.transform.position;
+      return { x, y: y - prop.size.y / 2, z };
+    });
     this.life = new IslandLifeDirector(island, this.gigs.boards.map(board => board.position));
     this.market = new MarketScene(physics, island, colliders, this.budget);
     const town = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
@@ -1580,6 +1585,13 @@ export class Game {
     const reward = this.post.perform(id, this.physics.time);
     if (reward) this.rules.wallet.credit(reward, 'island-post');
   };
+
+  get atMailbox(): boolean {
+    if (!this.travelAvailable || this.travel.active || !this.post.routes.length) return false;
+    const at = this.happeningPosition(), scale = this.island.size / 600;
+    return this.mailboxes.some(box => Math.abs(at.y - box.y) <= 1.8 * scale &&
+      Math.hypot(at.x - box.x, at.z - box.z) <= 2.8 * scale);
+  }
 
   get atPostalStop(): boolean {
     const site = this.post.target;

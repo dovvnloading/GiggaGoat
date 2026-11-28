@@ -840,14 +840,16 @@ export class GameHud {
     // Enter a little inside the interaction radius to avoid blinking at its edge.
     const bleatAtCounter = game.atPostalStop || game.atRecordCounter;
     const ride = game.travel?.active;
-    const boardInRange = !ride && !bleatAtCounter && game.gigs.nearBoard(this.board.hidden ? 8.75 : 9) !== null;
+    this.hotbar.hidden = !!ride;
+    const mailbox = !bleatAtCounter && game.atMailbox;
+    const boardInRange = !ride && !mailbox && !bleatAtCounter && game.gigs.nearBoard(this.board.hidden ? 8.75 : 9) !== null;
     const carryStamina = carryStaminaForHud(game.party.match, 'player');
     const stackLiftCue = game.gigs.stackLiftCue;
     const stackLiftPrompt = stackLiftCue === 'ready' ?
       (device === 'gamepad' ? 'Press right stick to lift' : 'R · Lift crate') :
       stackLiftCue === 'moving' ? 'Lifting crate' :
         stackLiftCue === 'clear' ? 'Step clear of the pad' : undefined;
-    const station=!ride && !bleatAtCounter && game.travelAvailable ? game.travel.station(game.goat.torso.translation()) : null;
+    const station=!ride && !mailbox && !bleatAtCounter && game.travelAvailable ? game.travel.station(game.goat.torso.translation()) : null;
     const instruments = ride ? game.travel.instruments() : '';
     const route = ride ? game.travel.trials?.message(instruments) ?? { title: RIDES[ride].name,
       task: game.travel.controls(device === 'gamepad', game.physics.time), detail: instruments } : undefined;
@@ -929,9 +931,10 @@ export class GameHud {
       fitGigCardText(this.gigCard);
       this.gigLayoutKey = gigLayoutKey;
     }
-    this.board.hidden = !(station || ride || boardInRange);
+    const canStepOut = ride && game.travel.canDisembark(game.water.seaLevel);
+    this.board.hidden = !(station || canStepOut || mailbox || boardInRange);
     const prompt=this.board.querySelector('.gg-prompt-copy');
-    const label=ride?'DISEMBARK':station?'BOARD '+RIDES[station].name.toUpperCase():'GOAT GIGS';
+    const label=ride?'DISEMBARK':mailbox?'CHECK MAIL':station?'BOARD '+RIDES[station].name.toUpperCase():'GOAT GIGS';
     if(prompt && prompt.textContent!==label)prompt.textContent=label;
     this.setPointerLockHint(pointerLocked, boardInRange, device, pointerLockUnavailable, runningGig, lookHintNeeded && !ride);
     this.debug.hidden = !debugVisible;

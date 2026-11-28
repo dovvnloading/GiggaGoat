@@ -77,7 +77,20 @@ def play(page, url, evidence):
         page.goto(url, wait_until="commit")
         boot()
         low_graphics(page)
-        album()
+        click("play")
+        page.evaluate("""() => {
+          const b=g.island.props.find(p=>p.kind==='mailbox'), p=b.transform.position;
+          g.teleport({x:p.x+1.8,y:p.y-b.size.y/2+.15,z:p.z});
+          session.view.alignCameraForPlay();
+        }""")
+        wait("g.atMailbox")
+        page.locator("[data-board-hint]").filter(has_text="CHECK MAIL").wait_for()
+        page.keyboard.press("e")
+        page.locator(".gg-post-cards").wait_for()
+        click("back")
+        wait("!session.view.paused && g.atMailbox")
+        page.keyboard.press("e")
+        page.locator(".gg-post-cards").wait_for()
         assert page.locator(".gg-post-card").count() == 8
         page.screenshot(path=evidence / "dispatches.jpg", type="jpeg", quality=88)
         wait("session.audio.recordings?.effects.has('ui-postmaster') && session.audio.recordings.effects.has('postmark')")
@@ -198,6 +211,8 @@ def travel_trials(page, url, evidence):
             elif id == "plane":
                 keys("w","Space")
                 stage(1)
+                page.locator("[data-board-hint]").wait_for(state="hidden")
+                assert page.locator("[data-hotbar]").is_hidden()
                 keys("d")
                 stage(2)
                 keys("s","Shift")

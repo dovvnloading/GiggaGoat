@@ -82,6 +82,7 @@ describe('Billy Isle passenger travel', () => {
     const c = game.travel.craft.boat;
     while (c.speed <= 8.1) game.step({ moveZ: 1 });
     expect(Math.hypot(c.position.x - c.home.x, c.position.z - c.home.z)).toBeLessThan(11);
+    expect(game.travel.canDisembark(game.water.seaLevel)).toBe(false);
     expect(game.leaveRide()).toBe(false);
     expect(game.travel.active).toBe('boat');
   });
