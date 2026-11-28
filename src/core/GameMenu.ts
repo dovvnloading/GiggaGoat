@@ -776,6 +776,7 @@ export class GameMenu {
       const station=this.game.travel.station(this.game.goat.torso.translation());
       if(station && this.game.boardRide(station,true))return true;
     }
+    if (this.game.atRecordCounter) return false; // Let the normal bleat reach the listening counter.
     const poi = this.game.gigs.nearBoard();
     if (!poi) return false;
     this.boardPoi = poi;

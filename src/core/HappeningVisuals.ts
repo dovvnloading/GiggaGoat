@@ -1,3 +1,5 @@
+import { buildNoniShop } from '../world/nonis-shop';
+import { noniStorefront } from '../world/visual-downtown';
 import * as THREE from 'three';
 import { gridSample } from '../world/terrain';
 import type { IslandData, Vec3 } from '../world/types';
@@ -107,6 +109,17 @@ export class HappeningVisuals {
     group.position.set(site.position.x, site.position.y, site.position.z);
     group.rotation.y = site.yaw;
     group.scale.setScalar(site.scale);
+    if (site.definition.id === 'needle-drop') {
+      const lot = noniStorefront(this.island);
+      if (!lot) return;
+      this.recordShop = buildNoniShop(lot.size.x / site.scale);
+      this.recordShop.group.position.copy(group.position);
+      this.recordShop.group.rotation.y = site.yaw;
+      this.recordShop.group.scale.setScalar(site.scale);
+      this.recordShop.group.name = 'nonis-metal-records';
+      this.root.add(this.recordShop.group);
+      return;
+    }
     if (site.definition.id === 'honey-rolls') {
       this.bakeryRolls = Array.from({ length: 3 }, () => {
         const bun = new THREE.Group();
@@ -261,9 +274,15 @@ export class HappeningVisuals {
     this.scenes.push({ site, group, spin, spark, bursts });
   }
 
+  private recordShop?: ReturnType<typeof buildNoniShop>;
   private bakeryRolls: THREE.Group[] = [];
 
   update(time: number, camera: Vec3, enabled: boolean, bakeryEnabled = enabled): void {
+    const records = this.happenings.records;
+    if (this.recordShop && records) {
+      this.recordShop.group.visible = this.recordShop.group.position.distanceToSquared(camera) < (140 * records.site.scale) ** 2;
+      if (this.recordShop.group.visible) this.recordShop.update(records, time);
+    }
     const batch = this.happenings.bakery;
     if (batch) this.bakeryRolls.forEach((roll, index) => {
       roll.visible = bakeryEnabled && batch.roll(index, time, roll.position);
@@ -290,6 +309,7 @@ export class HappeningVisuals {
   }
 
   dispose(): void {
+    this.recordShop?.dispose();
     this.root.removeFromParent();
     for (const geometry of Object.values(this.shapes)) geometry.dispose();
     for (const material of this.materials.values()) material.dispose();

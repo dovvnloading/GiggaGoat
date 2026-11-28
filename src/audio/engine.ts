@@ -1,3 +1,5 @@
+import { RecordDeck } from './RecordDeck';
+import type { RecordPlayback } from '../core/NoniSession';
 import {
   AudioRandom, CULL_DISTANCE, DEFAULT_MUSIC_STATE, distance, distanceGain,
   decideVoice, isBigMoment, settingsFrom, soundPriority, stepLength, clamp,
@@ -56,6 +58,7 @@ export interface AudioFrame {
   camera?: CameraAudioPose;
   habitat?: Habitat;
   environment?: EnvironmentMix;
+  record?: RecordPlayback;
   vehicle?: {kind: 'boat' | 'plane' | 'tram' | 'balloon'; speed: number; lift: number};
   /** Input-only one-shots (charge start, UI or explicit jump) in the same frame call. */
   cues?: readonly AudioCue[];
@@ -244,6 +247,8 @@ export class VoiceManager {
 export class AudioEngine {
   private context: AudioContext | null = null;
   private voiceManager: VoiceManager | null = null;
+  private recordDeck?: RecordDeck;
+  private musicBed?: GainNode;
   private musicPlayer: AdaptiveMusic | null = null;
   private recordings: RecordedAudio | null = null;
   private ambiencePlayer: ZoneAmbience | IslandAmbience | null = null;
@@ -313,7 +318,7 @@ export class AudioEngine {
   setMenuAudio(enabled: boolean): void {
     if (enabled === this.menuOnly) return;
     this.menuOnly = enabled;
-    if(enabled)this.stopVehicle();
+    if (enabled) { this.stopVehicle(); this.recordDeck?.stop(); }
     if (enabled && !this.resultTail) this.voiceManager?.stopWorldVoices();
     this.applySettings();
   }
@@ -325,10 +330,11 @@ export class AudioEngine {
   }
 
   /** Disconnect active one-shots so backgrounding cannot replay them on return. */
-  clearVoices(): void { this.voiceManager?.dispose(); }
+  clearVoices(): void { this.recordDeck?.stop(); this.voiceManager?.dispose(); }
 
   /** Let admitted result cues finish without continuing the live scene mix. */
   beginResultAudio(result: ResultAudioKind): number | null {
+    this.recordDeck?.stop();
     this.resultTail = true;
     this.applySettings();
     return this.context?.state === 'running'
@@ -383,9 +389,12 @@ export class AudioEngine {
     this.master = master; this.limiter = limiter; this.duck = duck;
     this.buses = buses;
     this.synth = new ProceduralSynth(ctx, new AudioRandom('timbre:' + String(this.seed)));
-    this.recordings = this.recordedAssets ? new RecordedAudio(ctx, this.recordedAssets, buses.music) : null;
+    this.musicBed = ctx.createGain();
+    this.musicBed.connect(buses.music);
+    this.recordDeck = new RecordDeck(ctx,buses.music,this.musicBed);
+    this.recordings = this.recordedAssets ? new RecordedAudio(ctx, this.recordedAssets, this.musicBed) : null;
     this.voiceManager = new VoiceManager(ctx, this.synth, buses, this.maxVoices, this.recordings ?? undefined);
-    this.musicPlayer = new AdaptiveMusic(ctx, this.synth, this.recordings?.proceduralOutput ?? buses.music, this.seed);
+    this.musicPlayer = new AdaptiveMusic(ctx, this.synth, this.recordings?.proceduralOutput ?? this.musicBed, this.seed);
     this.ambiencePlayer = this.recordedAssets?.ambience
       ? new ZoneAmbience(ctx, buses.ambience, this.recordedAssets.ambience)
       : new IslandAmbience(ctx, this.synth, buses.ambience, this.seed);
@@ -489,6 +498,7 @@ export class AudioEngine {
     if (frame.state) this.currentState = { ...this.currentState, ...frame.state };
     if (frame.camera) this.updateListener(frame.camera);
     if (this.menuOnly || this.resultTail || !this.context || this.context.state !== 'running') return;
+    this.recordDeck?.update(frame.record);
     const audioNow = this.context.currentTime;
     const resolve = (input: AudioCue): PlayOptions => {
       // Physics/mode events carry goat IDs. Keyed gameplay events don't, so the
@@ -585,6 +595,8 @@ export class AudioEngine {
 
   dispose(): void {
     this.stopVehicle();
+    this.recordDeck?.dispose();
+    this.musicBed?.disconnect();
     if (this.disposed) return;
     this.disposed = true;
     for (const unbind of [...this.unbinders]) unbind();
