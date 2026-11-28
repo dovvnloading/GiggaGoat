@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { PropKind } from './types';
 import { publicAssetUrl } from './public-assets';
-import { isAuthoredLibraryAsset } from './library-fit';
+import { fitTimberRamp, isAuthoredLibraryAsset } from './library-fit';
 
 /**
  * Every procedural prop has a sourced CC0 replacement. All paths are checked
@@ -157,6 +157,7 @@ export function bakeLibraryPropGeometry(
   const authored = isAuthoredLibraryAsset(PROP_LIBRARY_MODELS[kind]);
   const geometry = bakeLibraryGeometry(root, authored, kind === 'planter' && !authored,
     kind === 'lighthouse' ? 'glass' : undefined);
+  if (geometry && kind === 'ramp') fitTimberRamp(geometry);
   if (geometry && kind === 'silo') geometry.userData.preserveSilhouette = true;
   return geometry;
 }

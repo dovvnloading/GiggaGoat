@@ -447,11 +447,6 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
                 treeArtCenterY(island, anchor, prop.size.y, base);
               return new THREE.Matrix4().makeTranslation(0, (y - anchor.y) / prop.size.y, 0);
             });
-          } else if (job.kind === 'ramp' && job.entries.some(prop => prop.id.startsWith('downtown-bleatsville-ramp-'))) {
-            // The loaded timber asset rises toward local -Z. The Downtown
-            // service ramp colliders and fallback art rise toward +Z.
-            job.adjustments = job.entries.map(prop => new THREE.Matrix4()
-              .makeRotationY(prop.id.startsWith('downtown-bleatsville-ramp-') ? Math.PI : 0));
           } else if (job.entries.some(prop => prop.id.startsWith(CRANE_SWITCHBACK_PREFIX))) {
             const span = original.boundingBox!.getSize(new THREE.Vector3())
               .divide(libraryGeometry.boundingBox!.getSize(new THREE.Vector3()));

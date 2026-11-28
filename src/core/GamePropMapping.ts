@@ -22,12 +22,7 @@ function fitRoot(root: THREE.Group, size: Size3, nominal: Size3): THREE.Group {
 export function createWorldLibraryProp(factory: PropFactory,
   prop: Pick<PropDescriptor, 'kind' | 'size' | 'color'> & { id?: string }): THREE.Group | null {
   if (!WORLD_LIBRARY_KINDS.has(prop.kind)) return null;
-  // Timber model rises toward local -Z. The main tread plane runs from
-  // 5.48% to 100.31% of its overall fitted height at the two ends.
-  const artFit = prop.kind === 'ramp' && prop.id?.startsWith('downtown-bleatsville-ramp-')
-    ? { yaw: Math.PI, treadElevations: [.0548, 1.0031] as const } : undefined;
-  const root = factory.createWorldProp(prop.kind as WorldLibraryPropKind, prop.size, prop.color,
-    artFit);
+  const root = factory.createWorldProp(prop.kind as WorldLibraryPropKind, prop.size, prop.color);
   if (isSodaBarrel(prop)) factory.addSodaLabel(root, prop.size);
   return root;
 }

@@ -245,12 +245,12 @@ describe('world props use World Lab art rather than gig/build toys', () => {
     f.dispose();
   });
 
-  it('uses the Lab fit, footprint, floor and paint for every model', async () => {
+  it('fits the footprint, floor and paint of the props that sit on flat ground', async () => {
     const f = new PropFactory({
       loadModel: async url => mockWorldModel(url), assetBaseUrl: assetBase,
     });
     const size = { x: 9.2, y: 1.85, z: .35 };
-    const cases = worldKinds.map(kind => {
+    const cases = worldKinds.filter(kind => kind !== 'ramp').map(kind => {
       const root = createWorldLibraryProp(f, { kind, size, color: 0x8e6739 })!;
       root.position.set(12, 4, -8);
       return { kind, root };
@@ -294,7 +294,7 @@ describe('world props use World Lab art rather than gig/build toys', () => {
     f.dispose();
   });
 
-  it('aligns the four Downtown service ramp models with their walkable colliders', async () => {
+  it('places every timber tread on its walkable collider before and after the GLB loads', async () => {
     await RAPIER.init();
     const island = generateIsland();
     const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
@@ -304,10 +304,12 @@ describe('world props use World Lab art rather than gig/build toys', () => {
     const f = new PropFactory({ loadModel: async () => scene, assetBaseUrl: assetBase });
     try {
       const { props } = buildRapierColliders(world, island);
-      const ramps = island.props.filter(prop => prop.kind === 'ramp'
-        && prop.id.startsWith('downtown-bleatsville-ramp-'));
-      expect(ramps.map(prop => prop.id)).toEqual([41, 43, 51, 53]
-        .map(index => 'downtown-bleatsville-ramp-' + index));
+      const ramps = island.props.filter(prop => prop.kind === 'ramp');
+      expect(ramps.map(prop => prop.id)).toEqual(expect.arrayContaining([
+        ...[41, 43, 51, 53].map(index => 'downtown-bleatsville-ramp-' + index),
+        ...[0, 1, 2, 3].map(index => 'downtown-courier-span-' + index),
+        'roadside-yard-layby-runup-ramp',
+      ]));
       const models = ramps.map(prop => {
         const root = createWorldLibraryProp(f, prop)!;
         const { position, rotationY } = prop.transform;
@@ -315,12 +317,11 @@ describe('world props use World Lab art rather than gig/build toys', () => {
         root.rotation.y = rotationY;
         return root;
       });
-      await f.whenReady();
       const down = new THREE.Vector3(0, -1, 0);
-      for (const [index, prop] of ramps.entries()) {
+      const checkTreads = (status: 'loading' | 'ready') => ramps.forEach((prop, index) => {
         const collider = props.get(prop.id)!;
         const root = models[index]!;
-        expect(root.userData.assetStatus, prop.id).toBe('ready');
+        expect(root.userData.assetStatus, prop.id).toBe(status);
         root.updateMatrixWorld(true);
         const treads = [.005, .02, .05, .25, .75, .95, .98, .995].map(fraction => {
           const origin = new THREE.Vector3(0, prop.size.y, (fraction - .5) * prop.size.z)
@@ -330,11 +331,14 @@ describe('world props use World Lab art rather than gig/build toys', () => {
           const support = collider.castRay(new RAPIER.Ray(origin, down), prop.size.y * 2, false);
           expect(tread, prop.id).toBeDefined();
           expect(support, prop.id).toBeGreaterThan(0);
-          expect(Math.abs(tread!.distance - support), prop.id + ':' + fraction).toBeLessThan(.01);
+          expect(Math.abs(tread!.distance - support), status + ' ' + prop.id + ':' + fraction).toBeLessThan(.01);
           return tread!.point.y;
         });
         expect(treads.at(-1)!, prop.id).toBeGreaterThan(treads[0]!);
-      }
+      });
+      checkTreads('loading');
+      await f.whenReady();
+      checkTreads('ready');
     } finally {
       f.dispose();
       world.free();

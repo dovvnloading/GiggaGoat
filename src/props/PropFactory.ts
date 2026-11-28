@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { BUILD_PIECE_SIZES, BUILD_RAMP_VERTICES, BUILD_RAMP_TRIANGLES } from '../gameplay';
 import { PROP_LIBRARY_MODELS, bakeLibraryPropGeometry } from '../world/library-props';
-import { fitLibraryModel, isAuthoredLibraryAsset } from '../world/library-fit';
+import { fitLibraryModel, fitTimberRamp, isAuthoredLibraryAsset } from '../world/library-fit';
 import { kitShape } from '../world/kit-preview';
 import { TOON_RAMP } from '../world/visual-props';
 
@@ -17,14 +17,6 @@ export type GigPropType = 'crate' | 'barrel' | 'hay';
 export interface Size3 { x: number; y: number; z: number }
 export type WorldLibraryPropKind =
   'crate' | 'barrel' | 'hay-bale' | 'fence' | 'ramp' | 'trampoline' | 'gnome';
-
-interface WorldArtFit {
-  yaw: number;
-  /** Tread plane elevations at the model's ends, relative to its initial fitted floor and height. */
-  treadElevations: readonly [toe: number, crest: number];
-}
-
-
 
 export { BUILD_PIECE_SIZES };
 export const SURFACE_HALF_EXTENTS: Readonly<Size3> = { x: 2.1, y: .23, z: 2.1 };
@@ -260,7 +252,7 @@ export class PropFactory {
   }
 
   private fittedWorld(prototype: THREE.Object3D, kind: WorldLibraryPropKind,
-    size: Size3, color: number | undefined, artFit?: WorldArtFit): THREE.Group | null {
+    size: Size3, color: number | undefined): THREE.Group | null {
     let geometry = this.worldGeometries.get(kind);
     if (!geometry) {
       // Use the same multi-mesh/atlas/vertex-colour baker as World Lab.
@@ -279,15 +271,21 @@ export class PropFactory {
     const fitted = new THREE.Group();
     fitted.name = 'world-library-fitted';
     fitted.add(mesh);
-    this.fitWorldSlot(fitted, nativeBounds, kind, size, artFit);
+    this.fitWorldSlot(fitted, nativeBounds, kind, size);
     return fitted;
   }
 
   private fitWorldSlot(fitted: THREE.Object3D, source: THREE.Box3, kind: WorldLibraryPropKind,
-    size: Size3, artFit?: WorldArtFit): void {
+    size: Size3): void {
+    if (kind === 'ramp') {
+      // Both the painted mesh and its packed preview are fitted to a unit wedge.
+      fitted.scale.set(size.x, size.y, size.z);
+      fitted.updateMatrixWorld(true);
+      return;
+    }
     const fit = fitLibraryModel(source.getSize(new THREE.Vector3()),
       new THREE.Vector3(size.x, size.y, size.z), PROP_LIBRARY_MODELS[kind]);
-    fitted.rotation.y = fit.yaw + (artFit?.yaw ?? 0);
+    fitted.rotation.y = fit.yaw;
     fitted.scale.copy(fit.scale);
     fitted.updateMatrix();
     const bounds = source.clone().applyMatrix4(fitted.matrix);
@@ -297,31 +295,24 @@ export class PropFactory {
       -(bounds.min.x + bounds.max.x) / 2,
       -size.y / 2 - bounds.min.y,
       -(bounds.min.z + bounds.max.z) / 2);
-    if (artFit) {
-      const [toe, crest] = artFit.treadElevations;
-      // Fit the walkable tread from the collider floor to its crest.
-      const verticalScale = 1 / (crest - toe);
-      fitted.scale.y *= verticalScale;
-      fitted.position.y = -size.y / 2 - (bounds.min.y + size.y * toe) * verticalScale;
-    }
     fitted.updateMatrixWorld(true);
   }
 
   /** Fit shared kit geometry immediately and keep the slot when native art arrives. */
-  createWorldProp(kind: WorldLibraryPropKind, size: Size3, color: number | undefined,
-    artFit?: WorldArtFit): THREE.Group {
+  createWorldProp(kind: WorldLibraryPropKind, size: Size3, color: number | undefined): THREE.Group {
     const root = this.root('world-' + kind, size);
     const slot = new THREE.Group();
     slot.name = 'library-slot';
     root.add(slot);
     const preview = this.cachedGeometry('kit-preview:' + kind, () => {
       const geometry = kitShape(kind);
+      if (kind === 'ramp') fitTimberRamp(geometry);
       geometry.userData.sourceKit = PROP_LIBRARY_MODELS[kind];
       return geometry;
     });
     const proxy = new THREE.Mesh(preview, this.worldPaint(kind, color));
     proxy.name = kind === 'fence' ? 'world-picket-fence' : kind === 'gnome' ? 'gig-gnome-placeholder' : 'kit-preview-' + kind;
-    this.fitWorldSlot(proxy, preview.boundingBox!, kind, size, artFit);
+    this.fitWorldSlot(proxy, preview.boundingBox!, kind, size);
     proxy.castShadow = true;
     proxy.receiveShadow = true;
     slot.add(proxy);
@@ -331,7 +322,7 @@ export class PropFactory {
       if (this.disposed || !this.instances.has(root)) return;
       let model: THREE.Group | null = null;
       try {
-        if (prototype) model = this.fittedWorld(prototype, kind, size, color, artFit);
+        if (prototype) model = this.fittedWorld(prototype, kind, size, color);
       } catch {
         // A malformed GLB is treated exactly like a failed network request.
       }

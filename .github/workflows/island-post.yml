@@ -16,7 +16,8 @@ jobs:
     if: github.event_name == 'pull_request'
     name: ${{ matrix.activity }} playtest
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    # SwiftShader renders seven high-quality views, including the Downtown skyline.
+    timeout-minutes: ${{ matrix.activity == 'render' && 24 || 12 }}
     strategy:
       fail-fast: false
       matrix:
