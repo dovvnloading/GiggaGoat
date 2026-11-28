@@ -16,12 +16,13 @@ import { TOYS } from './Toybox';
 import toyIcons from './assets/toybox.webp?url';
 
 import { RIDES, rideIds, type Ride } from './IslandTravel';
+import { TRAVEL_TRIALS, trialIds, trialTime } from './TravelTrials';
 
 import { DISPATCHES } from './IslandPost';
 import postcardSheet from './assets/island-post/postcards.webp?url';
 import postmasterPortrait from './assets/island-post/marnie.webp?url';
 
-type Screen = 'post' | 'travel' | 'toybox' | 'title' | 'playing' | 'pause' | 'party' | 'party-confirm' | 'settings' |
+type Screen = 'trials' | 'post' | 'travel' | 'toybox' | 'title' | 'playing' | 'pause' | 'party' | 'party-confirm' | 'settings' |
   'board' | 'gig-results' | 'party-results';
 const CSS = `
 /* The frame, stat cards, tabs and action buttons are nine-sliced sprite PNGs.
@@ -518,6 +519,15 @@ export class GameMenu {
     if (this.screen === 'travel' && key === 'post') {
       this.setScreen('post'); return;
     }
+    if (this.screen === 'travel' && key === 'trials') { this.setScreen('trials'); return; }
+    if (this.screen === 'trials' && key.startsWith('trial-')) {
+      const id = trialIds.find(ride => key === 'trial-' + ride);
+      if (id && this.game.startTravelTrial(id)) {
+        this.view.alignCameraForPlay();
+        this.resume(mouseClick);
+      }
+      return;
+    }
     if (this.screen === 'post' && key.startsWith('dispatch-') && this.game.travelAvailable) {
       if (this.game.post.start(key.slice(9))) {
         this.save();
@@ -628,6 +638,7 @@ export class GameMenu {
     this.root.querySelector('.gg-shell-panel')?.prepend(message);
   }
   private back(mouseClick = false): void {
+    if (this.screen === 'trials') { this.setScreen('travel','[data-action="trials"]'); return; }
     if (this.screen === 'post') { this.setScreen('travel','[data-action="post"]'); return; }
     if (this.screen === 'travel') { this.setScreen(this.travelReturn,'[data-action="travel"]'); return; }
     if (this.screen === 'title') return;
@@ -1195,9 +1206,17 @@ export class GameMenu {
           <i aria-hidden="true" style="background-position:${(i%3)*50}% ${Math.floor(i/3)*100}%"></i>
           <span><strong>${toy.name}</strong><small>${toy.hint}</small></span></button>`).join('')}</div>` :
       this.screen === 'post' ? this.postBody() :
+      this.screen === 'trials' ? `<h2>Travel trials</h2><p>Earn 60 Cud Coins for your first finish in each craft. Replay to improve your time.</p>
+        <div class="gg-options gg-travel-options">${trialIds.map(id => {
+          const trial = TRAVEL_TRIALS[id], best = this.game.travel.trials.best[id];
+          const controls = this.game.travel.controls(this.view.input.device === 'gamepad', this.game.physics.time, id);
+          return `<div>${menuButton('trial-' + id, trial.title)}<small>${trial.briefing}</small>
+            <small>${controls}${best ? ' · Best ' + trialTime(best) : ''}</small></div>`;
+        }).join('')}${menuButton('back','← BACK')}</div>` :
       this.screen === 'travel' ? `<h2>ISLAND TRAVEL</h2><p>Choose a departure to board in Free Roam.</p>
         <div class="gg-options gg-travel-options">${rideIds.map(id=>`<div>${menuButton('ride-'+id,RIDES[id].name+' · '+RIDES[id].port)}<small>${RIDES[id].hint}</small></div>`).join('')}
         ${this.game.post?.routes.length ? menuButton('post','ISLAND POST · DISPATCHES') : ''}
+        ${menuButton('trials','TRAVEL TRIALS')}
         ${menuButton('back','← BACK')}</div>` :
       this.screen === 'party' ? this.partyBody() :
       this.screen === 'party-confirm' ? this.partyConfirmBody() :

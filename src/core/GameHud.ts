@@ -735,7 +735,9 @@ export class GameHud {
     const contractTarget = !match && run?.status === 'running' && run.objective.kind === 'summit'
       ? run.objective.next : undefined;
     const postalTarget = game.travelAvailable ? game.post?.target?.position : undefined;
-    const target = match?.mode === 'rising-tide' && match.phase !== 'results' ? tideTarget : contractTarget ?? postalTarget;
+    const trial = game.travel?.trials?.active;
+    const berth = trial?.id === 'boat' && trial.stage === 2 ? game.travel.craft.boat.home : undefined;
+    const target = match?.mode === 'rising-tide' && match.phase !== 'results' ? tideTarget : contractTarget ?? berth ?? postalTarget;
     const flag = this.mapObjectives?.querySelector('[data-map-climb-target]');
     if (flag) {
       flag.setAttribute('visibility', target ? 'visible' : 'hidden');
@@ -837,17 +839,18 @@ export class GameHud {
     const run = activeGig?.status === 'running' ? activeGig : game.pendingGigResult;
     // Enter a little inside the interaction radius to avoid blinking at its edge.
     const bleatAtCounter = game.atPostalStop || game.atRecordCounter;
-    const boardInRange = !bleatAtCounter && game.gigs.nearBoard(this.board.hidden ? 8.75 : 9) !== null;
+    const ride = game.travel?.active;
+    const boardInRange = !ride && !bleatAtCounter && game.gigs.nearBoard(this.board.hidden ? 8.75 : 9) !== null;
     const carryStamina = carryStaminaForHud(game.party.match, 'player');
     const stackLiftCue = game.gigs.stackLiftCue;
     const stackLiftPrompt = stackLiftCue === 'ready' ?
       (device === 'gamepad' ? 'Press right stick to lift' : 'R · Lift crate') :
       stackLiftCue === 'moving' ? 'Lifting crate' :
         stackLiftCue === 'clear' ? 'Step clear of the pad' : undefined;
-    const ride=game.travel?.active;
     const station=!ride && !bleatAtCounter && game.travelAvailable ? game.travel.station(game.goat.torso.translation()) : null;
-    const route = ride ? { title: RIDES[ride].name, task: game.travel.controls(device === 'gamepad', game.physics.time),
-      detail: game.travel.instruments() } : undefined;
+    const instruments = ride ? game.travel.instruments() : '';
+    const route = ride ? game.travel.trials?.message(instruments) ?? { title: RIDES[ride].name,
+      task: game.travel.controls(device === 'gamepad', game.physics.time), detail: instruments } : undefined;
     this.gigHeader.textContent = ride ? 'ISLAND TRAVEL' : game.post?.active && game.travelAvailable ? 'ISLAND POST' : 'CURRENT GIG';
     this.gigCard.setAttribute('aria-label', ride ? 'Travel instruments' : 'Current gig');
     const state = deriveHudState({

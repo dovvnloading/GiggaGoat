@@ -1,6 +1,7 @@
 import { IslandPost } from './IslandPost';
 import type { HappeningId } from './IslandHappenings';
 import { IslandTravel, type Ride } from './IslandTravel';
+import type { TrialId } from './TravelTrials';
 import { Toybox } from './Toybox';
 import type { RigidBody, ColliderDesc, Shape } from '@dimforge/rapier3d-compat';
 import {
@@ -212,7 +213,7 @@ export class Game {
   private constructor(physics: PhysicsWorld, island: IslandData, colliders: ColliderBuild, options: GameOptions) {
     this.physics = physics;
     this.island = island;
-    this.travel = new IslandTravel(island);
+    this.travel = new IslandTravel(island, options.progress?.trialBests);
     this.colliders = colliders;
     this.craneCenter = island.pois.find(poi => poi.id === 'crane-yard')!.center;
     const noClimbGuardPrefixes = [DAM_FRONT_GUARD.prefix, DAM_BACK_GUARD.prefix,
@@ -854,7 +855,8 @@ export class Game {
       intent[button] = state.applied;
     }
     if (this.travel.active) {
-      this.travel.tick(dt,intent,this.water.seaLevel,this.physics.time);
+      const reward = this.travel.tick(dt, intent, this.water.seaLevel, this.physics.time);
+      if (reward) this.rules.wallet.credit(reward, 'travel-trial');
       this.moveRider();
       return;
     }
@@ -1445,6 +1447,12 @@ export class Game {
     return true;
   }
 
+  startTravelTrial(id: TrialId): boolean {
+    if (!this.boardRide(id)) return false;
+    this.travel.trials.start(id, this.travel.craft[id].heading);
+    return true;
+  }
+
   private moveRider(): void {
     const id = this.travel.active!;
     const heading = this.travel.craft[id].heading;
@@ -1594,7 +1602,7 @@ export class Game {
   exportProgress(): GameProgress {
     const progress: GameProgress = { gameplay: this.rules.toJSON(), gigs: this.gigs.director.toJSON(),
       gigBodies: this.gigs.saveBodies(), acknowledgedGigAttempt: this.acknowledgedGigAttempt,
-      post: this.post.snapshot(), happenings: this.happenings.snapshot() };
+      post: this.post.snapshot(), happenings: this.happenings.snapshot(), trialBests: { ...this.travel.trials.best } };
     const run = this.gigs.active;
     if (run?.status === 'running') {
       const { x, y, z } = this.goat.torso.translation();

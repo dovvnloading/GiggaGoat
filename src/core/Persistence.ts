@@ -19,6 +19,7 @@ export interface GameProgress {
   gigBodies: GigBodySave[];
   acknowledgedGigAttempt?: number;
   post?: import('./IslandPost').PostSave;
+  trialBests?: import('./TravelTrials').TrialBests;
   /** Stable IDs of one-time local discoveries; absent in older saves. */
   happenings?: import('./IslandHappenings').HappeningId[];
   gigPlayerPose?: GigPlayerPose;
