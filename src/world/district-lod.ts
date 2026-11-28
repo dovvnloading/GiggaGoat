@@ -39,6 +39,21 @@ function skylineGeometry(source: THREE.BufferGeometry): THREE.BufferGeometry {
   return mesh;
 }
 
+/** Paint seams and window normals do not affect a sun shadow. Weld positions alone
+ * and preserve the outer shape to within the shadow map's ground resolution. */
+function architecturalShadow(skyline: THREE.BufferGeometry): THREE.BufferGeometry {
+  const surface = new THREE.BufferGeometry();
+  surface.setAttribute('position', skyline.getAttribute('position'));
+  surface.setIndex(skyline.index);
+  const welded = mergeVertices(surface, 1e-4);
+  const indices = Uint32Array.from(welded.index!.array);
+  const [reduced] = MeshoptSimplifier.simplify(indices, welded.getAttribute('position').array as Float32Array,
+    3, Math.floor(indices.length / 9) * 3, .16, ['ErrorAbsolute']);
+  welded.setIndex(new THREE.BufferAttribute(reduced, 1));
+  welded.computeBoundingSphere();
+  return welded;
+}
+
 interface Cell<Model extends string> {
   small: boolean;
   ranges: BakedPlacement<Model>[];
@@ -62,7 +77,7 @@ export async function createDistrictLod<Model extends string>(
 ): Promise<DistrictLod> {
   const cells = new Map<string, Cell<Model>>();
   // Art rule (docs/art/qa/hoofington-qa-1.md, pass 2): buildings are never
-  // decimated. At the distant ratio, houses, the silo and the barn crumpled
+  // sent through the generic far-mesh reduction. Houses, the silo and the barn crumpled
   // into faceted shards in the World Lab art camera. Only foliage and small
   // dressing simplify; slender landmarks keep their silhouette as before.
   const silhouetteModels = new Set([
@@ -102,6 +117,7 @@ export async function createDistrictLod<Model extends string>(
     sphere: THREE.Sphere;
     small: boolean;
     skyline?: THREE.BufferGeometry;
+    shadow?: THREE.BufferGeometry;
   }> = [];
   // Largest (usually architectural) cell keeps the historical QA mesh name.
   const ordered = [...cells.values()].sort((a, b) =>
@@ -162,12 +178,13 @@ export async function createDistrictLod<Model extends string>(
         // The loose sphere often encloses the street outside a long or tall cell.
         // Measure to the closest point of the painted buildings' actual bounds.
         const skyline = sightseeing && entry.high.boundingBox!.distanceToPoint(position) > 25;
-        // Prepare one visible cell per district per frame. The same silhouette serves the shadow map.
+        // Prepare at most one visible architectural cell per district each frame.
         if (visible && sightseeing && !entry.skyline && !preparedCell && simplifierReady) {
           entry.skyline = skylineGeometry(entry.high);
+          entry.shadow = architecturalShadow(entry.skyline);
           preparedCell = true;
         }
-        entry.mesh.userData.shadowSilhouette = sightseeing ? entry.skyline : undefined;
+        entry.mesh.userData.shadowSilhouette = sightseeing ? (entry.shadow ?? entry.skyline) : undefined;
         const geometry = skyline && entry.skyline ? entry.skyline : far ? entry.low : entry.high;
         if (entry.mesh.castShadow && (entry.mesh.visible !== visible ||
             entry.mesh.geometry !== geometry)) changed = true;
@@ -180,6 +197,7 @@ export async function createDistrictLod<Model extends string>(
       if (disposed) return;
       disposed = true;
       for (const entry of entries) {
+        entry.shadow?.dispose();
         if (entry.skyline && entry.skyline !== entry.high && entry.skyline !== entry.low) entry.skyline.dispose();
         entry.high.dispose();
         if (entry.low !== entry.high) entry.low.dispose();
