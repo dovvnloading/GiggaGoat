@@ -1,4 +1,5 @@
 import { GameSimulation, type GameSnapshot } from '../gameplay';
+import { DEFAULT_FIELD_OF_VIEW } from './GraphicsQuality';
 import type { GigSnapshot } from '../gigs';
 import type { GigBodySave } from './GigSession';
 import type { Game } from './Game';
@@ -43,7 +44,7 @@ export interface GameSave {
 }
 export const SAVE_KEY = 'gigga-goat/save/v1';
 export const DEFAULT_SETTINGS: Readonly<GameSettings> = Object.freeze({
-  mouseSensitivity: 1, invertY: false, fov: 67, graphics: 'high',
+  mouseSensitivity: 1, invertY: false, fov: DEFAULT_FIELD_OF_VIEW, graphics: 'high',
   volume: .8, musicVolume: .52, effectsVolume: .88,
 });
 

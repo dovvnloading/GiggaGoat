@@ -38,6 +38,25 @@ function cameraFixture(physics: PhysicsWorld) {
 }
 
 describe('free-roam camera / compact HUD reference framing', () => {
+  it('changes the lens aboard each ride when the player adjusts the field of view', async () => {
+    const game = await Game.create({ resolution: 65 });
+    try {
+      const { view, camera } = cameraFixture(game.physics);
+      Object.assign(view, { game });
+      for (const ride of ['boat', 'plane', 'balloon', 'tram'] as const) {
+        game.travel.active = ride;
+        for (const fov of [95, 55]) {
+          view.currentSettings.fov = fov;
+          for (let i = 0; i < 120; i++) view.updateCamera(0, 1 / 60);
+          expect(camera.fov).toBeCloseTo(fov, 1);
+          expect(camera.projectionMatrix.elements[5]).toBeCloseTo(1 / Math.tan(fov * Math.PI / 360), 2);
+        }
+      }
+    } finally {
+      game.dispose();
+    }
+  });
+
   it('snaps the camera pivot for a short teleport while retaining normal follow smoothing', async () => {
     const physics = await PhysicsWorld.create();
     try {

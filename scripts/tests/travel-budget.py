@@ -15,7 +15,8 @@ def sample_view(page, settle=12):
       }
       const sorted=[...frames].sort((a,b)=>a-b);
       const position=g.travel.active ? g.travel.craft[g.travel.active].position : g.goat.torso.translation();
-      return {median:sorted[12],peak:sorted[23],frames,quality:v.currentSettings.graphics,position:{...position}};
+      return {median:sorted[12],peak:sorted[23],frames,quality:v.currentSettings.graphics,
+        fov:v.camera.fov,aspect:v.camera.aspect,position:{...position}};
     }""", settle)
 
 
@@ -81,6 +82,18 @@ def check_rides(page, url, evidence):
         page.evaluate("degrees => {v.input.yaw=degrees*Math.PI/180}",angle)
         streets[name] = sample_view(page,settle=24)
         print("Downtown",name,"peak",streets[name]["peak"],flush=True)
+    # The northwest skyline also has to fit when the player opens the lens on an ultrawide display.
+    page.keyboard.press("Escape")
+    click("settings")
+    page.locator('[data-tab="video"]').click()
+    page.locator("#gg-setting-fov").press("End")
+    click("back")
+    page.set_viewport_size({"width":1260,"height":540})
+    click("resume")
+    page.evaluate("v.input.yaw=-Math.PI/4")
+    page.wait_for_function("v.camera.fov>94.75", timeout=45000)
+    streets["northwest-wide"] = sample_view(page,settle=24)
+    print("Downtown wide","peak",streets["northwest-wide"]["peak"],flush=True)
     (evidence / "ride-budgets.json").write_text(json.dumps({"rides":profile,"downtown":streets,"errors":errors},indent=2), encoding="utf-8")
     assert not errors, errors
     for view, stats in {**profile, **streets}.items():

@@ -8,7 +8,7 @@ import { IslandAtmosphere } from './IslandAtmosphere';
 import { SKY_HORIZON_COLOR } from '../world/visual-sky';
 import { DEFAULT_SETTINGS, type GameSettings } from './Persistence';
 import { AdaptiveResolution } from './AdaptiveResolution';
-import { GRAPHICS_PRESETS, type GraphicsQuality } from './GraphicsQuality';
+import { GRAPHICS_PRESETS, sceneryDetailScale, type GraphicsQuality } from './GraphicsQuality';
 import type { GameAudio } from './GameAudio';
 import { PropFactory, InstancedPropRenderer } from '../props';
 import { HEIST_BALE_SIZE } from '../props/PropFactory';
@@ -71,7 +71,7 @@ export class GameView {
   private readonly happeningVisuals: HappeningVisuals;
   private readonly residents: ReturnType<typeof buildAmbientLifeVisuals>;
   private readonly marketVisuals: ReturnType<typeof buildMarketFruitVisuals>;
-  readonly camera = new THREE.PerspectiveCamera(67, 1, .07, 2200);
+  readonly camera = new THREE.PerspectiveCamera(DEFAULT_SETTINGS.fov, 1, .07, 2200);
   readonly scene = new THREE.Scene();
   readonly world: WorldScene;
   readonly input: GameInput;
@@ -888,6 +888,7 @@ export class GameView {
       else this.camera.position.lerp(this.cameraOffset, lerpAlpha(7, dt));
       this.cameraTarget.set(p.x, p.y + aim, p.z);
       this.camera.lookAt(p.x + Math.sin(yaw), p.y + aim, p.z - Math.cos(yaw));
+      this.updateFieldOfView(this.currentSettings.fov, dt);
       return;
     }
     this.cameraRide = null;
@@ -972,13 +973,15 @@ export class GameView {
     const speed = Math.hypot(velocity.x, velocity.z);
     const kick = this.game.goat.locomotion.input.sprint ?
       7 : Math.min(14, Math.max(0, speed - 8) * 1.4);
-    const fov = this.currentSettings.fov + kick;
-    const nextFov = this.camera.fov + (fov - this.camera.fov) * lerpAlpha(5, dt);
+    this.updateFieldOfView(this.currentSettings.fov + kick, dt);
+  }
+
+  private updateFieldOfView(target: number, dt: number): void {
+    const nextFov = this.camera.fov + (target - this.camera.fov) * lerpAlpha(5, dt);
     if (Math.abs(this.camera.fov - nextFov) > .001) {
       this.camera.fov = nextFov;
       this.camera.updateProjectionMatrix();
     }
-
   }
 
   private frame(timestamp: number): void {
@@ -1082,8 +1085,10 @@ export class GameView {
         this.skylineBudgetOrigin.distanceToSquared(this.camera.position) > 45 ** 2) {
       this.skylineBudgetOrigin = null;
     }
-    this.world.updateCulling(this.camera, !!this.game.travel.active || !!this.skylineBudgetOrigin, range);
-    this.instancedProps.update(this.camera, range);
+    const detailScale = sceneryDetailScale(this.camera.fov, this.camera.aspect);
+    const distantView = !!this.game.travel.active || !!this.skylineBudgetOrigin || detailScale < .8;
+    this.world.updateCulling(this.camera, distantView, range, detailScale);
+    this.instancedProps.update(this.camera, range * detailScale);
     this.shadowTimer += sceneDt;
     if (this.shadowTimer >= .1 && this.renderer.shadowMap.enabled) {
       this.shadowTimer = 0;

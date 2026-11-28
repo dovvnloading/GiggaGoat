@@ -11,7 +11,7 @@ import {
 } from './lod';
 
 export interface DistrictLod {
-  updateCulling(position: THREE.Vector3, frustum: THREE.Frustum, sightseeing?: boolean): boolean;
+  updateCulling(position: THREE.Vector3, frustum: THREE.Frustum, sightseeing?: boolean, detailScale?: number): boolean;
   dispose(): void;
 }
 
@@ -165,7 +165,7 @@ export async function createDistrictLod<Model extends string>(
   if (MeshoptSimplifier.supported) void MeshoptSimplifier.ready.then(() => { simplifierReady = true; });
   let disposed = false;
   return {
-    updateCulling(position, frustum, sightseeing = false): boolean {
+    updateCulling(position, frustum, sightseeing = false, detailScale = 1): boolean {
       if (disposed) return false;
       let changed = false;
       let preparedCell = false;
@@ -175,12 +175,12 @@ export async function createDistrictLod<Model extends string>(
           dist - entry.sphere.radius <= island.size * 1.4 &&
           (!entry.small || dist - Math.min(entry.sphere.radius, 12) <
             WORLD_LOD.smallPropDistance);
-        const far = dist > WORLD_LOD.detailedDistance;
+        const far = dist > WORLD_LOD.detailedDistance * detailScale;
         // The loose sphere often encloses the street outside a long or tall cell.
         // Measure to the closest point of the painted buildings' actual bounds.
         const nearest = entry.high.boundingBox!.distanceToPoint(position);
-        const skyline = sightseeing && nearest > 25;
-        const horizon = sightseeing && nearest > 200 && entry.high.userData.preserveSilhouette;
+        const skyline = sightseeing && nearest > 25 * detailScale;
+        const horizon = sightseeing && nearest > 200 * detailScale && entry.high.userData.preserveSilhouette;
         // Prepare at most one visible architectural cell per district each frame.
         if (visible && sightseeing && !preparedCell && simplifierReady) {
           if (!entry.skyline) {
@@ -188,8 +188,8 @@ export async function createDistrictLod<Model extends string>(
             entry.shadow = architecturalShadow(entry.skyline);
             preparedCell = true;
           } else if (horizon && !entry.horizon) {
-            // Beyond 200 m the extra 14 cm of error projects to less than a
-            // pixel at the default 1080p field of view. Keep the painted seams.
+            // At the reference lens this tier starts at 200 m. Wider views
+            // reach the same projected detail sooner. Keep the painted seams.
             entry.horizon = skylineGeometry(entry.skyline, .5, .14);
             preparedCell = true;
           }
