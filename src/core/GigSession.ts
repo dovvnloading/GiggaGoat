@@ -32,7 +32,7 @@ interface SummitAscent {
   peak: number;
   previous: Vec3 | null;
   respawns: number;
-  interrupted: boolean;
+  recovery: 'on-trail' | 'stumble' | 'interrupted';
 }
 const SUMMIT_TRAIL_ID = 'mt-gigga--hoofington';
 const COURIER_SHRINK_SETTLE_TICKS = 24;
@@ -559,11 +559,11 @@ export class GigSession {
       peak: startY + run.metrics.climbed,
       previous: null,
       respawns: this.game.respawns,
-      interrupted: true,
+      recovery: 'interrupted',
     };
   }
 
-  private measuredSummitAscent(position: Vec3, run: GigRun): number {
+  private measuredSummitAscent(position: Vec3, run: GigRun, flopped: boolean): number {
     const ascent = this.summitAscent ??= this.beginSummitAscent(run);
     if (!ascent) return 0;
     const { goat, colliders, respawns } = this.game;
@@ -573,19 +573,24 @@ export class GigSession {
     const onTrail = trail.some((point, index) => index > 0 &&
       segmentProjection(position, trail[index - 1]!, point).distance <= radius);
     const scale = Math.max(1, goat.size);
-    ascent.interrupted ||= ascent.respawns !== respawns || !onTrail || goat.isRagdoll || !previous ||
-      travel >= .45 * scale || Math.abs(position.y - previous.y) >= .35 * scale;
+    if (flopped || ascent.respawns !== respawns || !onTrail || !previous ||
+        travel >= .45 * scale || Math.abs(position.y - previous.y) >= .35 * scale) {
+      ascent.recovery = 'interrupted';
+    } else if (goat.isRagdoll && ascent.recovery === 'on-trail') {
+      ascent.recovery = 'stumble';
+    }
     ascent.respawns = respawns;
     if (!onTrail || goat.isRagdoll) return 0;
     const support = goat.locomotion.groundHit;
     if (!goat.locomotion.grounded || !support || (support.collider.handle !== colliders.terrain.handle &&
         !colliders.paths.some(path => path.handle === support.collider.handle))) return 0;
 
-    // Reconnect within a step of previously earned ascent after a rescue or reload.
-    // A player who skipped a section can still walk back and earn it.
-    if (ascent.interrupted) {
-      if (support.point.y > ascent.peak + .1 * scale) return 0;
-      ascent.interrupted = false;
+    // A runner can slide uphill before regaining footing after an incidental trip.
+    // Rescues, deliberate flops and route skips must rejoin at the earned height.
+    if (ascent.recovery !== 'on-trail') {
+      const rejoinHeight = (ascent.recovery === 'stumble' ? 1 : .1) * scale;
+      if (support.point.y > ascent.peak + rejoinHeight) return 0;
+      ascent.recovery = 'on-trail';
     }
 
     // Measure the supported trail height so an airborne torso cannot consume ascent.
@@ -604,7 +609,7 @@ export class GigSession {
     const abilities = this.abilities.splice(0);
     if (run?.status === 'running' && run.setup.offer.gigId === 'summit-sprint' &&
         run.setup.markers[0]?.type === 'start') {
-      climbed = this.measuredSummitAscent(p, run);
+      climbed = this.measuredSummitAscent(p, run, abilities.some(action => action.type === 'flop'));
     }
     if (climbed > 0) abilities.push({ type: 'climb', metres: climbed });
     const style = this.style.splice(0);
