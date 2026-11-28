@@ -13,6 +13,7 @@ import type { GameAudio } from './GameAudio';
 import { PropFactory, InstancedPropRenderer } from '../props';
 import { HEIST_BALE_SIZE } from '../props/PropFactory';
 import { Game } from './Game';
+import { LANTERN_HEIGHT } from '../world/lantern';
 import { HappeningVisuals } from './HappeningVisuals';
 import type { GameRenderer } from './game-renderer';
 import { GameCharacters } from './GameCharacters';
@@ -170,6 +171,7 @@ export class GameView {
       chunkSegments: 24,
       cullingDistance: 340,
       externallyRenderedPropKinds: WORLD_LIBRARY_KINDS,
+      destroyedProps: game.destroyedProps,
     });
     this.atmosphere = new IslandAtmosphere(game);
     this.scene.add(this.world.group, this.atmosphere.group, this.shadowSilhouettes);
@@ -311,7 +313,7 @@ export class GameView {
         const pose = this.game.physics.getInterpolatedTransform(live, alpha);
         this.dummy.position.set(pose.translation.x, pose.translation.y, pose.translation.z);
         this.dummy.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
-        this.dummy.scale.set(prop.size.x, prop.size.y, prop.size.z);
+        this.dummy.scale.set(prop.size.x, prop.kind === 'lamp' ? LANTERN_HEIGHT : prop.size.y, prop.size.z);
       } else {
         this.dummy.position.set(0, -1000, 0);
         this.dummy.quaternion.identity();
@@ -823,8 +825,14 @@ export class GameView {
       if (!body) continue;
       let root = this.debrisVisuals.get(handle);
       if (!root) {
-        const radius = Math.max(.12, Math.min(.65, Math.cbrt(body.mass()) * .24));
-        root = createDebrisLibraryProp(this.propFactory, radius);
+        const post = this.game.breakables.postSection(handle);
+        if (post) {
+          const collider = body.collider(0);
+          root = this.propFactory.createPostSection(collider.radius(), 2 * collider.halfHeight(), post.index, post.count);
+        } else {
+          const radius = Math.max(.12, Math.min(.65, Math.cbrt(body.mass()) * .24));
+          root = createDebrisLibraryProp(this.propFactory, radius);
+        }
         this.instancedProps.add(root);
         this.debrisVisuals.set(handle, root);
       }
@@ -1044,6 +1052,13 @@ export class GameView {
       this.world.setTideLevel(this.lastTide, showTideRoutes);
     }
     this.world.setDayNight(dayPhase, weather);
+    const recordSet = this.game.happenings.records;
+    const recordAge = recordSet?.age(this.game.physics.time);
+    // One soft swell per two-second bar. The encore opens the rehearsal room lights further.
+    const recordGlow = recordAge === undefined ? 0 :
+      (.6 + .4 * Math.cos(recordAge * Math.PI)) * (recordSet?.side === 1 ? 1 : .65);
+    const baking = this.game.ambientLifeEnabled && (this.game.happenings.bakery?.active(this.game.physics.time) ?? false);
+    this.world.setShopLighting(baking, recordGlow);
     const ambientPlayer = !this.paused && !this.titleCamera && this.game.ambientLifeEnabled ? playerPosition : undefined;
     this.world.update(this.game.physics.time, ambientPlayer);
     if (this.scene.fog instanceof THREE.FogExp2) {

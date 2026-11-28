@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { LANTERN_HEIGHT } from './lantern';
 import { isTerrainTreeAnchor, roundOakArtCenterY, treeArtCenterY } from './visual-tree-grounding';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { fitPlantGeometry, plantKitBatches } from './plant-palette';
@@ -287,6 +288,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       const prop = entries[i]!;
       const p = prop.transform.position;
       dummy.position.set(p.x, p.y, p.z);
+      if (kind === 'lamp') dummy.position.y += (LANTERN_HEIGHT - prop.size.y) / 2;
       dummy.rotation.set(prop.transform.rotationX ?? 0, prop.transform.rotationY, 0, 'YXZ');
       const switchMember = prop.id.startsWith(CRANE_SWITCHBACK_PREFIX);
       const rampGuard = prop.id.startsWith(CRANE_RAMP_GUARD_PREFIX);
@@ -295,7 +297,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       // Preserve the stable instance slot when connected scenery draws this prop.
       if (replacedPropIds?.has(prop.id)) dummy.scale.setScalar(0);
       else if (rampGuard) dummy.scale.set(prop.size.z, prop.size.y, prop.size.x);
-      else dummy.scale.set(prop.size.x, prop.size.y, prop.size.z);
+      else dummy.scale.set(prop.size.x, kind === 'lamp' ? LANTERN_HEIGHT : prop.size.y, prop.size.z);
       // The access slabs meet end to end, so fit their art to the collider edges.
       if (switchMember && switchbackSpan) dummy.scale.divide(switchbackSpan);
       if (summitLandmark(prop)) poseSummitLandmark(prop, dummy);

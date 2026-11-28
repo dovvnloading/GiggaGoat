@@ -121,28 +121,29 @@ export interface DowntownVisuals {
   group: THREE.Group;
   isFallbackHidden(mesh: THREE.InstancedMesh): boolean;
   consumeShadowChange(): boolean;
+  setShopLighting(baking: boolean, recordGlow: number): void;
   updateCulling(position: THREE.Vector3, frustum: THREE.Frustum, daylight?: number, sightseeing?: boolean): boolean;
   dispose(): void;
 }
 
 export const SHOP_FRONTS: readonly (readonly {
   model: keyof typeof DOWNTOWN_BUILDING_SIZES; title: string;
+  paint: readonly [wall: number, trim: number];
 }[])[] = [
-  // Looking from bookmark 11 toward -Z: pink bakery and purple arcade left.
+  // The shop colours carry from their counters into the street-facing stories.
   [
-    { model: 'cafe', title: 'CAFE' },
-    { model: 'cinema', title: 'GOATFLIX' },
-    { model: 'boutique', title: 'BOUTIQUE' },
-    { model: 'arcade', title: 'KID ARCADE' },
-    { model: 'bakery', title: BAKERY_NAME },
+    { model: 'cafe', title: 'CAFE', paint: [0xd69876, 0xf0d3ac] },
+    { model: 'cinema', title: 'GOATFLIX', paint: [0x567c78, 0xf0c987] },
+    { model: 'boutique', title: 'BOUTIQUE', paint: [0xd6bbad, 0x806f81] },
+    { model: 'arcade', title: 'KID ARCADE', paint: [0x77649f, 0x8acac4] },
+    { model: 'bakery', title: BAKERY_NAME, paint: [0xc76571, 0xffdea2] },
   ],
-  // Warm cream shop, green market and teal cafe along the right pavement.
   [
-    { model: 'cornerShop', title: 'FLOWERS' },
-    { model: 'kayShop', title: 'BOOKS' },
-    { model: 'market', title: 'ICE CREAM' },
-    { model: 'market', title: 'HAY MART' },
-    { model: 'cornerShop', title: 'HOOF & CO' },
+    { model: 'cornerShop', title: 'FLOWERS', paint: [0x819e83, 0xffdfb3] },
+    { model: 'kayShop', title: 'BOOKS', paint: [0x688a99, 0xe6c797] },
+    { model: 'market', title: 'ICE CREAM', paint: [0xe9aebb, 0xffebcf] },
+    { model: 'market', title: 'HAY MART', paint: [0xd9ae67, 0x82967e] },
+    { model: 'cornerShop', title: 'HOOF & CO', paint: [0x66828b, 0xd5bd9a] },
   ],
 ];
 
@@ -237,6 +238,7 @@ export function downtownShopFront(source: PropDescriptor, centre: Vec3, scale: n
 export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] {
   const centre = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
   const scale = island.size / 600;
+  const recordLot = noniStorefront(island);
   const plan: DowntownPlacement[] = [];
   let flowerIndex = 0, bushIndex = 0, oakIndex = 0;
   for (const source of island.props) {
@@ -257,10 +259,12 @@ export function makeDowntownPlacements(island: IslandData): DowntownPlacement[] 
       case 'booth': model = source.id === 'downtown-market-stall-produce' ? 'produceStall' : 'flowerStall'; break;
       default: break;
     }
+    const shop = source.kind === 'shop' ? downtownShopFront(source, centre, scale) : undefined;
     if (model) plan.push({
       model, source, position, size: source.size,
       yaw: source.kind === 'bench' ? yaw + Math.PI : yaw,
-      ...(source.kind === 'shop' ? { storefront: downtownShopFront(source, centre, scale).title } : {}),
+      ...(shop ? { storefront: shop.title, upperPaint: shop.paint } : {}),
+      ...(source === recordLot ? { upperPaint: [0x3a5358, 0xc89674] as const } : {}),
     });
   }
 
@@ -397,7 +401,9 @@ function suppressOldArt(island: IslandData, oldProps: THREE.Group,
 }
 
 /** Browser-only GLTF loading for the painted storefronts, street props and lanterns. */
-export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group): DowntownVisuals {
+export function buildDowntownVisuals(
+  island: IslandData, oldProps: THREE.Group, destroyedProps?: ReadonlySet<string>,
+): DowntownVisuals {
   const group = new THREE.Group();
   group.name = 'downtown-library-models';
   group.userData['ready'] = typeof document === 'undefined';
@@ -409,6 +415,7 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
   let districtLod: DistrictLod | undefined;
   let lanterns: LanternLampBatch | null = null;
   let storefronts: ReturnType<typeof buildDowntownStorefronts> | undefined;
+  let baking = false, recordGlow = 0;
   if (typeof document !== 'undefined') {
     const plan = makeDowntownPlacements(island);
     const required = new Set(plan.map(p => p.model));
@@ -435,7 +442,7 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
         const staticPlan = visible.filter(p => p.model !== 'lamp');
         const lampModel = models.get('lamp');
         lanterns = lampModel ? await createLanternLampInstances(
-          visible.filter(p => p.model === 'lamp'), lampModel, island.size) : null;
+          visible.filter(p => p.model === 'lamp'), lampModel, island.size, destroyedProps) : null;
         if (disposed) { lanterns?.dispose(); return; }
         if (lanterns) group.add(lanterns.group);
         const ranges: BakedPlacement<DowntownModel>[] = [];
@@ -449,7 +456,7 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
           if (disposed) { lod.dispose(); return; }
           districtLod = lod;
         }
-        storefronts = buildDowntownStorefronts(staticPlan, models);
+        storefronts = buildDowntownStorefronts(staticPlan, models, noniStorefront(island)?.id);
         group.add(storefronts.group);
         suppressOldArt(island, oldProps, lanterns ? visible : staticPlan, new Set(models.keys()), fullyHidden);
         shadowChanged = true;
@@ -464,6 +471,7 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
   }
   return {
     group,
+    setShopLighting(oven, rehearsal) { baking = oven; recordGlow = rehearsal; },
     isFallbackHidden(mesh: THREE.InstancedMesh): boolean {
       const kind = mesh.name.replace(/^(?:props-|architecture-details-|outline-)/, '');
       return fullyHidden.has(kind as PropKind);
@@ -473,9 +481,10 @@ export function buildDowntownVisuals(island: IslandData, oldProps: THREE.Group):
     },
     updateCulling(position, frustum, daylight = 1, sightseeing = false): boolean {
       if (storefronts) {
+        const distance = Math.hypot(position.x - city.x, position.z - city.z);
         const limit = (storefronts.group.visible ? 235 : 215) * scale;
-        storefronts.group.visible = Math.hypot(position.x - city.x, position.z - city.z) < limit;
-        if (storefronts.group.visible) storefronts.setDaylight(daylight);
+        storefronts.group.visible = distance < limit;
+        if (storefronts.group.visible) storefronts.update(daylight, distance < 105 * scale, baking, recordGlow);
       }
       const districtChanged = districtLod?.updateCulling(position, frustum, sightseeing) ?? false;
       return (lanterns?.updateCulling(position, frustum) ?? false) || districtChanged;

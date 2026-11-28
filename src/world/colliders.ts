@@ -15,6 +15,7 @@ import { LIGHTHOUSE_ACCESS_GUARD_ID, LIGHTHOUSE_ACCESS_ID, keeperCottagePierColl
 import { gridSample } from './terrain';
 import siloMesh from './silo-collision.json';
 import lookoutMesh from './lookout-collision.json';
+import { LANTERN_HEIGHT } from './lantern';
 
 function siloCollider(prop: PropDescriptor): PropColliderDescriptor {
   // Same centred fit as the sourced district mesh. Preserve the wall facets,
@@ -162,14 +163,17 @@ export function makeColliderDescriptors(island: IslandData): ColliderDescriptor[
     }
     const shape = prop.kind === 'ramp' ? 'convex' : prop.shape;
     const size = { ...prop.size };
+    let transform = prop.transform;
     if (prop.kind === 'tree-pine' || prop.kind === 'tree-oak') {
       size.x = Math.min(1.8, prop.size.x * 0.4);
       size.z = size.x;
     } else if (prop.kind === 'lamp') {
       size.x = Math.min(0.76, prop.size.x);
       size.z = size.x;
+      size.y = LANTERN_HEIGHT;
+      const base = transform.position.y - prop.size.y / 2;
+      transform = { ...transform, position: { ...transform.position, y: base + size.y / 2 } };
     }
-    let transform = prop.transform;
     if (prop.kind === 'lighthouse') {
       const depth = lighthouseFoundationDepth(island, prop);
       const floor = transform.position.y - size.y / 2 - depth;

@@ -56,6 +56,8 @@ export interface WorldSceneOptions {
   gameplaySelectsCasters?: boolean;
   /** Playable views may render these props through their physics-bound roots. */
   externallyRenderedPropKinds?: ReadonlySet<PropKind>;
+  /** Destruction also removes source-linked art from the district lamp batches. */
+  destroyedProps?: ReadonlySet<string>;
 }
 export interface WorldScene {
   group: THREE.Group;
@@ -68,6 +70,7 @@ export interface WorldScene {
   setDayNight(phase: number, weather?: IslandWeather): void;
   /** Day, painterly golden hour and starry night bookmarks. */
   setLightingPreset(preset: LightingPreset): void;
+  setShopLighting(baking: boolean, recordGlow: number): void;
   /** Set the sea level. The Lab shows escape cues above baseline unless the host opts out. */
   setTideLevel(level: number, showRoutes?: boolean): void;
   /** Nearest painted cue still connected to the summit above this tide. */
@@ -583,9 +586,9 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   const distantPinesGround = pinesGround.length ? meshSurfaceHeight(pinesGround, island.size / 600) : undefined;
   const props = buildPropVisuals(instancedProps, options.propChunkSize ?? 96, scenery, replacedProps, distantPinesGround, wind);
   group.add(props.group);
-  const hoofington = buildHoofingtonVisuals(scenery, props.group);
+  const hoofington = buildHoofingtonVisuals(scenery, props.group, options.destroyedProps);
   group.add(hoofington.group);
-  const downtown = buildDowntownVisuals(scenery, props.group);
+  const downtown = buildDowntownVisuals(scenery, props.group, options.destroyedProps);
   group.add(downtown.group);
   const downtownLife = buildDowntownLifeVisuals(island);
   group.add(downtownLife.group);
@@ -754,7 +757,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   waterVisuals.update(elapsed, tide);
   return {
     group, chunks: chunks.map(c => c.mesh), water: waterVisuals.sea,
-    sun, fogColor, setDayNight, setLightingPreset, setTideLevel,
+    sun, fogColor, setDayNight, setLightingPreset, setTideLevel, setShopLighting: downtown.setShopLighting,
     tideRouteTarget: tideRoutes.nearestDryCue, update, updateCulling, dispose,
   };
 }

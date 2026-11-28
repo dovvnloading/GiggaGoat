@@ -13,6 +13,20 @@ export function libraryPlacementBounds(root: THREE.Object3D): THREE.Box3 {
   return new THREE.Box3().setFromObject(root);
 }
 
+/** Same authored-shell fit used by the district geometry baker, including its trim clearance. */
+export function facadeTransform(
+  place: { size: THREE.Vector3Like; position: THREE.Vector3Like; yaw: number }, model: THREE.Group,
+) {
+  model.updateMatrixWorld(true);
+  const bounds = libraryPlacementBounds(model), size = bounds.getSize(new THREE.Vector3());
+  if (Math.min(size.x, size.y, size.z) < .0001) return null;
+  const center = bounds.getCenter(new THREE.Vector3());
+  const scale = new THREE.Vector3(place.size.x * .96 / size.x,
+    place.size.y * .98 / size.y, place.size.z * .96 / size.z);
+  const rotate = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), place.yaw);
+  return (vertex: THREE.Vector3) => vertex.sub(center).multiply(scale).applyQuaternion(rotate).add(place.position);
+}
+
 /** Custom and USDCraft models are authored to their collider/anchor envelopes. */
 export function isAuthoredLibraryAsset(path: string): boolean {
   return path.startsWith('assets/library/custom/') ||

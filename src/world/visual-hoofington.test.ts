@@ -343,13 +343,15 @@ describe('Hoofington sourced village model integration', () => {
       material.name = name;
       source.add(new THREE.Mesh(geometry, material));
     }
+    const lamps = generateIsland().props.filter(prop => prop.kind === 'lamp');
     const placements: HoofPlacement[] = [
-      { model: 'lamp', position: { x: 10, y: 12, z: 2 },
+      { model: 'lamp', source: lamps[0]!, position: { x: 10, y: 12, z: 2 },
         size: { x: 0.6, y: 8, z: 0.6 }, yaw: 0, wall: 0xff0000, roof: 0x00ff00 },
-      { model: 'lamp', position: { x: 12, y: 14, z: 4 },
+      { model: 'lamp', source: lamps[1]!, position: { x: 12, y: 14, z: 4 },
         size: { x: 0.6, y: 8, z: 0.6 }, yaw: 0.5 },
     ];
-    const batch = (await createLanternLampInstances(placements, source, 600))!;
+    const destroyed = new Set<string>();
+    const batch = (await createLanternLampInstances(placements, source, 600, destroyed))!;
     const allVisible = { intersectsSphere: () => true } as unknown as THREE.Frustum;
     expect(batch.updateCulling(new THREE.Vector3(10, 12, 3), allVisible)).toBe(true);
     // Six authored materials only cost six active draws, not twelve,
@@ -384,6 +386,17 @@ describe('Hoofington sourced village model integration', () => {
       expect(new THREE.Vector3().setFromMatrixScale(transform))
         .toEqual(new THREE.Vector3(1, 1, 1));
     }
+    destroyed.add(lamps[0]!.id);
+    expect(batch.updateCulling(new THREE.Vector3(10, 12, 3), allVisible)).toBe(true);
+    for (const mesh of instances) {
+      expect(mesh.count).toBe(1);
+      const remaining = new THREE.Matrix4();
+      mesh.getMatrixAt(0, remaining);
+      expect(new THREE.Vector3().setFromMatrixPosition(remaining)).toEqual(new THREE.Vector3(12, 10, 4));
+    }
+    destroyed.add(lamps[1]!.id);
+    expect(batch.updateCulling(new THREE.Vector3(90, 12, 3), allVisible)).toBe(true);
+    expect(batch.group.children.some(mesh => mesh.visible)).toBe(false);
     batch.dispose();
     expect(batch.group.children).toHaveLength(0);
     source.traverse(object => {
