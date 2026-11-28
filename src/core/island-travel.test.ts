@@ -52,6 +52,23 @@ describe('Billy Isle passenger travel', () => {
     expect(c.position.y).toBeCloseTo(game.water.seaLevel);
     game.leaveRide(true);
   });
+  it('flies over the visible streetlight cap and through its former position after destruction', () => {
+    const lamp = game.island.props.find(p => !p.poiId && p.kind === 'lamp' && p.breakable)!;
+    const { x, y, z } = lamp.transform.position;
+    const base = y - lamp.size.y / 2;
+    game.boardRide('plane');
+    const plane = game.travel.craft.plane;
+    const flyPast = (height: number) => {
+      Object.assign(plane, { heading: 0, speed: 24, vertical: 0, pitch: 0, bank: 0 });
+      Object.assign(plane.position, { x, y: base + height, z: z + 2.95 });
+      game.step({ moveZ: 1 });
+      return z + 2.95 - plane.position.z;
+    };
+    expect(flyPast(2)).toBeCloseTo(0, 4);
+    expect(flyPast(5.2)).toBeGreaterThan(.35);
+    expect(game.breakables.shatter(game.colliders.bodies.get(lamp.id)!)).toBe(true);
+    expect(flyPast(2)).toBeGreaterThan(.35);
+  });
   it('burns, vents, and lets the goat step out on dry ground', () => {
     game.boardRide('balloon');
     const c = game.travel.craft.balloon;

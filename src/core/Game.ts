@@ -214,7 +214,7 @@ export class Game {
   private constructor(physics: PhysicsWorld, island: IslandData, colliders: ColliderBuild, options: GameOptions) {
     this.physics = physics;
     this.island = island;
-    this.travel = new IslandTravel(island, options.progress?.trialBests);
+    this.travel = new IslandTravel(island, options.progress?.trialBests, this.destroyedProps);
     this.colliders = colliders;
     this.craneCenter = island.pois.find(poi => poi.id === 'crane-yard')!.center;
     const noClimbGuardPrefixes = [DAM_FRONT_GUARD.prefix, DAM_BACK_GUARD.prefix,
