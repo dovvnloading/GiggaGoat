@@ -366,34 +366,21 @@ export const DAM_PINES_BRIDGE_PREFIX = 'bridge-' + DAM_PINES_ROAD + '-';
 
 /** Route the through road round the landward foot of the dam stairs. Both
  * regional roads retain a common junction and the pedestrian approach stays at the board. */
-export function clearDamTrafficApproach(island:IslandData):void {
-  const {position,scale}=getDamPlacement(island);
-  const floor=position.z-18.8*scale;
-  const planting=island.props.filter(p=>p.id.startsWith('detail-') &&
-    Math.abs(p.transform.position.x-position.x)<49*scale && Math.abs(p.transform.position.z-floor)<18*scale)
-    .map(p=>({p:p.transform.position,old:gridSample(island,p.transform.position.x,p.transform.position.z)}));
-  const points=new Set<RoadPoint>();
-  for(const road of island.roads) {
-    if(road.id!==DAM_PINES_ROAD && road.id!==DAM_EAST_ROAD)continue;
-    const changed:RoadPoint[]=[];
-    for(const p of road.points){
-      if(p.bridge || Math.abs(p.z-position.z)>33*scale)continue;
-      const x=(p.x-position.x)/scale;
-      if(x < -34 || x > 41)continue;
-      // Ease the verge between the untouched eastern trail fork and the forest causeway.
-      const amount=smoothstep(-34,-9,x)*(1-smoothstep(20,41,x));
-      if (!points.has(p)) {
-        const shift = (p.z - Math.min(floor,p.z)) * amount;
-        if (shift > 0) {
-          p.stairApron = shift;
-          p.z -= shift;
-        }
-      }
-      points.add(p);changed.push(p);
-    }
-    exposeRoadBed(island,changed,road.width);
-  }
-  for(const {p,old} of planting)p.y+=gridSample(island,p.x,p.z)-old;
+export function clearDamTrafficApproach(island: IslandData): void {
+  const { position, scale } = getDamPlacement(island);
+  const floor = position.z - 16.3 * scale;
+  island.damCarriageways = island.roads.filter(road => road.id === DAM_PINES_ROAD || road.id === DAM_EAST_ROAD)
+    .map(road => {
+      const points = road.points.map(point => {
+        if (point.bridge || Math.abs(point.z - position.z) > 33 * scale) return point;
+        const x = (point.x - position.x) / scale;
+        if (x < -34 || x > 41) return point;
+        const taper = smoothstep(-34, -9, x) * (1 - smoothstep(14, 32, x));
+        const shift = Math.max(0, point.z - floor) * taper;
+        return shift > 0 ? { ...point, z: point.z - shift, stairApron: shift } : point;
+      });
+      return { ...road, points };
+    });
 }
 
 /** Keep the asphalt visible across the earth handoff on the forest bank. */

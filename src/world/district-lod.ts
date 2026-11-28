@@ -159,7 +159,6 @@ export async function createDistrictLod<Model extends string>(
     group.add(mesh);
     // The first camera orbit can expose the whole town. Prepare its distant shell
     // before publishing the cell, so a loading frame never draws the full city twice.
-    mesh.visible = false;
     const skyline = cell.keepSilhouette ? skylineGeometry(high,.25,.10) : low;
     const shadow = cell.keepSilhouette && MeshoptSimplifier.supported ? architecturalShadow(skyline) : undefined;
     entries.push({ mesh, high, low, skyline, shadow, sphere: high.boundingSphere!.clone(),

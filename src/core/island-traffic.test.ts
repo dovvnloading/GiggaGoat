@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BufferGeometry, Float32BufferAttribute } from 'three';
 import { generateIsland } from '../world/island';
+import { getDamHeadwater, isDamHeadwater } from '../world/dam-landscape';
 import { roadRibbonData } from '../world/road-ribbons';
 import { terrainFaceHeight } from '../world/terrain';
 import { meshSurfaceHeight } from '../world/visual-tide-routes';
@@ -32,11 +33,13 @@ describe('island road traffic', () => {
     mesh.setAttribute('position', new Float32BufferAttribute(top.positions, 3));
     mesh.setIndex(top.supportIndices);
     const asphalt = meshSurfaceHeight([{ geometry: mesh, x: 0, z: 0 }], unit);
+    const reservoir = getDamHeadwater(world);
     mesh.dispose();
     expect(network.lanes).toHaveLength(2);
     for (const lane of network.lanes) {
       expect(lane.length / unit).toBeGreaterThan(1400);
       const missing: number[][] = [];
+      const flooded: number[][] = [];
       for (const p of lane.poses) {
         const sin = Math.sin(p.yaw),
           cos = Math.cos(p.yaw);
@@ -47,9 +50,12 @@ describe('island road traffic', () => {
             const surface = asphalt(x, z);
             if (!Number.isFinite(surface) || terrainFaceHeight(world, x, z) > surface + 0.012)
               missing.push([x, z, terrainFaceHeight(world, x, z) - surface]);
+            if (surface < reservoir.level && isDamHeadwater(world, x, z))
+              flooded.push([x, z, reservoir.level - surface]);
           }
       }
       expect(missing.slice(0, 5)).toEqual([]);
+      expect(flooded.slice(0, 5)).toEqual([]);
     }
   });
   it('services every scheduled stop on repeated laps, preserving headway across the loop seam', () => {

@@ -13,11 +13,15 @@ const PAVED_DECK_CLEARANCE = .07;
 export function uncoverPavedLanes(island: IslandData): void {
   const scale = island.size / 600;
   island.localStreets = makeLocalStreets(island);
-  const grounded = island.props.filter(p => p.id.startsWith('downtown-square-') ||
-    p.id.startsWith('downtown-market-') || ['rock','bush','flower','grass-tuft','tree-pine',
-      'tree-oak','palm-tree','mushroom','fern'].includes(p.kind)).map(p => ({
-    position: p.transform.position, ground: gridSample(island,p.transform.position.x,p.transform.position.z),
-  }));
+  const vegetation = new Set(['rock', 'bush', 'flower', 'grass-tuft', 'tree-pine', 'tree-oak',
+    'palm-tree', 'mushroom', 'fern', 'sign']);
+  const grounded = island.props.flatMap(prop => {
+    const position = prop.transform.position;
+    const ground = gridSample(island, position.x, position.z);
+    const seated = prop.body.type === 'static' && Math.abs(position.y - prop.size.y / 2 - ground) < .12 * scale;
+    return seated || vegetation.has(prop.kind) || prop.id.startsWith('downtown-square-') ||
+      prop.id.startsWith('downtown-market-') ? [{ position, ground }] : [];
+  });
   for (const road of roadRibbonRuns(island,'road')) {
     for (let i = 1; i < road.points.length; i++) {
       const a = road.points[i-1]!, b = road.points[i]!;
@@ -174,7 +178,8 @@ function downtownNorthApproach(road: RoadDescriptor, points: readonly RoadPoint[
 }
 
 export function roadRibbonRuns(island: IslandData, type: RoadDescriptor['type']): RoadRibbonRun[] {
-  const allRoads = [...island.roads, ...makeLocalStreets(island)];
+  const regional = island.roads.map(road => island.damCarriageways?.find(lane => lane.id === road.id) ?? road);
+  const allRoads = [...regional, ...makeLocalStreets(island)];
   const runs: RoadRibbonRun[] = [];
   const scale = island.size / 600;
   const downtown = allRoads.find(road => road.id === 'downtown-bleatsville-main-street');
@@ -242,7 +247,7 @@ export function roadRibbonRuns(island: IslandData, type: RoadDescriptor['type'])
     // Share an uninterrupted asphalt surface with the marked pedestrian fork.
     // The through lanes occupy the landward strip and stop short of the stair rails.
     run.carriageway = { points: run.points, widths: run.widths };
-    run.widths = run.points.map((p,i) => (run.widths?.[i] ?? run.width) + (p.stairApron ?? 0));
+    run.widths = run.points.map((p, i) => (run.widths?.[i] ?? run.width) + (p.stairApron ?? 0));
     run.points = run.points.map(p => p.stairApron ? { ...p, z: p.z + p.stairApron / 2 } : p);
   }
   return runs;

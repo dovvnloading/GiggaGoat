@@ -151,7 +151,7 @@ const layouts: Layout[] = [
       ['splitStump', 0, 0, 2.3], ['logs', 3.7, .4, 3.8, -8], ['logs', 4.1, 2.3, 2.7, 7]]
   },
   {
-    district: 'the-dam', name: 'Penstock stores', x: 14.2712, z: -22.6047, degrees: 82, items: [
+    district: 'the-dam', name: 'Penstock stores', x: 14.2712, z: -22.6047, degrees: 180, items: [
       ['pipeStock', 0, 0, 3.4], ['pipeStock', 2.15, 0, 3.4], ['valve', 4.4, .4, 1.9, 30]]
   },
   {
@@ -226,6 +226,10 @@ export function districtSets(island: IslandData): DistrictSet[] {
   const roads = [...island.roads, ...makeLocalStreets(island)];
   const corridors = roads.flatMap(road => road.points.slice(1).map((end, i) =>
     ({ road: road.id, start: road.points[i]!, end, buffer: road.width * .5 + (road.type === 'road' ? 2.65 : 1.0) * scale })));
+  const damLanes = (island.damCarriageways ?? []).flatMap(road => road.points.slice(1).flatMap((end, i) => {
+    const start = road.points[i]!;
+    return start.stairApron || end.stairApron ? [{ start, end, clearance: road.width / 2 + .2 * scale }] : [];
+  }));
   const fixed = island.colliders.flatMap(c => c.shape === 'heightfield' ? [] : [{
     ...c.transform.position, halfX: c.size.x / 2, halfZ: c.size.z / 2, yaw: c.transform.rotationY,
     bottom: c.transform.position.y - c.size.y / 2, top: c.transform.position.y + c.size.y / 2,
@@ -277,6 +281,12 @@ export function districtSets(island: IslandData): DistrictSet[] {
         if (distance > 25 * scale) continue;
         const start = { x: road.start.x + (road.end.x - road.start.x) * t, z: road.start.z + (road.end.z - road.start.z) * t };
         const roadY = road.start.y + (road.end.y - road.start.y) * t;
+        if (road.road === 'downtown-bleatsville-main-street' && distance > 6 * scale) {
+          const sidewalk = 5.1 * scale;
+          candidates.push({ start: { x: start.x + (anchor.x - start.x) * sidewalk / distance,
+            z: start.z + (anchor.z - start.z) * sidewalk / distance }, distance: distance - sidewalk,
+            landmark: road.road });
+        }
         if (Math.abs(roadY - gridSample(island, start.x, start.z)) > .8 * scale) continue;
         candidates.push({ start, distance, landmark: road.road });
       }
@@ -346,6 +356,8 @@ export function districtSets(island: IslandData): DistrictSet[] {
           localBlocks.some(b => y < b.top + .35 * scale && y + span * scale > b.bottom - .35 * scale && clearance(b, px, pz) < radius + .35 * scale) ||
           safe.some(q => Math.hypot(q.x - px, q.z - pz) < radius + 2.5 * scale) ||
           localRoads.some(r => segmentProjection(bottom, r.start, r.end).distance < r.buffer + radius) ||
+          (site.district === 'the-dam' && damLanes.some(r =>
+            segmentProjection(bottom, r.start, r.end).distance < r.clearance + radius)) ||
           result.some(set => segmentProjection(bottom, set.approach.from, set.approach.to).distance < radius + 1.3 * scale)) return;
         if (wet(px, pz, y, radius) || landmarks.some(l => clearance(f, l.x, l.z) < 1.8 * scale)) return;
         const cos = Math.cos(p.yaw), sin = Math.sin(p.yaw);

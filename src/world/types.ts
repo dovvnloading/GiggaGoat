@@ -173,6 +173,8 @@ export interface IslandData {
   roads: RoadDescriptor[];
   /** The finished town centreline grades before cutting the underlying terrain. */
   localStreets?: RoadDescriptor[];
+  /** Finished driving alignment around the stairs. The public route graph still reaches the Dam board. */
+  damCarriageways?: RoadDescriptor[];
   props: PropDescriptor[];
   /** Bottom-aligned kit meshes and their matching physical scenery. */
   districtSets?: import('./district-sets').DistrictSet[];
