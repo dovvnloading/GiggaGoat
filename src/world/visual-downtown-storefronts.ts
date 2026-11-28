@@ -1,9 +1,10 @@
 import * as THREE from 'three';
-import { libraryPlacementBounds } from './library-fit';
+import { facadeTransform } from './library-fit';
 import { matchesStorefront } from './visual-hoofington';
 import type { DowntownPlacement } from './visual-downtown';
 
 import { BAKERY_NAME, bakeryBlade, paintBakeryMarquee } from './bakery-sign';
+import { buildUpstairsRooms } from './downtown-upstairs';
 
 type Lettering = readonly [paper: string, ink: string, face: string];
 const signs: Record<string, Lettering> = {
@@ -17,18 +18,6 @@ const signs: Record<string, Lettering> = {
   'HAY MART': ['#576445', '#f7e5af', 'sans-serif'],
   'HOOF & CO': ['#e6cda8', '#624d48', 'Georgia'],
 };
-
-/** Match the district baker's axis-by-axis fit for authored shop models. */
-function facadeTransform(place: DowntownPlacement, model: THREE.Group) {
-  model.updateMatrixWorld(true);
-  const bounds = libraryPlacementBounds(model), size = bounds.getSize(new THREE.Vector3());
-  const center = bounds.getCenter(new THREE.Vector3());
-  if (Math.min(size.x, size.y, size.z) < .0001) return null;
-  const scale = new THREE.Vector3(place.size.x * .96 / size.x,
-    place.size.y * .98 / size.y, place.size.z * .96 / size.z);
-  const rotate = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), place.yaw);
-  return (vertex: THREE.Vector3) => vertex.sub(center).multiply(scale).applyQuaternion(rotate).add(place.position);
-}
 
 function visitFacade(model: THREE.Group, title: string | undefined, name: string, visit: (point: THREE.Vector3) => void): void {
   const point = new THREE.Vector3();
@@ -159,9 +148,11 @@ function buildSigns(group: THREE.Group, placements: readonly DowntownPlacement[]
 }
 
 export function buildDowntownStorefronts(
-  placements: readonly DowntownPlacement[], sources: ReadonlyMap<string, THREE.Group>,
+  placements: readonly DowntownPlacement[], sources: ReadonlyMap<string, THREE.Group>, recordLot?: string,
 ) {
   const group = new THREE.Group();
+  const rooms = buildUpstairsRooms(placements, sources, recordLot);
+  if (rooms) group.add(rooms.mesh);
   const lettering = buildSigns(group, placements, sources);
   if (lettering) group.add(lettering);
   const glass = downtownWindowGeometry(placements, sources);
@@ -174,7 +165,8 @@ export function buildDowntownStorefronts(
   }
   return {
     group,
-    setDaylight(daylight: number): void {
+    update(daylight: number, nearby: boolean, baking: boolean, recordGlow: number): void {
+      rooms?.update(daylight, nearby, baking, recordGlow);
       if (lettering) lettering.material[0]!.color.setScalar(.55 + daylight * .45);
       if (!paint) return;
       paint.opacity = .68 * (1 - THREE.MathUtils.smoothstep(daylight, .15, .6));

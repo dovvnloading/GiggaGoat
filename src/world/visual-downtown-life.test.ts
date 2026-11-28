@@ -4,9 +4,12 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { expect, it } from 'vitest';
 import { generateIsland } from './island';
 import { bakeLibraryGeometry } from './visual-hoofington';
-import { makeDowntownPlacements, DOWNTOWN_MODELS } from './visual-downtown';
+import { makeDowntownPlacements, DOWNTOWN_MODELS, noniStorefront } from './visual-downtown';
 import { buildDowntownLifeVisuals, downtownLifeAnchors } from './visual-downtown-life';
 import { downtownWindowGeometry } from './visual-downtown-storefronts';
+import { upstairsGeometry } from './downtown-upstairs';
+import { facadeTransform } from './library-fit';
+import { BAKERY_NAME } from './bakery-sign';
 
 it('anchors jets inside the fitted fountain and cups on the fitted table tops', () => {
   const island = generateIsland({ seed: 'billy-isle', resolution: 65 });
@@ -108,4 +111,56 @@ it('selects the interior and lit panes for the active tenant of a shared shell',
   expect(centres[1]).toBeLessThan(centres[2]!);
   root.traverse(node => { if (node instanceof THREE.Mesh) node.geometry.dispose(); });
   glass.dispose();
+});
+
+it('fits every upstairs room behind its authored sash and lights only its own venue', async () => {
+  const island = generateIsland({ seed: 'billy-isle', resolution: 65 });
+  const places = makeDowntownPlacements(island).filter(p => p.source?.kind === 'shop' || p.source?.kind === 'house');
+  const loader = new GLTFLoader().register(() => ({ name: 'test-texture',
+    loadTexture: () => Promise.resolve(new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1)),
+  }));
+  const models = new Map<string, THREE.Group>();
+  const lot = noniStorefront(island)!.id;
+  const tiles = new Set<number>();
+  let oven = 0, band = 0;
+  for (const place of places) {
+    let model = models.get(place.model);
+    if (!model) {
+      const bytes = Uint8Array.from(readFileSync('public/' + DOWNTOWN_MODELS[place.model]));
+      model = (await loader.parseAsync(bytes.buffer, '')).scene;
+      models.set(place.model, model);
+    }
+    const glass = upstairsGeometry([place], models, lot)!;
+    const front = facadeTransform(place, model)!;
+    const corners: THREE.Vector3[] = [];
+    model.traverse(mesh => {
+      if (!(mesh instanceof THREE.Mesh) || !mesh.material.name?.endsWith('_paint')) return;
+      const attr = mesh.geometry.attributes;
+      // The GLB's blue glass occupies its own palette swatch; the surrounds use separate paint.
+      for (let i = 0; i < attr.position.count; i++) {
+        const v = attr.uv.getY(i);
+        if (attr.normal.getZ(i) < .99 || Math.abs(attr.uv.getX(i) - .71875) > .001 || v < .35 || v > .5) continue;
+        corners.push(front(new THREE.Vector3().fromBufferAttribute(attr.position, i).applyMatrix4(mesh.matrixWorld)));
+      }
+    });
+    const pos = glass.getAttribute('position'), uv = glass.getAttribute('uv');
+    for (let i = 0; i < pos.count; i++) {
+      const point = new THREE.Vector3().fromBufferAttribute(pos, i);
+      expect(corners.some(p => p.distanceToSquared(point) < .006 ** 2), place.model + ' glass ' + i).toBe(true);
+      tiles.add(Math.floor(uv.getX(i) * 4) + (1 - Math.floor(uv.getY(i) * 2)) * 4);
+    }
+    const lights = glass.groups.map(group => group.materialIndex);
+    expect(lights.includes(1)).toBe(place.storefront === BAKERY_NAME);
+    expect(lights.includes(2)).toBe(place.source!.id === lot);
+    if (lights.includes(1)) oven++;
+    if (lights.includes(2)) band++;
+    glass.dispose();
+  }
+  expect([...tiles].sort()).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+  expect([oven, band]).toEqual([1, 1]);
+  expect(upstairsGeometry(places, new Map(), lot)).toBeNull();
+  const bakery = places.find(p => p.storefront === BAKERY_NAME)!;
+  const lamps = island.props.filter(p => p.poiId === 'downtown-bleatsville' && p.kind === 'lamp');
+  expect(lamps.length).toBe(12);
+  expect(lamps.every(p => Math.abs(p.transform.position.z - bakery.position.z) >= 4)).toBe(true);
 });

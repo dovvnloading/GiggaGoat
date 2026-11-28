@@ -1,6 +1,7 @@
 import type { IslandData, Vec3 } from '../world/types';
 import { gridSample } from '../world/terrain';
 import { boardwalkPierDecks } from '../world/boardwalk';
+import { LANTERN_HEIGHT } from '../world/lantern';
 import type { PlayerIntent } from './Game';
 import { TravelTrials, type TrialBests } from './TravelTrials';
 
@@ -68,9 +69,9 @@ export class IslandTravel {
   private readonly cell = 12;
   private readonly obstacles = new Map<
     string,
-    Array<{ x: number; z: number; hx: number; hz: number; top: number; base: number }>
+    Array<{ x: number; z: number; hx: number; hz: number; top: number; base: number; breakableId?: string }>
   >();
-  constructor(private readonly island: IslandData, best?: TrialBests) {
+  constructor(private readonly island: IslandData, best?: TrialBests, private readonly destroyed?: ReadonlySet<string>) {
     this.trials = new TravelTrials(best);
     for (const p of island.props) {
       if (!p.collidable || p.body.type === 'dynamic') continue;
@@ -79,13 +80,15 @@ export class IslandTravel {
         s = Math.abs(Math.sin(rotationY));
       const hx = (p.size.x * c + p.size.z * s) / 2,
         hz = (p.size.z * c + p.size.x * s) / 2;
+      const base = position.y - p.size.y / 2;
       const box = {
         x: position.x,
         z: position.z,
         hx,
         hz,
-        top: position.y + p.size.y / 2,
-        base: position.y - p.size.y / 2,
+        top: base + (p.kind === 'lamp' ? LANTERN_HEIGHT : p.size.y),
+        base,
+        breakableId: p.breakable ? p.id : undefined,
       };
       for (
         let i = Math.floor((box.x - hx - 3) / this.cell);
@@ -190,9 +193,11 @@ export class IslandTravel {
 
   private top(x: number, z: number, r: number, ceiling = Infinity): number {
     let y = -Infinity;
-    for (const b of this.obstacles.get(Math.floor(x / this.cell) + ',' + Math.floor(z / this.cell)) ?? [])
+    for (const b of this.obstacles.get(Math.floor(x / this.cell) + ',' + Math.floor(z / this.cell)) ?? []) {
+      if (b.breakableId && this.destroyed?.has(b.breakableId)) continue;
       if (Math.abs(x - b.x) < b.hx + r && Math.abs(z - b.z) < b.hz + r && b.base < ceiling)
         y = Math.max(y, b.top);
+    }
     return y;
   }
 

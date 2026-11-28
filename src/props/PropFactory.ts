@@ -5,6 +5,7 @@ import { PROP_LIBRARY_MODELS, bakeLibraryPropGeometry } from '../world/library-p
 import { fitLibraryModel, fitTimberRamp, isAuthoredLibraryAsset } from '../world/library-fit';
 import { kitShape } from '../world/kit-preview';
 import { TOON_RAMP } from '../world/visual-props';
+import { cutLanternSection } from './lantern-section';
 
 /**
  * Visuals only: callers still own their Rapier bodies and update these roots'
@@ -99,6 +100,7 @@ export class PropFactory {
   private readonly materials = new Set<THREE.Material>();
   private readonly colors = new Map<ColorName, THREE.MeshToonMaterial>();
   private readonly geometryCache = new Map<string, THREE.BufferGeometry>();
+  private readonly lanternSections = new Map<string, THREE.Group>();
   private readonly worldGeometries = new Map<WorldLibraryPropKind, THREE.BufferGeometry>();
   private readonly worldMaterials = new Map<string, THREE.MeshToonMaterial>();
   private readonly convertedMaterials = new WeakMap<THREE.Material, THREE.Material>();
@@ -418,6 +420,31 @@ export class PropFactory {
     return root;
   }
 
+  createPostSection(radius: number, height: number, index: number, count: number): THREE.Group {
+    const size = { x: 2 * radius, y: height, z: 2 * radius };
+    const root = this.root('post-section', size);
+    this.cylinder(root, radius * .45, radius * .45, height, 'iron', 0, 0, 0, 8);
+    const path = PROP_LIBRARY_MODELS.lamp.replace(/^assets\/library\//, '');
+    void this.request(path).then(model => {
+      if (this.disposed || !this.instances.has(root)) return;
+      if (!model) { root.userData.assetStatus = 'fallback'; return; }
+      const key = count + '/' + index;
+      let section = this.lanternSections.get(key);
+      if (!section) {
+        section = cutLanternSection(model, index, count);
+        for (const part of section.children) this.geometries.add((part as THREE.Mesh).geometry);
+        this.lanternSections.set(key, section);
+      }
+      if (!section.children.length) { root.userData.assetStatus = 'fallback'; return; }
+      root.clear();
+      root.add(section.clone(true));
+      root.userData.assetStatus = 'ready';
+      root.userData.assetPath = path;
+      root.userData.assetRevision++;
+    });
+    return root;
+  }
+
   private springPad(kind: 'trampoline' | 'launch', halfExtents: Size3, artAtGround = true): THREE.Group {
     const s = getSurfaceFootprint(halfExtents);
     const root = this.root(kind, s, true);
@@ -625,6 +652,7 @@ export class PropFactory {
     for (const mat of this.materials) mat.dispose();
     this.cache.clear();
     this.geometryCache.clear();
+    this.lanternSections.clear();
     this.worldGeometries.clear();
     this.worldMaterials.clear();
     this.prototypes.clear();

@@ -11,6 +11,8 @@ export interface BreakableOptions {
   /** Accumulated N·s of damage before shattering. */
   damageThreshold?: number;
   chunks?: number;
+  /** Upright posts break across the shaft into short cylindrical sections. */
+  fracture?: 'block' | 'post';
   /** Total outward N·s split across chunks. */
   burstImpulse?: number;
 }
@@ -32,6 +34,7 @@ interface Debris {
   handle: number;
   spawnedAt: number;
   sleepingFor: number;
+  postSection?: { index: number; count: number };
 }
 export interface DestructionOptions {
   maxDebris?: number;
@@ -41,7 +44,7 @@ export interface DestructionOptions {
   bodyBudget?: DynamicBodyBudget;
 }
 /**
- * Deterministic box-lattice pre-fracturing. Original mass/linear/angular velocity
+ * Deterministic block or post fractures. Original mass/linear/angular velocity
  * are transferred to real dynamic chunks; oldest debris is evicted first.
  */
 export class BreakableRegistry {
@@ -88,6 +91,9 @@ export class BreakableRegistry {
   get breakableCount(): number { return this.entries.size; }
   get debrisCount(): number { return this.fragments.length; }
   get debrisHandles(): number[] { return this.fragments.map(f=>f.handle); }
+  postSection(handle: number): Debris['postSection'] {
+    return this.fragments.find(f => f.handle === handle)?.postSection;
+  }
   register(body: RigidBody, options: BreakableOptions): () => void {
     if (!body.isDynamic() || !body.numColliders()) throw new Error('Breakable needs a dynamic body with a collider');
     if (options.impulseThreshold === undefined && options.damageThreshold === undefined)
@@ -96,6 +102,7 @@ export class BreakableRegistry {
       impulseThreshold: options.impulseThreshold ?? Infinity,
       damageThreshold: options.damageThreshold ?? Infinity,
       chunks: options.chunks ?? 8,
+      fracture: options.fracture ?? 'block',
       burstImpulse: options.burstImpulse ?? 10,
     };
     for (const key of ['impulseThreshold','damageThreshold','burstImpulse'] as const) {
@@ -132,7 +139,9 @@ export class BreakableRegistry {
     // Remove source before adding children to avoid interpenetrating its old collider.
     this.physics.removeBody(body);
     const n = Math.min(options.chunks,this.maxDebris,this.bodyBudget?.available ?? Infinity);
-    const nx = Math.ceil(Math.cbrt(n || 1)), ny = Math.ceil(Math.sqrt((n || 1) / nx));
+    const post = options.fracture === 'post';
+    const nx = post ? 1 : Math.ceil(Math.cbrt(n || 1));
+    const ny = post ? n || 1 : Math.ceil(Math.sqrt((n || 1) / nx));
     const nz = Math.ceil((n || 1) / (nx * ny));
     const piece = V(bounds.x / nx, bounds.y / ny, bounds.z / nz);
     const handles: number[] = [];
@@ -146,20 +155,24 @@ export class BreakableRegistry {
         RAPIER.RigidBodyDesc.dynamic().setTranslation(center.x,center.y,center.z)
           .setCanSleep(true).setCcdEnabled(true));
       chunk.setRotation(rotation,true);
-      this.physics.raw.createCollider(RAPIER.ColliderDesc.cuboid(
-        Math.max(.012,piece.x*.94),Math.max(.012,piece.y*.94),Math.max(.012,piece.z*.94))
-        .setMass(Math.max(.001,mass/Math.max(1,n))).setFriction(friction).setRestitution(restitution),chunk);
+      const fragment = post
+        ? RAPIER.ColliderDesc.cylinder(Math.max(.012, piece.y * .94), Math.max(.012, piece.x * .94))
+        : RAPIER.ColliderDesc.cuboid(Math.max(.012,piece.x*.94),Math.max(.012,piece.y*.94),Math.max(.012,piece.z*.94));
+      this.physics.raw.createCollider(fragment.setMass(Math.max(.001,mass/Math.max(1,n)))
+        .setFriction(friction).setRestitution(restitution),chunk);
       const tangential = V(angular.y*rotated.z-angular.z*rotated.y,
         angular.z*rotated.x-angular.x*rotated.z,angular.x*rotated.y-angular.y*rotated.x);
       chunk.setLinvel(add(linear,tangential),true);
       chunk.setAngvel(angular,true);
-      const outward = unit(V(offset.x + .13 * Math.sin(i*37),
-        offset.y + .4,offset.z + .13 * Math.cos(i*53)));
-      chunk.applyImpulse(V(outward.x*options.burstImpulse/n,
-        outward.y*options.burstImpulse/n,outward.z*options.burstImpulse/n),true);
-      this.physics.registerBody(chunk,{kind:'debris'});
+      const outward = post ? unit(V(Math.cos(i * 2.4), .4, Math.sin(i * 2.4))) :
+        unit(V(offset.x + .13 * Math.sin(i*37), offset.y + .4, offset.z + .13 * Math.cos(i*53)));
+      const burst = V(outward.x*options.burstImpulse/n, outward.y*options.burstImpulse/n, outward.z*options.burstImpulse/n);
+      if (post) chunk.applyImpulseAtPoint(burst, add(center, rotate(rotation, V(0, piece.y * .65, 0))), true);
+      else chunk.applyImpulse(burst, true);
+      this.physics.registerBody(chunk,{kind:'debris', data: post ? 'post-section' : undefined});
       this.bodyBudget?.admit(chunk);
-      this.fragments.push({handle:chunk.handle,spawnedAt:this.physics.time,sleepingFor:0});
+      this.fragments.push({handle:chunk.handle,spawnedAt:this.physics.time,sleepingFor:0,
+        postSection: post ? { index: i, count: n } : undefined});
       handles.push(chunk.handle);
     }
     this.events.emit({type:'destruction',time:this.physics.time,bodyHandle:body.handle,

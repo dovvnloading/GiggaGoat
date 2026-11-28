@@ -214,7 +214,7 @@ export class Game {
   private constructor(physics: PhysicsWorld, island: IslandData, colliders: ColliderBuild, options: GameOptions) {
     this.physics = physics;
     this.island = island;
-    this.travel = new IslandTravel(island, options.progress?.trialBests);
+    this.travel = new IslandTravel(island, options.progress?.trialBests, this.destroyedProps);
     this.colliders = colliders;
     this.craneCenter = island.pois.find(poi => poi.id === 'crane-yard')!.center;
     const noClimbGuardPrefixes = [DAM_FRONT_GUARD.prefix, DAM_BACK_GUARD.prefix,
@@ -445,9 +445,12 @@ export class Game {
         const p = desc.transform.position;
         const a = desc.transform.rotationY;
         const rotation = { x: 0, y: Math.sin(a / 2), z: 0, w: Math.cos(a / 2) };
-        body = this.physics.raw.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
+        const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
           .setTranslation(p.x, p.y, p.z).setRotation(rotation)
-          .setLinearDamping(.35).setAngularDamping(.48).setCcdEnabled(true));
+          .setLinearDamping(.35).setAngularDamping(.48).setCcdEnabled(true);
+        // Streetlights are bolted to their footings until an impact breaks them.
+        if (prop.kind === 'lamp') bodyDesc.lockTranslations().lockRotations();
+        body = this.physics.raw.createRigidBody(bodyDesc);
         let shape: ColliderDesc;
         if (desc.shape === 'cuboid') shape = RAPIER.ColliderDesc.cuboid(desc.size.x / 2, desc.size.y / 2, desc.size.z / 2);
         else if (desc.shape === 'cylinder') shape = RAPIER.ColliderDesc.cylinder(desc.size.y / 2, Math.max(desc.size.x, desc.size.z) / 2);
@@ -548,6 +551,7 @@ export class Game {
         this.breakables.register(body, {
           impulseThreshold: threshold, damageThreshold: threshold * 2.5,
           chunks: prop.kind === 'hay-bale' ? 4 : 6, burstImpulse: 13,
+          fracture: prop.kind === 'lamp' ? 'post' : 'block',
         });
       }
       if (prop.kind === 'fence' || prop.kind === 'crate' || prop.kind === 'sign') {

@@ -64,6 +64,8 @@ export interface HoofPlacement<Model extends string = HoofModel> {
   yaw: number;
   /** Selects the active shop interior when one shell serves multiple addresses. */
   storefront?: string;
+  /** Wall and trim swatches for a repainted commercial shell. */
+  upperPaint?: readonly [wall: number, trim: number];
   /** Optional legacy overrides; Blender-painted Hoofington props never use these. */
   wall?: number;
   roof?: number;
@@ -284,6 +286,7 @@ export function bakeLibraryGeometry<Model extends string>(
       ? null : body.setHex(placement.wall).clone();
     const roofColor = !allowPaint || placement.roof === undefined
       ? null : roof.setHex(placement.roof).clone();
+    const upperPaint = placement.upperPaint?.map(colour => new THREE.Color(colour));
     quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), placement.yaw + fit.yaw);
     root.traverse(object => {
       if (!(object instanceof THREE.Mesh) || !matchesStorefront(object, placement.storefront)) return;
@@ -358,6 +361,19 @@ export function bakeLibraryGeometry<Model extends string>(
                   data.data[index + 1]! / 255, data.data[index + 2]! / 255,
                   THREE.SRGBColorSpace);
                 tint.multiply(texel);
+              }
+            }
+            // Only these two columns of the commercial kit palette contain painted masonry.
+            // The ivory column holds trim. Blue glass, joinery and shop displays keep their paint.
+            if (upperPaint && material.name.endsWith('_paint')) {
+              const u = uvs.getX(idx), v = uvs.getY(idx);
+              if (v >= .50 && v <= .75) {
+                const wall = Math.abs(u - .21875) < .001 || Math.abs(u - .46875) < .001;
+                const swatch = wall ? upperPaint[0] : Math.abs(u - .09375) < .001 ? upperPaint[1] : undefined;
+                if (swatch) {
+                  const shade = .24 + .76 * Math.max(tint.r, tint.g, tint.b);
+                  tint.copy(swatch).multiplyScalar(shade);
+                }
               }
             }
           }
@@ -449,6 +465,7 @@ export interface LanternLampBatch {
 
 export async function createLanternLampInstances<Model extends string>(
   placements: readonly HoofPlacement<Model>[], model: THREE.Group, islandSize: number,
+  destroyedProps?: ReadonlySet<string>,
 ): Promise<LanternLampBatch | null> {
   if (!placements.length) return null;
   model.updateMatrixWorld(true);
@@ -530,6 +547,8 @@ export async function createLanternLampInstances<Model extends string>(
       if (disposed) return false;
       const near: number[] = [], far: number[] = [];
       for (let i = 0; i < placements.length; i++) {
+        const source = placements[i]!.source;
+        if (source && destroyedProps?.has(source.id)) continue;
         const sphere = spheres[i]!;
         const distance = position.distanceTo(sphere.center);
         if (distance - sphere.radius > Math.min(WORLD_LOD.smallPropDistance, islandSize * 1.4) ||
@@ -608,7 +627,9 @@ function suppressOldArt(
 }
 
 /** Runtime-only loading; node tests never initiate browser/GLTF requests. */
-export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group): HoofingtonVisuals {
+export function buildHoofingtonVisuals(
+  island: IslandData, oldProps: THREE.Group, destroyedProps?: ReadonlySet<string>,
+): HoofingtonVisuals {
   const group = new THREE.Group();
   group.name = 'hoofington-library-models';
   group.userData['ready'] = typeof document === 'undefined';
@@ -666,7 +687,7 @@ export function buildHoofingtonVisuals(island: IslandData, oldProps: THREE.Group
         }
         const lampPlan = plan.filter(p => p.model === 'lamp');
         const lampModel = models.get('lamp');
-        lanterns = lampModel ? await createLanternLampInstances(lampPlan, lampModel, island.size) : null;
+        lanterns = lampModel ? await createLanternLampInstances(lampPlan, lampModel, island.size, destroyedProps) : null;
         if (disposed) { lanterns?.dispose(); return; }
         if (lanterns) group.add(lanterns.group);
         if (geometry || lanterns) {

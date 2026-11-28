@@ -191,8 +191,9 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   }
   props.push(...buildRooftopCourse(byId.get(city)!.center, scale, props));
   site(city, 'tower', 39, -38, 8, 27, 8, { color: 0x95b4d8 });
-  for (let row = 0; row < 6; row++) for (const side of [-1, 1]) {
-    site(city, 'lamp', side * 10.8, -37 + row * 15, 0.6, 8, 0.6,
+  // The two shop entrances have clear cross-street views of their marquees.
+  for (const z of [-37, -22, -7, 3.5, 23, 43]) for (const side of [-1, 1]) {
+    site(city, 'lamp', side * 10.8, z, 0.6, 8, 0.6,
       { shape: 'cylinder', breakable: true });
   }
   for (let i = 0; i < 14; i++) {

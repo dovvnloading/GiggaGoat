@@ -11,6 +11,7 @@ import { PINES_LOG_ENTRY_LENGTH, pinesLogEntries } from './pines-log-access';
 import { CRANE_RAMP_GUARD_PREFIX, CRANE_SWITCHBACK_PREFIX } from './crane-yard';
 import { planVerges } from './visual-verges';
 import { harborPassages } from './visual-harbor-life';
+import { LANTERN_HEIGHT } from './lantern';
 
 describe('World visuals pass 2: geometry, streets and draw budget', () => {
   let island: IslandData;
@@ -108,8 +109,10 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
           expect(width + height + depth, prop.id).toBe(0);
         } else {
           matrix.decompose(position, rotation, scale);
+          const expectedHeight = kind === 'lamp' ? LANTERN_HEIGHT : prop.size.y;
+          const expectedY = prop.transform.position.y + (expectedHeight - prop.size.y) / 2;
           const movement = position.distanceTo(new THREE.Vector3(
-            prop.transform.position.x, prop.transform.position.y,
+            prop.transform.position.x, expectedY,
             prop.transform.position.z));
           if (prop.poiId === 'mt-gigga' && (kind === 'satellite-dish' || kind === 'flag')) {
             expect(movement, prop.id).toBeLessThan(.3 * prop.size.y);
@@ -120,7 +123,7 @@ describe('World visuals pass 2: geometry, streets and draw budget', () => {
             if (prop.id.startsWith(CRANE_SWITCHBACK_PREFIX)) scale.multiply(span);
             if (prop.id.startsWith(CRANE_RAMP_GUARD_PREFIX)) scale.set(scale.z, scale.y, scale.x);
             expect(Math.abs(scale.x - prop.size.x), prop.id).toBeLessThan(0.006);
-            expect(Math.abs(scale.y - prop.size.y), prop.id).toBeLessThan(0.006);
+            expect(Math.abs(scale.y - expectedHeight), prop.id).toBeLessThan(0.006);
             expect(Math.abs(scale.z - prop.size.z), prop.id).toBeLessThan(0.006);
           }
           // Allow the intentional pier/buoys outside the 600-m terrain square,
