@@ -35,6 +35,15 @@ def play(page, url, evidence):
           window.g = session.game;
           window.postPayments = [];
           g.rules.events.on('coins:changed', e => { if (e.reason === 'island-post') postPayments.push(e.after-e.before); });
+          window.postSounds = {postmark:0,'ui-postmaster':0};
+          const start = AudioBufferSourceNode.prototype.start;
+          AudioBufferSourceNode.prototype.start = function(...args) {
+            const result = start.apply(this,args);
+            for (const key of Object.keys(postSounds)) {
+              if (this.buffer && this.buffer === session.audio.recordings?.effects.get(key)?.buffer) postSounds[key]++;
+            }
+            return result;
+          };
         }""")
 
     def visit_target():
@@ -94,7 +103,11 @@ def play(page, url, evidence):
         assert page.locator(".gg-post-card").count() == 8
         page.screenshot(path=evidence / "dispatches.jpg", type="jpeg", quality=88)
         wait("session.audio.recordings?.effects.has('ui-postmaster') && session.audio.recordings.effects.has('postmark')")
+        peak = page.evaluate("""() => session.audio.recordings.effects.get('postmark').buffer.getChannelData(0)
+          .reduce((peak, sample) => Math.max(peak, Math.abs(sample)),0)""")
+        assert .25 < peak < .8, peak
         click("hear-postmaster")
+        wait("postSounds['ui-postmaster'] === 1")
         routes = page.evaluate("g.post.routes.map(route=>route.id)")
         for i, route in enumerate(routes):
             if i:
@@ -114,6 +127,7 @@ def play(page, url, evidence):
             visit_target()
             assert page.evaluate("id=>g.post.stamped.has(id)", route)
             assert page.evaluate("postPayments") == [40] * (i + 1)
+            wait(f"postSounds.postmark === {i + 1}")
             print(f"Delivered {route}", flush=True)
         page.keyboard.press("Escape")
         balance = page.evaluate("g.rules.wallet.coins")
