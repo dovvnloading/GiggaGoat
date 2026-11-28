@@ -351,32 +351,26 @@ export class GameView {
       const lighthouse = board.poiId === 'old-lighthouse';
       const craneYard = board.poiId === 'crane-yard';
       const smallBadge = mountain || craneYard;
-      const compact = board.poiId === 'hoofington' || board.poiId === 'downtown-bleatsville' ||
-        lighthouse || smallBadge;
-      if (compact) {
-        root.scale.multiplyScalar(.58);
-        // The summit notice faces the last climb from Hoofington.
-        if (!craneYard) root.rotation.y = mountain ? 2.67 : lighthouse ? Math.PI / 2 : -Math.PI / 2;
+      const roadside = board.poiId === 'the-dam' || board.poiId === 'baa-ardwalk' ||
+        board.poiId === 'whispering-pines';
+      root.scale.multiplyScalar(.58);
+      const lane = roadside && this.game.traffic.lanes[0];
+      if (lane) {
+        const index = Math.round(lane.nearest(board.position) / lane.step) % lane.poses.length;
+        const road = lane.poses[index]!;
+        root.rotation.y = Math.atan2(road.x - board.position.x, road.z - board.position.z);
+      } else if (!craneYard) {
+        root.rotation.y = mountain ? 2.67 : lighthouse ? Math.PI / 2 : -Math.PI / 2;
       }
-      const base = smallBadge || lighthouse ? 0 : .15;
+      const base = smallBadge || lighthouse || roadside ? 0 : .15;
       root.position.set(board.position.x, board.position.y + base, board.position.z);
       this.instancedProps.add(root);
       this.boardRoots.push(root);
-      if (compact && !smallBadge) continue;
+      if (!smallBadge) continue;
 
       const overlay = new THREE.Group();
       overlay.position.copy(root.position);
-      if (smallBadge) {
-        overlay.add(this.textSprite('E · GIGS', 2.4, .64, 2.9));
-      } else {
-        overlay.add(this.textSprite('E · GIGS', 4.8, 1.2, 3.4));
-        const ring = new THREE.Mesh(new THREE.RingGeometry(3.8, 4.25, 28),
-          new THREE.MeshBasicMaterial({ color: 0xffd833, side: THREE.DoubleSide,
-            transparent: true, opacity: .7 }));
-        ring.rotation.x = -Math.PI / 2;
-        ring.position.y = .09;
-        overlay.add(ring);
-      }
+      overlay.add(this.textSprite('E · GIGS', 2.4, .64, 2.9));
       this.boardMarkers.add(overlay);
     }
   }
@@ -690,7 +684,8 @@ export class GameView {
     if (this.appliedGraphics === settings.graphics) return;
     this.appliedGraphics = settings.graphics;
     const preset = GRAPHICS_PRESETS[settings.graphics];
-    const ratio = this.resolution.configure(settings.graphics, window.devicePixelRatio || 1);
+    const ratio = this.resolution.configure(settings.graphics, window.devicePixelRatio || 1,
+      'isSoftwareRenderer' in this.renderer ? 30 : 60);
     this.renderer.setPixelRatio(ratio);
     this.renderer.shadowMap.enabled = preset.shadowMapSize > 0 && !('isSoftwareRenderer' in this.renderer);
     this.world.sun.castShadow = this.renderer.shadowMap.enabled;
@@ -1117,9 +1112,7 @@ export class GameView {
     this.perfStats.triangles = info.render.triangles;
     this.perfStats.textures = info.memory.textures;
     this.perfStats.pixelRatio = this.renderer.getPixelRatio();
-    // The 60 Hz GPU controller would continuously downscale a healthy 30 Hz software frame.
-    const nextRatio = 'isSoftwareRenderer' in this.renderer ? null :
-      this.resolution.sample(elapsed * 1000, renderElapsed, elapsed, !this.paused);
+    const nextRatio = this.resolution.sample(elapsed * 1000, renderElapsed, elapsed, !this.paused);
     if (nextRatio !== null) {
       this.renderer.setPixelRatio(nextRatio);
       this.onResize();
