@@ -851,6 +851,7 @@ export class GameHud {
     const instruments = ride ? game.travel.instruments() : '';
     const route = ride ? game.travel.trials?.message(instruments) ?? { title: RIDES[ride].name,
       task: game.travel.controls(device === 'gamepad', game.physics.time), detail: instruments } : undefined;
+    const happening = route ?? game.happeningMessage;
     this.gigHeader.textContent = ride ? 'ISLAND TRAVEL' : game.post?.active && game.travelAvailable ? 'ISLAND POST' : 'CURRENT GIG';
     this.gigCard.setAttribute('aria-label', ride ? 'Travel instruments' : 'Current gig');
     const state = deriveHudState({
@@ -860,9 +861,9 @@ export class GameHud {
       inventory, buildMode: game.buildMode,
       buildPiece: game.buildPiece, ragdoll: game.goat.isRagdoll,
       location: game.location, coins: rules.wallet.coins, boardInRange,
-      happening: route ?? game.happeningMessage,
+      happening,
       partyTitle: game.party.match ? game.party.title : undefined,
-      gig: run ? {
+      gig: run && (!happening || run.status === 'running' || game.pendingGigResult) ? {
         title: run.setup.info.title, status: run.status, objective: run.objective,
         elapsedTicks: run.elapsedTicks, maxTicks: run.setup.maxTicks,
         goldTicks: run.setup.goldTicks, silverTicks: run.setup.silverTicks,

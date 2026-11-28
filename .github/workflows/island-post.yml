@@ -1,4 +1,4 @@
-name: Island Post playtest
+name: Island activity playtests
 on:
   workflow_dispatch:
   pull_request:
@@ -13,8 +13,13 @@ permissions:
 jobs:
   deliveries:
     if: github.event_name == 'pull_request'
+    name: ${{ matrix.activity }} playtest
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        activity: [post, travel]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,16 +32,18 @@ jobs:
         run: >
           node --input-type=module -e "import {build} from 'vite';
           await build({build:{outDir:'.island-post-test',rollupOptions:{input:'scripts/tests/island-post.html'}}});"
-      - name: Play eight dispatches in Chrome
+      - name: Play the activities in Chrome
+        env:
+          ACTIVITY: ${{ matrix.activity }}
         run: |
           cp .island-post-test/scripts/tests/island-post.html .island-post-test/island-post.html
           python -m http.server 4191 --bind 127.0.0.1 --directory .island-post-test > "$RUNNER_TEMP/post-server.log" 2>&1 &
-          python scripts/tests/island-post.py http://127.0.0.1:4191/island-post.html "$RUNNER_TEMP/postcards"
+          python scripts/tests/island-post.py http://127.0.0.1:4191/island-post.html "$RUNNER_TEMP/postcards" "--$ACTIVITY"
       - name: Save the album and test evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: island-post-playtest
+          name: island-${{ matrix.activity }}-playtest
           path: ${{ runner.temp }}/postcards/
           if-no-files-found: ignore
   public-pages:
