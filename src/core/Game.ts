@@ -860,6 +860,8 @@ export class Game {
       intent[button] = state.applied;
     }
     if (this.travel.active) {
+      // Passengers rest while the same inputs steer the craft.
+      this.rules.update(dt);
       const reward = this.travel.tick(dt, intent, this.water.seaLevel, this.physics.time);
       if (reward) this.rules.wallet.credit(reward, 'travel-trial');
       this.moveRider();
@@ -1439,6 +1441,7 @@ export class Game {
     const feet = this.happeningPosition();
     if (atStation && this.travel.station(feet) !== id) return false;
     this.travel.board(id, atStation ? feet : undefined);
+    this.rules.abilities.cancelActions(this.syncHeldButtons());
     const heading = this.travel.craft[id].heading;
     // Align the entire rig once, preserving its joints while the vehicle carries it.
     this.positionGoat(this.travel.seat(), -heading);
@@ -1477,6 +1480,7 @@ export class Game {
     const heading=this.travel.craft[id].heading;
     const exit=this.travel.exit(this.water.seaLevel,this.physics.time,returnHome);
     if(!exit)return false;
+    this.rules.abilities.cancelActions(this.syncHeldButtons());
     for(const {body} of this.aboardPose)body.setEnabled(true);
     this.aboardPose=[];
     this.positionGoat(exit,-heading);
@@ -1529,6 +1533,11 @@ export class Game {
     this.teleport(V(spawn.x, this.spawnGround, spawn.z),
       this.island.spawns[0]!.heading);
     this.goat.resetForRespawn();
+    this.rules.resetForRespawn(this.syncHeldButtons());
+    this.respawns++;
+  }
+
+  private syncHeldButtons(): PlayerIntent {
     const held = { ...this.intent };
     for (const button of EDGE_BUTTONS) {
       const state = this.buttons[button];
@@ -1536,8 +1545,7 @@ export class Game {
       state.applied = state.sampled;
       held[button] = state.sampled;
     }
-    this.rules.resetForRespawn(held);
-    this.respawns++;
+    return held;
   }
 
   /** Use the same offshore limits as rescue, including the authored pier. */

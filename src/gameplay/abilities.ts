@@ -99,6 +99,12 @@ export class GoatAbilities {
     s.knockedDown = false;
     s.recoverWait = 0;
     s.balanceRegenWait = 0;
+    this.cancelActions(held);
+    if (wasKnockedDown) this.bus.emit('balance:recovered', { balance: s.balance });
+  }
+
+  cancelActions(held: GoatIntent): void {
+    const s = this.state;
     s.charge = 0;
     s.charging = false;
     s.tongueTarget = null;
@@ -106,7 +112,6 @@ export class GoatAbilities {
     delete s.airPressAt;
     s.previous = { jump: Boolean(held.jump), bleat: Boolean(held.bleat),
       flop: Boolean(held.flop), flingTongue: Boolean(held.flingTongue) };
-    if (wasKnockedDown) this.bus.emit('balance:recovered', { balance: s.balance });
   }
 
   eatHoneyRolls(count: number): void {

@@ -87,6 +87,28 @@ describe('Billy Isle passenger travel', () => {
     expect(game.travel.active).toBe('boat');
   });
 
+  it('recovers on the voyage and only acts on a fresh press after returning', () => {
+    for (let i = 0; i < 320; i++) game.step();
+    const actions: string[] = [];
+    const done = game.rules.events.on('ability:used', event => actions.push(event.name));
+    try {
+      game.step({ bleat: true, chargeHeadbutt: true });
+      for (let i = 0; i < 20; i++) game.step({ chargeHeadbutt: true });
+      expect(game.rules.abilities.headbuttCharge).toBeGreaterThan(0);
+      expect(game.rules.abilities.toJSON().bleatCooldown).toBeGreaterThan(0);
+      expect(game.boardRide('boat')).toBe(true);
+      for (let i = 0; i < 360; i++) game.step({ moveZ: 1, bleat: true });
+      expect(game.rules.abilities.toJSON().bleatTimes).toEqual([]);
+      expect(game.rules.abilities.headbuttCharge).toBe(0);
+      expect(game.leaveRide(true)).toBe(true);
+      game.step({ bleat: true });
+      expect(actions).toEqual(['bleat']);
+      game.step();
+      game.step({ bleat: true });
+      expect(actions).toEqual(['bleat', 'bleat']);
+    } finally { done(); }
+  });
+
   it('earns a harbour ticket by sailing out, turning and idling at the berth', () => {
     const coins = game.rules.wallet.coins;
     expect(game.startTravelTrial('boat')).toBe(true);
