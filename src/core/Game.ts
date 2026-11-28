@@ -39,6 +39,7 @@ import { GigSession } from './GigSession';
 import { IslandHappenings, placeIslandHappenings } from './IslandHappenings';
 import { IslandLifeDirector } from './IslandLifeDirector';
 import { IslandTraffic } from './IslandTraffic';
+import { Postmaster } from './Postmaster';
 import { MarketScene, MARKET_CRATE_ID, MARKET_FRUIT_BODY_TAG } from './MarketScene';
 import { PartySession } from './PartySession';
 import type { GameProgress } from './Persistence';
@@ -158,6 +159,7 @@ export class Game {
   readonly happenings: IslandHappenings;
   readonly life: IslandLifeDirector;
   readonly traffic: IslandTraffic;
+  readonly postmaster: Postmaster;
   readonly market: MarketScene;
   private readonly lifeObstacleSources: Array<{ body: RigidBody; radius: number; height: number }> = [];
   private readonly lifeObstacles: Array<{ position: Vec3; radius: number; height: number }> = [];
@@ -376,6 +378,7 @@ export class Game {
       return { x, y: y - prop.size.y / 2, z };
     });
     this.life = new IslandLifeDirector(island, this.gigs.boards.map(board => board.position));
+    this.postmaster = new Postmaster(island, this.life.plan.navigation.surfaceAt, physics);
     this.traffic = new IslandTraffic(island, this.happenings.sites, physics);
     this.market = new MarketScene(physics, island, colliders, this.budget);
     const town = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
@@ -851,6 +854,7 @@ export class Game {
 
   private beforeTick(dt: number): void {
     const ambientEnabled = this.ambientLifeEnabled;
+    this.postmaster.step(ambientEnabled, this.water.seaLevel, this.goat.torso.translation());
     this.traffic.step(dt, {enabled:this.travelAvailable,seaLevel:this.water.seaLevel,
       player:{position:this.goat.torso.translation(),radius:.61*this.goat.size,height:1.15*this.goat.size},
       residents:ambientEnabled ? this.life.residents : [],obstacles:this.lifeObstacles,wet:islandWeather(this.physics.time).wet});
@@ -1609,7 +1613,7 @@ export class Game {
   get atMailbox(): boolean {
     if (!this.travelAvailable || this.travel.active || !this.post.routes.length) return false;
     const at = this.happeningPosition(), scale = this.island.size / 600;
-    return this.mailboxes.some(box => Math.abs(at.y - box.y) <= 1.8 * scale &&
+    return this.postmaster.nearby(at) || this.mailboxes.some(box => Math.abs(at.y - box.y) <= 1.8 * scale &&
       Math.hypot(at.x - box.x, at.z - box.z) <= 2.8 * scale);
   }
 
@@ -1675,6 +1679,7 @@ export class Game {
     this.materialAudioListeners.clear();
     this.life.dispose();
     this.traffic.dispose();
+    this.postmaster.dispose();
     this.market.dispose();
     this.party.dispose();
     this.gigs.dispose();

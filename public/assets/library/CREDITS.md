@@ -93,3 +93,7 @@ All other models are CC0 / public domain: Kenney (kenney.nl), KayKit by Kay Lous
 The fleet and its drivers use Kenney’s CC0 Car Kit and Mini Characters. The service liveries were created for Billy Isle with GPT ImageGen.
 
 Road traffic audio by ElevenLabs. The game mixes “Vehicle idling gentle purr,” “Heavy truck low rumble,” and “Toy truck horn double toot.” [Car sounds](https://elevenlabs.io/sound-effects/car-sound) · [Engines](https://elevenlabs.io/sound-effects/engine) · [Horns](https://elevenlabs.io/sound-effects/horn)
+
+## Island Post
+
+Marnie is an original Billy Isle character. Her GPT ImageGen reference was used to generate the textured model in Meshy. The game uses two reduced meshes with a shared baked color texture and a head and wing rig. Her recorded greeting was made with ElevenLabs.

@@ -938,7 +938,8 @@ export class GameHud {
       game.traffic?.driverNear(game.goat.torso.translation(),7*game.traffic.scale);
     this.board.hidden = !(station || canStepOut || mailbox || boardInRange || driver);
     const prompt=this.board.querySelector('.gg-prompt-copy');
-    const label=ride?'DISEMBARK':mailbox?'CHECK MAIL':station?'BOARD '+RIDES[station].name.toUpperCase():
+    const postPrompt = mailbox && game.postmaster?.nearby(game.goat.torso.translation()) ? 'TALK TO MARNIE' : 'CHECK MAIL';
+    const label=ride?'DISEMBARK':mailbox?postPrompt:station?'BOARD '+RIDES[station].name.toUpperCase():
       driver?'BLEAT AT DRIVER':'GOAT GIGS';
     if(prompt && prompt.textContent!==label)prompt.textContent=label;
     this.setPointerLockHint(pointerLocked, boardInRange, device, pointerLockUnavailable, runningGig, lookHintNeeded && !ride);
