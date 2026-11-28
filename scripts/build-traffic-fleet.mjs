@@ -29,6 +29,7 @@ const slots = [
   'rear-right',
   'windscreen',
   'driver',
+  'registration',
 ];
 const gltf = {
   asset: { version: '2.0', generator: 'GiggaGoat Car Kit fleet' },
@@ -238,12 +239,39 @@ for (const model of models) {
         t = [],
         groups = slots.map(() => []),
         vertexMap = new Map();
-      function vertex(source) {
+      // The native plate is a chamfered .35 × .175 m piece of enamel. Identify
+      // its six coplanar front triangles and unwrap that face in its own plane.
+      const plates = new Map();
+      const bottoms = new Map();
+      if (node.name === 'body')
+        for (let i = 0; i < faces.length; i += 3) {
+          const tri = faces.slice(i, i + 3),
+            z = positions[3 * tri[0] + 2];
+          if (
+            Math.abs(z) < 0.8 ||
+            !tri.every(
+              (id) =>
+                Math.abs(positions[id * 3]) <= 0.176 &&
+                positions[id * 3 + 1] < 0.31 &&
+                Math.abs(positions[id * 3 + 2] - z) < 0.0001 &&
+                Math.abs(uv[id * 2] - 0.844) < 0.008 &&
+                Math.abs(normals[id * 3 + 2]) > 0.99
+            )
+          )
+            continue;
+          plates.set(i, z);
+          bottoms.set(z, Math.min(bottoms.get(z) ?? Infinity, ...tri.map((id) => positions[id * 3 + 1])));
+        }
+      function vertex(source, plate) {
         const values = [
           ...positions.slice(source * 3, source * 3 + 3),
           ...normals.slice(source * 3, source * 3 + 3),
           ...uv.slice(source * 2, source * 2 + 2),
         ];
+        if (plate !== undefined) {
+          values[6] = 0.5 + (Math.sign(plate) * values[0]) / 0.35;
+          values[7] = 1 - (values[1] - bottoms.get(plate)) / 0.175;
+        }
         const key = values.map((x) => Math.round(x * 1e5)).join(',');
         if (vertexMap.has(key)) return vertexMap.get(key);
         const id = p.length / 3;
@@ -268,7 +296,12 @@ for (const model of models) {
           mean(positions, 3, 1),
           mean(positions, 3, 2)
         );
-        groups[group].push(vertex(a), vertex(faces[i + 1]), vertex(faces[i + 2]));
+        const plate = plates.get(i);
+        groups[plate === undefined ? group : slots.indexOf('registration')].push(
+          vertex(a, plate),
+          vertex(b, plate),
+          vertex(c, plate)
+        );
       }
       // Tires and matching trims are identical across multiple models.
       const key = JSON.stringify([p, n, t, groups]);

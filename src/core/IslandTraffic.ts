@@ -188,6 +188,8 @@ export interface TrafficVehicle {
   readonly stops: readonly number[];
   readonly pose: DrivingPose;
   readonly previous: DrivingPose;
+  /** Audio and physics join the simulation once the vehicle can be seen. */
+  available: boolean;
   distance: number;
   odometer: number;
   lastStep: number;
@@ -276,6 +278,7 @@ export class IslandTraffic {
         stops: schedule,
         pose,
         previous: { ...pose },
+        available: true,
         distance,
         odometer: 0,
         lastStep: 0,
@@ -297,6 +300,7 @@ export class IslandTraffic {
     if (!this.enabled) return;
     let nearest: TrafficVehicle | undefined;
     for (const car of this.vehicles) {
+      if (!car.available) continue;
       const d = Math.hypot(car.pose.x - p.x, car.pose.z - p.z, car.pose.y + car.height * 0.5 - p.y);
       if (d < range) {
         nearest = car;
@@ -318,6 +322,7 @@ export class IslandTraffic {
     let radio: RecordPlayback | undefined;
     if (this.enabled)
       for (const car of this.vehicles) {
+        if (!car.available) continue;
         const p = car.pose,
           dx = listener.x - p.x,
           dz = listener.z - p.z,
@@ -355,7 +360,7 @@ export class IslandTraffic {
       const p = car.pose;
       Object.assign(car.previous, p);
       car.lastStep = 0;
-      if (!tick.enabled) {
+      if (!tick.enabled || !car.available) {
         if (car.body?.isEnabled()) car.body.setEnabled(false);
         continue;
       }
@@ -367,7 +372,7 @@ export class IslandTraffic {
       let gap = lane.length,
         leaderLength = 0;
       for (const other of this.vehicles) {
-        if (other === car || other.lane !== lane) continue;
+        if (other === car || !other.available || other.lane !== lane) continue;
         const lead = lane.ahead(car.distance, other.distance);
         if (lead < gap) {
           gap = lead;

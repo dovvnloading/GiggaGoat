@@ -14,6 +14,31 @@ const BRANDS = {
 const HEADLAMP = 0xffedb9,
   BRAKE = 0xff3927,
   AMBER = 0xffae37;
+
+/** Print the local registration directly on the manufacturer's molded license plate. */
+function registration(code: string): THREE.CanvasTexture | undefined {
+  const sheet = document.createElement('canvas');
+  sheet.width = 256;
+  sheet.height = 128;
+  const ink = sheet.getContext('2d');
+  if (!ink) return;
+  ink.fillStyle = '#fbebba';
+  ink.fillRect(0, 0, 256, 128);
+  ink.strokeStyle = '#244651';
+  ink.lineWidth = 5;
+  ink.strokeRect(7, 6, 242, 116);
+  ink.textAlign = 'center';
+  ink.fillStyle = '#245367';
+  ink.font = 'bold 19px sans-serif';
+  ink.fillText('B I L L Y   I S L E', 128, 31);
+  ink.fillStyle = '#152f38';
+  ink.font = 'bold 55px monospace';
+  ink.fillText(code, 128, 93, 213);
+  const texture = new THREE.CanvasTexture(sheet);
+  texture.flipY = false;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
 type Finish = THREE.MeshStandardMaterial;
 interface Rig {
   car: TrafficVehicle;
@@ -95,6 +120,7 @@ export class TrafficVisuals {
     polygonOffsetFactor: -2,
   });
   private readonly assets: THREE.Object3D[] = [];
+  private readonly plates: THREE.Texture[] = [];
   private atlas?: THREE.Texture;
   private readonly headlamps: THREE.SpotLight[] = [];
   private disposed = false;
@@ -107,7 +133,10 @@ export class TrafficVisuals {
       this.headlamps.push(lamp);
     }
     this.root.userData.ready = false;
-    if (typeof document !== 'undefined') void this.load();
+    if (typeof document !== 'undefined') {
+      for (const car of traffic.vehicles) car.available = false;
+      void this.load();
+    }
   }
   private async load(): Promise<void> {
     const loader = new GLTFLoader();
@@ -118,13 +147,15 @@ export class TrafficVisuals {
           texture.colorSpace = THREE.SRGBColorSpace;
           texture.anisotropy = 4;
           if (this.disposed) texture.dispose();
-          else this.atlas = texture;
+          else {
+            this.atlas = texture;
+            for (const rig of this.rigs) this.paintService(rig);
+          }
         },
         () => {}
       );
     try {
       const gltf = await loader.loadAsync(publicAssetUrl('assets/island-traffic/fleet.glb'));
-      await atlas;
       if (this.disposed) {
         releaseScene(gltf.scene);
         return;
@@ -136,7 +167,6 @@ export class TrafficVisuals {
       }
     } catch {
       // An unavailable optimized bundle can still use the original licensed models already shipped on Pages.
-      await atlas;
       await Promise.all(
         [...new Set(this.traffic.vehicles.map((c) => c.service.model))].map(async (model) => {
           if (this.disposed) return;
@@ -156,6 +186,7 @@ export class TrafficVisuals {
         })
       );
     }
+    await atlas;
     if (!this.disposed) this.root.userData.ready = true;
   }
   private install(car: TrafficVehicle, template: THREE.Object3D): void {
@@ -173,6 +204,15 @@ export class TrafficVisuals {
       if (m) return m;
       m = original.clone();
       materials.set(original, m);
+      if (m.name === 'registration') {
+        const fleet = { post: 'POST', bakery: 'EAP', records: 'AMP', express: 'CAPE' };
+        const prefix = car.service.livery ? fleet[car.service.livery] : 'BI';
+        const number = String(this.traffic.vehicles.indexOf(car) + 1).padStart(2, '0');
+        const plate = registration(prefix + ' ' + number);
+        m.map = plate ?? null;
+        if (plate) this.plates.push(plate);
+        m.roughness = 0.52;
+      }
       if (m.name === 'coachwork' && brand) {
         m.map = null;
         m.color.setHex(brand.paint);
@@ -231,24 +271,6 @@ export class TrafficVisuals {
     root.add(model);
     const finishes: THREE.Material[] = [...materials.values()];
     if (distantGlass) finishes.push(distantGlass);
-    if (brand && this.atlas) {
-      let geometry = this.panels.get(brand.tile);
-      if (!geometry) {
-        geometry = sidePanels(car.service.model === 'van', brand.tile);
-        this.panels.set(brand.tile, geometry);
-      }
-      const material = new THREE.MeshStandardMaterial({
-        map: this.atlas,
-        roughness: 0.76,
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-      });
-      finishes.push(material);
-      const print = new THREE.Mesh(geometry, material);
-      print.name = 'painted-service-panels';
-      print.receiveShadow = true;
-      root.add(print);
-    }
     const shadow = new THREE.Mesh(this.shadowShape, this.shadowPaint);
     shadow.scale.set((car.width / car.scale) * 0.52, 1, (car.length / car.scale) * 0.48);
     shadow.position.y = 0.021;
@@ -269,7 +291,32 @@ export class TrafficVisuals {
     root.visible = false;
     root.name = car.service.name;
     this.root.add(root);
-    this.rigs.push({ root, car, near, far, wheels, lamps, finishes, shadow, caster, hatch, arm });
+    const rig = { root, car, near, far, wheels, lamps, finishes, shadow, caster, hatch, arm };
+    this.rigs.push(rig);
+    this.paintService(rig);
+    car.available = true;
+  }
+
+  private paintService({ car, root, finishes }: Rig): void {
+    const brand = car.service.livery && BRANDS[car.service.livery];
+    if (brand && this.atlas) {
+      let geometry = this.panels.get(brand.tile);
+      if (!geometry) {
+        geometry = sidePanels(car.service.model === 'van', brand.tile);
+        this.panels.set(brand.tile, geometry);
+      }
+      const material = new THREE.MeshStandardMaterial({
+        map: this.atlas,
+        roughness: 0.76,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+      });
+      finishes.push(material);
+      const print = new THREE.Mesh(geometry, material);
+      print.name = 'painted-service-panels';
+      print.receiveShadow = true;
+      root.add(print);
+    }
   }
 
   update(time: number, alpha: number, camera: THREE.Vector3, quality: GraphicsQuality, night: boolean): void {
@@ -384,9 +431,13 @@ export class TrafficVisuals {
   }
   dispose(): void {
     this.disposed = true;
-    for (const rig of this.rigs) for (const m of rig.finishes) m.dispose();
+    for (const rig of this.rigs) {
+      rig.car.available = false;
+      for (const m of rig.finishes) m.dispose();
+    }
     for (const p of this.panels.values()) p.dispose();
     this.atlas?.dispose();
+    for (const plate of this.plates) plate.dispose();
     this.shadowShape.dispose();
     this.shadowPaint.dispose();
     for (const asset of this.assets) releaseScene(asset);

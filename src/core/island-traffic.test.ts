@@ -45,8 +45,8 @@ describe('island road traffic', () => {
             const x = p.x + unit * (0.84 * side * cos + 1.26 * axle * sin),
               z = p.z + unit * (-0.84 * side * sin + 1.26 * axle * cos);
             const surface = asphalt(x, z);
-            if (!Number.isFinite(surface) || terrainFaceHeight(world, x, z) > surface + .012)
-              missing.push([x, z, terrainFaceHeight(world,x,z)-surface]);
+            if (!Number.isFinite(surface) || terrainFaceHeight(world, x, z) > surface + 0.012)
+              missing.push([x, z, terrainFaceHeight(world, x, z) - surface]);
           }
       }
       expect(missing.slice(0, 5)).toEqual([]);
@@ -92,6 +92,26 @@ describe('island road traffic', () => {
           });
         }
       expect([...hits]).toEqual([]);
+    } finally {
+      physics.dispose();
+    }
+  });
+  it('keeps unavailable vehicles silent and non-solid until their model appears', async () => {
+    const physics = await PhysicsWorld.create();
+    try {
+      const traffic = new IslandTraffic(island, [], physics);
+      const car = traffic.vehicles[0]!;
+      const player = { ...clear.player, position: { ...car.pose, x: car.pose.x + 4 } };
+      for (const vehicle of traffic.vehicles) vehicle.available = false;
+      traffic.step(1 / 60, { ...clear, player });
+      expect(car.body).toBeUndefined();
+      expect(traffic.hail(car.pose)).toBe(false);
+      expect(traffic.sounds(car.pose).emitters).toEqual([]);
+      car.available = true;
+      traffic.step(1 / 60, { ...clear, player });
+      expect(car.body?.isEnabled()).toBe(true);
+      expect(traffic.hail(car.pose)).toBe(true);
+      expect(traffic.sounds(car.pose).emitters).toHaveLength(1);
     } finally {
       physics.dispose();
     }
