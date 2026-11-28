@@ -117,7 +117,7 @@ function hoofingtonThroughStreet(allRoads: readonly RoadDescriptor[], scale: num
   if (!street || !north || !south) return null;
   const northEnd = street.points[0]!, southEnd = street.points.at(-1)!;
   const fromFarm = [...north.points].reverse().findIndex(point => point.z <= northEnd.z - 3 * scale);
-  const northIndex = north.points.length - 1 - fromFarm;
+  let northIndex = north.points.length - 1 - fromFarm;
   const southIndex = south.points.findIndex(point => point.z >= southEnd.z + 3 * scale);
   if (fromFarm < 0 || southIndex < 0) return null;
 
@@ -130,8 +130,8 @@ function hoofingtonThroughStreet(allRoads: readonly RoadDescriptor[], scale: num
       widths.push(width);
     }
   }
-  function taper(edge: RoadPoint, anchor: RoadPoint, width: number, inward: boolean): void {
-    for (const t of inward ? [.75, .50, .25] : [.25, .50, .75]) {
+  function taper(edge: RoadPoint, anchor: RoadPoint, width: number): void {
+    for (const t of [.25, .50, .75]) {
       const eased = t * t * (3 - 2 * t);
       points.push({
         x: THREE.MathUtils.lerp(edge.x, anchor.x, eased),
@@ -142,10 +142,41 @@ function hoofingtonThroughStreet(allRoads: readonly RoadDescriptor[], scale: num
       widths.push(THREE.MathUtils.lerp(streetWidth, width, eased));
     }
   }
+  // Start turning before the old regional spline overshoots the high street.
+  // Both full-size vehicles can then round the corner at the same time.
+  let approachLength = 0;
+  while (northIndex > 1 && approachLength < 5.2 * scale) {
+    const p = north.points[northIndex]!, previous = north.points[northIndex - 1]!;
+    if (previous.bridge || p.bridge) break;
+    approachLength += Math.hypot(p.x - previous.x, p.z - previous.z);
+    northIndex--;
+  }
   append(north.points.slice(0, northIndex + 1), north.width);
-  taper(northEnd, north.points[northIndex]!, north.width, true);
-  append(street.points, street.width);
-  taper(southEnd, south.points[southIndex]!, south.width, false);
+  const anchor = north.points[northIndex]!, incoming = north.points[Math.max(0, northIndex - 1)]!;
+  const tangent = new THREE.Vector2(anchor.x - incoming.x, anchor.z - incoming.z).normalize();
+  const handle = Math.min(5.5 * scale, .52 * Math.hypot(northEnd.x - anchor.x, northEnd.z - anchor.z));
+  const turn = new THREE.CubicBezierCurve(
+    new THREE.Vector2(anchor.x, anchor.z),
+    new THREE.Vector2(anchor.x + tangent.x * handle, anchor.z + tangent.y * handle),
+    new THREE.Vector2(northEnd.x, northEnd.z - handle),
+    new THREE.Vector2(northEnd.x, northEnd.z)
+  );
+  // Coarse terrain can put the village plot several metres above the
+  // incoming road. Cut a gradual approach into the bank up to the matching grade.
+  function addGraded(point: RoadPoint, width: number): void {
+    const previous = points.at(-1)!;
+    const rise = .16 * Math.hypot(point.x - previous.x, point.z - previous.z);
+    const y = THREE.MathUtils.clamp(point.y, previous.y - rise, previous.y + rise);
+    points.push(y === point.y ? point : { ...point, y });
+    widths.push(width);
+  }
+  for (let i = 1; i < 8; i++) {
+    const t = i / 8, p = turn.getPointAt(t);
+    addGraded({ x: p.x, z: p.y, y: THREE.MathUtils.lerp(anchor.y, northEnd.y, t), bridge: false },
+      THREE.MathUtils.lerp(north.width, street.width, t));
+  }
+  for (const p of street.points) addGraded(p, street.width);
+  taper(southEnd, south.points[southIndex]!, south.width);
   append(south.points.slice(southIndex), south.width);
   return { run: { id: street.id, points, width: street.width, widths }, replaced: new Set([street.id, north.id, south.id]) };
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BufferGeometry, Float32BufferAttribute } from 'three';
+import { BufferGeometry, Float32BufferAttribute, Matrix3, Matrix4, Vector3 } from 'three';
+import { OBB } from 'three/addons/math/OBB.js';
 import { generateIsland } from '../world/island';
 import { getDamHeadwater, isDamHeadwater } from '../world/dam-landscape';
 import { roadRibbonData } from '../world/road-ribbons';
@@ -36,7 +37,15 @@ describe('island road traffic', () => {
     const reservoir = getDamHeadwater(world);
     mesh.dispose();
     expect(network.lanes).toHaveLength(2);
+    const farm = world.pois.find(poi => poi.id === 'hoofington')!.center;
+    const northTurn = network.lanes.map(lane => lane.poses
+      .filter(p => Math.hypot(p.x - farm.x, p.z - (farm.z - 42 * unit)) < 15 * unit)
+      .map(p => new OBB(new Vector3(p.x, p.y + unit, p.z), new Vector3(.99 * unit, unit, 2.15 * unit),
+        new Matrix3().setFromMatrix4(new Matrix4().makeRotationY(p.yaw)))));
+    expect(northTurn.every(turn => turn.length > 20)).toBe(true);
+    expect(northTurn[0]!.some(a => northTurn[1]!.some(b => a.intersectsOBB(b)))).toBe(false);
     for (const lane of network.lanes) {
+      expect(Math.max(...lane.poses.map(p => Math.abs(p.pitch)))).toBeLessThan(Math.PI / 9);
       expect(lane.length / unit).toBeGreaterThan(1400);
       const missing: number[][] = [];
       const flooded: number[][] = [];

@@ -115,7 +115,9 @@ export function populateProps(island: IslandData, rng: SeededRandom): PropDescri
   // The seven removed garden crates used three draws each. Preserve all later
   // Downtown/Pines/Lighthouse placements and relic positions on every seed.
   for (let i = 0; i < 7 * 3; i++) rng.next();
-  site(farm, 'sign', 7.5, 39, 5, 3, 0.5, { breakable: true });
+  // Face the village street from inside the end fence, leaving the walk
+  // from the job board to the mowing lawn clear for the goat.
+  site(farm, 'sign', 13.2, 35, 5, 3, 0.5, { yaw: -Math.PI / 2, breakable: true });
 
   // Set the mill supplies and the farm's loading stop on the grass verges.
   // Named IDs leave the existing numeric IDs and seeded bales in place.
