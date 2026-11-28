@@ -167,6 +167,7 @@ export function isBigMoment(sound: SoundId, intensity = 1): boolean {
 }
 
 export interface MusicState {
+  deliveringMail?: boolean;
   mode: AudioMode;
   combo: number;
   meter: number;

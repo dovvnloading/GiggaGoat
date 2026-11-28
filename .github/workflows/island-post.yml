@@ -1,0 +1,69 @@
+name: Island activity playtests
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/core/**'
+      - 'src/audio/**'
+      - 'src/world/**'
+      - 'scripts/tests/island-post.*'
+      - 'scripts/tests/travel-budget.py'
+      - '.github/workflows/island-post.yml'
+permissions:
+  contents: read
+jobs:
+  deliveries:
+    if: github.event_name == 'pull_request'
+    name: ${{ matrix.activity }} playtest
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        activity: [post, travel, render]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: python -m pip install playwright==1.56.0
+      - name: Build the test entry with the production game
+        run: >
+          node --input-type=module -e "import {build} from 'vite';
+          await build({build:{outDir:'.island-post-test',rollupOptions:{input:'scripts/tests/island-post.html'}}});"
+      - name: Play the activities in Chrome
+        env:
+          ACTIVITY: ${{ matrix.activity }}
+        run: |
+          cp .island-post-test/scripts/tests/island-post.html .island-post-test/island-post.html
+          python -m http.server 4191 --bind 127.0.0.1 --directory .island-post-test > "$RUNNER_TEMP/post-server.log" 2>&1 &
+          script=island-post
+          if [[ "$ACTIVITY" == render ]]; then script=travel-budget; fi
+          python "scripts/tests/$script.py" http://127.0.0.1:4191/island-post.html "$RUNNER_TEMP/postcards" "--$ACTIVITY"
+          if [[ "$ACTIVITY" == travel ]]; then
+            python scripts/tests/island-post.py http://127.0.0.1:4191/island-post.html "$RUNNER_TEMP/postcards/menu" --public
+          fi
+      - name: Save the album and test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: island-${{ matrix.activity }}-playtest
+          path: ${{ runner.temp }}/postcards/
+          if-no-files-found: ignore
+  public-pages:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: python -m pip install playwright==1.56.0
+      - name: Play the published game
+        run: python scripts/tests/island-post.py "https://dovvnloading.github.io/GiggaGoat/?release=$GITHUB_SHA" "$RUNNER_TEMP/public-game" --public
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-pages-playtest
+          path: ${{ runner.temp }}/public-game/
+          if-no-files-found: ignore

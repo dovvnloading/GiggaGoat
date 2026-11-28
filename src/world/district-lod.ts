@@ -23,14 +23,14 @@ export interface BakedPlacement<Model extends string> {
 
 // Limit the deviation in world metres. From the travel camera the allowed error
 // projects to roughly one pixel; vertex paint and the original normals survive.
-function skylineGeometry(source: THREE.BufferGeometry): THREE.BufferGeometry {
+function skylineGeometry(source: THREE.BufferGeometry, fraction: number, errorMetres: number): THREE.BufferGeometry {
   if (!MeshoptSimplifier.supported) return source;
   const mesh = mergeVertices(source, 1e-4);
   const positions = mesh.getAttribute('position').array as Float32Array;
   const paint = mesh.getAttribute('color').array as Float32Array;
   const indices = Uint32Array.from(mesh.index!.array);
   const [reduced] = MeshoptSimplifier.simplifyWithAttributes(indices, positions, 3, paint, 3,
-    [.35, .35, .35], null, Math.floor(indices.length / 12) * 3, .10, ['ErrorAbsolute', 'Permissive']);
+    [.35, .35, .35], null, Math.floor(indices.length * fraction / 3) * 3, errorMetres, ['ErrorAbsolute', 'Permissive']);
   if (reduced.length >= indices.length) {
     mesh.dispose();
     return source;
@@ -117,6 +117,7 @@ export async function createDistrictLod<Model extends string>(
     sphere: THREE.Sphere;
     small: boolean;
     skyline?: THREE.BufferGeometry;
+    horizon?: THREE.BufferGeometry;
     shadow?: THREE.BufferGeometry;
   }> = [];
   // Largest (usually architectural) cell keeps the historical QA mesh name.
@@ -177,15 +178,25 @@ export async function createDistrictLod<Model extends string>(
         const far = dist > WORLD_LOD.detailedDistance;
         // The loose sphere often encloses the street outside a long or tall cell.
         // Measure to the closest point of the painted buildings' actual bounds.
-        const skyline = sightseeing && entry.high.boundingBox!.distanceToPoint(position) > 25;
+        const nearest = entry.high.boundingBox!.distanceToPoint(position);
+        const skyline = sightseeing && nearest > 25;
+        const horizon = sightseeing && nearest > 200 && entry.high.userData.preserveSilhouette;
         // Prepare at most one visible architectural cell per district each frame.
-        if (visible && sightseeing && !entry.skyline && !preparedCell && simplifierReady) {
-          entry.skyline = skylineGeometry(entry.high);
-          entry.shadow = architecturalShadow(entry.skyline);
-          preparedCell = true;
+        if (visible && sightseeing && !preparedCell && simplifierReady) {
+          if (!entry.skyline) {
+            entry.skyline = skylineGeometry(entry.high, .25, .10);
+            entry.shadow = architecturalShadow(entry.skyline);
+            preparedCell = true;
+          } else if (horizon && !entry.horizon) {
+            // Beyond 200 m the extra 14 cm of error projects to less than a
+            // pixel at the default 1080p field of view. Keep the painted seams.
+            entry.horizon = skylineGeometry(entry.skyline, .5, .14);
+            preparedCell = true;
+          }
         }
         entry.mesh.userData.shadowSilhouette = sightseeing ? (entry.shadow ?? entry.skyline) : undefined;
-        const geometry = skyline && entry.skyline ? entry.skyline : far ? entry.low : entry.high;
+        const distant = horizon ? entry.horizon ?? entry.skyline : entry.skyline;
+        const geometry = skyline && distant ? distant : far ? entry.low : entry.high;
         if (entry.mesh.castShadow && (entry.mesh.visible !== visible ||
             entry.mesh.geometry !== geometry)) changed = true;
         entry.mesh.visible = visible;
@@ -197,6 +208,7 @@ export async function createDistrictLod<Model extends string>(
       if (disposed) return;
       disposed = true;
       for (const entry of entries) {
+        if (entry.horizon && entry.horizon !== entry.skyline) entry.horizon.dispose();
         entry.shadow?.dispose();
         if (entry.skyline && entry.skyline !== entry.high && entry.skyline !== entry.low) entry.skyline.dispose();
         entry.high.dispose();

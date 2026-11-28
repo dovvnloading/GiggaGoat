@@ -167,7 +167,7 @@ export function deriveHudState(input: HudInput): HudState {
         detail: (run.rating ?? 'bronze').toUpperCase() + ' · +' + num(run.payout ?? 0) + ' CUD COINS',
         active: false };
     }
-  } else if (!input.boardInRange && !input.buildMode && input.happening) {
+  } else if (!input.buildMode && input.happening && (!input.boardInRange || input.happening.source === 'island-post')) {
     gig = { ...input.happening, active: false };
   }
   const stamina = clampHudPercent(input.stamina);

@@ -1,4 +1,5 @@
 import { RIDES } from './IslandTravel';
+import type { HappeningMessage } from './IslandHappenings';
 import type { Game } from './Game';
 import type { PlacementFailure, Validation } from '../gameplay';
 import type { Vec3 } from '../world';
@@ -734,7 +735,10 @@ export class GameHud {
     const run = game.gigs.active;
     const contractTarget = !match && run?.status === 'running' && run.objective.kind === 'summit'
       ? run.objective.next : undefined;
-    const target = match?.mode === 'rising-tide' && match.phase !== 'results' ? tideTarget : contractTarget;
+    const postalTarget = game.travelAvailable ? game.post?.target?.position : undefined;
+    const trial = game.travel?.trials?.active;
+    const berth = trial?.id === 'boat' && trial.stage === 2 ? game.travel.craft.boat.home : undefined;
+    const target = match?.mode === 'rising-tide' && match.phase !== 'results' ? tideTarget : contractTarget ?? berth ?? postalTarget;
     const flag = this.mapObjectives?.querySelector('[data-map-climb-target]');
     if (flag) {
       flag.setAttribute('visibility', target ? 'visible' : 'hidden');
@@ -835,19 +839,25 @@ export class GameHud {
     const activeGig = game.gigs.active;
     const run = activeGig?.status === 'running' ? activeGig : game.pendingGigResult;
     // Enter a little inside the interaction radius to avoid blinking at its edge.
-    const boardInRange = !game.atRecordCounter && game.gigs.nearBoard(this.board.hidden ? 8.75 : 9) !== null;
+    const bleatAtCounter = game.atPostalStop || game.atRecordCounter;
+    const ride = game.travel?.active;
+    this.hotbar.hidden = !!ride;
+    const mailbox = !bleatAtCounter && game.atMailbox;
+    const boardInRange = !ride && !mailbox && !bleatAtCounter && game.gigs.nearBoard(this.board.hidden ? 8.75 : 9) !== null;
     const carryStamina = carryStaminaForHud(game.party.match, 'player');
     const stackLiftCue = game.gigs.stackLiftCue;
     const stackLiftPrompt = stackLiftCue === 'ready' ?
       (device === 'gamepad' ? 'Press right stick to lift' : 'R · Lift crate') :
       stackLiftCue === 'moving' ? 'Lifting crate' :
         stackLiftCue === 'clear' ? 'Step clear of the pad' : undefined;
-    const ride=game.travel?.active;
-    const station=!ride && game.travelAvailable ? game.travel.station(game.goat.torso.translation()) : null;
-    const route = ride ? { title: RIDES[ride].name, task: game.travel.controls(device === 'gamepad', game.physics.time),
-      detail: game.travel.instruments() } : undefined;
-    this.gigHeader.textContent = ride ? 'ISLAND TRAVEL' : 'CURRENT GIG';
-    this.gigCard.setAttribute('aria-label', ride ? 'Travel instruments' : 'Current gig');
+    const station=!ride && !mailbox && !bleatAtCounter && game.travelAvailable ? game.travel.station(game.goat.torso.translation()) : null;
+    const instruments = ride ? game.travel.instruments() : '';
+    const route = ride ? game.travel.trials?.message(instruments) ?? { title: RIDES[ride].name,
+      task: game.travel.controls(device === 'gamepad', game.physics.time), detail: instruments } : undefined;
+    const happening: HappeningMessage | undefined = route ?? game.happeningMessage;
+    const postal = happening?.source === 'island-post';
+    this.gigHeader.textContent = ride ? 'ISLAND TRAVEL' : postal ? 'ISLAND POST' : 'CURRENT GIG';
+    this.gigCard.setAttribute('aria-label', ride ? 'Travel instruments' : postal ? 'Island Post dispatch' : 'Current gig');
     const state = deriveHudState({
       tier: rules.style.tier, meter: rules.style.meter, score: rules.style.score,
       combo: rules.style.combo, stamina: carryStamina ?? rules.abilities.stamina,
@@ -855,9 +865,9 @@ export class GameHud {
       inventory, buildMode: game.buildMode,
       buildPiece: game.buildPiece, ragdoll: game.goat.isRagdoll,
       location: game.location, coins: rules.wallet.coins, boardInRange,
-      happening: route ?? game.happeningMessage,
+      happening,
       partyTitle: game.party.match ? game.party.title : undefined,
-      gig: run ? {
+      gig: run && (!happening || run.status === 'running' || game.pendingGigResult) ? {
         title: run.setup.info.title, status: run.status, objective: run.objective,
         elapsedTicks: run.elapsedTicks, maxTicks: run.setup.maxTicks,
         goldTicks: run.setup.goldTicks, silverTicks: run.setup.silverTicks,
@@ -923,9 +933,10 @@ export class GameHud {
       fitGigCardText(this.gigCard);
       this.gigLayoutKey = gigLayoutKey;
     }
-    this.board.hidden = !(station || ride || boardInRange);
+    const canStepOut = ride && game.travel.canDisembark(game.water.seaLevel);
+    this.board.hidden = !(station || canStepOut || mailbox || boardInRange);
     const prompt=this.board.querySelector('.gg-prompt-copy');
-    const label=ride?'DISEMBARK':station?'BOARD '+RIDES[station].name.toUpperCase():'GOAT GIGS';
+    const label=ride?'DISEMBARK':mailbox?'CHECK MAIL':station?'BOARD '+RIDES[station].name.toUpperCase():'GOAT GIGS';
     if(prompt && prompt.textContent!==label)prompt.textContent=label;
     this.setPointerLockHint(pointerLocked, boardInRange, device, pointerLockUnavailable, runningGig, lookHintNeeded && !ride);
     this.debug.hidden = !debugVisible;

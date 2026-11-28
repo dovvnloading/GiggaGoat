@@ -37,7 +37,12 @@ export interface HappeningSite {
   yaw: number;
   scale: number;
 }
-export interface HappeningMessage { title: string; task: string; detail: string }
+export interface HappeningMessage {
+  title: string;
+  task: string;
+  detail: string;
+  source?: 'island-post';
+}
 export const HAPPENING_REACH = 5;
 const RESPONSE_SECONDS = 5;
 const REPLAY_SECONDS = 12;
@@ -170,7 +175,7 @@ export class IslandHappenings {
   }
 
   /** A valid, accepted bleat calls this once, not once per render frame. */
-  bleat(position: Vec3, time: number): number {
+  bleat(position: Vec3, time: number, performed?: (id: HappeningId) => void): number {
     const site = this.nearest(position, HAPPENING_REACH);
     if (!site) return 0;
     if (this.records && site === this.records.site) {
@@ -178,8 +183,11 @@ export class IslandHappenings {
       const reward = this.discovered(site) ? 0 : site.definition.reward;
       this.completed.add(site.definition.id);
       this.last = {site, time, reward};
+      performed?.(site.definition.id);
       return reward;
     }
+    // A second dispatch can use this counter while its scenery is still animating.
+    if (site.definition.id !== 'honey-rolls') performed?.(site.definition.id);
     if (time - (this.activated.get(site.definition.id) ?? -Infinity) < REPLAY_SECONDS) return 0;
     const reward = this.discovered(site) ? 0 : site.definition.reward;
     if (site.definition.id === 'honey-rolls') this.bakery?.launch(time);

@@ -1,4 +1,7 @@
+import { IslandPost } from './IslandPost';
+import type { HappeningId } from './IslandHappenings';
 import { IslandTravel, type Ride } from './IslandTravel';
+import type { TrialId } from './TravelTrials';
 import { Toybox } from './Toybox';
 import type { RigidBody, ColliderDesc, Shape } from '@dimforge/rapier3d-compat';
 import {
@@ -149,6 +152,8 @@ export class Game {
   readonly surfaces: SurfaceSystem;
   readonly budget: DynamicBodyBudget;
   readonly gigs: GigSession;
+  readonly post: IslandPost;
+  private readonly mailboxes: Vec3[];
   readonly happenings: IslandHappenings;
   readonly life: IslandLifeDirector;
   readonly market: MarketScene;
@@ -209,7 +214,7 @@ export class Game {
   private constructor(physics: PhysicsWorld, island: IslandData, colliders: ColliderBuild, options: GameOptions) {
     this.physics = physics;
     this.island = island;
-    this.travel = new IslandTravel(island);
+    this.travel = new IslandTravel(island, options.progress?.trialBests);
     this.colliders = colliders;
     this.craneCenter = island.pois.find(poi => poi.id === 'crane-yard')!.center;
     const noClimbGuardPrefixes = [DAM_FRONT_GUARD.prefix, DAM_BACK_GUARD.prefix,
@@ -363,6 +368,11 @@ export class Game {
     this.party = new PartySession(this);
     this.happenings = new IslandHappenings(placeIslandHappenings(island,
       this.gigs.boards.map(board => board.position)), options.progress?.happenings, (x, z) => heightAt(island, x, z));
+    this.post = new IslandPost(this.happenings.sites, options.progress?.post);
+    this.mailboxes = island.props.filter(prop => prop.kind === 'mailbox').map(prop => {
+      const { x, y, z } = prop.transform.position;
+      return { x, y: y - prop.size.y / 2, z };
+    });
     this.life = new IslandLifeDirector(island, this.gigs.boards.map(board => board.position));
     this.market = new MarketScene(physics, island, colliders, this.budget);
     const town = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
@@ -850,7 +860,10 @@ export class Game {
       intent[button] = state.applied;
     }
     if (this.travel.active) {
-      this.travel.tick(dt,intent,this.water.seaLevel,this.physics.time);
+      // Passengers rest while the same inputs steer the craft.
+      this.rules.update(dt);
+      const reward = this.travel.tick(dt, intent, this.water.seaLevel, this.physics.time);
+      if (reward) this.rules.wallet.credit(reward, 'travel-trial');
       this.moveRider();
       return;
     }
@@ -1255,7 +1268,7 @@ export class Game {
         if (this.ambientLifeEnabled)
           this.life.react('bleat', this.happeningPosition(), this.physics.time, .7 + g.size * .2);
         if (!this.party.match && this.gigs.active?.status !== 'running' && !this.buildMode) {
-          const reward = this.happenings.bleat(this.happeningPosition(), this.physics.time);
+          const reward = this.happenings.bleat(this.happeningPosition(), this.physics.time, this.postPerformed);
           if (reward) this.rules.wallet.credit(reward, 'island-discovery');
         }
       }
@@ -1321,7 +1334,10 @@ export class Game {
     const batch = this.happenings.bakery;
     if (enabled && batch?.active(this.physics.time)) {
       const rolls = batch.collect(this.happeningPosition(), this.physics.time);
-      if (rolls) this.rules.abilities.eatHoneyRolls(rolls);
+      if (rolls) {
+        this.rules.abilities.eatHoneyRolls(rolls);
+        if (batch.count === 3) this.postPerformed('honey-rolls');
+      }
     }
     let count = 0;
     const append = (body: RigidBody, radius: number, height: number): void => {
@@ -1425,6 +1441,7 @@ export class Game {
     const feet = this.happeningPosition();
     if (atStation && this.travel.station(feet) !== id) return false;
     this.travel.board(id, atStation ? feet : undefined);
+    this.rules.abilities.cancelActions(this.syncHeldButtons());
     const heading = this.travel.craft[id].heading;
     // Align the entire rig once, preserving its joints while the vehicle carries it.
     this.positionGoat(this.travel.seat(), -heading);
@@ -1435,6 +1452,12 @@ export class Game {
     }));
     this.water.untrack(this.goat.torso);
     for (const {body} of this.aboardPose) body.setEnabled(false);
+    return true;
+  }
+
+  startTravelTrial(id: TrialId): boolean {
+    if (!this.boardRide(id)) return false;
+    this.travel.trials.start(id, this.travel.craft[id].heading);
     return true;
   }
 
@@ -1457,6 +1480,7 @@ export class Game {
     const heading=this.travel.craft[id].heading;
     const exit=this.travel.exit(this.water.seaLevel,this.physics.time,returnHome);
     if(!exit)return false;
+    this.rules.abilities.cancelActions(this.syncHeldButtons());
     for(const {body} of this.aboardPose)body.setEnabled(true);
     this.aboardPose=[];
     this.positionGoat(exit,-heading);
@@ -1509,6 +1533,11 @@ export class Game {
     this.teleport(V(spawn.x, this.spawnGround, spawn.z),
       this.island.spawns[0]!.heading);
     this.goat.resetForRespawn();
+    this.rules.resetForRespawn(this.syncHeldButtons());
+    this.respawns++;
+  }
+
+  private syncHeldButtons(): PlayerIntent {
     const held = { ...this.intent };
     for (const button of EDGE_BUTTONS) {
       const state = this.buttons[button];
@@ -1516,8 +1545,7 @@ export class Game {
       state.applied = state.sampled;
       held[button] = state.sampled;
     }
-    this.rules.resetForRespawn(held);
-    this.respawns++;
+    return held;
   }
 
   /** Use the same offshore limits as rescue, including the authored pier. */
@@ -1561,15 +1589,42 @@ export class Game {
       Math.abs(feet.y-site.position.y) <= 2.5*site.scale && !this.gigs.nearBoard(2*site.scale);
   }
 
+  private readonly postPerformed = (id: HappeningId): void => {
+    const reward = this.post.perform(id, this.physics.time);
+    if (reward) this.rules.wallet.credit(reward, 'island-post');
+  };
+
+  get atMailbox(): boolean {
+    if (!this.travelAvailable || this.travel.active || !this.post.routes.length) return false;
+    const at = this.happeningPosition(), scale = this.island.size / 600;
+    return this.mailboxes.some(box => Math.abs(at.y - box.y) <= 1.8 * scale &&
+      Math.hypot(at.x - box.x, at.z - box.z) <= 2.8 * scale);
+  }
+
+  get atPostalStop(): boolean {
+    const site = this.post.target;
+    if (!site || !this.travelAvailable || this.travel.active) return false;
+    const feet = this.happeningPosition();
+    return Math.hypot(feet.x - site.position.x, feet.z - site.position.z) <= 5 * site.scale &&
+      Math.abs(feet.y - site.position.y) <= 2.5 * site.scale;
+  }
+
   get happeningMessage() {
     if (this.party.match || this.gigs.active?.status === 'running' || this.pendingGigResult || this.buildMode) return;
-    return this.happenings.message(this.happeningPosition(), this.physics.time);
+    const feet = this.happeningPosition(), time = this.physics.time;
+    const post = this.post.message(feet, time);
+    const target = this.post.target?.definition.id;
+    if (post && this.atPostalStop && (target === 'needle-drop' || target === 'honey-rolls')) {
+      const counter = this.happenings.message(feet, time);
+      if (counter) return { ...counter, source: post.source };
+    }
+    return post ?? this.happenings.message(feet, time);
   }
 
   exportProgress(): GameProgress {
     const progress: GameProgress = { gameplay: this.rules.toJSON(), gigs: this.gigs.director.toJSON(),
       gigBodies: this.gigs.saveBodies(), acknowledgedGigAttempt: this.acknowledgedGigAttempt,
-      happenings: this.happenings.snapshot() };
+      post: this.post.snapshot(), happenings: this.happenings.snapshot(), trialBests: { ...this.travel.trials.best } };
     const run = this.gigs.active;
     if (run?.status === 'running') {
       const { x, y, z } = this.goat.torso.translation();

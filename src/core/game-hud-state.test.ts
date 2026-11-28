@@ -16,6 +16,16 @@ const input = (): HudInput => ({
 });
 
 describe('in-game HUD state projection', () => {
+  it('keeps a selected delivery visible at a gig board, including the receipt', () => {
+    const state = input();
+    state.boardInRange = true;
+    state.happening = { title: 'Breakfast by bell', task: 'Collect at the bakery', detail: 'E · 200 M' };
+    expect(deriveHudState(state).gig.task).toBe('Contracts available here');
+    state.happening.source = 'island-post';
+    expect(deriveHudState(state).gig.title).toBe('Breakfast by bell');
+    state.happening.task = 'Postcard stamped';
+    expect(deriveHudState(state).gig.task).toBe('Postcard stamped');
+  });
   it('traces the actual Hoofington shoreline without painting inland sand tiles', () => {
     const island = generateIsland({ seed: 'billy-isle', resolution: 193 });
     const origin = island.pois.find(poi => poi.id === 'hoofington')!.center;

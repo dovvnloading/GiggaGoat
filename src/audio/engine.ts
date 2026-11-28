@@ -91,6 +91,7 @@ export interface AudioStatus {
 }
 interface Voice {
   ticket: VoiceTicket;
+  recordedEffect?: RecordedEffect;
   gain: GainNode;
   panner: PannerNode | null;
   sources: AudioScheduledSourceNode[];
@@ -120,6 +121,11 @@ export class VoiceManager {
   }
   get activeCount(): number { return this.voices.size; }
   get tickets(): readonly VoiceTicket[] { return [...this.voices.values()].map(v => ({ ...v.ticket })); }
+  stopCue(sound: SoundId, effect?: RecordedEffect): void {
+    for (const voice of this.voices.values()) {
+      if (voice.ticket.sound === sound && (!effect || effect === voice.recordedEffect)) this.stop(voice.ticket.id);
+    }
+  }
   setListenerPosition(p: Vec3): void {
     this.listenerPosition = p;
     const now = this.context.currentTime;
@@ -175,6 +181,7 @@ export class VoiceManager {
     }
     const voice: Voice = {
       ticket: { id, sound, priority, loudness, started: ctx.currentTime },
+      recordedEffect: opts.recordedEffect,
       gain: voiceGain, panner, sources: render.sources,
       remaining: render.sources.length, position: opts.position ?? null, baseGain,
       result: opts.result, endsAt: Math.max(ctx.currentTime, opts.when ?? 0) + render.duration,
@@ -323,10 +330,15 @@ export class AudioEngine {
     this.applySettings();
   }
 
-  stopCue(sound: SoundId): void {
-    for (const voice of this.voiceManager?.tickets ?? []) {
-      if (voice.sound === sound) this.voiceManager?.stop(voice.id);
-    }
+  stopCue(sound: SoundId, effect?: RecordedEffect): void {
+    this.voiceManager?.stopCue(sound, effect);
+  }
+
+  async playRecordedUi(effect: 'postmark' | 'ui-postmaster', current: () => boolean, intensity: number): Promise<boolean> {
+    if (!current() || this.disposed) return false;
+    if (this.context?.state !== 'running' && !(await this.unlock())) return false;
+    await this.recordings?.uiReady;
+    return current() && this.play('ui-confirm', { recordedEffect: effect, intensity });
   }
 
   /** Disconnect active one-shots so backgrounding cannot replay them on return. */

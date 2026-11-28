@@ -2,6 +2,7 @@ import type { IslandData, Vec3 } from '../world/types';
 import { gridSample } from '../world/terrain';
 import { boardwalkPierDecks } from '../world/boardwalk';
 import type { PlayerIntent } from './Game';
+import { TravelTrials, type TrialBests } from './TravelTrials';
 
 export const RIDES = {
   boat: {
@@ -54,6 +55,7 @@ function cableProfile(t: number): number {
 
 /** Deterministic vehicle motion, boarding and landings, in metres and seconds. */
 export class IslandTravel {
+  readonly trials: TravelTrials;
   readonly craft: Record<Ride, Craft>;
   readonly summit: Vec3;
   readonly cableLift: number;
@@ -68,7 +70,8 @@ export class IslandTravel {
     string,
     Array<{ x: number; z: number; hx: number; hz: number; top: number; base: number }>
   >();
-  constructor(private readonly island: IslandData) {
+  constructor(private readonly island: IslandData, best?: TrialBests) {
+    this.trials = new TravelTrials(best);
     for (const p of island.props) {
       if (!p.collidable || p.body.type === 'dynamic') continue;
       const { position, rotationY } = p.transform;
@@ -212,6 +215,7 @@ export class IslandTravel {
     return null;
   }
   board(id: Ride, from?: Vec3): void {
+    this.trials.clear();
     const c = this.craft[id];
     if (id === 'tram') {
       this.cableT = from && distance(from, this.summit) < distance(from, c.stop) ? 1 : 0;
@@ -268,19 +272,19 @@ export class IslandTravel {
         : ' ' + direction + ' ' + range + ' m');
     return [speed, ...(c.kind === 'boat' ? [] : [altitude]), beacon].join(' · ');
   }
-  controls(pad: boolean, time: number): string {
-    if (this.note && time < this.noteUntil) return this.note;
-    switch (this.active) {
+  controls(pad: boolean, time: number, ride = this.active): string {
+    if (ride === this.active && this.note && time < this.noteUntil) return this.note;
+    switch (ride) {
       case 'boat':
-        return pad ? 'Stick to throttle and steer · X to dock' : 'W/S throttle · A/D steer · E to dock';
+        return pad ? 'Stick to throttle and steer' : 'W/S throttle · A/D steer';
       case 'plane':
         return pad
-          ? 'Stick throttle/turn · A rise · RB descend · X leave'
-          : 'W/S throttle · A/D turn · Space rise · Shift descend · E leave';
+          ? 'Stick throttle/turn · A climb · RB descend'
+          : 'W/S throttle · A/D turn · Space climb · Shift descend';
       case 'balloon':
         return pad
-          ? 'Stick trim · A burn · RB vent · X leave'
-          : 'WASD trim · Space burn · Shift vent · E leave';
+          ? 'Stick trim · A burn · RB vent'
+          : 'WASD trim · Space burn · Shift vent';
       default:
         return this.cableT === this.cableGoal
           ? 'Arrived · ' + (pad ? 'X' : 'E') + ' to step out'
@@ -291,8 +295,8 @@ export class IslandTravel {
     this.note = text;
     this.noteUntil = time + 2;
   }
-  tick(dt: number, input: PlayerIntent, sea: number, time: number): void {
-    if (!this.active) return;
+  tick(dt: number, input: PlayerIntent, sea: number, time: number): number {
+    if (!this.active) return 0;
     const c = this.craft[this.active],
       p = c.position;
     if (c.kind === 'tram') {
@@ -300,7 +304,7 @@ export class IslandTravel {
       this.cableT = approach(this.cableT, this.cableGoal, (dt * 10) / Math.max(1, span));
       c.speed = this.cableT === this.cableGoal ? 0 : 10;
       Object.assign(p, this.cablePoint(this.cableT));
-      return;
+      return 0;
     }
     const turn = clamp(input.moveX ?? 0, -1, 1),
       drive = clamp(input.moveZ ?? 0, -1, 1);
@@ -361,43 +365,50 @@ export class IslandTravel {
       p.z = nz;
     }
     const roof = this.top(p.x, p.z, c.kind === 'plane' ? 2.5 : 1, p.y + 1);
-    const below = Math.max(sea, gridSample(this.island, p.x, p.z), c.kind === 'boat' ? -Infinity : roof);
+    const groundBelow = blocked ? ground : terrain;
+    const below = Math.max(sea, groundBelow, c.kind === 'boat' ? -Infinity : roof);
     p.y = c.kind === 'boat' ? sea : clamp(p.y + c.vertical * dt, below, (165 * this.island.size) / 600);
     if (p.y <= below + 0.01 && c.vertical < 0) {
       c.vertical = 0;
       c.pitch = 0;
     }
+    return this.trials.tick(c, dt, groundBelow, sea);
+  }
+
+  private landing(c: Craft, sea: number): Vec3 | string {
+    const p = c.position;
+    if (c.kind === 'tram') {
+      if (this.cableT === 0) return c.stop;
+      if (this.cableT === 1) return this.summit;
+      return 'Step out when the cabin reaches a platform';
+    }
+    if (Math.abs(c.speed) > 8 || p.y > Math.max(gridSample(this.island, p.x, p.z), sea) + 2.4)
+      return 'Slow down and land to get out · Pause for station return';
+    if (distance(p, c.home) < 11 && Math.abs(p.y - c.home.y) < 3) return c.stop;
+    for (const r of [2.8, 4.5, 7, 10]) {
+      for (let i = 0; i < 16; i++) {
+        const a = c.heading + (i * Math.PI) / 8;
+        const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+        const y = gridSample(this.island, x, z);
+        if (y > sea + .22 && Math.abs(y - p.y) < 2.8 && this.top(x, z, .7) < y + .25) return {x,y,z};
+      }
+    }
+    return 'Bring the craft closer to a dry shore';
+  }
+
+  canDisembark(sea: number): boolean {
+    return this.active !== null && typeof this.landing(this.craft[this.active], sea) !== 'string';
   }
 
   exit(sea: number, time: number, returnHome = false): Vec3 | null {
     if (!this.active) return null;
-    const c = this.craft[this.active],
-      p = c.position;
-    let exit: Vec3 | undefined;
-    if (returnHome) exit = c.stop;
-    else if (c.kind === 'tram') {
-      if (this.cableT === 0 || this.cableT === 1) exit = this.cableT ? this.summit : c.stop;
-      else this.say('Step out when the cabin reaches a platform', time);
-    } else if (distance(p, c.home) < 11 && Math.abs(p.y - c.home.y) < 3) exit = c.stop;
-    else if (Math.abs(c.speed) > 8 || p.y > Math.max(gridSample(this.island, p.x, p.z), sea) + 2.4) {
-      this.say('Slow down and land to get out · Pause for station return', time);
-    } else {
-      for (const r of [2.8, 4.5, 7, 10]) {
-        for (let i = 0; i < 16; i++) {
-          const a = c.heading + (i * Math.PI) / 8,
-            x = p.x + Math.cos(a) * r,
-            z = p.z + Math.sin(a) * r,
-            y = gridSample(this.island, x, z);
-          if (y > sea + 0.22 && Math.abs(y - p.y) < 2.8 && this.top(x, z, 0.7) < y + 0.25) {
-            exit = { x, y, z };
-            break;
-          }
-        }
-        if (exit) break;
-      }
-      if (!exit) this.say('Bring the craft closer to a dry shore', time);
+    const c = this.craft[this.active];
+    const exit = returnHome ? c.stop : this.landing(c, sea);
+    if (typeof exit === 'string') {
+      this.say(exit, time);
+      return null;
     }
-    if (!exit) return null;
+    this.trials.clear();
     this.active = null;
     this.note = '';
     if (c.kind !== 'tram' && !returnHome && exit !== c.stop) this.moored[c.kind] = { ...exit };

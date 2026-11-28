@@ -63,7 +63,7 @@ function fixture() {
     beginResultAudio: vi.fn<(kind: 'gig' | 'party') => number | null>(() => null),
     endResultAudio: vi.fn(),
     setMenuAudio: vi.fn(),
-    clearVoices: vi.fn(), stopCue: vi.fn(),
+    clearVoices: vi.fn(), stopCue: vi.fn(), playRecordedUi: vi.fn().mockResolvedValue(true),
     play: vi.fn(() => true),
     updateFrame: vi.fn((_frame: AudioFrame) => {}),
     setSettings: vi.fn((settings: Partial<AudioSettings>) =>
