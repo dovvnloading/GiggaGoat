@@ -293,7 +293,7 @@ def public_smoke(page, url, evidence):
     click("travel")
     click("post")
     assert page.locator(".gg-post-card").count() == 8
-    assert page.locator(".gg-post-head img").evaluate("i=>i.complete && i.naturalWidth > 0")
+    page.wait_for_function("document.querySelector('.gg-post-head img')?.naturalWidth > 0")
     click("hear-postmaster")
     page.screenshot(path=evidence / "public-album.jpg", type="jpeg", quality=90)
     click("dispatch-breakfast")
@@ -312,9 +312,17 @@ def public_smoke(page, url, evidence):
                       ("balloon","Honeycomb Balloon"), ("tram","Summit Cable Car")]:
         click("ride-" + id)
         page.locator("[data-gig-title]").filter(has_text=title).wait_for()
-        page.keyboard.down("Space" if id == "balloon" else "w")
-        page.wait_for_timeout(1200)
-        page.keyboard.up("Space" if id == "balloon" else "w")
+        instruments = page.locator("[data-gig-detail]")
+        initial = instruments.inner_text()
+        key = "Space" if id == "balloon" else "w"
+        page.keyboard.down(key)
+        try:
+            page.wait_for_function(
+                "before => document.querySelector('[data-gig-detail]').innerText !== before",
+                arg=initial,
+            )
+        finally:
+            page.keyboard.up(key)
         if id == "boat":
             page.screenshot(path=evidence / "public-marina.jpg", type="jpeg", quality=90)
         page.keyboard.press("Escape")

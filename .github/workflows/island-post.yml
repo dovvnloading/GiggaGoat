@@ -42,6 +42,9 @@ jobs:
           script=island-post
           if [[ "$ACTIVITY" == render ]]; then script=travel-budget; fi
           python "scripts/tests/$script.py" http://127.0.0.1:4191/island-post.html "$RUNNER_TEMP/postcards" "--$ACTIVITY"
+          if [[ "$ACTIVITY" == travel ]]; then
+            python scripts/tests/island-post.py http://127.0.0.1:4191/island-post.html "$RUNNER_TEMP/postcards/menu" --public
+          fi
       - name: Save the album and test evidence
         if: always()
         uses: actions/upload-artifact@v4

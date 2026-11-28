@@ -276,15 +276,15 @@ export class IslandTravel {
     if (ride === this.active && this.note && time < this.noteUntil) return this.note;
     switch (ride) {
       case 'boat':
-        return pad ? 'Stick to throttle and steer · X to dock' : 'W/S throttle · A/D steer · E to dock';
+        return pad ? 'Stick to throttle and steer' : 'W/S throttle · A/D steer';
       case 'plane':
         return pad
-          ? 'Stick throttle/turn · A rise · RB descend · X leave'
-          : 'W/S throttle · A/D turn · Space rise · Shift descend · E leave';
+          ? 'Stick throttle/turn · A climb · RB descend'
+          : 'W/S throttle · A/D turn · Space climb · Shift descend';
       case 'balloon':
         return pad
-          ? 'Stick trim · A burn · RB vent · X leave'
-          : 'WASD trim · Space burn · Shift vent · E leave';
+          ? 'Stick trim · A burn · RB vent'
+          : 'WASD trim · Space burn · Shift vent';
       default:
         return this.cableT === this.cableGoal
           ? 'Arrived · ' + (pad ? 'X' : 'E') + ' to step out'

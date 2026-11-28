@@ -27,12 +27,19 @@ def check_rides(page, url, evidence):
     ]:
         click("travel")
         click("ride-" + ride)
+        disembark = page.locator("[data-board-hint]").filter(has_text="DISEMBARK")
+        if ride == "boat":
+            disembark.wait_for(state="visible")
         for key in keys:
             page.keyboard.down(key)
         start = page.evaluate("g.physics.time")
         page.wait_for_function(f"g.physics.time > {start + 3.8}", timeout=90000)
         for key in keys:
             page.keyboard.up(key)
+        if ride in ("boat", "plane", "balloon"):
+            disembark.wait_for(state="hidden")
+            controls = page.locator("[data-gig-task]").inner_text()
+            assert "leave" not in controls.lower() and "dock" not in controls.lower(), (ride, controls)
         page.evaluate("""district => {
           const p=g.travel.craft[g.travel.active].position, to=g.island.pois.find(s=>s.id===district).center;
           v.input.yaw=Math.atan2(to.x-p.x,p.z-to.z); v.input.pitch=.24;
