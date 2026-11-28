@@ -382,7 +382,13 @@ export function clearDamTrafficApproach(island:IslandData):void {
       if(x < -34 || x > 41)continue;
       // Ease the verge between the untouched eastern trail fork and the forest causeway.
       const amount=smoothstep(-34,-9,x)*(1-smoothstep(20,41,x));
-      if(!points.has(p))p.z+=(Math.min(floor,p.z)-p.z)*amount;
+      if (!points.has(p)) {
+        const shift = (p.z - Math.min(floor,p.z)) * amount;
+        if (shift > 0) {
+          p.stairApron = shift;
+          p.z -= shift;
+        }
+      }
       points.add(p);changed.push(p);
     }
     exposeRoadBed(island,changed,road.width);

@@ -13,8 +13,9 @@ const PAVED_DECK_CLEARANCE = .07;
 export function uncoverPavedLanes(island: IslandData): void {
   const scale = island.size / 600;
   island.localStreets = makeLocalStreets(island);
-  const plantings = island.props.filter(p => ['rock','bush','flower','grass-tuft','tree-pine',
-    'tree-oak','palm-tree','mushroom','fern'].includes(p.kind)).map(p => ({
+  const grounded = island.props.filter(p => p.id.startsWith('downtown-square-') ||
+    p.id.startsWith('downtown-market-') || ['rock','bush','flower','grass-tuft','tree-pine',
+      'tree-oak','palm-tree','mushroom','fern'].includes(p.kind)).map(p => ({
     position: p.transform.position, ground: gridSample(island,p.transform.position.x,p.transform.position.z),
   }));
   for (const road of roadRibbonRuns(island,'road')) {
@@ -40,7 +41,7 @@ export function uncoverPavedLanes(island: IslandData): void {
       if (buried) exposeRoadBed(island,[a,b],width);
     }
   }
-  for (const { position, ground } of plantings) {
+  for (const { position, ground } of grounded) {
     position.y += gridSample(island,position.x,position.z)-ground;
   }
 }
@@ -91,6 +92,7 @@ export function isHoofingtonTrailOverlay(
 interface RoadRibbonRun {
   id: string;
   points: RoadPoint[];
+  carriageway?: { points: RoadPoint[]; widths?: number[] };
   width: number;
   widths?: number[];
   squareNorthStart?: boolean;
@@ -234,6 +236,14 @@ export function roadRibbonRuns(island: IslandData, type: RoadDescriptor['type'])
       }
     }
     finish();
+  }
+  for (const run of runs) {
+    if (!run.points.some(p => p.stairApron)) continue;
+    // Share an uninterrupted asphalt surface with the marked pedestrian fork.
+    // The through lanes occupy the landward strip and stop short of the stair rails.
+    run.carriageway = { points: run.points, widths: run.widths };
+    run.widths = run.points.map((p,i) => (run.widths?.[i] ?? run.width) + (p.stairApron ?? 0));
+    run.points = run.points.map(p => p.stairApron ? { ...p, z: p.z + p.stairApron / 2 } : p);
   }
   return runs;
 }

@@ -100,7 +100,11 @@ export interface ReservoirDescriptor {
   radiusZ: number;
   level: number;
 }
-export interface RoadPoint extends Vec3 { bridge: boolean }
+export interface RoadPoint extends Vec3 {
+  bridge: boolean;
+  /** Additional paved shoulder leading from the Dam carriageway to its service stairs. */
+  stairApron?: number;
+}
 export interface RoadDescriptor {
   id: string;
   from: PoiId;

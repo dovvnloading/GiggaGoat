@@ -160,7 +160,7 @@ export class GameView {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.setPixelRatio(1); // The saved graphics preset is applied by GameMenu.
     this.renderer.shadowMap.enabled = !('isSoftwareRenderer' in renderer);
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     // Colour renders at 60 Hz; only refresh the shadow pass periodically.
     this.renderer.shadowMap.autoUpdate = false;
     this.renderer.domElement.style.cssText = 'display:block;width:100%;height:100%;outline:none;touch-action:none';

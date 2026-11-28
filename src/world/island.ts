@@ -178,7 +178,6 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
   // Keep the seeded scenery and the Lighthouse deck on their original plan.
   // Fit the shared coastal lane before the final bridge and terrain passes.
   separateLighthouseFork(island);
-  clearDamTrafficApproach(island);
   fitPinesBridgeApproach(island);
   island.props.push(...makeBridgeDecks(island));
   const spiral = island.roads.find(road => road.id === MOUNTAIN_SPIRAL_TRAIL);
@@ -225,6 +224,7 @@ export function generateIsland(options: IslandOptions = {}): IslandData {
     return true;
   });
   sculptDamHeadwater(island);
+  clearDamTrafficApproach(island);
   uncoverPavedLanes(island);
   island.legacySummitLedgePositions = clearMountainLedges(island);
   clearMountainRocks(island);

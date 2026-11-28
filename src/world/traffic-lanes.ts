@@ -100,11 +100,12 @@ export function islandTrafficLanes(island: IslandData): TrafficLane[] {
   for (const id of ids) {
     const road = roads.find((run) => run.id === id);
     if (!road) return [];
-    const points = road.points.map((p, i) => ({
+    const carriageway = road.carriageway ?? road;
+    const points = carriageway.points.map((p, i) => ({
       x: p.x,
       y: p.y + 0.2,
       z: p.z,
-      width: road.widths?.[i] ?? road.width,
+      width: carriageway.widths?.[i] ?? road.width,
     }));
     if (id === 'downtown-bleatsville-main-street') {
       // Follow the overlap of the two north caps, easing back to the centreline along the wide high street.
