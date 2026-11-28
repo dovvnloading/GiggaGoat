@@ -324,7 +324,7 @@ export class SoftwareGameRenderer {
     if (this.sphere.radius <= 0 || !this.frustum.intersectsSphere(this.sphere)) return;
     const distance = this.cameraPosition.distanceTo(this.sphere.center);
     const sky = mesh.name === 'visible-sun' || mesh.name === 'island-moon' || mesh.name.startsWith('puffy-cloud-banks');
-    if (!sky && distance - this.sphere.radius > 245) return;
+    if (!sky && !mesh.userData.terrainChunk && distance - this.sphere.radius > 245) return;
     const radius = this.focalPixels * this.sphere.radius / Math.max(1, distance - this.sphere.radius);
     if (radius < 1.05) return;
     const position = geometry.getAttribute('position');

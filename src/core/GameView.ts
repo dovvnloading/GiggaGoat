@@ -717,18 +717,6 @@ export class GameView {
     this.onResize();
   }
 
-  /** Apply the quality draw distance to the world's existing terrain chunks. */
-  private limitDrawDistance(): void {
-    const range = GRAPHICS_PRESETS[this.currentSettings.graphics].drawDistance;
-    const x = this.camera.position.x, z = this.camera.position.z;
-    for (const chunk of this.world.chunks) {
-      if (!chunk.visible) continue;
-      const radius = chunk.geometry.boundingSphere?.radius ?? 25;
-      const dx = chunk.position.x - x, dz = chunk.position.z - z;
-      if (dx * dx + dz * dz > (range + radius) * (range + radius)) chunk.visible = false;
-    }
-  }
-
   /** Select only meshes whose world-space bounds overlap the shadow area.
    * Keep the existing caster cap and 10 Hz refresh budget. */
   private refreshShadowCasters(): void {
@@ -1094,8 +1082,7 @@ export class GameView {
         this.skylineBudgetOrigin.distanceToSquared(this.camera.position) > 45 ** 2) {
       this.skylineBudgetOrigin = null;
     }
-    this.world.updateCulling(this.camera, !!this.game.travel.active || !!this.skylineBudgetOrigin);
-    this.limitDrawDistance();
+    this.world.updateCulling(this.camera, !!this.game.travel.active || !!this.skylineBudgetOrigin, range);
     this.instancedProps.update(this.camera, range);
     this.shadowTimer += sceneDt;
     if (this.shadowTimer >= .1 && this.renderer.shadowMap.enabled) {

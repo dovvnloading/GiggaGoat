@@ -476,6 +476,78 @@ describe('IS-6 joined road/trail visual ribbons', () => {
     }
   });
 
+  it('keeps the summit grounded from both offshore approaches at every gameplay draw distance', () => {
+    const island = generateIsland();
+    const view = createWorldScene(island, { chunkSegments: 24, cullingDistance: 340 });
+    try {
+      const camera = new THREE.PerspectiveCamera(70, 1.75, .1, 2200);
+      const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
+      const survey = island.roads.filter(road => road.from === 'mt-gigga' || road.to === 'mt-gigga')
+        .flatMap(road => road.points.filter((p, i) => i % 7 === 0 && !p.bridge && Math.hypot(p.x, p.z) < 78));
+      const native = new Map(view.chunks.map(chunk => [chunk, chunk.geometry]));
+      view.group.updateMatrixWorld(true);
+      expect(survey.length).toBeGreaterThan(30);
+      const terrainAt = (chunks: THREE.Mesh[], point: RoadPoint) => {
+        ray.ray.origin.set(point.x, 220, point.z);
+        return ray.intersectObjects(chunks, false)[0]?.point.y;
+      };
+      // The previously drawn middle-distance grade already supports the switchback side panels.
+      camera.position.set(0, 260, 110);
+      camera.lookAt(0, 35, 0);
+      view.updateCulling(camera, true, 340);
+      const grade = survey.map(point => terrainAt(view.chunks, point));
+      expect(grade).not.toContain(undefined);
+      for (const [x, y, z] of [[405, 36, 125], [-395, 75, -145]] as const) {
+        camera.position.set(x, y, z);
+        camera.lookAt(0, 35, 0);
+        for (const range of [160, 235, 340]) {
+          view.updateCulling(camera, true, range);
+          const visible = view.chunks.filter(chunk => chunk.visible);
+          expect(survey.map(point => terrainAt(visible, point))).toEqual(grade);
+          expect(visible.some(chunk => chunk.geometry.index!.count < native.get(chunk)!.index!.count / 5)).toBe(true);
+        }
+      }
+
+      const field = view.chunks.find(chunk => chunk.position.x > 130 && chunk.position.z > 130)!;
+      camera.position.copy(field.position).add(new THREE.Vector3(0, 30, 10));
+      camera.lookAt(field.position);
+      view.updateCulling(camera, false, 160);
+      expect(field.visible).toBe(true);
+      expect(field.geometry).toBe(native.get(field));
+      camera.position.set(405, 36, 125);
+      camera.lookAt(500, 36, 125);
+      view.updateCulling(camera, true, 160);
+      expect(view.chunks.some(chunk => chunk.visible)).toBe(false);
+    } finally {
+      view.dispose();
+    }
+  });
+
+  it('joins horizon chunks along the native grid on irregular island subdivisions', () => {
+    const island = generateIsland({ resolution: 65 });
+    const view = createWorldScene(island, { chunkSegments: 7 });
+    try {
+      const camera = new THREE.OrthographicCamera(-350, 350, 350, -350, .1, 1500);
+      camera.position.set(0, 550, 0);
+      camera.up.set(0, 0, -1);
+      camera.lookAt(0, 0, 0);
+      view.updateCulling(camera, true, 160);
+      for (const chunk of view.chunks) {
+        expect(chunk.visible).toBe(true);
+        const geo = chunk.geometry, pos = geo.getAttribute('position');
+        const indices = new Set(geo.index!.array);
+        for (let i = 0; i < pos.count; i++) {
+          if (pos.getX(i) === pos.getX(0) || pos.getX(i) === pos.getX(pos.count - 1) ||
+            pos.getZ(i) === pos.getZ(0) || pos.getZ(i) === pos.getZ(pos.count - 1)) {
+            expect(indices.has(i), chunk.name + ' vertex ' + i).toBe(true);
+          }
+        }
+      }
+    } finally {
+      view.dispose();
+    }
+  });
+
   it('merges kept runs per type with shared mitred joints and a closed bridge underside', () => {
     for (const [seed, size] of [
       ['billy-isle', 600], ['ribbon-curves', 400], ['ribbon-alt', 900],
