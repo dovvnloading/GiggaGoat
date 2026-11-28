@@ -78,7 +78,7 @@ export interface WorldScene {
   /** Animate scenery with elapsed seconds. A nearby player can disturb insects. */
   update(time: number, player?: Vec3): void;
   /** Cull scenery and select terrain detail. Returns true when shadow casters changed. */
-  updateCulling(camera: THREE.Camera, sightseeing?: boolean, terrainDetailDistance?: number): boolean;
+  updateCulling(camera: THREE.Camera, sightseeing?: boolean, terrainDetailDistance?: number, detailScale?: number): boolean;
   dispose(): void;
 }
 export type { LightingPreset } from './visual-sky';
@@ -706,7 +706,7 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     props.update(elapsed, rain);
     dam.update(elapsed);
   }
-  function updateCulling(camera: THREE.Camera, sightseeing = false, terrainDetailDistance = cullingDistance): boolean {
+  function updateCulling(camera: THREE.Camera, sightseeing = false, terrainDetailDistance = cullingDistance, detailScale = 1): boolean {
     camera.updateMatrixWorld();
     matrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     frustum.setFromProjectionMatrix(matrix);
@@ -715,8 +715,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     for (const chunk of chunks) {
       const dist = chunk.sphere.center.distanceTo(pos);
       chunk.mesh.visible = frustum.intersectsSphere(chunk.sphere);
-      const lod = dist > terrainDetailDistance ? chunk.horizon :
-        dist > island.size * (sightseeing ? .22 : .45) ? chunk.low : chunk.high;
+      const lod = dist > terrainDetailDistance * detailScale ? chunk.horizon :
+        dist > island.size * (sightseeing ? .22 : .45) * detailScale ? chunk.low : chunk.high;
       if (chunk.mesh.geometry !== lod) chunk.mesh.geometry = lod;
     }
     const railBounds = boardwalkRails?.mesh.boundingSphere;
@@ -736,10 +736,10 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     if (kitSets.update(pos)) shadowCastersChanged = true;
     if (props.updateCulling(pos, frustum, cullingDistance,
       mesh => hoofington.isFallbackHidden(mesh) || downtown.isFallbackHidden(mesh) ||
-        lighthouse.isFallbackHidden(mesh)))
+        lighthouse.isFallbackHidden(mesh), detailScale))
       shadowCastersChanged = true;
-    if (hoofington.updateCulling(pos, frustum, sightseeing)) shadowCastersChanged = true;
-    if (downtown.updateCulling(pos, frustum, daylight, sightseeing)) shadowCastersChanged = true;
+    if (hoofington.updateCulling(pos, frustum, sightseeing, detailScale)) shadowCastersChanged = true;
+    if (downtown.updateCulling(pos, frustum, daylight, sightseeing, detailScale)) shadowCastersChanged = true;
     if (environmentLod.updateCulling(camera, pos, frustum)) shadowCastersChanged = true;
     if (props.consumeShadowChange()) shadowCastersChanged = true;
     if (hoofington.consumeShadowChange()) shadowCastersChanged = true;

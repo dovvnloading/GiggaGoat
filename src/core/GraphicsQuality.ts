@@ -1,5 +1,6 @@
 /** GPU budgets controlled by core. Draw distance is in island metres. */
 export type GraphicsQuality = 'low' | 'medium' | 'high';
+export const DEFAULT_FIELD_OF_VIEW = 67;
 export interface QualityPreset {
   readonly maxPixelRatio: number;
   readonly minPixelRatio: number;
@@ -30,4 +31,10 @@ export function qualityPixelRatio(quality: GraphicsQuality, devicePixelRatio: nu
   const dpr = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0
     ? devicePixelRatio : 1;
   return Math.min(dpr, GRAPHICS_PRESETS[quality].maxPixelRatio);
+}
+
+/** A wider frustum makes distant props smaller while admitting more of the island. */
+export function sceneryDetailScale(verticalFov: number, aspect: number): number {
+  const lens = Math.tan(DEFAULT_FIELD_OF_VIEW * Math.PI / 360) / Math.tan(verticalFov * Math.PI / 360);
+  return Math.min(1, lens) * Math.min(1, (16 / 9) / aspect);
 }

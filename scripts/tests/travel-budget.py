@@ -15,7 +15,8 @@ def sample_view(page, settle=12):
       }
       const sorted=[...frames].sort((a,b)=>a-b);
       const position=g.travel.active ? g.travel.craft[g.travel.active].position : g.goat.torso.translation();
-      return {median:sorted[12],peak:sorted[23],frames,quality:v.currentSettings.graphics,position:{...position}};
+      return {median:sorted[12],peak:sorted[23],frames,quality:v.currentSettings.graphics,
+        fov:v.camera.fov,aspect:v.camera.aspect,position:{...position}};
     }""", settle)
 
 
@@ -79,6 +80,24 @@ def check_rides(page, url, evidence):
     streets = {}
     for name, angle in [("north",0), ("northwest",-45), ("northeast",45)]:
         page.evaluate("degrees => {v.input.yaw=degrees*Math.PI/180}",angle)
+        streets[name] = sample_view(page,settle=24)
+        print("Downtown",name,"peak",streets[name]["peak"],flush=True)
+    # The northwest skyline also has to fit when the player opens the lens on an ultrawide display.
+    page.set_viewport_size({"width":1260,"height":540})
+    for lens in (60, 95):
+        page.keyboard.press("Escape")
+        click("settings")
+        page.locator('[data-tab="video"]').click()
+        slider = page.locator("#gg-setting-fov")
+        slider.press("End" if lens == 95 else "Home")
+        if lens == 60:
+            for _ in range(5):
+                slider.press("ArrowRight")
+        click("back")
+        click("resume")
+        page.evaluate("v.input.yaw=-Math.PI/4")
+        page.wait_for_function("lens=>Math.abs(v.camera.fov-lens)<.15",arg=lens,timeout=45000)
+        name = f"northwest-ultrawide-{lens}"
         streets[name] = sample_view(page,settle=24)
         print("Downtown",name,"peak",streets[name]["peak"],flush=True)
     (evidence / "ride-budgets.json").write_text(json.dumps({"rides":profile,"downtown":streets,"errors":errors},indent=2), encoding="utf-8")

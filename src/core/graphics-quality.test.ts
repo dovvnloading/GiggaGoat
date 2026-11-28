@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GRAPHICS_PRESETS, qualityPixelRatio } from './GraphicsQuality';
+import { DEFAULT_FIELD_OF_VIEW, GRAPHICS_PRESETS, qualityPixelRatio, sceneryDetailScale } from './GraphicsQuality';
 
 describe('graphics presets', () => {
   it('orders resolution, shadow cost and draw distance by quality', () => {
@@ -23,5 +23,14 @@ describe('graphics presets', () => {
     expect(qualityPixelRatio('medium', 2)).toBe(1);
     expect(qualityPixelRatio('low', 2)).toBe(0.8);
     expect(qualityPixelRatio('high', Number.NaN)).toBe(1);
+  });
+  it('uses full scenery detail at the standard lens and scales it with the visible field', () => {
+    expect(sceneryDetailScale(DEFAULT_FIELD_OF_VIEW, 16 / 9)).toBe(1);
+    expect(sceneryDetailScale(55, 4 / 3)).toBe(1);
+    const wide = sceneryDetailScale(95, 16 / 9);
+    expect(wide).toBeGreaterThan(.59);
+    expect(wide).toBeLessThan(.62);
+    expect(sceneryDetailScale(95, 21 / 9)).toBeCloseTo(wide * 16 / 21);
+    expect(sceneryDetailScale(60, 21 / 9)).toBeCloseTo(16 / 21);
   });
 });

@@ -86,7 +86,7 @@ export interface HoofingtonVisuals {
   /** The old whole-kind draws are suppressed even when culling is updated. */
   isFallbackHidden(mesh: THREE.InstancedMesh): boolean;
   consumeShadowChange(): boolean;
-  updateCulling(position: THREE.Vector3, frustum: THREE.Frustum, sightseeing?: boolean): boolean;
+  updateCulling(position: THREE.Vector3, frustum: THREE.Frustum, sightseeing?: boolean, detailScale?: number): boolean;
   dispose(): void;
 }
 
@@ -738,8 +738,8 @@ export function buildHoofingtonVisuals(
       shadowChanged = false;
       return changed;
     },
-    updateCulling(position, frustum, sightseeing): boolean {
-      const districtChanged = districtLod?.updateCulling(position, frustum, sightseeing) ?? false;
+    updateCulling(position, frustum, sightseeing, detailScale): boolean {
+      const districtChanged = districtLod?.updateCulling(position, frustum, sightseeing, detailScale) ?? false;
       return (lanterns?.updateCulling(position, frustum) ?? false) || districtChanged;
     },
     dispose(): void {

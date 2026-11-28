@@ -30,7 +30,7 @@ export interface PropVisuals {
   update(time: number, rain?: number): void;
   /** Compact real visible instances into cached near/far library geometry. */
   updateCulling(position: THREE.Vector3, frustum: THREE.Frustum, maxDistance: number,
-    hidden: (mesh: THREE.InstancedMesh) => boolean): boolean;
+    hidden: (mesh: THREE.InstancedMesh) => boolean, detailScale?: number): boolean;
   /** Async asset swaps can change the static shadow caster silhouette. */
   consumeShadowChange(): boolean;
   dispose(): void;
@@ -82,6 +82,12 @@ const authoredCraneYardKinds = new Set<PropKind>([
   'platform', 'deck-stilts', 'sign', 'rope-rail', 'bridge',
   // Painted custom landmark (QA LH-1): keeps its own red/white bands.
   'lighthouse',
+]);
+/** Visible route surfaces, supports and skyline pieces must reach their original horizon together. */
+const horizonKinds = new Set<PropKind>([
+  'bridge', 'log-bridge', 'pier', 'pier-rail', 'dock', 'deck', 'deck-stilts', 'ledge',
+  'crane', 'crane-jib', 'crane-cab', 'crane-cable', 'lighthouse', 'water-tower', 'windmill',
+  'ferris-wheel', 'satellite-dish', 'lookout', 'cascade', 'cascade-tall',
 ]);
 const SHADOW_KINDS = new Set<PropKind>([
   'barn', 'house', 'shop', 'cottage', 'windmill', 'lighthouse',
@@ -588,7 +594,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
       sampleEnvironmentWind(time, island?.seed ?? 'billy-isle', rain, 0, 0, windSample);
       updateWindUniforms(windUniforms, windSample);
     },
-    updateCulling(position, frustum, maxDistance, hidden): boolean {
+    updateCulling(position, frustum, maxDistance, hidden, detailScale = 1): boolean {
       if (!disposed && boardwalk && !pierGrainRequested &&
         Math.hypot(position.x - boardwalk.center.x, position.z - boardwalk.center.z) < (island?.size ?? 600) * .20) {
         pierGrainRequested = true;
@@ -641,6 +647,8 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
           continue;
         }
 
+        const range = isSmallWorldModel(job.kind) ? WORLD_LOD.smallPropDistance : maxDistance;
+        const detailRange = horizonKinds.has(job.kind) ? range : range * detailScale;
         const nearIndices: number[] = [], farIndices: number[] = [];
         if (!suppressed) for (const i of job.slots) {
           if (job.occluded[i]) continue;
@@ -658,9 +666,11 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
           test.set(centre, radius);
           if (job.stiltPose) test.copy(job.mesh.geometry.boundingSphere!).applyMatrix4(matrix);
           const distance = position.distanceTo(test.center) - test.radius;
-          if (distance > (isSmallWorldModel(job.kind) ? WORLD_LOD.smallPropDistance : maxDistance)) continue;
+          // A large object can still occupy dozens of pixels in a wide view.
+          const visibleRange = Math.min(range, Math.max(detailRange, test.radius * 24));
+          if (distance > visibleRange) continue;
           if (!frustum.intersectsSphere(test)) continue;
-          (distance <= WORLD_LOD.detailedDistance ?
+          (distance <= WORLD_LOD.detailedDistance * detailScale ?
             nearIndices : farIndices).push(i);
         }
         const version = job.mesh.instanceMatrix.version;
