@@ -220,6 +220,7 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
     entries: PropDescriptor[];
     mesh: THREE.InstancedMesh; // stable original descriptor index for physics
     batch: PropBatch;
+    preview?: THREE.InstancedMesh;
     near?: THREE.InstancedMesh;
     far?: THREE.InstancedMesh;
     slots: number[]; // Indices in the authoritative physics mesh used by this model.
@@ -343,6 +344,21 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
   group.userData['libraryPending'] = jobs.length;
   group.userData['libraryReady'] = typeof document === 'undefined' || !jobs.length;
   if (typeof document !== 'undefined') {
+    // The packed fallback also needs individual frustum and distance culling.
+    // Its source instance matrices stay in descriptor order for live physics.
+    for(const job of jobs) {
+      if(job.entries.length<2 || job.stiltPose || job.kind.startsWith('cascade'))continue;
+      const preview=new THREE.InstancedMesh(job.mesh.geometry,job.mesh.material,job.entries.length);
+      preview.name='preview-'+job.kind;
+      preview.count=0;preview.frustumCulled=false;
+      preview.castShadow=job.mesh.castShadow;preview.receiveShadow=job.mesh.receiveShadow;
+      preview.customDepthMaterial=job.mesh.customDepthMaterial;
+      preview.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      job.mesh.visible=false;
+      job.preview=job.near=job.far=preview;
+      job.batch.meshes[0]=preview;
+      group.add(preview);
+    }
     const loader = new GLTFLoader();
     const cache = new Map<string, Promise<THREE.BufferGeometry>>();
     const priorityKinds: readonly PropKind[] = [
@@ -523,8 +539,10 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
             group.add(copy);
           }
           if (near === far) mergedFarMeshes.set('render-far-' + job.kind, near);
+          if(job.preview){group.remove(job.preview);job.preview.dispose();job.preview=undefined;}
           job.near = near;
           job.far = far;
+          job.originalVersion=-1;
           job.batch.meshes.splice(0, job.batch.meshes.length, ...copies);
           job.mesh.visible = false;
           original.dispose();
@@ -647,7 +665,10 @@ export function buildPropVisuals(props: readonly PropDescriptor[], chunkSize = 9
           continue;
         }
 
-        const range = isSmallWorldModel(job.kind) ? WORLD_LOD.smallPropDistance : maxDistance;
+        // The hand-built loading models for individual leaves don't have a distant LOD.
+        // Keep the near verge populated until the compact vegetation meshes arrive.
+        const loadingLeaves = job.preview && ['grass-tuft','flower','fern','mushroom'].includes(job.kind);
+        const range = loadingLeaves ? 38 : isSmallWorldModel(job.kind) ? WORLD_LOD.smallPropDistance : maxDistance;
         const detailRange = horizonKinds.has(job.kind) ? range : range * detailScale;
         const nearIndices: number[] = [], farIndices: number[] = [];
         if (!suppressed) for (const i of job.slots) {

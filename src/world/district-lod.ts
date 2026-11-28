@@ -116,13 +116,14 @@ export async function createDistrictLod<Model extends string>(
     low: THREE.BufferGeometry;
     sphere: THREE.Sphere;
     small: boolean;
-    skyline?: THREE.BufferGeometry;
+    skyline: THREE.BufferGeometry;
     horizon?: THREE.BufferGeometry;
     shadow?: THREE.BufferGeometry;
   }> = [];
   // Largest (usually architectural) cell keeps the historical QA mesh name.
   const ordered = [...cells.values()].sort((a, b) =>
     Number(a.small) - Number(b.small) || b.vertices - a.vertices);
+  if (MeshoptSimplifier.supported) await MeshoptSimplifier.ready;
   for (let i = 0; i < ordered.length; i++) {
     const cell = ordered[i]!;
     const high = new THREE.BufferGeometry();
@@ -156,13 +157,15 @@ export async function createDistrictLod<Model extends string>(
     mesh.receiveShadow = true;
     mesh.frustumCulled = false; // the whole spatial cell is culled below
     group.add(mesh);
-    const skyline = cell.keepSilhouette ? undefined : low;
-    entries.push({ mesh, high, low, skyline, sphere: high.boundingSphere!.clone(),
+    // The first camera orbit can expose the whole town. Prepare its distant shell
+    // before publishing the cell, so a loading frame never draws the full city twice.
+    mesh.visible = false;
+    const skyline = cell.keepSilhouette ? skylineGeometry(high,.25,.10) : low;
+    const shadow = cell.keepSilhouette && MeshoptSimplifier.supported ? architecturalShadow(skyline) : undefined;
+    entries.push({ mesh, high, low, skyline, shadow, sphere: high.boundingSphere!.clone(),
       small: cell.small });
   }
   baked.dispose();
-  let simplifierReady = false;
-  if (MeshoptSimplifier.supported) void MeshoptSimplifier.ready.then(() => { simplifierReady = true; });
   let disposed = false;
   return {
     updateCulling(position, frustum, sightseeing = false, detailScale = 1): boolean {
@@ -182,17 +185,11 @@ export async function createDistrictLod<Model extends string>(
         const skyline = sightseeing && nearest > 25 * detailScale;
         const horizon = sightseeing && nearest > 200 * detailScale && entry.high.userData.preserveSilhouette;
         // Prepare at most one visible architectural cell per district each frame.
-        if (visible && sightseeing && !preparedCell && simplifierReady) {
-          if (!entry.skyline) {
-            entry.skyline = skylineGeometry(entry.high, .25, .10);
-            entry.shadow = architecturalShadow(entry.skyline);
-            preparedCell = true;
-          } else if (horizon && !entry.horizon) {
-            // At the reference lens this tier starts at 200 m. Wider views
-            // reach the same projected detail sooner. Keep the painted seams.
-            entry.horizon = skylineGeometry(entry.skyline, .5, .14);
-            preparedCell = true;
-          }
+        if (visible && horizon && !entry.horizon && !preparedCell && MeshoptSimplifier.supported) {
+          // At the reference lens this tier starts at 200 m. Wider views
+          // reach the same projected detail sooner. Keep the painted seams.
+          entry.horizon = skylineGeometry(entry.skyline, .5, .14);
+          preparedCell = true;
         }
         entry.mesh.userData.shadowSilhouette = sightseeing ? (entry.shadow ?? entry.skyline) : undefined;
         const distant = horizon ? entry.horizon ?? entry.skyline : entry.skyline;

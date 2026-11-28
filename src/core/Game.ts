@@ -38,6 +38,7 @@ import { HAY_HAUL_TAG_RADIUS } from '../gigs';
 import { GigSession } from './GigSession';
 import { IslandHappenings, placeIslandHappenings } from './IslandHappenings';
 import { IslandLifeDirector } from './IslandLifeDirector';
+import { IslandTraffic } from './IslandTraffic';
 import { MarketScene, MARKET_CRATE_ID, MARKET_FRUIT_BODY_TAG } from './MarketScene';
 import { PartySession } from './PartySession';
 import type { GameProgress } from './Persistence';
@@ -156,6 +157,7 @@ export class Game {
   private readonly mailboxes: Vec3[];
   readonly happenings: IslandHappenings;
   readonly life: IslandLifeDirector;
+  readonly traffic: IslandTraffic;
   readonly market: MarketScene;
   private readonly lifeObstacleSources: Array<{ body: RigidBody; radius: number; height: number }> = [];
   private readonly lifeObstacles: Array<{ position: Vec3; radius: number; height: number }> = [];
@@ -374,6 +376,7 @@ export class Game {
       return { x, y: y - prop.size.y / 2, z };
     });
     this.life = new IslandLifeDirector(island, this.gigs.boards.map(board => board.position));
+    this.traffic = new IslandTraffic(island, this.happenings.sites, physics);
     this.market = new MarketScene(physics, island, colliders, this.budget);
     const town = island.pois.find(p => p.id === 'downtown-bleatsville')!.center;
     for (const [id, body] of colliders.bodies) {
@@ -848,6 +851,9 @@ export class Game {
 
   private beforeTick(dt: number): void {
     const ambientEnabled = this.ambientLifeEnabled;
+    this.traffic.step(dt, {enabled:this.travelAvailable,seaLevel:this.water.seaLevel,
+      player:{position:this.goat.torso.translation(),radius:.61*this.goat.size,height:1.15*this.goat.size},
+      residents:ambientEnabled ? this.life.residents : [],obstacles:this.lifeObstacles,wet:islandWeather(this.physics.time).wet});
     if (!ambientEnabled) this.happenings.records?.stop();
     // Do not carry a cosmetic tether into a mode that disables its target.
     if (!ambientEnabled && this.marketFruitTether) this.goat.interactions.detachTongue('replaced', false);
@@ -1269,8 +1275,10 @@ export class Game {
       if (player) {
         this.lastActionTime = this.physics.time;
         this.gigs.noteAbility({ type: 'bleat' });
-        if (this.ambientLifeEnabled)
+        if (this.ambientLifeEnabled) {
+          this.traffic.hail(this.happeningPosition());
           this.life.react('bleat', this.happeningPosition(), this.physics.time, .7 + g.size * .2);
+        }
         if (!this.party.match && this.gigs.active?.status !== 'running' && !this.buildMode) {
           const reward = this.happenings.bleat(this.happeningPosition(), this.physics.time, this.postPerformed);
           if (reward) this.rules.wallet.credit(reward, 'island-discovery');
@@ -1666,6 +1674,7 @@ export class Game {
     this.vfxCueListeners.clear();
     this.materialAudioListeners.clear();
     this.life.dispose();
+    this.traffic.dispose();
     this.market.dispose();
     this.party.dispose();
     this.gigs.dispose();

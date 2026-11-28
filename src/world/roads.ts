@@ -301,7 +301,8 @@ export function makeRoads(island: IslandData, rng: SeededRandom): RoadDescriptor
  * Visual/physical through-streets within city plots, separate from the POI
  * connectivity graph. Rendering uses these same graded centreline segments.
  */
-export function makeLocalStreets(island: Pick<IslandData, 'size' | 'pois' | 'heights' | 'resolution'>): RoadDescriptor[] {
+export function makeLocalStreets(island: Pick<IslandData, 'size' | 'pois' | 'heights' | 'resolution' | 'localStreets'>): RoadDescriptor[] {
+  if (island.localStreets) return island.localStreets;
   const scale = island.size / 600;
   return (['hoofington', 'downtown-bleatsville'] as const).map(id => {
     const centre = island.pois.find(p => p.id === id)!.center;
@@ -362,6 +363,32 @@ export const DAM_EAST_ROAD = 'downtown-bleatsville--the-dam';
 export const DAM_MOUNTAIN_TRAIL = 'mt-gigga--the-dam';
 export const DAM_PINES_ROAD = 'the-dam--whispering-pines';
 export const DAM_PINES_BRIDGE_PREFIX = 'bridge-' + DAM_PINES_ROAD + '-';
+
+/** Route the through road round the landward foot of the dam stairs. Both
+ * regional roads retain a common junction and the pedestrian approach stays at the board. */
+export function clearDamTrafficApproach(island:IslandData):void {
+  const {position,scale}=getDamPlacement(island);
+  const floor=position.z-18.8*scale;
+  const planting=island.props.filter(p=>p.id.startsWith('detail-') &&
+    Math.abs(p.transform.position.x-position.x)<49*scale && Math.abs(p.transform.position.z-floor)<18*scale)
+    .map(p=>({p:p.transform.position,old:gridSample(island,p.transform.position.x,p.transform.position.z)}));
+  const points=new Set<RoadPoint>();
+  for(const road of island.roads) {
+    if(road.id!==DAM_PINES_ROAD && road.id!==DAM_EAST_ROAD)continue;
+    const changed:RoadPoint[]=[];
+    for(const p of road.points){
+      if(p.bridge || Math.abs(p.z-position.z)>33*scale)continue;
+      const x=(p.x-position.x)/scale;
+      if(x < -34 || x > 41)continue;
+      // Ease the verge between the untouched eastern trail fork and the forest causeway.
+      const amount=smoothstep(-34,-9,x)*(1-smoothstep(20,41,x));
+      if(!points.has(p))p.z+=(Math.min(floor,p.z)-p.z)*amount;
+      points.add(p);changed.push(p);
+    }
+    exposeRoadBed(island,changed,road.width);
+  }
+  for(const {p,old} of planting)p.y+=gridSample(island,p.x,p.z)-old;
+}
 
 /** Keep the asphalt visible across the earth handoff on the forest bank. */
 export function fitPinesBridgeApproach(island: IslandData): void {

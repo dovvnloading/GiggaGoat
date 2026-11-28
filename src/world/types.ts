@@ -167,6 +167,8 @@ export interface IslandData {
   river: RiverPoint[];
   reservoir: ReservoirDescriptor;
   roads: RoadDescriptor[];
+  /** The finished town centreline grades before cutting the underlying terrain. */
+  localStreets?: RoadDescriptor[];
   props: PropDescriptor[];
   /** Bottom-aligned kit meshes and their matching physical scenery. */
   districtSets?: import('./district-sets').DistrictSet[];

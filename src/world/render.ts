@@ -559,7 +559,13 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
   group.add(streets);
   // Coalesce unchanged ground decals to keep the extra zebra mesh within the draw budget.
   const ground = buildGroundDetails(island, 192, finish.applyMap);
-  group.add(ground, buildPavementDetails(island, ground, streets, roads));
+  const pavement=buildPavementDetails(island,ground,streets,roads);
+  const surfaceMarks=pavement.children.flatMap(mark=>{
+    if(!(mark instanceof THREE.Mesh))return [];
+    mark.geometry.computeBoundingSphere();
+    return [{mark,bounds:mark.geometry.boundingSphere as THREE.Sphere}];
+  });
+  group.add(ground,pavement);
   group.add(buildMeadowScatter(island, sky.atmosphere, finish.pavedAt, wind));
   const verges = buildVergeVisuals(island, finish.pavedAt);
   group.add(verges.group);
@@ -711,6 +717,8 @@ export function createWorldScene(island: IslandData, options: WorldSceneOptions 
     matrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     frustum.setFromProjectionMatrix(matrix);
     const pos = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
+    for(const {mark,bounds} of surfaceMarks)
+      mark.visible=bounds.distanceToPoint(pos)<105*island.size/600*detailScale;
     let shadowCastersChanged = false;
     for (const chunk of chunks) {
       const dist = chunk.sphere.center.distanceTo(pos);

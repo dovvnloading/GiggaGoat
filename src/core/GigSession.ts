@@ -153,6 +153,11 @@ export class GigSession {
         position.x += 7.2 * scale;
         position.z += 4.8 * scale;
         position.y = heightAt(island, position.x, position.z);
+      } else if (poi.id === 'baa-ardwalk' || poi.id === 'whispering-pines') {
+        // Place the noticeboard on the verge where the regional roads meet.
+        position.x += (poi.id === 'whispering-pines' ? 5.3 : -1.3)*scale;
+        position.z += (poi.id === 'whispering-pines' ? 3.8 : -6)*scale;
+        position.y = heightAt(island, position.x, position.z);
       }
       return { poiId: poi.id, position, name: poi.name };
     });

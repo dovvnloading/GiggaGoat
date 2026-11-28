@@ -25,6 +25,7 @@ import { CAMERA_TARGET_HEIGHT, PLAY_CAMERA_PITCH, SPAWN_CAMERA_PITCH, SPAWN_CAME
   goatViewDirection } from './GoatCamera';
 import type { Ride } from './IslandTravel';
 import { TravelVisuals } from './TravelVisuals';
+import { TrafficVisuals } from '../world/visual-traffic';
 import { GameHud, type FramePerformance } from './GameHud';
 import { createSplashDiveMarkers, createSummitTrailMarker, hayHaulGuidance, type HayHaulGuidance } from './GigPresentation';
 import { MowDownPresentation } from './MowDownPresentation';
@@ -68,6 +69,7 @@ export class GameView {
   private cameraRide: Ride | null = null;
   private lastCraftHeading = 0;
   private readonly vehicles: TravelVisuals;
+  private readonly traffic: TrafficVisuals;
   private readonly happeningVisuals: HappeningVisuals;
   private readonly residents: ReturnType<typeof buildAmbientLifeVisuals>;
   private readonly marketVisuals: ReturnType<typeof buildMarketFruitVisuals>;
@@ -197,6 +199,8 @@ export class GameView {
     this.hud = new GameHud(host);
     this.vehicles = new TravelVisuals(game.travel,game.island);
     this.scene.add(this.vehicles.root);
+    this.traffic = new TrafficVisuals(game.traffic);
+    this.scene.add(this.traffic.root);
     this.toyEffects = new ToyEffects(game.toys);
     this.scene.add(this.toyEffects.root);
     this.happeningVisuals = new HappeningVisuals(game.island, game.happenings);
@@ -1065,6 +1069,7 @@ export class GameView {
     this.updateCameraFraming(sceneDt);
     this.happeningVisuals.update(this.game.physics.time, this.camera.position, !match, this.game.ambientLifeEnabled);
     this.residents.update(this.game.life.residents, this.game.physics.time, this.camera.position, this.currentSettings.graphics);
+    this.traffic.update(this.game.physics.time,alpha,this.camera.position,this.currentSettings.graphics,night);
     this.marketVisuals.update(this.game.market.items, this.camera.position);
     this.atmosphere.update(weather, this.camera.position, playerPosition, this.currentSettings.graphics === 'low');
     if ('isSoftwareRenderer' in this.renderer) {
@@ -1086,7 +1091,7 @@ export class GameView {
       this.skylineBudgetOrigin = null;
     }
     const detailScale = sceneryDetailScale(this.camera.fov, this.camera.aspect);
-    const distantView = !!this.game.travel.active || !!this.skylineBudgetOrigin || detailScale < .8;
+    const distantView = this.game.traffic.enabled || !!this.game.travel.active || !!this.skylineBudgetOrigin || detailScale < .8;
     this.world.updateCulling(this.camera, distantView, range, detailScale);
     this.instancedProps.update(this.camera, range * detailScale);
     this.shadowTimer += sceneDt;
@@ -1134,6 +1139,7 @@ export class GameView {
     this.atmosphere.dispose();
     this.toyEffects.dispose();
     this.vehicles.dispose();
+    this.traffic.dispose();
     this.happeningVisuals.dispose();
     this.residents.dispose();
     this.marketVisuals.dispose();

@@ -36,6 +36,17 @@ export function gridSample(island: Pick<IslandData, 'heights' | 'resolution' | '
   return lerp(lerp(a, b, u), lerp(c, d, u), v);
 }
 
+/** Near terrain has triangular faces; bilinear sampling can float a foot. */
+export function terrainFaceHeight(island: IslandData, x: number, z: number): number {
+  const n = island.resolution;
+  const gx = (x / island.size + .5) * (n - 1), gz = (z / island.size + .5) * (n - 1);
+  const ix = Math.max(0, Math.min(n - 2, Math.floor(gx))), iz = Math.max(0, Math.min(n - 2, Math.floor(gz)));
+  const u = Math.max(0, Math.min(1, gx - ix)), v = Math.max(0, Math.min(1, gz - iz));
+  const a = island.heights[gridIndex(n, ix, iz)]!, b = island.heights[gridIndex(n, ix + 1, iz)]!;
+  const c = island.heights[gridIndex(n, ix, iz + 1)]!, d = island.heights[gridIndex(n, ix + 1, iz + 1)]!;
+  return u + v <= 1 ? a + (b - a) * u + (c - a) * v : d + (c - d) * (1 - u) + (b - d) * (1 - v);
+}
+
 export function makeTerrain(seed: string | number, size: number, resolution: number): Float32Array {
   const noise = new GradientNoise(hashString(String(seed)));
   const heights = new Float32Array(resolution * resolution);
