@@ -201,7 +201,7 @@ export class GameView {
     this.scene.add(this.toyEffects.root);
     this.happeningVisuals = new HappeningVisuals(game.island, game.happenings);
     this.scene.add(this.happeningVisuals.root);
-    this.residents = buildAmbientLifeVisuals(game.life.residents);
+    this.residents = buildAmbientLifeVisuals(game.life.residents, { surfaceAt: game.life.plan.navigation.surfaceAt });
     this.marketVisuals = buildMarketFruitVisuals(game.market.items);
     this.scene.add(this.residents.root, this.marketVisuals.root);
     this.characters = new GameCharacters(this.scene, game);

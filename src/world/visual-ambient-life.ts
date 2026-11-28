@@ -96,13 +96,14 @@ export function residentClip(activity: AmbientResidentState['activity'], phase: 
 }
 
 interface SoleProbe { mesh: THREE.SkinnedMesh; index: number }
+type SurfaceHeight = (x: number, z: number) => number;
 
 /**
  * A separate rig owns bones, actions and a mixer, while meshes share immutable
  * template geometry/materials. +Z is the native character's forward direction.
  * The director's position is a supporting surface point, never the mesh centre.
  */
-export function createResidentRig(asset: GLTF, initial: AmbientResidentState) {
+export function createResidentRig(asset: GLTF, initial: AmbientResidentState, surfaceAt?: SurfaceHeight) {
   // Validate before allocating clone-owned skeletons/mixers; corrupt assets
   // must not leak a half-constructed actor that the adapter cannot dispose.
   for (const name of CLIPS) if (!asset.animations.some(item => item.name === name))
@@ -158,15 +159,15 @@ export function createResidentRig(asset: GLTF, initial: AmbientResidentState) {
     node.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, nativeHeight * .48, 0), nativeHeight * .88);
     node.frustumCulled = true;
     const positions = node.geometry.getAttribute('position');
-    let lowest = Infinity;
-    for (let i = 0; i < positions.count; i++) lowest = Math.min(lowest, positions.getY(i));
-    if (lowest > bounds.min.y + nativeHeight * .15) return;
-    // The soles are flat authored faces. Their perimeter vertices are enough
-    // to ground a pose without walking every vertex of either skinned mesh.
+    const joints = node.geometry.getAttribute('skinIndex');
+    // These rigid leg bones include the shoes. A side of the toe or heel
+    // can be the lowest part after the native walking clip bends the leg.
     const unique = new Set<string>();
     for (let i = 0; i < positions.count; i++) {
-      if (positions.getY(i) > lowest + nativeHeight * .009) continue;
-      const key = positions.getX(i).toFixed(5) + ':' + positions.getZ(i).toFixed(5);
+      const joint = joints.getX(i);
+      const name = node.skeleton.bones[joint]?.name;
+      if (name !== 'leg-left' && name !== 'leg-right') continue;
+      const key = [joint, positions.getX(i), positions.getY(i), positions.getZ(i)].join(',');
       if (!unique.has(key)) { probes.push({ mesh: node, index: i }); unique.add(key); }
     }
   });
@@ -212,14 +213,15 @@ export function createResidentRig(asset: GLTF, initial: AmbientResidentState) {
     mixer.update(0);
     model.position.set(0, modelGround, 0);
     root.updateMatrixWorld(true);
-    let bottom = Infinity;
+    let lift = -Infinity;
     if (sit < 1) {
       for (const probe of probes) {
         probe.mesh.getVertexPosition(probe.index, point).applyMatrix4(probe.mesh.matrixWorld);
-        bottom = Math.min(bottom, point.y);
+        const pavement = surfaceAt ? surfaceAt(point.x, point.z) : state.position.y;
+        lift = Math.max(lift, pavement - point.y);
       }
     }
-    const groundCorrection = Number.isFinite(bottom) ? state.position.y - bottom : 0;
+    const groundCorrection = Number.isFinite(lift) ? lift : 0;
     let seatCorrection = groundCorrection;
     if (hip && state.seat && sit > 0) {
       hip.getWorldPosition(point);
@@ -285,6 +287,7 @@ export function createResidentRig(asset: GLTF, initial: AmbientResidentState) {
 }
 
 export interface AmbientLifeVisualOptions {
+  surfaceAt?: SurfaceHeight;
   /** Injectable loader for lifecycle/asset tests. Injected assets are caller-owned. */
   loadAsset?: (url: string) => Promise<GLTF>;
 }
@@ -331,7 +334,7 @@ export function buildAmbientLifeVisuals(
       if (disposed) return;
       for (const state of initialStates) {
         if (state.model !== model) continue;
-        const rig = createResidentRig(asset, state);
+        const rig = createResidentRig(asset, state, options.surfaceAt);
         rigs.set(state.id, rig);
         inRange.add(state.id);
         root.add(rig.root);
