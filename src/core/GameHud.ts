@@ -836,7 +836,8 @@ export class GameHud {
     const activeGig = game.gigs.active;
     const run = activeGig?.status === 'running' ? activeGig : game.pendingGigResult;
     // Enter a little inside the interaction radius to avoid blinking at its edge.
-    const boardInRange = !game.atPostalStop && !game.atRecordCounter && game.gigs.nearBoard(this.board.hidden ? 8.75 : 9) !== null;
+    const bleatAtCounter = game.atPostalStop || game.atRecordCounter;
+    const boardInRange = !bleatAtCounter && game.gigs.nearBoard(this.board.hidden ? 8.75 : 9) !== null;
     const carryStamina = carryStaminaForHud(game.party.match, 'player');
     const stackLiftCue = game.gigs.stackLiftCue;
     const stackLiftPrompt = stackLiftCue === 'ready' ?
@@ -844,7 +845,7 @@ export class GameHud {
       stackLiftCue === 'moving' ? 'Lifting crate' :
         stackLiftCue === 'clear' ? 'Step clear of the pad' : undefined;
     const ride=game.travel?.active;
-    const station=!ride && game.travelAvailable ? game.travel.station(game.goat.torso.translation()) : null;
+    const station=!ride && !bleatAtCounter && game.travelAvailable ? game.travel.station(game.goat.torso.translation()) : null;
     const route = ride ? { title: RIDES[ride].name, task: game.travel.controls(device === 'gamepad', game.physics.time),
       detail: game.travel.instruments() } : undefined;
     this.gigHeader.textContent = ride ? 'ISLAND TRAVEL' : game.post?.active && game.travelAvailable ? 'ISLAND POST' : 'CURRENT GIG';

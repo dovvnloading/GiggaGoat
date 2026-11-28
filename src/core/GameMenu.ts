@@ -34,12 +34,13 @@ const CSS = `
 .gg-shell *{box-sizing:border-box}
 .gg-shell [hidden]{display:none!important}
 .gg-post-head,.gg-post-actions{display:flex;gap:12px;align-items:center;justify-content:center}
+.gg-post-actions{flex-wrap:wrap}
 .gg-post-head img{width:70px;height:70px;object-fit:cover;border:3px solid #b3834e;border-radius:50%}
 .gg-post-head p,.gg-post-card p{margin:4px 0}
 .gg-post-cards{display:grid;gap:9px;text-align:left;margin:12px 0}
-.gg-post-card{display:grid;grid-template-columns:clamp(70px,18vw,105px) 1fr;align-items:center;gap:12px;padding:8px;background:#fff1d1;border:1px solid #c19865;border-radius:8px;color:#3d291f}
+.gg-post-card{display:grid;grid-template-columns:clamp(70px,18vw,105px) minmax(0,1fr);align-items:center;gap:12px;padding:8px;background:#fff1d1;border:1px solid #c19865;border-radius:8px;color:#3d291f;text-shadow:none}
 .gg-post-card i{aspect-ratio:1;background-image:var(--postcards);background-size:400% 200%;border-radius:3px}
-.gg-post-card h3{margin:0;font-size:1.05rem}.gg-post-card p{font-size:.9rem;line-height:1.3}
+.gg-post-card h3{margin:0;font-size:1.05rem}.gg-shell .gg-post-card p{color:#513c2e;font-size:.9rem;font-weight:600;line-height:1.4;margin:4px 0 8px}
 .gg-shell .gg-post-card .gg-art-button,.gg-shell .gg-post-actions .gg-art-button{width:auto;min-height:34px;font-size:.82rem}
 .gg-shell-panel{position:relative;width:min(610px,100%);max-height:calc(100dvh - 24px);
   min-width:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;
@@ -803,11 +804,11 @@ export class GameMenu {
   private interact(): boolean {
     if (this.screen !== 'playing') return false;
     if(this.game.travel?.active){this.game.leaveRide();return true;}
+    if (this.game.atPostalStop || this.game.atRecordCounter) return false;
     if(this.game.travelAvailable){
       const station=this.game.travel.station(this.game.goat.torso.translation());
       if(station && this.game.boardRide(station,true))return true;
     }
-    if (this.game.atPostalStop || this.game.atRecordCounter) return false; // Let the normal bleat reach the listening counter.
     const poi = this.game.gigs.nearBoard();
     if (!poi) return false;
     this.boardPoi = poi;

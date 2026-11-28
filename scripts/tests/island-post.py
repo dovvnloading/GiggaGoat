@@ -5,6 +5,13 @@ import sys
 from playwright.sync_api import sync_playwright
 
 
+def low_graphics(page):
+    page.locator('[data-action="settings"]').click(timeout=90000)
+    page.locator('[data-tab="video"]').click()
+    page.locator("#gg-setting-graphics").select_option("low")
+    page.locator('[data-action="back"]').click()
+
+
 def play(page, url, evidence):
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
@@ -22,7 +29,11 @@ def play(page, url, evidence):
 
     def boot():
         wait("!!window.session", 90000)
-        page.evaluate("void(window.g = session.game)")
+        page.evaluate("""() => {
+          window.g = session.game;
+          window.postPayments = [];
+          g.rules.events.on('coins:changed', e => { if (e.reason === 'island-post') postPayments.push(e.after-e.before); });
+        }""")
 
     def visit_target():
         site = page.evaluate("g.post.target.definition.id")
@@ -56,20 +67,16 @@ def play(page, url, evidence):
                 page.wait_for_timeout(140)
         else:
             page.keyboard.press("e")
-            wait(f"g.physics.time > {start + .9}")
-            if page.evaluate("g.post.target?.definition.id") == site:
-                # Shared stops can still be in the normal 12-second replay cooldown.
-                wait(f"g.physics.time > {start + 12.5}", 60000)
-                page.keyboard.press("e")
         wait("g.post.target?.definition.id !== " + json.dumps(site))
 
     try:
         page.goto(url, wait_until="commit")
         boot()
+        low_graphics(page)
         album()
         assert page.locator(".gg-post-card").count() == 8
         page.screenshot(path=evidence / "dispatches.jpg", type="jpeg", quality=88)
-        wait("session.audio.recordings?.effects.has('ui-postmaster')")
+        wait("session.audio.recordings?.effects.has('ui-postmaster') && session.audio.recordings.effects.has('postmark')")
         click("hear-postmaster")
         routes = page.evaluate("g.post.routes.map(route=>route.id)")
         for i, route in enumerate(routes):
@@ -89,14 +96,23 @@ def play(page, url, evidence):
                 click("play")
             visit_target()
             assert page.evaluate("id=>g.post.stamped.has(id)", route)
+            assert page.evaluate("postPayments") == [40] * (i + 1)
             print(f"Delivered {route}", flush=True)
         page.keyboard.press("Escape")
+        balance = page.evaluate("g.rules.wallet.coins")
+        page.reload(wait_until="commit")
+        boot()
+        assert page.evaluate("g.rules.wallet.coins") == balance
         album()
         assert page.locator(".gg-post-card strong").count() == 8
         assert page.locator('[data-action^="dispatch-"]').count() == 0
         page.set_viewport_size({"width":390,"height":844})
-        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        assert page.locator(".gg-shell-panel").evaluate("p => p.scrollWidth <= p.clientWidth + 1")
         page.screenshot(path=evidence / "mobile-stamped.jpg", type="jpeg", quality=88)
+        (evidence / "dispatch-results.json").write_text(json.dumps({
+            "routes": routes, "postCoins": len(routes) * 40, "walletAfterReload": balance,
+            "renderer": page.locator("canvas").first.get_attribute("data-render-backend"), "errors": errors
+        }, indent=2), encoding="utf-8")
         assert not errors, errors
     except Exception:
         print("Browser errors", errors, flush=True)
@@ -115,13 +131,59 @@ def play(page, url, evidence):
             raise
 
 
+def public_smoke(page, url, evidence):
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.on("response", lambda r: errors.append(f"{r.status} {r.url}") if r.status >= 400 else None)
+
+    def click(action):
+        page.locator(f'[data-action="{action}"]').click(timeout=60000)
+
+    page.goto(url, wait_until="commit")
+    low_graphics(page)
+    click("travel")
+    click("post")
+    assert page.locator(".gg-post-card").count() == 8
+    assert page.locator(".gg-post-head img").evaluate("i=>i.complete && i.naturalWidth > 0")
+    click("hear-postmaster")
+    page.screenshot(path=evidence / "public-album.jpg", type="jpeg", quality=90)
+    click("dispatch-breakfast")
+    page.locator("[data-gig-title]").filter(has_text="Breakfast by bell").wait_for()
+    page.keyboard.down("w")
+    page.wait_for_timeout(800)
+    page.keyboard.up("w")
+    page.keyboard.press("Escape")
+    page.reload(wait_until="commit")
+    click("travel")
+    click("post")
+    assert page.get_by_text("In your satchel", exact=True).is_visible()
+    click("stop-post")
+    click("back")
+    for id, title in [("boat","Gullwing Runabout"), ("plane","Saltwind Floatplane"),
+                      ("balloon","Honeycomb Balloon"), ("tram","Summit Cable Car")]:
+        click("ride-" + id)
+        page.locator("[data-gig-title]").filter(has_text=title).wait_for()
+        page.keyboard.down("Space" if id == "balloon" else "w")
+        page.wait_for_timeout(1200)
+        page.keyboard.up("Space" if id == "balloon" else "w")
+        if id == "boat":
+            page.screenshot(path=evidence / "public-marina.jpg", type="jpeg", quality=90)
+        page.keyboard.press("Escape")
+        click("return-station")
+        page.keyboard.press("Escape")
+        click("travel")
+        print("Boarded and returned", title, flush=True)
+    assert not errors, errors
+    (evidence / "pages-results.json").write_text(json.dumps({"url":url,"errors":errors}, indent=2), encoding="utf-8")
+
+
 if __name__ == "__main__":
     evidence = Path(sys.argv[2])
     evidence.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(channel="chrome", args=["--autoplay-policy=no-user-gesture-required",
-            "--enable-unsafe-swiftshader","--ignore-gpu-blocklist"])
+        browser = pw.chromium.launch(channel="chrome", args=["--autoplay-policy=no-user-gesture-required", "--disable-webgl"])
         try:
-            play(browser.new_page(viewport={"width":960,"height":580}), sys.argv[1], evidence)
+            run = public_smoke if "--public" in sys.argv[3:] else play
+            run(browser.new_page(viewport={"width":800,"height":540}), sys.argv[1], evidence)
         finally:
             browser.close()

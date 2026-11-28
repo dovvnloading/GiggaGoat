@@ -181,13 +181,14 @@ export class IslandHappenings {
       performed?.(site.definition.id);
       return reward;
     }
+    // A second dispatch can use this counter while its scenery is still animating.
+    if (site.definition.id !== 'honey-rolls') performed?.(site.definition.id);
     if (time - (this.activated.get(site.definition.id) ?? -Infinity) < REPLAY_SECONDS) return 0;
     const reward = this.discovered(site) ? 0 : site.definition.reward;
     if (site.definition.id === 'honey-rolls') this.bakery?.launch(time);
     this.completed.add(site.definition.id);
     this.activated.set(site.definition.id, time);
     this.last = { site, time, reward };
-    if (site.definition.id !== 'honey-rolls') performed?.(site.definition.id);
     return reward;
   }
 

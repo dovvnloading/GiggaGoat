@@ -35,7 +35,9 @@ describe('living island encounters', () => {
     expect(life.bleat(player, 0)).toBe(site.definition.reward);
     expect(life.reaction(site, 2)).toBe(2);
     expect(life.message(player, 2)?.detail).toContain('+15 CUD COINS');
-    expect(life.bleat(player, 4)).toBe(0);
+    const signatures: string[] = [];
+    expect(life.bleat(player, 4, id => signatures.push(id))).toBe(0);
+    expect(signatures).toEqual([site.definition.id]);
     expect(life.reaction(site, 5)).toBeUndefined();
     expect(life.bleat(player, 13)).toBe(0);
     expect(life.reaction(site, 13)).toBe(0);
